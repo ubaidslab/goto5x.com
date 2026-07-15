@@ -17,8 +17,13 @@ Companion to `docs/SRS.md` §3.2 (tenant isolation) and §8 (entity list).
   (`USING (store_id = current_setting('app.store_id')::uuid)`) everywhere, with no
   exceptions to reason about.
 - Global (platform-level, not tenant-owned) tables: `users`, `suppliers`,
-  `supplier_listings`, `themes`, `plans`, `admin_users`, `admin_audit_logs`,
-  `feature_flags`.
+  `supplier_listings`, `themes`, `plans`, `categories`, `admin_users`,
+  `admin_audit_logs`, `admin_impersonation_sessions`, `settings_definitions`,
+  `settings_values`, `announcements`.
+- **v0.3 change:** the earlier standalone `feature_flags` table is retired in favor of
+  the generic **Settings Registry** (`settings_definitions` + `settings_values`,
+  detailed below) — a feature flag is simply a boolean-typed, scoped setting, not a
+  separate mechanism. This is the schema half of SRS §3.8/§5.8 (Admin Control Plane).
 - `ledger_entries` and `payouts` are scoped by `seller_id`, not `store_id` (a seller
   may own more than one store; payout accounting is per-seller, not per-store) — the
   same "own-row-only" access rule applies, enforced the same way as tenant RLS.
@@ -56,8 +61,19 @@ erDiagram
     ORDER_ITEMS ||--o{ TRACKING_UPDATES : logs
     ORDERS ||--o{ PAYMENTS : "paid via"
     ORDERS ||--o{ LEDGER_ENTRIES : generates
+    ORDERS ||--o{ ORDER_FLAGS : "flagged as"
+    CATEGORIES ||--o{ PRODUCTS : classifies
     ADMIN_USERS ||--o{ ADMIN_AUDIT_LOGS : performs
+    ADMIN_USERS ||--o{ ADMIN_IMPERSONATION_SESSIONS : opens
+    ADMIN_USERS ||--o{ ANNOUNCEMENTS : creates
+    SETTINGS_DEFINITIONS ||--o{ SETTINGS_VALUES : "scoped instances of"
+    ADMIN_USERS ||--o{ SETTINGS_VALUES : "last edited by"
 ```
+
+Every module in the architecture (Catalog, Orders, Payments/Ledger, Suppliers, Theme
+Engine) reads its tunable behavior through `SETTINGS_DEFINITIONS`/`SETTINGS_VALUES` —
+this pair is the schema backbone of the Admin Control Plane (SRS §3.8, §5.8) and is
+intentionally drawn as a hub rather than tucked away as "just another table."
 
 ---
 
@@ -134,6 +150,7 @@ Index: `idx_domains_domain_name (domain_name)` unique — critical for per-reque
 |---|---|---|
 | id | uuid PK | |
 | store_id | uuid FK → stores.id | |
+| category_id | uuid FK → categories.id, nullable | drives category-level commission overrides (FR-6.1/FR-8.3) and storefront browsing |
 | title | text | |
 | description | text | |
 | status | enum(`draft`,`active`,`archived`) | |
@@ -141,6 +158,17 @@ Index: `idx_domains_domain_name (domain_name)` unique — critical for per-reque
 | created_at, updated_at | timestamptz | |
 
 Index: `idx_products_store_status (store_id, status)` — storefront catalog browsing, the highest-QPS read in the system.
+
+### `categories` (global — admin-managed taxonomy)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| name | text | e.g. "Electronics", "Fashion", "Home" |
+| slug | text unique | |
+| created_at | timestamptz | |
+
+Admin-managed (part of the Control Plane, SRS FR-8.3) specifically so commission can
+be tuned per category via the Settings Registry without a schema change per category.
 
 ### `product_variants` (tenant, child of products)
 | Column | Type | Notes |
@@ -310,8 +338,13 @@ Index: `idx_payouts_seller_status (seller_id, status)`.
 | name | text | Starter / Growth / Premium |
 | price_pkr | numeric(12,2) | |
 | billing_interval | enum(`monthly`,`yearly`) | |
-| commission_rate_override | numeric(5,4) nullable | overrides the platform default 3% (FR-6.1) |
-| feature_flags | jsonb | product limit, template tier, coded-theme access, custom domain, etc. |
+| is_active | boolean | retiring a plan doesn't delete it — existing subscribers stay on it |
+| sort_order | integer | display order in the pricing/admin UI |
+
+Commission-rate overrides, product/storage/template limits, and coded-theme access
+for a plan are **not** columns on this table — they are `settings_values` rows scoped
+to `('plan', plans.id)` (see Settings Registry below). This keeps adding a new
+plan-gated capability a matter of registering one more setting key, not a migration.
 
 ### `subscriptions`
 | Column | Type | Notes |
@@ -332,26 +365,114 @@ Index: `idx_subscriptions_seller (seller_id)`.
 | role | enum(`super_admin`,`support`) | `support` sub-role reserved for Phase 3 (§4 of SRS) |
 | mfa_enabled | boolean | must be `true` — enforced at signup, not just a settable flag (FR-8.11) |
 
-### `admin_audit_logs` (global, immutable)
+### `admin_audit_logs` (global, immutable — every Control Plane action)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | admin_user_id | uuid FK → admin_users.id | |
-| action | text | e.g. `seller.suspend`, `commission.update` |
-| target_type | text | e.g. `store`, `seller`, `plan` |
+| impersonation_session_id | uuid FK → admin_impersonation_sessions.id, nullable | set when the action happened while impersonating a seller/supplier (FR-8.4) |
+| action | text | e.g. `seller.suspend`, `settings.update`, `payout.freeze`, `template.publish` |
+| target_type | text | e.g. `store`, `seller`, `plan`, `settings_value`, `order` |
 | target_id | uuid | |
-| metadata | jsonb | before/after values |
+| before_value | jsonb nullable | prior state, required for any mutation |
+| after_value | jsonb nullable | new state |
 | created_at | timestamptz | |
 
-Index: `idx_audit_admin_created (admin_user_id, created_at)`, `idx_audit_target (target_type, target_id)`.
+Index: `idx_audit_admin_created (admin_user_id, created_at)`, `idx_audit_target (target_type, target_id)`, `idx_audit_impersonation (impersonation_session_id)`.
+**Immutability is a DB-level grant, not an app convention:** the application's
+runtime role has `INSERT` only on this table — no `UPDATE`/`DELETE` privilege exists,
+so no application bug or compromised admin session can rewrite history (FR-8.9).
 
-### `feature_flags` (global)
+### `admin_impersonation_sessions` (global)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| key | text unique | |
-| enabled_globally | boolean | |
-| enabled_for_store_ids | uuid[] nullable | staged rollout to specific tenants (FR-8.9) |
+| admin_user_id | uuid FK → admin_users.id | |
+| target_type | enum(`seller`,`supplier`) | |
+| target_id | uuid | |
+| reason | text, required | admin must state why before the session opens |
+| ip_address | inet | |
+| started_at | timestamptz | |
+| ended_at | timestamptz nullable | null while the impersonation session is live |
+
+Index: `idx_impersonation_admin (admin_user_id, started_at)`, `idx_impersonation_target (target_type, target_id)`.
+Every action taken during an open session is tagged with `impersonation_session_id`
+in `admin_audit_logs`, so "what did admin X do while impersonating seller Y" is a
+direct, indexed query, not a forensic reconstruction.
+
+### `settings_definitions` (global — the Settings Registry catalog)
+| Column | Type | Notes |
+|---|---|---|
+| key | text PK | e.g. `billing.commission_rate`, `payouts.hold_days`, `payouts.frozen`, `catalog.product_limit`, `theme.coded_mode_enabled`, `platform.maintenance_mode` |
+| value_type | enum(`boolean`,`number`,`string`,`json`) | |
+| allowed_scopes | text[] | subset of `{global, plan, seller, category, store}` — enforced at write time |
+| default_value | jsonb | used when no `settings_values` row exists for a given scope |
+| validation | jsonb nullable | e.g. `{"min":0,"max":100}` for a percentage — rejected before it reaches `settings_values` (SRS §12, Risk 11) |
+| description | text | shown in the admin UI |
+
+### `settings_values` (global — the actual configuration data every module reads)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| definition_key | text FK → settings_definitions.key | |
+| scope_type | enum(`global`,`plan`,`seller`,`category`,`store`) | |
+| scope_id | uuid nullable | null only when `scope_type = 'global'` |
+| value | jsonb | |
+| updated_by | uuid FK → admin_users.id | |
+| updated_at | timestamptz | |
+
+Unique: `(definition_key, scope_type, scope_id)` — this is also the point-lookup index
+the resolver (`SettingsService.resolve`, SRS §3.8) uses: for a given key it checks
+`seller` scope, then `plan` scope, then `category`/`store` where relevant, then
+`global`, each a single indexed lookup, cached in Redis so most reads never hit
+Postgres at all. Every write here produces a matching `admin_audit_logs` row.
+
+### `order_flags` (tenant — risk/fraud review queue, FR-8.8)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| store_id | uuid | denormalized for RLS |
+| order_id | uuid FK → orders.id | |
+| flagged_by | uuid FK → admin_users.id | |
+| reason | text | |
+| status | enum(`open`,`resolved`) | |
+| created_at | timestamptz | |
+| resolved_at | timestamptz nullable | |
+
+Index: `idx_order_flags_status (status, created_at)` — the admin review queue's primary query.
+
+### `announcements` (global, FR-8.7)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| message | text | |
+| level | enum(`info`,`warning`,`critical`) | |
+| starts_at, ends_at | timestamptz | scheduling window |
+| is_active | boolean | manual kill-switch independent of the schedule |
+| created_by | uuid FK → admin_users.id | |
+| created_at | timestamptz | |
+
+Note: platform-wide **maintenance mode** itself is a `settings_values` row
+(`platform.maintenance_mode`, scope `global`), not a row in this table — it is a
+single on/off state with an allowlist, not a schedulable list of messages, so it
+reuses the registry directly rather than adding a table for one boolean (SRS §5.8,
+FR-8.7).
+
+### `platform_metrics_snapshots` (global — Phase 1.1+ optimization, not required for v1.0)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| snapshot_at | timestamptz | |
+| gmv | numeric(14,2) | |
+| revenue | numeric(14,2) | |
+| commission_earned | numeric(14,2) | |
+| active_store_count | integer | |
+| metadata | jsonb | top-sellers list, etc. |
+
+At v1.0 launch volume, FR-8.10's analytics are answered with live `SUM`/`COUNT`
+queries against `orders`/`ledger_entries`/`stores` — this table only gets populated
+by a scheduled job once that live aggregation is measurably slow, so it costs nothing
+until it earns its keep (see `docs/mvp-v1-cutlist.md`).
 
 ---
 
@@ -367,6 +488,10 @@ Index: `idx_audit_admin_created (admin_user_id, created_at)`, `idx_audit_target 
 | Balance computation + hold-release job | `ledger_entries (seller_id, created_at)` + partial `ledger_entries (hold_release_at) WHERE balance_bucket='pending'` |
 | Idempotent payment webhook handling | `payments (gateway_transaction_id)` unique |
 | Listing approval queue | `listing_reviews (store_supplier_link_id, status)` |
+| Settings resolution (every module, every request path) | `settings_values (definition_key, scope_type, scope_id)` unique — cached in Redis, so this index mostly protects cache-miss/cold-start reads |
+| Payout hold-release scheduled job | partial `ledger_entries (hold_release_at) WHERE balance_bucket='pending'` (listed above; repeated here because it's now also the read path the freeze check in FR-8.8 depends on) |
+| Admin review queues (risk flags, listing approvals) | `order_flags (status, created_at)` |
+| "What did admin X do while impersonating seller Y" | `admin_audit_logs (impersonation_session_id)` |
 
 ## Extensibility deliberately not modeled yet
 

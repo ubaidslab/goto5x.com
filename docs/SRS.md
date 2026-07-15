@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.2 (Draft — post self-review)
+**Version:** 0.3 (Draft — post self-review + control-plane addendum)
 **Date:** 2026-07-15
 **Status:** Discussion draft — for review before Phase 1 build starts
 
@@ -11,6 +11,15 @@ social SaaS, explicit tenant-isolation enforcement mechanism, expanded security 
 explicit statelessness/connection-pooling/session-handling requirements for scaling, a
 Risk Register (§12), content-moderation requirement, and resolved open decisions
 (supplier integration order, payment gateway direction, solo-founder pacing).
+
+**Changelog v0.2 → v0.3:** Added the **Settings Registry** architectural pattern (§3.8)
+and rebuilt §5.8 into a full **Admin Control Plane** section — feature flags, plan/pricing
+editing, commission & hold configuration, seller/supplier lifecycle control with audited
+impersonation, template management, announcements/maintenance mode, risk & fraud
+controls, an enforced-immutable audit log, and live analytics — all as DB-backed
+configuration every module reads at runtime, so day-to-day operational changes never
+require a code deployment. Versioned releases (§3.7) are now explicitly reserved for
+genuinely new capability only.
 
 ---
 
@@ -252,6 +261,44 @@ specifically to close off "rewrite trap" risk (§13.4).
 - Feature flags gate new functionality so it can be rolled out to a subset of sellers
   before a full release, and rolled back instantly without a deploy.
 - Platform releases are semantically versioned (e.g. `v1.2.0`) with a changelog.
+- **Versioned releases are reserved for genuinely new capability.** Anything that is
+  merely an operational tuning change belongs in the Settings Registry (§3.8), not a
+  deploy — this is the dividing line the founder asked for between "update" and
+  "config change."
+
+### 3.8 Settings Registry (Config-as-Data — the Admin Control Plane's foundation)
+The founder's requirement that "day-to-day operational changes must never require a
+code deployment" is implemented as a single, reused mechanism rather than one-off
+switches scattered per feature:
+
+- **`settings_definitions`** is a catalog of every tunable key the platform recognizes
+  (e.g. `billing.commission_rate`, `payouts.hold_days`, `catalog.product_limit`,
+  `platform.maintenance_mode`), each declaring its value type, which scopes it may be
+  set at, a default, and a validation rule (e.g. a percentage must be 0–100) — so a bad
+  admin edit is rejected before it reaches the database, not after it breaks billing.
+- **`settings_values`** holds the actual values, each row scoped to `global`, `plan`,
+  `seller`, `category`, or `store`. Every module resolves a setting through one
+  `SettingsService.resolve(key, context)` call that checks the most specific
+  applicable scope first (e.g. a seller-specific commission override beats their
+  plan's rate, which beats the global default) — modules never read a hard-coded
+  constant for anything the admin terminal is meant to control.
+- **Cache layer:** resolved values are cached in the same Redis instance already used
+  for sessions/queues (§3.3) — **no new infrastructure**, just new tables and a cache
+  namespace. An admin write invalidates the specific cache key immediately, so a
+  setting change is visible to every module on the very next request, with no restart
+  and no deploy.
+- **Binding rule:** if a behavior is something an admin should be able to tune
+  operationally, it is registered as a setting, not a constant guarded by an
+  `if (flag)` that itself needs a deploy to introduce. Wiring a *brand-new* tunable
+  dimension into a module is still a (small, one-time) code change — the registry's
+  guarantee is that changing a *value*, reassigning a *scope*, or flipping an existing
+  *flag* is always pure data, never a release.
+- Every write to `settings_values` is itself captured in `admin_audit_logs`
+  (§5.8, FR-8.9) with the old and new value — configuration changes are first-class
+  audited actions, not a silent side-channel around the audit log.
+
+This one pattern is what makes essentially all of §5.8 (Admin Control Plane) below
+possible without a dedicated table and a dedicated admin-UI screen per feature.
 
 ---
 
@@ -406,24 +453,64 @@ Resolved per founder decision — see §11 (research) for full comparison:
   analytics depth).
 - FR-7.2: Recurring billing cycle with invoicing and dunning (failed-payment retry).
 
-### 5.8 Platform Admin Terminal
-- FR-8.1: Seller account lifecycle management (approve, suspend, ban) with audit trail,
-  including the buyer-facing suspended-store behavior defined in FR-5.3.
-- FR-8.2: Supplier verification and management.
-- FR-8.3: Global commission and plan configuration (no code deploy needed to change
-  a rate).
-- FR-8.4: Manual override tools for payout holds and dispute resolution.
-- FR-8.5: Template/theme marketplace management (add, update, retire templates).
-- FR-8.6: Platform-wide analytics: GMV, active stores, revenue, churn.
-- FR-8.7: System health dashboard (queue depth, error rates, VPS resource usage).
-- FR-8.8: Immutable audit log of all admin actions.
-- FR-8.9: Feature-flag management UI for staged rollouts.
-- FR-8.10: **Listing/content moderation queue** — supplier listings and store content
+### 5.8 Platform Admin Terminal — the Control Plane
+The admin terminal is not "a management screen" — it is the platform's control plane.
+Every item below is implemented as Settings Registry entries (§3.8) and small,
+purpose-built tables, so that operating the platform day to day never requires the
+founder (or a future ops hire) to ask an engineer for a deploy.
+
+- FR-8.1: **Feature flags** — any feature-gated behavior can be enabled/disabled
+  instantly at global, per-plan, or per-seller scope through the Settings Registry
+  (§3.8); precedence is seller > plan > global.
+- FR-8.2: **Plans & pricing editor** — create, edit, and retire plans (name, price,
+  billing interval) directly from the admin UI; each plan's limits (product count,
+  storage, template tier access, coded-theme access) are Settings Registry entries
+  scoped to that plan — adding a new plan or changing a limit is a data operation, not
+  a schema change.
+- FR-8.3: **Commission & hold engine settings** — global commission %, category- and
+  seller-level overrides, the default hold duration (21–22 days), and hold-graduation
+  thresholds (FR-6.3) are all editable from the admin UI via the Settings Registry.
+  Changing a rate affects only *new* ledger entries going forward — existing
+  append-only `LedgerEntry` rows are never retroactively rewritten (§5.6, FR-6.4).
+- FR-8.4: **Seller lifecycle control** — approve, suspend, ban, or limit a seller;
+  read-only "view any store" access for support; a secure, time-boxed, reason-required
+  **"login as seller" impersonation** mode that issues a distinctly-flagged session and
+  is fully captured in the audit log (FR-8.9); instant force-disable of a single store
+  (flips `store.status`, takes effect on the store's very next request — no restart).
+- FR-8.5: **Supplier lifecycle control** — the same approve/suspend/ban controls as
+  FR-8.4, plus platform-level listing approve/reject for policy violations (distinct
+  from a seller's own per-listing approval, FR-2.7).
+- FR-8.6: **Template management** — publish/unpublish a template, mark it free or
+  premium, and assign which plans can access it — all data changes against the
+  `themes` table and Settings Registry, no redeploy to add or retire a design.
+- FR-8.7: **Announcements & maintenance mode** — scheduled, platform-wide banners for
+  sellers/buyers, and a global maintenance-mode toggle (a Settings Registry entry)
+  checked by a lightweight middleware in front of every module, with an admin-IP
+  allowlist so the admin terminal itself stays reachable during maintenance.
+- FR-8.8: **Risk & fraud controls** — flag a suspicious order for review with a
+  reason; freeze or release a specific seller's payouts (a per-seller Settings
+  Registry entry the hold-release job checks before releasing any pending ledger
+  entry for that seller, §12 Risk 6); initiate a refund, recorded as a
+  `refund_adjustment` ledger entry.
+- FR-8.9: **Immutable audit log** — every control-plane action (settings change,
+  lifecycle action, impersonation, refund, template change — not just "admin
+  actions" loosely) is recorded with actor, action, target, before-value,
+  after-value, and, where applicable, the impersonation session it occurred under.
+  Immutability is enforced at the database level (no `UPDATE`/`DELETE` privilege on
+  this table for the application's runtime role) — it is not merely a convention the
+  application layer is trusted to follow.
+- FR-8.10: **Real-time platform analytics** — GMV, revenue, commission earned, active
+  store count, and top sellers, computed live against the transactional tables at
+  launch volume; only moves to a scheduled snapshot/materialized-view once actual
+  volume makes live aggregation slow (an optimization earned by real load, not built
+  ahead of it, per the founder's low-cost-VPS constraint).
+- FR-8.11: System health dashboard (queue depth, error rates, VPS resource usage).
+- FR-8.12: Admin accounts require mandatory MFA (not optional) given the financial and
+  cross-tenant control this terminal holds (§6.5).
+- FR-8.13: **Listing/content moderation queue** — supplier listings and store content
   can be flagged (by automated checks or admin review) for prohibited/counterfeit
   goods before or after going live, with a takedown action; this is a legal-exposure
   control, not optional (§13, Risk 9).
-- FR-8.11: Admin accounts require mandatory MFA (not optional) given the financial and
-  cross-tenant control this terminal holds (§6.5).
 
 ### 5.9 Media Management
 - FR-9.1: Seller connects Google Drive via OAuth to bulk-import product images/video.
@@ -512,9 +599,14 @@ DNS/domain verification · (Phase 2+) SMS/WhatsApp Business API.
 ## 8. High-Level Data Model (core entities)
 
 `User, Seller, Store, Theme/Template, StoreThemeSettings, Product, ProductVariant,
-Supplier, SupplierListing, StoreSupplierLink, Order, OrderItem, TrackingUpdate,
-Payment, LedgerEntry, Payout, Plan, Subscription, MediaAsset, AdminAuditLog,
-Domain, FeatureFlag`
+Category, Supplier, SupplierListing, StoreSupplierLink, Order, OrderItem,
+TrackingUpdate, Payment, LedgerEntry, Payout, Plan, Subscription, MediaAsset,
+Domain, SettingsDefinition, SettingsValue, AdminUser, AdminAuditLog,
+AdminImpersonationSession, OrderFlag, Announcement`
+
+`SettingsDefinition`/`SettingsValue` are the Settings Registry (§3.8) — they supersede
+a standalone `FeatureFlag` table; a feature flag is simply a boolean-typed, scoped
+setting, not a separate mechanism.
 
 Every tenant-scoped table (`Store, Product, Order, MediaAsset, ...`) carries
 `store_id` and is protected by RLS (§3.2). `LedgerEntry` is append-only and is the
@@ -537,6 +629,7 @@ deliverable (`docs/database-schema.md`).
 | Transactional email | **Buy (managed service)** | Deliverability is a specialized problem not worth solving in-house |
 | Search | **Build on Postgres first** | Defer a dedicated search engine until catalog scale requires it |
 | Identity/Auth | **Build (lightweight library, not per-MAU SaaS)** | A hosted per-user-priced auth service (Auth0/Clerk-style) becomes expensive fast at marketplace-scale buyer counts; a well-scoped self-hosted auth module keeps unit economics sane and satisfies the SSO hook (§3.2a) |
+| Admin control plane / config management | **Build (generic Settings Registry, §3.8)** | A scoped key-value settings table costs nothing extra to run (same Postgres + same Redis already budgeted) and is the single highest-leverage decision for a solo-founder-operated platform — it is the difference between "edit a value" and "wait for a deploy" for nearly every operational lever in §5.8 |
 
 ---
 
@@ -577,7 +670,7 @@ small, independently shippable increments rather than one large release — see
 
 ---
 
-## 12. Risk Register (top 10, ranked)
+## 12. Risk Register (ranked)
 
 | # | Risk | Mitigation |
 |---|---|---|
@@ -588,9 +681,10 @@ small, independently shippable increments rather than one large release — see
 | 5 | **Single VPS is a single point of failure** | Off-box automated backups + tested restore runbook from day 1 (§6, Availability row) |
 | 6 | **Fraud via new-seller hold bypass** (fake accounts cashing out before the 22-day hold) | Per-transaction (not account-level) hold, identity verification gating hold graduation, velocity limits on new accounts (FR-6.2, FR-6.3) |
 | 7 | **Supplier API fragility/change** (Printify/CJ API changes or rate limits break live stores) | Adapter interface isolates blast radius to one adapter; cached last-known catalog degrades gracefully instead of breaking (§3.5, FR-4.3) |
-| 8 | **Regulatory/legal exposure** (counterfeit goods, buyer data protection, Pakistani e-commerce/tax rules) | Listing moderation queue (FR-8.10); legal consultation on SECP/PECA/data-protection obligations tracked as an explicit open item before commission-based payments go fully live |
+| 8 | **Regulatory/legal exposure** (counterfeit goods, buyer data protection, Pakistani e-commerce/tax rules) | Listing moderation queue (FR-8.13); legal consultation on SECP/PECA/data-protection obligations tracked as an explicit open item before commission-based payments go fully live |
 | 9 | **"AI/premium 3D template" scope creep** stalls Phase 1 chasing a generative-design problem that isn't solved | Phase 1 templates are hand-built to a high visual bar (FR-1.1); actual generative AI tooling deferred to Phase 3 (FR-1.7) |
 | 10 | **Over-building the theme engine/customizer** (a multi-year problem for a small team) | Phase 1 customizer is deliberately scoped to a bounded token set, not a full visual page builder (§9); expand only after MVP validates demand |
+| 11 | **A bad admin config value breaks the platform** (e.g. commission set to 105%, or the wrong seller's payouts frozen) — the Control Plane (§5.8) makes changes instant, which cuts both ways | `settings_definitions` enforces a validation rule per key (range/type) rejected before it reaches the database; every change is audit-logged with before/after values (FR-8.9) so a bad edit is both hard to make and fast to spot and revert |
 
 ---
 

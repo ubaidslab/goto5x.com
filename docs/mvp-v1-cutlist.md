@@ -42,12 +42,24 @@ SRS; it is sequenced into v1.0.x/Phase 2/3, not dropped.
 - Fixed 22-day per-transaction hold (graduation logic deferred, see OUT)
 - Daily reconciliation job against gateway settlement (FR-6.6)
 
-**Admin terminal**
-- Seller approve/suspend/ban with audit log
-- Commission/plan configuration
-- Basic platform analytics (GMV, active stores)
+**Admin terminal — Control Plane (see full breakdown below)**
+- Settings Registry (`settings_definitions` + `settings_values` + Redis cache) as
+  the underlying mechanism — built in v1.0 because every item below depends on it,
+  not optional infrastructure to defer
+- Feature flags (global/plan/seller scope)
+- Plans & pricing editor
+- Commission % + hold-duration settings (editable; automatic graduation logic is v1.1)
+- Seller approve/suspend/ban, instant store force-disable, read-only "view any store"
+- Template publish/unpublish + free/premium marking
+- Maintenance mode toggle (single global switch, admin-IP allowlisted)
+- Per-seller payout freeze/release
+- Manually-assisted refunds (ledger entry + admin processes the refund in the
+  gateway's own dashboard; one-click automated refund via the Payment Adapter is v1.1)
+- Immutable audit log (DB-enforced insert-only) — every control-plane action, including
+  settings changes
+- Live platform analytics (GMV, revenue, commission, active stores) via direct SQL —
+  no snapshot table yet
 - Mandatory MFA for admin accounts
-- Manual dispute/hold override tools
 
 **Security/architecture foundations (non-negotiable, not a "feature" to cut)**
 - Tenant-scoping middleware + Postgres RLS
@@ -77,6 +89,32 @@ SRS; it is sequenced into v1.0.x/Phase 2/3, not dropped.
 | International payment gateways (Stripe) | Phase 4 | Pakistan-first launch has no international buyers yet |
 | Social-media SaaS SSO integration | Phase 4 | The hook (shared Auth module) is built now; the second product itself doesn't exist yet |
 | Listing/content moderation automation | v1.1 | v1.0's single admin-assisted Printify catalog is small enough to eyeball manually; automated moderation queue ships with self-serve supplier onboarding |
+| "Login as seller" impersonation (full secure flow) | v1.1 | Security-sensitive to build correctly (time-boxed sessions, reason capture, audit tagging) — not worth rushing before there are enough sellers to need support-by-impersonation; the `admin_impersonation_sessions` table exists in the v1.0 schema so v1.1 is additive, not a migration |
+| Supplier lifecycle self-serve controls (approve/suspend/ban supplier accounts) | v1.1 | Consistent with suppliers being admin-assisted, not self-serve, in v1.0 (see Supplier row above) |
+| Scheduled/multi-banner announcements (`announcements` table UI) | v1.1 | v1.0 ships only the single maintenance-mode toggle, which covers the actual launch-critical case (taking the site down for a deploy window) |
+| Suspicious-order flagging queue (`order_flags` UI) | v1.1 | At launch order volume, admin reviews orders directly; a dedicated flagging queue earns its keep once volume makes that impractical |
+| Automated one-click refunds via Payment Adapter | v1.1 | Manual-assisted refund (ledger entry + gateway dashboard) is sufficient at launch volume and avoids building refund logic into the Payment Adapter interface before it's been proven with real transactions |
+| `platform_metrics_snapshots` (pre-aggregated analytics) | Phase 1.1+, load-triggered | Live `SUM`/`COUNT` queries are fast enough at v1.0 order volume; this table is schema-ready but only populated once live aggregation is measurably slow — an optimization earned by real load, not built ahead of it |
+
+### Admin Control Plane — the 10 requirements mapped to v1.0
+
+| # | Control-plane requirement | v1.0? |
+|---|---|---|
+| 1 | Feature flags (global/plan/seller) | **IN** |
+| 2 | Plans & pricing editor | **IN** |
+| 3 | Commission % + hold-duration settings | **IN** (values editable; automatic graduation logic is v1.1) |
+| 4 | Seller lifecycle: approve/suspend/ban, force-disable, view-any-store | **IN**; full "login as seller" impersonation is v1.1 |
+| 5 | Supplier lifecycle + portal approve/reject | **v1.1** (matches suppliers being admin-assisted, not self-serve, in v1.0) |
+| 6 | Template management (publish/unpublish, free/premium, plan assignment) | **IN** (cheap — reuses the plans editor already being built) |
+| 7 | Announcements & maintenance mode | **IN** for maintenance mode toggle; scheduled multi-banner announcements are v1.1 |
+| 8 | Risk & fraud controls (flag orders, freeze payouts, refunds) | **IN** for payout freeze/release (one setting) and manually-assisted refunds; automated order-flagging queue and one-click refunds are v1.1 |
+| 9 | Immutable audit log | **IN** — foundational, every other control-plane feature depends on it existing from day one |
+| 10 | Real-time platform analytics | **IN** as live queries; pre-aggregated snapshots are load-triggered, not v1.0 |
+
+**Zero added infrastructure cost:** every "IN" item above is new Postgres tables and
+application code reusing the Redis instance and single VPS already budgeted for
+v1.0 — nothing on this list requires a new service, a new server, or a paid
+third-party tool.
 
 ---
 

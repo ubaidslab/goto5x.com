@@ -28,14 +28,15 @@ flowchart TB
             OrdersM["Orders module"]
             PaymentsM["Payments/Ledger module\n(commission + hold, gateway-agnostic)"]
             SuppliersM["Suppliers module\n(Supplier Adapter interface)"]
-            AdminM["Admin module"]
+            AdminM["Admin module\n(Control Plane UI)"]
             NotifyM["Notifications module"]
+            Settings["Settings Registry service\n(SettingsService.resolve)\n— every module above calls this"]
         end
 
         Worker["Worker processes\n(stateless, consume BullMQ queue)"]
-        Redis[("Redis\nsessions, rate limits, queue")]
+        Redis[("Redis\nsessions, rate limits, queue,\n+ settings cache namespace")]
         PgBouncer["PgBouncer\n(connection pooler)"]
-        Postgres[("PostgreSQL\nRLS enforced per store_id")]
+        Postgres[("PostgreSQL\nRLS enforced per store_id\n+ settings_definitions/settings_values\n+ admin_audit_logs (insert-only grant)")]
     end
 
     subgraph External["External services"]
@@ -62,8 +63,19 @@ flowchart TB
     Catalog -. import .-> Drive
     NotifyM --> Email
 
+    Catalog -. resolve settings .-> Settings
+    Theme -. resolve settings .-> Settings
+    OrdersM -. resolve settings .-> Settings
+    PaymentsM -. resolve commission/hold/frozen settings .-> Settings
+    SuppliersM -. resolve settings .-> Settings
+    AdminM -- writes settings + audit log --> Settings
+    Settings --> Redis
+    Settings --> Postgres
+
     classDef module fill:#eef,stroke:#446,stroke-width:1px;
+    classDef core fill:#fde,stroke:#a05,stroke-width:2px;
     class Auth,Tenant,Catalog,Theme,OrdersM,PaymentsM,SuppliersM,AdminM,NotifyM module;
+    class Settings core;
 ```
 
 **Module boundary rule (SRS §3.1):** each module in the `App` box is a separate
@@ -81,6 +93,19 @@ later is "write one more adapter," never "modify SuppliersM."
 **Payment Adapter interface (SRS §5.6a):** mirrors the same pattern — `PaymentsM`'s
 commission/ledger logic never talks to Safepay/PayFast/JazzCash/Stripe directly, it
 calls a Payment Adapter interface that each gateway integration implements.
+
+**Settings Registry as a core dependency (SRS §3.8, §5.8 — highlighted in the
+diagram):** every business-logic module resolves its tunable behavior (commission
+rate, product limits, template access, maintenance mode, payout freezes, feature
+flags) through the Settings Registry service rather than a hard-coded constant. This
+is drawn as a hub, not a peer module, because it is the mechanism that makes the
+Admin Terminal an actual **control plane** instead of a reporting dashboard: an admin
+write flows Admin UI → `AdminM` → `Settings` → `Postgres` (durable) and
+`Redis` (cache invalidated), and the very next request any module makes picks up the
+new value — no deploy, no restart. It runs as part of the same app process on the
+same VPS, using the Postgres and Redis instances already budgeted for Phase 1 —
+**this adds zero new infrastructure**, only new tables and one more internal service
+class.
 
 ---
 
