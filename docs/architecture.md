@@ -30,7 +30,8 @@ flowchart TB
             PaymentsM["Payments/Ledger module\n(commission + hold + reserve,\ngateway-agnostic)"]
             PayoutsM["Payouts module\n(approval queue, risk summary,\nDisbursement Adapter interface)"]
             SuppliersM["Suppliers module\n(Supplier Adapter interface\n+ adapter registry)"]
-            AdminM["Admin module\n(Control Plane UI + content pages\n+ unit-economics dashboard)"]
+            AdminM["Admin module\n(Control Plane UI + content pages\n+ unit-economics dashboard\n+ external-API client registry)"]
+            BridgesM["Bridges module (new in v0.6)\n(Template Install/License API,\nProduct Feed API)"]
             NotifyM["Notifications module"]
             Settings["Settings Registry service\n(SettingsService.resolve)\n— every module above calls this"]
         end
@@ -56,6 +57,11 @@ flowchart TB
         Bank["Bank / Raast\n(v1.0 manual Disbursement Adapter:\nadmin transfers, marks Paid)"]
     end
 
+    subgraph FounderSaaS["Founder's separate SaaS products (new in v0.6)"]
+        TemplateStore["Template Store SaaS\n(premium template marketplace)\ncalls IN via Template Install/License API"]
+        SocialSaaS["Social Media SaaS\n(post scheduling/marketing)\ncalled OUT via SSO + Product Feed API"]
+    end
+
     Buyer & Seller & SupplierUI & AdminUI --> Traefik
     Traefik --> App
     App --> PgBouncer --> Postgres
@@ -76,6 +82,13 @@ flowchart TB
 
     CommerceM --> MinIO
 
+    TemplateStore -- "signed Template Install/\nLicense API call" --> BridgesM
+    BridgesM -- "grants template_entitlements\n(FR-24.3)" --> Theme
+    Auth -- SSO handoff, no 2nd login --> SocialSaaS
+    BridgesM -- "seller-scoped, revocable\nProduct Feed API" --> SocialSaaS
+    BridgesM -. resolve external-API client registry .-> Settings
+    AdminM -- enable/disable external clients --> BridgesM
+
     Catalog -. resolve settings .-> Settings
     Theme -. resolve settings .-> Settings
     OrdersM -. resolve settings .-> Settings
@@ -89,7 +102,7 @@ flowchart TB
 
     classDef module fill:#eef,stroke:#446,stroke-width:1px;
     classDef core fill:#fde,stroke:#a05,stroke-width:2px;
-    class Auth,Tenant,Catalog,Theme,OrdersM,CommerceM,PaymentsM,PayoutsM,SuppliersM,AdminM,NotifyM module;
+    class Auth,Tenant,Catalog,Theme,OrdersM,CommerceM,PaymentsM,PayoutsM,SuppliersM,AdminM,BridgesM,NotifyM module;
     class Settings core;
 ```
 
@@ -160,6 +173,22 @@ as scheduled Worker jobs and inline checks respectively — both resolve their
 thresholds through the Settings Registry exactly like every other tunable
 behavior in this diagram, so changing a warning period or a storage quota is an
 admin config change, never a deploy.
+
+**Bridges module — the two external-SaaS hooks (SRS §3.10, §5.24, new in v0.6):**
+grouped into one small module because both hooks share the same shape — a
+signed/authenticated API surface, gated by the `external_api_clients` registry
+(mirroring `SuppliersM`'s adapter registry), rate-limited like every other public
+endpoint. The **Template Store** calls **in**: a signed purchase-completion call
+creates a `themes` entry (if new) and a `template_entitlements` row scoping it to
+one seller — no template file is ever handed to the seller as a download, only an
+entitlement to select it in the existing Theme Engine UI. The **Social Media
+SaaS** is called **out** to: `Auth` hands a seller off via the existing SSO
+mechanism (no second login), and a seller-scoped, revocable token
+(`seller_api_tokens`) authorizes that SaaS to pull a read-only Product Feed
+(title/price/images/storefront URL — nothing not already public on the
+storefront). Both directions are **new API routes and two small tables only** —
+no new server, no new database, no new paid service; disabling either client from
+`AdminM`'s registry takes effect immediately and independently of the other.
 
 **Staging (SRS §3.7):** not pictured above to keep the diagram readable, but staging
 is a second instance of this entire box (`App`, `Worker`, `Redis`, `Postgres`,

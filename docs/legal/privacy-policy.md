@@ -43,6 +43,19 @@ the Platform.
 - **With Google (Drive import):** only where a Seller explicitly connects their
   Google Drive account to import media; goto5x.com accesses only what the Seller
   authorizes.
+- **With the Template Store** (a separate marketplace product, `docs/SRS.md`
+  §5.24a): when a Seller purchases a premium template there, that product calls a
+  signed goto5x.com API to unlock the template on the Seller's account. This flow
+  carries no Buyer data and no Seller financial data — only the minimum
+  information needed to identify which Seller account should receive the
+  template.
+- **With a Seller's connected Social Media SaaS** (a separate product, `docs/SRS.md`
+  §5.24b): only if a Seller explicitly connects it from their dashboard's
+  "Marketing" section. Once connected, that product can read the Seller's own
+  product data (title, price, images, storefront URL — the same information
+  already public on the Seller's storefront) through a Seller-scoped access token
+  the Seller can revoke at any time. No Buyer data is shared through this
+  connection.
 - We do not sell personal data to third parties.
 
 ## 5. Data Retention

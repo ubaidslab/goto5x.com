@@ -49,6 +49,8 @@ being paid for.
 | CI/CD | **GitHub Actions** | Free tier is generous at this project's size and lives next to the code already |
 | Error tracking / monitoring | **Sentry (free tier) + Uptime Kuma (self-hosted)** | Catches production bugs early without recurring cost at Phase 1 scale |
 | Infra-as-code | **Docker Compose files + a simple deploy script (Phase 1)** | Full IaC tooling (Terraform/Ansible) is justified starting Phase 2 when multiple VPS need coordinated provisioning |
+| PDF generation (new in v0.6) | **Self-hosted headless-Chromium renderer (e.g. Playwright/Puppeteer) run as a Worker job** | Renders the one branded invoice template (SRS FR-19.2) as HTML/CSS then to PDF — reuses the same design system as the storefront instead of a second templating language; runs as a background job so a render never blocks a request thread; self-host-first — no paid invoicing API for one templated PDF |
+| CSV parsing (new in v0.6) | **A streaming CSV parser (e.g. `csv-parse`), not a full ETL framework** | Shopify-format product imports (SRS FR-18.1) can be large; a streaming parser keeps memory flat regardless of file size and plugs directly into the existing BullMQ import job — no separate data-pipeline tool is justified for one input format |
 
 ---
 
@@ -76,4 +78,9 @@ MinIO, Traefik, workers) — the only recurring cash cost beyond the VPS itself 
 Phase 1 is the payment gateway's per-transaction fee and the transactional email
 provider (the two self-host-first exceptions), both of which scale with revenue, not
 fixed cost. Payout disbursement in v1.0 is a manual admin process, not a paid
-service, so it adds zero recurring cost either.
+service, so it adds zero recurring cost either. The PDF renderer and CSV parser
+(new in v0.6) are open-source libraries running inside the existing Worker
+container — no new service or license fee. The two external-SaaS integration
+hooks (Template Store, Social Media SaaS, SRS §5.24) are new API routes and two
+small Postgres tables — reconfirmed here, per the founder's request, to add zero
+infrastructure cost beyond the single VPS already budgeted.
