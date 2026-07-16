@@ -4,11 +4,13 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
+import { CatalogModule } from "./catalog/catalog.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
+import { MediaModule } from "./media/media.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SettingsModule } from "./settings-registry/settings.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
@@ -23,6 +25,8 @@ import { TenancyModule } from "./tenancy/tenancy.module";
     SettingsModule,
     AuthModule,
     TenancyModule,
+    CatalogModule,
+    MediaModule,
     HealthModule,
   ],
   providers: [

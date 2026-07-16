@@ -291,5 +291,39 @@ they're injected at deploy time.
 
 ---
 
+## Module 2 — Catalog & Media: built
+
+Scope: FR-2.1 (product/variant CRUD, inventory tracking), FR-9.1/9.2 (Google
+Drive OAuth import + direct upload, both landing in self-hosted object
+storage). See the Module 2 verification report for the full test/checklist
+mapping. Architecture decisions worth carrying into later modules:
+
+- **RLS pattern for non-root tenant tables:** `products`/`product_variants`/
+  `media_assets` are keyed by `store_id`, not `seller_id` directly, so their
+  RLS policies resolve ownership through a `stores` subquery rather than a
+  bare column comparison (see the Module 2 migration). Every later module
+  with a tenant table one level below `stores` reuses this exact shape.
+- **App-layer store-boundary check, not just RLS:** RLS only proves "not
+  another seller's data." A seller who owns two stores could otherwise reach
+  store B's products through a URL naming store A - every service method
+  additionally checks the resolved row's `storeId` against the URL's
+  `storeId` explicitly. This is a distinct, necessary check RLS cannot
+  express, and every later module needs it too.
+- **`ObjectStorageService`** (thin `@aws-sdk/client-s3` wrapper, S3-compatible
+  so MinIO/Cloudflare R2/AWS S3 are a config change) is the one place any
+  future module writes a file - reused as-is, not re-implemented, whenever a
+  later module needs storage (PDF invoices, CSV import/export files).
+- **Adapter pattern extended to Google Drive** (`IDriveClient`): the same
+  shape as the Supplier Adapter interface (§3.5), now proven on a second,
+  unrelated integration - real implementation behind an interface, fakeable
+  in tests.
+- **Flagged, not built:** a full `categories` admin CRUD (rename/retire) -
+  Module 2 ships only list + create, since no FR requires more yet and no
+  later module in this table currently claims ownership of it either. Worth
+  a founder decision on which module (if any) picks this up before it's
+  needed for real.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

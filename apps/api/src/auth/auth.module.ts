@@ -25,6 +25,9 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
     EmailService,
     JwtStrategy,
   ],
-  exports: [AuthService],
+  // SecurityEventService is also exported: Module 2's Google Drive connection
+  // flow (FR-9.1) records the same per-account security trail (FR-25.3's
+  // table) that password reset does, rather than inventing a second one.
+  exports: [AuthService, SecurityEventService],
 })
 export class AuthModule {}

@@ -1,9 +1,9 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.6); this README covers running the code.
+(approved v0.7); this README covers running the code.
 
-**Status:** Module 1 (Foundation) — see `docs/build-plan.md` for the full
+**Status:** Module 2 (Catalog & Media) — see `docs/build-plan.md` for the full
 module sequence and what is/isn't in scope yet.
 
 ---
@@ -60,7 +60,12 @@ Two Postgres roles back every environment (`docs/build-plan.md`
    ```sh
    npx ts-node src/settings-registry/settings.seed.ts
    ```
-7. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from the repo root.
+7. For real media features (Module 2), start a real MinIO instance (or the
+   `docker-compose.yml` one) and create the bucket named by `MINIO_BUCKET`,
+   plus a real Google Cloud OAuth Client ID for Drive import. Neither is
+   required just to boot the API or run product/variant CRUD — only the
+   media-upload and Google Drive endpoints touch them.
+8. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from the repo root.
 
 **Important — `prisma migrate reset`:** this command drops and recreates the
 entire `public` schema, which wipes the schema-level grants
@@ -93,6 +98,16 @@ been run and verified end-to-end (migrations, RLS, the full test suite,
 a production `nest build` + boot + `/health` check). Please do a
 `docker compose up --build` smoke test before relying on the Docker path.
 
+**Also unverified against the real thing (Module 2):** this sandbox has no
+network egress to fetch a real MinIO binary, nor to reach Google's OAuth/
+Drive APIs (only npm/pypi/crates/Anthropic domains are reachable through the
+proxy). `ObjectStorageService` and the Google Drive integration are tested
+against `s3rver` (a real, lightweight S3-API-compatible server) and a
+substituted Drive-client test double respectively — see "Running tests"
+below for exactly what that does and doesn't prove. Please do one real
+upload and one real Google Drive connect+import against your own MinIO/
+Google Cloud credentials before relying on either path in production.
+
 ---
 
 ## Running tests
@@ -115,12 +130,19 @@ database, not a mock):
      between tests, since those two tables intentionally revoke `UPDATE`/
      `DELETE` from both application roles for immutability (SRS FR-8.9). It is
      never the connection string the running application uses.
+   - Module 2's media/Google Drive e2e specs don't need real MinIO or a real
+     Google Cloud project: they start `s3rver` (a real, lightweight,
+     S3-API-compatible local server - not a mock of the SDK) in-process, and
+     override the Google Drive client with a test double for the one call
+     that would otherwise need Google's network. See
+     `test/e2e/s3-test-server.ts` and `test/e2e/google-drive.e2e-spec.ts`'s
+     top comment for exactly what's real versus substituted.
 2. Run:
    ```sh
    pnpm test:e2e
    ```
 
-All 21 e2e tests + 13 unit tests pass as of this module (see the Module 1
+All 39 e2e tests + 29 unit tests pass as of this module (see the Module 2
 verification report delivered alongside this build for the full list).
 
 ---
@@ -139,9 +161,13 @@ compromised secret should kill every session, not quietly persist).
 | `DATABASE_URL` / `DATABASE_ADMIN_URL` | Built from the `POSTGRES_*` values above |
 | `REDIS_URL` | Local Redis, or the `redis` container's address |
 | `JWT_ACCESS_SECRET` | `openssl rand -hex 32` |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Set locally; not used by Module 1 |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Set locally; used as the app's S3 credentials against MinIO's root account (Module 2) |
+| `MINIO_BUCKET` | Create this bucket once per environment - the app does not auto-create it |
+| `MEDIA_PUBLIC_BASE_URL` | Optional; the CDN-fronted public URL for media. Leave unset locally to fall back to `MINIO_ENDPOINT`/`MINIO_BUCKET` directly |
 | `EMAIL_PROVIDER_API_KEY` | The chosen provider's dashboard (docs/tech-stack.md) — leave `EMAIL_PROVIDER=console` for local dev, which prints emails to stdout instead of sending them |
 | `ADMIN_MFA_ISSUER_NAME` | Whatever name should show up in an admin's authenticator app |
+| `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` | A Google Cloud OAuth 2.0 Client ID (Drive API, read-only scope) |
+| `DRIVE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts a seller's stored Drive refresh token at rest (SRS FR-9.1/§6.5); the short-lived access token is never persisted to Postgres at all, so there is no equivalent key needed for it |
 
 ---
 

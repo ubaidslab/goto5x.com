@@ -40,6 +40,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       admin_audit_logs, settings_values, settings_definitions,
+      media_assets, product_variants, products, categories,
+      google_drive_connections,
       stores, admin_users, sellers, user_security_events, users, plans
     RESTART IDENTITY CASCADE
   `);

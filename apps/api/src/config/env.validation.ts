@@ -44,6 +44,34 @@ class EnvironmentVariables {
 
   @IsString()
   EMAIL_FROM_ADDRESS!: string;
+
+  @IsString()
+  MINIO_ENDPOINT!: string;
+
+  @IsString()
+  MINIO_ROOT_USER!: string;
+
+  @IsString()
+  MINIO_ROOT_PASSWORD!: string;
+
+  @IsString()
+  MINIO_BUCKET!: string;
+
+  @IsOptional()
+  @IsString()
+  MEDIA_PUBLIC_BASE_URL?: string;
+
+  @IsString()
+  GOOGLE_DRIVE_CLIENT_ID!: string;
+
+  @IsString()
+  GOOGLE_DRIVE_CLIENT_SECRET!: string;
+
+  @IsString()
+  GOOGLE_DRIVE_REDIRECT_URI!: string;
+
+  @IsString()
+  DRIVE_TOKEN_ENCRYPTION_KEY!: string;
 }
 
 /**
@@ -60,6 +88,14 @@ export function validateEnv(config: Record<string, unknown>) {
       `Invalid environment configuration:\n${errors
         .map((e) => Object.values(e.constraints ?? {}).join(", "))
         .join("\n")}`,
+    );
+  }
+  // class-validator has no built-in "decoded byte length" check, so this one
+  // is verified by hand rather than pulling in a custom-validator class for a
+  // single field: AES-256-GCM needs exactly a 32-byte key.
+  if (Buffer.from(validated.DRIVE_TOKEN_ENCRYPTION_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nDRIVE_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

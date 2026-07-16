@@ -14,6 +14,14 @@ describe("validateEnv", () => {
     APP_BASE_URL: "http://localhost:3001",
     EMAIL_PROVIDER: "console",
     EMAIL_FROM_ADDRESS: "no-reply@goto5x.com",
+    MINIO_ENDPOINT: "http://localhost:9000",
+    MINIO_ROOT_USER: "goto5x-minio",
+    MINIO_ROOT_PASSWORD: "minio-secret",
+    MINIO_BUCKET: "goto5x-media",
+    GOOGLE_DRIVE_CLIENT_ID: "client-id",
+    GOOGLE_DRIVE_CLIENT_SECRET: "client-secret",
+    GOOGLE_DRIVE_REDIRECT_URI: "http://localhost:3000/media/drive/callback",
+    DRIVE_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
   };
 
   it("passes through a fully-populated, valid config", () => {
@@ -31,5 +39,17 @@ describe("validateEnv", () => {
 
   it("throws when EMAIL_PROVIDER has a value outside the allowed set", () => {
     expect(() => validateEnv({ ...validConfig, EMAIL_PROVIDER: "carrier-pigeon" })).toThrow();
+  });
+
+  it("throws when DRIVE_TOKEN_ENCRYPTION_KEY does not decode to exactly 32 bytes", () => {
+    expect(() =>
+      validateEnv({ ...validConfig, DRIVE_TOKEN_ENCRYPTION_KEY: Buffer.alloc(16, 1).toString("base64") }),
+    ).toThrow(/32-byte key/);
+  });
+
+  it("passes when DRIVE_TOKEN_ENCRYPTION_KEY decodes to exactly 32 bytes", () => {
+    expect(() =>
+      validateEnv({ ...validConfig, DRIVE_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64") }),
+    ).not.toThrow();
   });
 });
