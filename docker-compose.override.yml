@@ -1,0 +1,46 @@
+# Dev-only overrides, applied automatically alongside docker-compose.yml.
+# Not used in production - exposes ports directly and enables hot reload.
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  api:
+    build:
+      target: dev
+    volumes:
+      - ./apps/api:/repo/apps/api
+      - /repo/apps/api/node_modules
+    working_dir: /repo/apps/api
+    command: pnpm start:dev
+    ports:
+      - "3000:3000"
+
+  worker:
+    build:
+      target: dev
+    volumes:
+      - ./apps/api:/repo/apps/api
+      - /repo/apps/api/node_modules
+    working_dir: /repo/apps/api
+
+  web:
+    build:
+      target: dev
+    volumes:
+      - ./apps/web:/repo/apps/web
+      - /repo/apps/web/node_modules
+    working_dir: /repo/apps/web
+    command: pnpm dev
+    ports:
+      - "3001:3000"
