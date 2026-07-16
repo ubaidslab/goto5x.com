@@ -9,7 +9,11 @@ SaaS hooks), and §8 (entity list).
 definitions to a bare table-name list ("unchanged, see prior version"). That was a
 regression — this is the living schema reference and no table's column definitions
 may exist only in git history. **Every v0.4 table's full column definition is
-restored below**, alongside the v0.5 and v0.6 additions.
+restored below**, alongside the v0.5, v0.6, and v0.7 additions. **v0.7 also closes
+a genuine gap found while planning Module 2:** FR-9.1 (Google Drive import)
+specified an OAuth connection with no table ever defined to store its tokens —
+`google_drive_connections` (below) closes that gap, flagged and resolved with the
+founder before any Module 2 code was written, not improvised silently.
 
 ## Tenant strategy
 
@@ -364,6 +368,26 @@ Index: `idx_variants_product_id (product_id)`.
 | created_at | timestamptz | |
 
 Index: `idx_media_store_id (store_id)`, `idx_media_product_id (product_id)`.
+
+### `google_drive_connections` (global, seller-scoped — new in v0.7, closes a schema gap in FR-9.1)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| seller_id | uuid FK → sellers.id, unique | one Google account per seller, reused across all of that seller's stores |
+| google_account_email | text | display-only, so the seller can confirm which account is connected |
+| refresh_token_encrypted | text | **AES-256-GCM, app-level encryption**, key from env (`DRIVE_TOKEN_ENCRYPTION_KEY`) — never stored or logged in plaintext |
+| granted_scopes | text[] | the OAuth scopes actually granted, for a future permission-diff check |
+| status | enum(`active`,`revoked`,`expired`) | `revoked` = seller-initiated (FR-9.1); `expired` = Google rejected a refresh attempt |
+| connected_at | timestamptz | |
+| last_used_at | timestamptz nullable | updated on each successful import job |
+| revoked_at | timestamptz nullable | |
+
+**No access-token column exists on this table by design:** the short-lived OAuth
+access token is never persisted to Postgres — it lives only in Redis, keyed to an
+active import job, and expires with that job. Revoking the connection deletes
+this row's refresh token value (row itself retained with `status='revoked'` for
+audit purposes) and triggers a best-effort revocation call to Google. No API
+response ever serializes `refresh_token_encrypted`.
 
 ### `suppliers` (global profile)
 | Column | Type | Notes |

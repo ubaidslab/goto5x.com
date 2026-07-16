@@ -106,6 +106,15 @@ cut decision, without resolving them unilaterally.
   banners for v1.0). FR-8.15 supersedes both — targeted, scheduled messaging
   across three channels is now explicitly v1.0 scope, and the cutlist is
   corrected accordingly.
+- **One genuine spec gap found and closed while planning Module 2, flagged to
+  the founder before any code was written (per the binding "stop and flag"
+  rule):** FR-9.1 (Google Drive import) always assumed an OAuth connection but
+  no version of this SRS or `docs/database-schema.md` ever defined where those
+  tokens live. Resolved: a new `google_drive_connections` table (seller-scoped)
+  stores an **encrypted** refresh token only; the short-lived access token is
+  never persisted to Postgres — Redis only, for an active import job's
+  duration. Revocation is seller-initiated and audit-trailed. See FR-9.1, the
+  new §6.5 bullet, and §14.2's new checklist items.
 
 ---
 
@@ -859,7 +868,17 @@ requires the founder to ask an engineer for a deploy.
 
 ### 5.9 Media Management
 - FR-9.1: Seller connects Google Drive via OAuth to bulk-import product
-  images/video.
+  images/video. The connection is **seller-scoped** (one Google account per
+  seller, reused across all of that seller's stores), recorded in
+  `google_drive_connections` (schema gap found and closed in v0.7 — see
+  `docs/database-schema.md`): the seller's OAuth **refresh token is stored
+  encrypted at rest** (app-level AES-256-GCM, key from env, never logged, never
+  returned by any API response); the short-lived **access token is never
+  persisted to Postgres at all** — it lives only in Redis for the duration of an
+  active import job. A seller can **revoke** the connection at any time from the
+  dashboard; revocation deletes the stored refresh token and makes a best-effort
+  revocation call to Google, and is **audit-trailed** the same way a Product Feed
+  API token revocation is (FR-24.10).
 - FR-9.2: Imported media is copied into platform object storage (self-hosted
   MinIO, §3.3) fronted by the CDN for storefront delivery — Drive is a source, not
   the runtime dependency.
@@ -1256,6 +1275,13 @@ login, and email verification. Approved for Module 1:
 - **Secrets management:** payment-gateway keys, supplier API credentials, Google
   Drive OAuth secrets, and the signing secrets for both external-SaaS hooks are
   stored in an encrypted secrets store, with per-environment separation.
+- **Google Drive token handling (schema gap closed in v0.7, FR-9.1):** a seller's
+  Drive **refresh token is encrypted at rest** (app-level AES-256-GCM, key from
+  env, never logged) in `google_drive_connections`; the **access token is never
+  persisted to Postgres** — it lives only in Redis for an active import job's
+  duration. No API response ever returns either token value. Revocation is
+  seller-initiated and audit-trailed like a Product Feed API token revoke
+  (FR-24.10).
 - **PII handling:** buyer PII is excluded from application logs by default; access
   to raw PII in the database is limited to the roles that functionally need it.
   The buyer order-status link uses a signed, unguessable token.
@@ -1314,9 +1340,11 @@ and, documented ahead for v1.1 — `ReturnRequest, StoreContentPage,
 StoreContentPageRevision, SupportTicket, SupportTicketMessage, ReferralLink,
 ReferralConversion, NewsletterSubscriber`. **New in v0.7:**
 `SellerSignupWaitlist` (FR-25.5), `PlatformPromoCode` (FR-7.9),
-`PlatformBrandAsset, PlatformBrandAssetRevision` (FR-12.3) — all v1.0. The
-`Announcement` entity gains `channel`/`target_type`/`target_id` fields (FR-8.15)
-rather than a new table.
+`PlatformBrandAsset, PlatformBrandAssetRevision` (FR-12.3),
+`GoogleDriveConnection` (FR-9.1, closes a schema gap found while planning
+Module 2 — the token store FR-9.1 always assumed but never had a table) — all
+v1.0. The `Announcement` entity gains `channel`/`target_type`/`target_id` fields
+(FR-8.15) rather than a new table.
 
 Every tenant-scoped table among the above carries `store_id` and is protected by
 RLS (§3.2) — no exceptions for new tables. `LedgerEntry` is append-only. Full
@@ -1542,6 +1570,16 @@ next module starts. Each item is written to be testable, not aspirational.
       the corresponding `products` row (FR-2.7)
 - [ ] Google Drive OAuth connect + import copies media into MinIO — imported
       assets still render after the source Drive file is deleted
+- [ ] A seller can revoke their Google Drive connection from the dashboard;
+      revocation deletes the stored refresh token and is captured as a
+      `UserSecurityEvent` (FR-9.1, new in v0.7)
+- [ ] No API response (including the seller's own dashboard/profile endpoints)
+      ever includes a Drive access or refresh token value, and neither token
+      value appears in application logs (FR-9.1, new in v0.7)
+- [ ] The Drive access token is confirmed to live only in Redis, scoped to an
+      active import job — a direct query against `google_drive_connections`
+      never returns anything but the encrypted refresh token (FR-9.1, new in
+      v0.7)
 - [ ] Custom domain attach completes DNS verification + TLS issuance for a real
       test domain within the documented time window (FR-2.9)
 - [ ] Seller analytics view (FR-2.4) shows correct orders/revenue/top-products for
