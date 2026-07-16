@@ -401,6 +401,29 @@ pass).
   substrate they'll read from once a later module actually builds that
   dashboard.
 
+## Amendment made mid-Module 4 (SRS v0.9): SEO field placement + sitemap scope
+
+Genuine schema gap found while planning Module 4, flagged before being
+improvised, resolved by the founder, applied to `docs/SRS.md` (FR-1.5) and
+`docs/database-schema.md` before any Module 4 code was written.
+
+- **`seo_title`/`seo_description`** land as nullable columns directly on
+  `stores` and `products` (built in Module 4); `collections` gets the same
+  pair when that table is built in Module 5 — no separate SEO table.
+- **Fallback chain (binding):** null `seo_title` → entity's own name/title;
+  null `seo_description` → entity's own description (truncated), or the
+  store-level default if the entity has neither.
+- **Sitemap/robots.txt scope pulled forward into Module 4** (previously
+  unscheduled): per-store, generated dynamically per request from live data —
+  no static file, no cron. Correct per-domain URLs (verified custom domain
+  first, free subdomain fallback). A `coming_soon`/`password_protected` store
+  serves `noindex` and no sitemap. Module 5 only has to extend the generator
+  with collection pages, not redesign it.
+- **`stores.access_mode`** (originally slated for a later module per FR-16.5)
+  is confirmed already present in the schema as of this amendment — no schema
+  change needed to support the noindex requirement above, only the app-layer
+  logic that reads it.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

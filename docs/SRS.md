@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.8 (Build-phase amendment)
+**Version:** 0.9 (Build-phase amendment)
 **Date:** 2026-07-16
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–3 (Foundation; Catalog & Media; Custom Domain & TLS)
@@ -9,11 +9,15 @@ added password reset, regional launch gating, admin plan grants/platform
 subscription promo codes, in-app messaging, platform brand-asset management,
 a mobile-app-readiness NFR, a region-sharded-deployment Phase 4+ note, and
 referral attribution/cross-SaaS discount eligibility for the two external-SaaS
-hooks. **This revision (v0.8), approved before Module 4:** adds the Platform
-Event Log (§3.11, FR-26.x) — an append-only business-lifecycle event table
-that the already-specified analytics/unit-economics dashboards (FR-8.10,
-FR-23.4) will read from later. No FR from any prior version was removed or
-weakened — every change below is additive.
+hooks. v0.8 added the Platform Event Log (§3.11, FR-26.x) — an append-only
+business-lifecycle event table that the already-specified analytics/unit-
+economics dashboards (FR-8.10, FR-23.4) will read from later. **This revision
+(v0.9), mid-Module-4:** closes a genuine schema gap found while planning
+Module 4 (Theme Engine & Storefront Rendering) — no prior version of this SRS
+ever specified where SEO meta fields live, or that a sitemap/robots.txt was
+Module 4's responsibility rather than deferred. FR-1.5 is rewritten
+accordingly and §14.1 gains three checklist items. No FR from any prior
+version was removed or weakened — every change below is additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -138,6 +142,34 @@ cut decision, without resolving them unilaterally.
   FR-23.4 (unit-economics) are unchanged today — they read from live
   transactional tables exactly as before; `platform_events` is a substrate
   they read from *later*, per explicit founder instruction.
+
+**Changelog v0.8 → v0.9 (build-phase amendment, mid-Module-4, genuine gap
+closure — flagged before being silently improvised):**
+- **FR-1.5 rewritten.** No version of this SRS through v0.8 ever specified
+  where SEO meta title/description actually live in the schema, despite
+  FR-16.6 already requiring structured-data/Open Graph tags to read from
+  them. Resolved as nullable `seo_title`/`seo_description` columns directly
+  on `stores` (storefront homepage default/fallback), `products` (product
+  pages), and `collections` (once that table is built, Module 5); v1.1 store
+  pages/blog posts (FR-22.4) get the same pair when that module ships. A
+  binding fallback rule is now documented: null `seo_title` renders the
+  entity's own name/title; null `seo_description` derives from the entity's
+  own description (truncated), or the store-level default if the entity has
+  neither. One source of truth — FR-16.6 never gets a second, parallel set of
+  SEO data.
+- **Sitemap/robots.txt scope pulled forward into Module 4** (previously
+  unscheduled): per-store `sitemap.xml`/`robots.txt`, generated dynamically
+  per request (no static file, no cron), covering whatever public pages exist
+  as of Module 4 (storefront home + products) — Module 5 extends the same
+  generator with collection pages once those exist, not a redesign. URLs use
+  the store's verified custom domain (FR-11.2) when one exists, otherwise the
+  free subdomain. A store in `coming_soon`/`password_protected` access mode
+  (FR-16.5) serves a `noindex` robots.txt and no sitemap at all.
+- **§14.1 gains three checklist items:** the SEO fallback chain renders
+  correctly when fields are null; sitemap URLs match the store's active
+  domain; a hidden store serves `noindex` with no sitemap.
+- See `docs/database-schema.md`'s `stores`/`products`/`collections` table
+  notes for the exact column definitions.
 
 ---
 
@@ -632,8 +664,26 @@ support person to actually scope a role for.
 - FR-1.3: Live preview of changes before publishing.
 - FR-1.4: All templates are mobile-responsive by default, and the seller dashboard
   itself is usable on mobile (not just the storefront).
-- FR-1.5: SEO controls per store/page (meta title/description, sitemap, robots.txt)
-  — extended by FR-16.6's structured-data requirements.
+- FR-1.5: **SEO controls per store/page** (schema gap found and closed while
+  planning Module 4 — no version of this SRS ever specified where these
+  fields live): `seo_title`/`seo_description` are nullable columns directly on
+  `stores` (the storefront homepage default/fallback) and `products` (product
+  pages); `collections` gets the same pair once that table is built (Module
+  5); v1.1 store pages/blog posts (FR-22.4) get the same pair when that
+  module ships. **Fallback rule (binding):** if `seo_title` is null, render
+  the entity's own name/title; if `seo_description` is null, derive it from
+  the entity's own description (truncated) or fall back to the store-level
+  default. FR-16.6's structured-data/Open Graph tags read from these same
+  fields — one source of truth, never a second set of SEO data. **Sitemap and
+  robots.txt are built in Module 4**, generated dynamically per request (no
+  static file, no cron job) covering whatever public pages exist as of that
+  module (storefront home + products); Module 5 extends the same generator
+  with collection pages once those exist — not a redesign. URLs use the
+  store's verified custom domain (FR-11.2) when one exists, falling back to
+  the free subdomain otherwise. A store in `coming_soon`/`password_protected`
+  access mode (FR-16.5) serves a `noindex` robots.txt and no sitemap at all —
+  this requires `stores.access_mode` to exist ahead of Module 5's originally
+  planned introduction of it (see database-schema.md's note on this column).
 - FR-1.6: **Advanced/self-coded mode** — a seller who wants full control can switch
   a store (or section) into a code-level theme editor (custom HTML/CSS/template
   overrides) instead of the visual customizer. This is an opt-in escape hatch for
@@ -1652,6 +1702,21 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Live preview output matches published output exactly
 - [ ] Storefront is mobile-responsive; dashboard is mobile-usable
 - [ ] SEO meta fields save and render correctly in page `<head>`
+- [ ] **SEO fallback chain renders correctly when fields are null** (v0.9,
+      FR-1.5): a product/store with no `seo_title`/`seo_description` set
+      renders its own name/description instead, and a product with neither
+      falls back to the parent store's default
+- [ ] **Sitemap URLs match the store's active domain** (v0.9, FR-1.5):
+      `sitemap.xml` uses the verified custom domain when one exists, the free
+      subdomain otherwise
+- [ ] **Hidden store serves noindex with no sitemap** (v0.9, FR-1.5): a store
+      in `coming_soon`/`password_protected` access mode serves a `noindex`
+      `robots.txt` and returns no sitemap content
+- [ ] **Events emitted (v0.9):** creating/updating a store's theme settings —
+      no new event required by FR-26.x's lean taxonomy for this module beyond
+      what Modules 1-3 already backfilled (theme customization is not a
+      growth/unit-economics signal); noted here so the checklist explicitly
+      confirms this was a deliberate scoping decision, not an oversight
 - [ ] **Tenant isolation:** automated test proves seller A cannot read or write
       seller B's `store_theme_settings` via direct API manipulation
 - [ ] Postgres RLS policy on `store_theme_settings` verified with a negative test

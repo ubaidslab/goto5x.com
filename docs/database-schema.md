@@ -198,6 +198,8 @@ from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
 | last_active_at | timestamptz | updated on meaningful seller activity; the signal the dormant-store job (FR-23.2) checks |
 | dormant_warning_sent_at | timestamptz nullable | prevents re-sending the warning email every job run |
 | currency | text default `'PKR'` | single source of truth for this store's currency |
+| seo_title | text nullable | **added in Module 4** — FR-1.5. Storefront homepage default/fallback; null renders the store's own `name` |
+| seo_description | text nullable | **added in Module 4** — FR-1.5. Null derives from... there is no store-level description field to derive from, so a null `seo_description` here has no further fallback — it simply renders empty. (Products and collections below fall back to their own `description` field first, then this store-level default only if the entity has neither.) |
 | created_at, updated_at | timestamptz | |
 
 Index: `idx_stores_seller_id (seller_id)`.
@@ -311,6 +313,8 @@ sales) are Phase 2; this table intentionally only models the basic case.
 | average_rating | numeric(2,1) default 0 | denormalized from `product_reviews` for storefront page-load speed (FR-14.4); recomputed transactionally whenever a review's status changes |
 | review_count | integer default 0 | same reasoning |
 | search_vector | tsvector, generated | `GENERATED ALWAYS AS (to_tsvector('english', title \|\| ' ' \|\| description)) STORED`; powers FR-16.2 |
+| seo_title | text nullable | **added in Module 4** — FR-1.5. Null renders this product's own `title` |
+| seo_description | text nullable | **added in Module 4** — FR-1.5. Null derives from this product's own `description` (truncated); if `description` is also empty, falls back to the parent store's `seo_description` |
 | created_at, updated_at | timestamptz | |
 
 Index: `idx_products_store_status (store_id, status)` — storefront catalog
@@ -337,6 +341,8 @@ Settings Registry without a schema change per category.
 | slug | text | |
 | description | text nullable | |
 | is_active | boolean default true | |
+| seo_title | text nullable | **spec'd in Module 4, built with this table in Module 5** — FR-1.5. Null renders this collection's own `title` |
+| seo_description | text nullable | **spec'd in Module 4, built with this table in Module 5** — FR-1.5. Null derives from this collection's own `description` (truncated); if `description` is also empty, falls back to the parent store's `seo_description` |
 | created_at | timestamptz | |
 
 Unique: `(store_id, slug)`. `collection_products`: `collection_id` FK,
