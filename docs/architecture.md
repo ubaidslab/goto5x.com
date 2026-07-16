@@ -23,18 +23,19 @@ flowchart TB
         subgraph App["Node.js app (NestJS + Next.js) — stateless containers"]
             Auth["Auth / Identity module\n(SSO hook for future social SaaS)"]
             Tenant["Store/Tenant module"]
-            Catalog["Catalog module\n(Products, Variants, Media,\nShipping Settings, Discount Codes)"]
-            Theme["Theme Engine module\n(templates, customizer, coded-theme mode)"]
-            OrdersM["Orders module"]
+            Catalog["Catalog module\n(Products, Variants, Media,\nShipping/Tax Settings, Discount Codes,\nCollections, Search)"]
+            Theme["Theme Engine module\n(templates, customizer, coded-theme mode,\nnavigation, announcement bar, coming-soon mode)"]
+            OrdersM["Orders module\n(storefront + manual/draft orders,\nnotes/tags/timeline, carts)"]
+            CommerceM["Commerce Ops module\n(Customers/CRM, Reviews,\nCSV import/export, PDF invoices)"]
             PaymentsM["Payments/Ledger module\n(commission + hold + reserve,\ngateway-agnostic)"]
             PayoutsM["Payouts module\n(approval queue, risk summary,\nDisbursement Adapter interface)"]
             SuppliersM["Suppliers module\n(Supplier Adapter interface\n+ adapter registry)"]
-            AdminM["Admin module\n(Control Plane UI + content pages)"]
+            AdminM["Admin module\n(Control Plane UI + content pages\n+ unit-economics dashboard)"]
             NotifyM["Notifications module"]
             Settings["Settings Registry service\n(SettingsService.resolve)\n— every module above calls this"]
         end
 
-        Worker["Worker processes\n(stateless, consume BullMQ queue —\nincl. hold-release, reserve-release,\nscheduled-payout jobs)"]
+        Worker["Worker processes\n(stateless, consume BullMQ queue —\nincl. hold-release, reserve-release,\nscheduled-payout, abandoned-cart,\ndormant-store lifecycle, CSV import,\nPDF-generation jobs)"]
         Redis[("Redis\nsessions, rate limits, queue,\n+ settings cache namespace")]
         PgBouncer["PgBouncer\n(connection pooler)"]
         Postgres[("PostgreSQL\nRLS enforced per store_id\n+ settings_definitions/settings_values\n+ admin_audit_logs (insert-only grant)")]
@@ -73,19 +74,22 @@ flowchart TB
     Catalog -. import .-> Drive
     NotifyM --> Email
 
+    CommerceM --> MinIO
+
     Catalog -. resolve settings .-> Settings
     Theme -. resolve settings .-> Settings
     OrdersM -. resolve settings .-> Settings
+    CommerceM -. resolve cart/low-stock/CSV settings .-> Settings
     PaymentsM -. resolve commission/hold/reserve/cod-gate settings .-> Settings
     PayoutsM -. resolve payout/reserve/scheduled-mode settings .-> Settings
     SuppliersM -. resolve settings + adapter registry .-> Settings
-    AdminM -- writes settings + audit log --> Settings
+    AdminM -- writes settings + audit log\n(incl. free-plan limits,\ndormant-lifecycle thresholds) --> Settings
     Settings --> Redis
     Settings --> Postgres
 
     classDef module fill:#eef,stroke:#446,stroke-width:1px;
     classDef core fill:#fde,stroke:#a05,stroke-width:2px;
-    class Auth,Tenant,Catalog,Theme,OrdersM,PaymentsM,PayoutsM,SuppliersM,AdminM,NotifyM module;
+    class Auth,Tenant,Catalog,Theme,OrdersM,CommerceM,PaymentsM,PayoutsM,SuppliersM,AdminM,NotifyM module;
     class Settings core;
 ```
 
@@ -137,6 +141,25 @@ storage service. Because MinIO speaks the S3 API, a later migration to Cloudflar
 R2 or AWS S3 (once volume genuinely justifies offloading storage operations) is a
 configuration change — swap the endpoint and credentials — not a rewrite of
 `Catalog`/`Theme`'s storage calls.
+
+**Commerce Ops module (SRS §5.13–§5.20, new in v0.5):** Customers/CRM, product
+reviews, CSV import/export, and PDF invoice generation are grouped into one module
+rather than four, since they share a common shape (read-heavy, tenant-scoped
+records layered on top of Catalog/Orders data) rather than being independent
+subsystems. CSV import and PDF generation both run as **background jobs on the
+existing Worker/BullMQ infrastructure** (§3.4) — a large catalog import or a PDF
+render never blocks a request thread, and neither adds a new service: PDF
+generation is a self-hosted, headless-browser-based renderer in the Worker
+container (SRS §9 — self-host-first, no paid invoicing SaaS), and CSV files
+(imports and exports) are read from/written to the same self-hosted MinIO already
+used for media.
+
+**Guard-rail jobs (SRS §5.23, new in v0.5):** the dormant-store lifecycle
+(warning → suspend → archive) and free-plan storage/product-count enforcement run
+as scheduled Worker jobs and inline checks respectively — both resolve their
+thresholds through the Settings Registry exactly like every other tunable
+behavior in this diagram, so changing a warning period or a storage quota is an
+admin config change, never a deploy.
 
 **Staging (SRS §3.7):** not pictured above to keep the diagram readable, but staging
 is a second instance of this entire box (`App`, `Worker`, `Redis`, `Postgres`,
