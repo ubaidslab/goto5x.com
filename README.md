@@ -1,10 +1,12 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.7); this README covers running the code.
+(approved v0.8); this README covers running the code.
 
-**Status:** Module 3 (Custom Domain & TLS) — see `docs/build-plan.md` for the
-full module sequence and what is/isn't in scope yet.
+**Status:** Modules 1–3 approved; Platform Event Log amendment (SRS §3.11)
+built and backfilled — see `docs/build-plan.md` for the full module sequence
+and what is/isn't in scope yet. Module 4 (Theme Engine & Storefront
+Rendering) next.
 
 ---
 
@@ -167,8 +169,8 @@ database, not a mock):
    pnpm test:e2e
    ```
 
-All 50 e2e tests + 47 unit tests pass as of this module (see the Module 3
-verification report delivered alongside this build for the full list).
+All 58 e2e tests + 50 unit tests pass as of this amendment (see the Platform
+Event Log verification note delivered alongside this build for the full list).
 
 ---
 
