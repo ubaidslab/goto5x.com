@@ -406,6 +406,15 @@ switches scattered per feature:
   one `SettingsService.resolve(key, context)` call that checks the most specific
   applicable scope first — modules never read a hard-coded constant for anything
   the admin terminal is meant to control.
+- **Precedence order (pinned, resolved during Module 1 planning):**
+  `seller > store > plan > category > global` — most-specific-wins. A given
+  setting key only participates at the scopes listed in its
+  `settings_definitions.allowed_scopes`; irrelevant scopes in the chain are
+  skipped, never reordered. This is a single universal rule applied consistently
+  by every module, rather than a per-key bespoke order: e.g. a per-category
+  commission override (`category` scope) is meaningful for FR-6.1/FR-8.3 exactly
+  where a seller or store hasn't set a more specific override, and falls back to
+  the plan's rate, then the global default, if neither is set.
 - **Cache layer:** resolved values are cached in the same Redis instance already
   used for sessions/queues (§3.3) — **no new infrastructure**. An admin write
   invalidates the specific cache key immediately, so a setting change is visible to
@@ -1062,6 +1071,26 @@ follow.
   + product data), not a party to that product's billing relationship with the
   seller.
 
+### 5.25 Authentication & Account Security (new — closes a gap identified during Module 1 planning)
+No prior version of this SRS specified password reset, despite specifying signup,
+login, and email verification. Approved for Module 1:
+- FR-25.1: **Self-serve password reset** — any account holder (seller, supplier,
+  or admin) can request a reset link sent to their verified email; the link
+  contains a signed, single-use, **time-limited token** (expiry short enough to
+  bound the attack window, e.g. 30–60 minutes — exact value is a Settings Registry
+  entry, `auth.password_reset_token_ttl_minutes`, not hard-coded).
+- FR-25.2: A reset request, and a reset completion, are both **rate-limited** per
+  account and per IP (extends §6.5's existing auth-endpoint rate limiting) —
+  requesting many reset emails cannot be used to spam a user's inbox or brute-force
+  the token.
+- FR-25.3: Every password reset (request and completion) is **audit-logged**
+  (`admin_audit_logs`-style event for admin accounts; a lighter user-security-event
+  record for seller/supplier accounts — not conflated with platform-admin
+  control-plane actions) so an account-takeover attempt leaves a trace.
+- FR-25.4: Completing a reset invalidates the token immediately (single-use) and
+  invalidates all of that user's existing Redis-backed sessions (§3.2a) — a
+  compromised session cannot outlive a password reset.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -1155,8 +1184,11 @@ AdminImpersonationSession, OrderFlag, Announcement, Customer, ProductReview, Car
 Collection, CollectionProduct, StoreNavigationMenu, OrderNote, OrderTimelineEvent,
 ImportJob, SellerOnboardingProgress` (all v1.0), **plus, new in v0.6:**
 `TemplateEntitlement, ExternalApiClient, SellerApiToken` (v1.0 — both SaaS hooks
-ship with v1.0, since they are cheap API surfaces, not full products), and,
-documented ahead for v1.1 — `ReturnRequest, StoreContentPage,
+ship with v1.0, since they are cheap API surfaces, not full products),
+`UserSecurityEvent` (v1.0, new — FR-25.3's audit trail for password reset and
+other account-security events, deliberately separate from `AdminAuditLog`, which
+is scoped to platform-admin control-plane actions, not general account security),
+and, documented ahead for v1.1 — `ReturnRequest, StoreContentPage,
 StoreContentPageRevision, SupportTicket, SupportTicketMessage, ReferralLink,
 ReferralConversion, NewsletterSubscriber`.
 
@@ -1333,6 +1365,13 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Mobile-responsive across the three most common breakpoints
 - [ ] Signup flow works end-to-end: create account → verify email → land in
       dashboard
+- [ ] Password reset works end-to-end: request → emailed single-use token →
+      complete reset → all prior sessions for that account are invalidated
+      (FR-25.1–25.4)
+- [ ] A reset token is rejected after its configured expiry and after first use
+- [ ] Repeated reset requests for the same account/IP are rate-limited (FR-25.2)
+- [ ] Every reset request and completion produces a `UserSecurityEvent` row
+      (FR-25.3)
 - [ ] Page load meets the sub-2s first-contentful-paint target (§6)
 - [ ] Legal/content pages (ToS, Privacy, Refund, About, Contact) are linked,
       render correctly, and are served from admin-editable content (FR-12.1), not

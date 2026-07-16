@@ -49,36 +49,24 @@ isn't a blocker for starting the build — it's a known gate later.
 
 ---
 
-## Flags surfaced while planning Module 1 (per Rule 2 — flagging, not improvising)
+## Flags surfaced while planning Module 1 — resolved by founder
 
-Three things came up while turning the SRS into an implementation plan that are
-worth a founder decision before or during Module 1, rather than a silent call:
-
-1. **Settings Registry cross-scope precedence isn't fully pinned down.** SRS §3.8
-   gives concrete examples (feature flags: "seller > plan > global"; commission:
-   "global %, category- and seller-level overrides") but never states one single
-   precedence order across all five scope types (`global, plan, seller, category,
-   store`) for a key that could theoretically use several at once. **Proposed
-   resolution:** a single universal order — `seller > plan > category > store >
-   global` — with `settings_definitions.allowed_scopes` simply restricting which
-   of these apply to a given key (irrelevant scopes are skipped, not reordered).
-   This matches every concrete example already in the SRS. I'm building Module 1's
-   `SettingsService.resolve()` to this order; flag now if a different order is
-   intended before it becomes load-bearing for every later module.
-2. **Password reset has no FR in the SRS at all.** Module 1's requested scope
-   ("signup/login/email verification") doesn't include it either, and I'm not
-   silently adding it. This is a real gap for a launchable product, not just a
-   Module 1 scoping question — recommend adding a `FR-Auth.x` to the SRS for it
-   (self-serve reset, rate-limited, token-based) and building it either as part of
-   Module 1 (cheap, same auth surface) or immediately after. Flagging rather than
-   deciding unilaterally.
-3. **"Feature flags" vs. "Settings Registry" in the founder's Module 1 scope
-   list** are the same mechanism, not two things to build. SRS §3.8's changelog
-   (v0.2→v0.3) explicitly retired a standalone `feature_flags` table — a flag is a
-   boolean-typed, scoped `settings_values` row. Module 1 builds one mechanism
-   (Settings Registry) and feature-flag resolution is simply that mechanism
-   applied to boolean keys. No separate table or service is planned; noting this
-   so it doesn't read like an omission.
+1. **Settings Registry cross-scope precedence — RESOLVED.** Pinned in SRS §3.8 as
+   `seller > store > plan > category > global` (most-specific-wins; corrected from
+   this document's original proposal, which had `plan` ranked above `store`). A
+   given key only participates at the scopes in its `allowed_scopes`; irrelevant
+   scopes are skipped, never reordered. `SettingsService.resolve()` implements
+   this exact order.
+2. **Password reset — RESOLVED, approved as a genuine SRS gap.** Added as SRS
+   §5.25 (FR-25.1–25.4): emailed single-use time-limited token
+   (`auth.password_reset_token_ttl_minutes`, Settings Registry-tunable), rate
+   limiting on both request and completion, an audit trail via a new
+   `user_security_events` table (deliberately separate from `admin_audit_logs`,
+   which is platform-admin-control-plane-scoped, not general account security),
+   and full session invalidation on completion. **Built in Module 1**, alongside
+   signup/login/verification, since it's the same auth surface.
+3. **Feature-flags-as-Settings-Registry — RESOLVED, acknowledged correct.** No
+   separate table or mechanism; unchanged from the original plan.
 
 ---
 
@@ -192,12 +180,13 @@ until build times actually justify a second one).
 | # | Migration | Contents |
 |---|---|---|
 | 0 | `bootstrap-db.sql` (not a Prisma migration — run once per environment) | Creates `app_runtime` and `app_admin` roles |
-| 1 | `users` | `id, email (unique), phone?, password_hash?, role_flags text[], mfa_enabled bool default false, email_verified_at?, email_verification_token_hash?, email_verification_expires_at?, created_at, updated_at` |
+| 1 | `users` | `id, email (unique), phone?, password_hash?, role_flags text[], mfa_enabled bool default false, email_verified_at?, email_verification_token_hash?, email_verification_expires_at?, password_reset_token_hash?, password_reset_expires_at?, created_at, updated_at` |
 | 2 | `sellers` | `id, user_id (FK users, unique), business_name, kyc_status enum(unverified,pending,verified) default unverified, kyc_verified_at?, created_at, updated_at` |
 | 3 | `admin_users` | `id, user_id (FK users, unique), role enum(super_admin,support), mfa_enabled bool` |
+| 3a | `user_security_events` | `id, user_id (FK users), event_type, ip_address, created_at` — append-only (FR-25.3) |
 | 4 | `stores` (Module-1 shape only — see note below) | `id, seller_id (FK sellers), name, slug (unique), status enum(active,suspended,banned,archived) default active, currency default 'PKR', created_at, updated_at` + `ENABLE ROW LEVEL SECURITY` + policy `USING (seller_id = current_setting('app.current_seller_id')::uuid)` for `app_runtime`; no policy restriction for `app_admin` (BYPASSRLS) |
 | 5 | `plans` | `id, name, price, currency default 'PKR', billing_interval enum(monthly,yearly,none), yearly_discount_percent?, is_active default true, sort_order` + seed one `Free` row (price 0, billing_interval `none`) |
-| 6 | `settings_definitions` + `settings_values` | Full shape per `docs/database-schema.md`; seeded with exactly one real Module-1 key: `auth.signup_rate_limit_per_hour` (proves the mechanism drives real behavior, not an empty shell) |
+| 6 | `settings_definitions` + `settings_values` | Full shape per `docs/database-schema.md`; seeded with the real Module-1 keys: `auth.signup_rate_limit_per_hour`, `auth.password_reset_token_ttl_minutes`, `auth.password_reset_rate_limit_per_hour` (proves the mechanism drives real behavior, not an empty shell) |
 | 7 | `admin_audit_logs` | `id, admin_user_id (FK admin_users, nullable), action, target_type, target_id, before_value?, after_value?, created_at` (**no** `impersonation_session_id` column yet — that table doesn't exist until the module that builds impersonation) + `REVOKE UPDATE, DELETE ON admin_audit_logs FROM app_runtime, app_admin; GRANT INSERT, SELECT ...` |
 
 **Note on `stores`:** only the columns Module 1 actually uses are created now
@@ -213,6 +202,10 @@ that actually consume them). This mirrors the SRS's own explicit precedent
 - `POST /auth/verify-email` (token → sets `email_verified_at`)
 - `POST /auth/login` (returns JWT access token + sets Redis-backed refresh session)
 - `POST /auth/refresh`, `POST /auth/logout`
+- `POST /auth/password-reset/request` (email → sends reset link if the account
+  exists; always returns a generic success response either way, to avoid
+  leaking account existence), `POST /auth/password-reset/complete` (token +
+  new password → resets, invalidates the token, invalidates all sessions)
 - `POST /admin/auth/login` (separate flow) + MFA enrollment/verification endpoints
 - `GET /stores`, `POST /stores`, `GET /stores/:id`, `PATCH /stores/:id` — all
   scoped to the authenticated seller via RLS + middleware, not just app-layer
@@ -238,6 +231,11 @@ that actually consume them). This mirrors the SRS's own explicit precedent
 | Log-inspection test: a test user's email/phone does not appear in raw application logs after a signup/login flow | 14.12: "PII redaction verified in application logs" (partial — full coverage grows as more PII-bearing modules ship) |
 | CI: dependency-vulnerability scan step exists and fails the build on a deliberately-introduced known-vulnerable package | 14.12: "A dependency-vulnerability scan runs in CI..." |
 | Config test: app fails to start with a missing/malformed required env var, rather than starting in a broken state | Not a named §14 item — a foundational safety net worth having from Module 1 |
+| E2E: request reset → complete with the emailed token → old sessions invalidated → login with new password succeeds | 14.0: "Password reset works end-to-end..." |
+| Unit: a reset token is rejected after its TTL expires, and again after first successful use (single-use) | 14.0: "A reset token is rejected after its configured expiry and after first use" |
+| Rate-limit test: repeated reset requests for the same account/IP beyond the configured threshold are rejected | 14.0: "Repeated reset requests...are rate-limited" |
+| Integration: a reset request and a reset completion each produce a `user_security_events` row | 14.0: "Every reset request and completion produces a `UserSecurityEvent` row" |
+| Security test: `POST /auth/password-reset/request` returns the same response shape/timing for an existing vs. non-existent email (no account-enumeration signal) | Not a named §14 item — a concrete instance of §6.5's general security discipline |
 
 ### Explicitly NOT covered by Module 1 (so the checklist gate is honest)
 - 14.0's premium-visual-bar and page-load items (no visual design work yet).

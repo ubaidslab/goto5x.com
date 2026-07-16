@@ -137,7 +137,25 @@ hard-coded integration.
 | role_flags | text[] | e.g. `{seller}`, `{supplier,seller}` — one user can hold multiple role profiles |
 | mfa_enabled | boolean default false | mandatory `true` enforced at app layer for `admin_users` (FR-8.12) |
 | email_verified_at | timestamptz nullable | |
+| email_verification_token_hash | text nullable | single active token at a time; re-requesting overwrites it |
+| email_verification_expires_at | timestamptz nullable | |
+| password_reset_token_hash | text nullable | new — FR-25.1; single-use, cleared on completion |
+| password_reset_expires_at | timestamptz nullable | new — FR-25.1; TTL from `auth.password_reset_token_ttl_minutes` |
 | created_at, updated_at | timestamptz | |
+
+### `user_security_events` (global, append-only — new, FR-25.3)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK → users.id | |
+| event_type | text | e.g. `password_reset_requested`, `password_reset_completed`, `email_verified` |
+| ip_address | inet | |
+| created_at | timestamptz | never updated |
+
+Index: `idx_security_events_user (user_id, created_at)`. Deliberately separate
+from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
+— this table is a per-user account-security trail, relevant to every role
+(seller, supplier, admin), not just admin actions.
 
 ### `sellers` (global profile, owns tenant stores)
 | Column | Type | Notes |
