@@ -325,5 +325,55 @@ mapping. Architecture decisions worth carrying into later modules:
 
 ---
 
+## Module 3 — Custom Domain & TLS: built
+
+Scope: FR-11.1 (confirmed already satisfied by Module 1's `stores.slug` -
+no new code needed for the free-subdomain half) and FR-11.2 (attach an owned
+custom domain, DNS-verify it, get TLS issued). See the Module 3 verification
+report for the full test/checklist mapping. Architecture decisions worth
+carrying into later modules:
+
+- **DNS/TLS adapter pattern**, third instance of the same shape as the
+  Supplier Adapter (§3.5) and Module 2's `IDriveClient`: `IDnsResolver` and
+  `ITlsProber` wrap real Node `dns`/`https` calls behind an interface. Unlike
+  Google's OAuth APIs, this sandbox genuinely has DNS and HTTPS egress to the
+  public internet - verified directly before writing either interface - so
+  both real implementations are tested against real, stable, well-known
+  public hostnames (not a founder-owned domain, which stays a pre-launch
+  smoke-test item alongside Docker/MinIO/Google Drive).
+- **Traefik owns ACME, the app only writes config files:** `TraefikDynamicConfigService`
+  writes one YAML file per verified domain into a directory Traefik's file
+  provider watches (`docker-compose.yml`, new in this module). The app never
+  implements ACME itself (docs/tech-stack.md already committed to Traefik
+  for this). A file-provider router referencing the Docker-provider's `web`
+  container needs the explicit cross-provider form `web@docker`, not a bare
+  `web` - a real Traefik v3 namespacing rule, not a typo.
+- **Worker gets its first real job:** the BullMQ processor skeleton from
+  Module 1 ("no processors registered yet") now runs `domain-verification`'s
+  scheduled recheck, resolved through `NestFactory.createApplicationContext`
+  so the worker process shares the exact same DI-resolved services an HTTP
+  request would use. The repeatable job's own scheduling
+  (`Queue.upsertJobScheduler`) happens from the API process at boot and is
+  idempotent, so it's safe to run on every deploy without accumulating
+  duplicate schedules.
+- **A second BYPASSRLS use case, documented on `PrismaAdminService` itself:**
+  `DomainsService.resolveStoreIdByHostname` (hostname → store, for a future
+  module's request routing) inherently precedes any tenant session existing
+  to key RLS off - `app_runtime` cannot serve this query at all, so BYPASSRLS
+  is correct here, not a shortcut. `PrismaAdminService`'s doc comment now
+  states both legitimate uses explicitly.
+- **Small schema fix:** `domains.created_at` was missing from every version
+  of `docs/database-schema.md` through v0.7 - every other table has it; this
+  was an oversight, not a deliberate omission like `stores.access_mode`'s
+  documented one. Added directly, noted here rather than treated as a stop-
+  and-ask gap (no design ambiguity, unlike Module 2's Drive-token-storage gap).
+- **Lean v1.0 scope, stated plainly:** a domain that verifies once is never
+  automatically downgraded by a later failed recheck (a seller breaking their
+  own DNS after verifying is out of scope), and `tls_status` only ever
+  transitions `pending` → `issued` in v1.0 - the `error` status exists in the
+  enum for a future module, not produced here.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

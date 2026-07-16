@@ -3,7 +3,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
-import { seedModule1Settings } from "../../src/settings-registry/settings.seed";
+import { seedModule1Settings, seedModule3Settings } from "../../src/settings-registry/settings.seed";
 
 /**
  * Builds a real NestJS app wired to the real local Postgres/Redis started for
@@ -40,6 +40,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       admin_audit_logs, settings_values, settings_definitions,
+      domains,
       media_assets, product_variants, products, categories,
       google_drive_connections,
       stores, admin_users, sellers, user_security_events, users, plans
@@ -49,6 +50,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
 
 export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedModule1Settings(prisma);
+  await seedModule3Settings(prisma);
 }
 
 /**

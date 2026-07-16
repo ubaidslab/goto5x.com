@@ -174,6 +174,19 @@ thresholds through the Settings Registry exactly like every other tunable
 behavior in this diagram, so changing a warning period or a storage quota is an
 admin config change, never a deploy.
 
+**Custom Domain & TLS (SRS §5.11/FR-11.2, Module 3):** a seller's domain-
+verification flow (DNS check → Traefik dynamic-config file → real TLS probe)
+is entirely app + filesystem, no new server. Traefik is configured with a
+**file provider** (`--providers.file.directory`, `watch: true`) alongside its
+existing Docker provider — the two are separate discovery mechanisms, so a
+file-provider router referencing the Docker-discovered `web` container must
+say `service: web@docker` (an explicit cross-provider reference), not a bare
+`web`. TLS issuance itself is Traefik's own ACME client (HTTP-01 challenge,
+docs/tech-stack.md) — the app never implements ACME; it only ever writes or
+deletes a small YAML file per verified domain, which is what makes this
+"automatic per-domain TLS" claim true without a custom cert-management
+service.
+
 **Bridges module — the two external-SaaS hooks (SRS §3.10, §5.24, new in v0.6):**
 grouped into one small module because both hooks share the same shape — a
 signed/authenticated API surface, gated by the `external_api_clients` registry

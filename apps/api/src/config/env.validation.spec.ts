@@ -22,6 +22,7 @@ describe("validateEnv", () => {
     GOOGLE_DRIVE_CLIENT_SECRET: "client-secret",
     GOOGLE_DRIVE_REDIRECT_URI: "http://localhost:3000/media/drive/callback",
     DRIVE_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+    TRAEFIK_DYNAMIC_CONFIG_DIR: "/tmp/traefik-dynamic-test",
   };
 
   it("passes through a fully-populated, valid config", () => {

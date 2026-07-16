@@ -3,8 +3,8 @@
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
 (approved v0.7); this README covers running the code.
 
-**Status:** Module 2 (Catalog & Media) — see `docs/build-plan.md` for the full
-module sequence and what is/isn't in scope yet.
+**Status:** Module 3 (Custom Domain & TLS) — see `docs/build-plan.md` for the
+full module sequence and what is/isn't in scope yet.
 
 ---
 
@@ -65,7 +65,13 @@ Two Postgres roles back every environment (`docs/build-plan.md`
    plus a real Google Cloud OAuth Client ID for Drive import. Neither is
    required just to boot the API or run product/variant CRUD — only the
    media-upload and Google Drive endpoints touch them.
-8. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from the repo root.
+8. `TRAEFIK_DYNAMIC_CONFIG_DIR` (Module 3) can point at any writable local
+   directory without Docker — the domain-attach/verify endpoints work
+   end-to-end (DNS is checked for real) even without a running Traefik; only
+   Traefik itself ever reads the files written there.
+9. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from the repo root.
+   Run the worker too if you want to see the domain-verification recheck job
+   actually fire: `pnpm start:worker` (from `apps/api`).
 
 **Important — `prisma migrate reset`:** this command drops and recreates the
 entire `public` schema, which wipes the schema-level grants
@@ -82,12 +88,13 @@ docker compose up --build
 ```
 
 This starts Postgres, Redis, MinIO, the API, the web app, and a worker
-(currently idle — no job processors are registered until a later module),
-behind Traefik at `api.localhost` / `app.localhost`. You still need to run
-`bootstrap-db.sql` once against the `postgres` container and apply migrations
-the first time — the compose stack does not do either automatically in
-Module 1 (that's a reasonable Module-2-or-later addition once there's an
-actual deploy pipeline to wire it into).
+(running the domain-verification recheck job as of Module 3), behind Traefik
+at `api.localhost` / `app.localhost`. You still need to run `bootstrap-db.sql`
+once against the `postgres` container and apply migrations the first time —
+the compose stack does not do either automatically in Module 1 (that's a
+reasonable later addition once there's an actual deploy pipeline to wire it
+into). You'll also need a real `ACME_EMAIL` set for the `traefik` service to
+issue real certificates (Module 3) — Let's Encrypt requires a real address.
 
 **Note:** the Dockerfiles in this repo have been written to the documented
 architecture (multi-stage builds, root-context monorepo installs) but have
@@ -107,6 +114,19 @@ substituted Drive-client test double respectively — see "Running tests"
 below for exactly what that does and doesn't prove. Please do one real
 upload and one real Google Drive connect+import against your own MinIO/
 Google Cloud credentials before relying on either path in production.
+
+**Also unverified against the real thing (Module 3):** DNS resolution and
+HTTPS/TLS connections to the live public internet **are** reachable in this
+sandbox (confirmed directly, unlike Google's OAuth APIs), so
+`NodeDnsResolverService` and `NodeTlsProberService` are tested against real,
+well-known public hostnames — genuine DNS lookups and a genuine TLS
+handshake, not mocks. What this sandbox cannot do is run a real Traefik (no
+Docker daemon) or attach a domain the founder actually owns and controls the
+DNS for. `TraefikDynamicConfigService`'s file output is verified for real
+against the filesystem; whether a real running Traefik picks that file up
+and successfully completes its own Let's Encrypt HTTP-01 challenge is a
+`docker compose up --build` + a real owned domain's pre-launch smoke test,
+same as the other two gaps above.
 
 ---
 
@@ -137,12 +157,17 @@ database, not a mock):
      that would otherwise need Google's network. See
      `test/e2e/s3-test-server.ts` and `test/e2e/google-drive.e2e-spec.ts`'s
      top comment for exactly what's real versus substituted.
+   - Module 3's domain e2e specs make **real** DNS lookups and a **real**
+     HTTPS/TLS handshake against well-known, stable public hostnames
+     (`www.github.com`, `dns.google`) to prove `NodeDnsResolverService`/
+     `NodeTlsProberService` genuinely work - no mocking, no test double. This
+     needs outbound internet access from wherever you run the suite.
 2. Run:
    ```sh
    pnpm test:e2e
    ```
 
-All 39 e2e tests + 29 unit tests pass as of this module (see the Module 2
+All 50 e2e tests + 47 unit tests pass as of this module (see the Module 3
 verification report delivered alongside this build for the full list).
 
 ---
@@ -168,6 +193,8 @@ compromised secret should kill every session, not quietly persist).
 | `ADMIN_MFA_ISSUER_NAME` | Whatever name should show up in an admin's authenticator app |
 | `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` | A Google Cloud OAuth 2.0 Client ID (Drive API, read-only scope) |
 | `DRIVE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts a seller's stored Drive refresh token at rest (SRS FR-9.1/§6.5); the short-lived access token is never persisted to Postgres at all, so there is no equivalent key needed for it |
+| `TRAEFIK_DYNAMIC_CONFIG_DIR` | Any writable directory the API can write to and (in production) Traefik can read from - a shared Docker volume in `docker-compose.yml` |
+| `ACME_EMAIL` | A real email address - Let's Encrypt requires one for expiry/problem notices. Read only by the `traefik` service, not the app |
 
 ---
 

@@ -78,6 +78,18 @@ enum DriveConnectionStatus {
   expired
 }
 
+enum DomainVerificationStatus {
+  pending
+  verified
+  failed
+}
+
+enum DomainTlsStatus {
+  pending
+  issued
+  error
+}
+
 model User {
   id                            String    @id @default(uuid()) @db.Uuid
   email                         String    @unique
@@ -152,10 +164,30 @@ model Store {
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
-  seller Seller @relation(fields: [sellerId], references: [id])
+  seller  Seller   @relation(fields: [sellerId], references: [id])
+  domains Domain[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
+}
+
+// Module 3 (Custom Domain & TLS). `created_at` is a genuine addition to the
+// documented schema, not a regression - see docs/database-schema.md's note
+// on this table for why (every other table has it; this one just never did).
+model Domain {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  storeId             String                   @map("store_id") @db.Uuid
+  domainName          String                   @unique @map("domain_name")
+  verificationStatus  DomainVerificationStatus @default(pending) @map("verification_status")
+  tlsStatus           DomainTlsStatus          @default(pending) @map("tls_status")
+  verifiedAt          DateTime?                @map("verified_at") @db.Timestamptz
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  // No separate @@index on domainName - @unique above already creates the
+  // btree index the hot-path lookup needs; a second one would be dead weight.
+  @@map("domains")
 }
 
 // Module 2 (Catalog & Media). `search_vector` (FR-16.2) is deliberately absent

@@ -201,17 +201,28 @@ from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
 
 Index: `idx_stores_seller_id (seller_id)`.
 
-### `domains`
+### `domains` (tenant, Module 3)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | store_id | uuid FK → stores.id | |
 | domain_name | text unique | **unique index is the hot path** — every inbound request resolves its tenant by looking up the request hostname here first |
-| verification_status | enum(`pending`,`verified`,`failed`) | |
-| tls_status | enum(`pending`,`issued`,`error`) | |
+| verification_status | enum(`pending`,`verified`,`failed`) | `pending` = attached, never checked yet; `failed` = checked at least once, DNS not (yet) matching - not a terminal state, the scheduled recheck job retries `failed` domains exactly like `pending` ones; `verified` = DNS matches |
+| tls_status | enum(`pending`,`issued`,`error`) | v1.0 only ever transitions `pending` → `issued` (an `error` status exists in the enum for a future module's use but is not produced by Module 3 - kept simple per the same lean-scope discipline as other v1.0 boundaries) |
 | verified_at | timestamptz nullable | |
+| created_at | timestamptz | **added in Module 3** - every other table has this; its absence above through v0.7 was an oversight, not a deliberate omission (no FR ever argued for leaving it out, unlike `stores.access_mode` which has a documented reason) |
 
-Index: `idx_domains_domain_name (domain_name)` unique.
+Index: `idx_domains_domain_name (domain_name)` unique. RLS follows the same
+`store_id`-through-`stores`-subquery pattern as Module 2's tenant tables.
+
+New Settings Registry keys driving domain verification/TLS (global scope):
+`domains.cname_target` (the CNAME value sellers point at, e.g.
+`stores.goto5x.com`), `domains.a_record_ip` (the VPS's public IP, for apex
+domains that can't use a CNAME per DNS rules), `domains.platform_root_domain`
+(rejects a custom-domain attach attempt that is actually one of the
+platform's own free subdomains, e.g. `someoneelse.goto5x.com`, closing an
+otherwise-real subdomain-hijack edge case), `domains.verification_poll_minutes`
+(how often the scheduled worker job rechecks `pending`/`failed` domains).
 
 ### `themes` (global template catalog)
 | Column | Type | Notes |

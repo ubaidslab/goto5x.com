@@ -72,6 +72,9 @@ class EnvironmentVariables {
 
   @IsString()
   DRIVE_TOKEN_ENCRYPTION_KEY!: string;
+
+  @IsString()
+  TRAEFIK_DYNAMIC_CONFIG_DIR!: string;
 }
 
 /**

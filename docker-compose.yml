@@ -59,6 +59,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    volumes:
+      # Shared with `traefik` below - this is how Module 3's DomainsService
+      # tells Traefik's file provider a newly-verified custom domain exists
+      # to route/issue a cert for (docs/tech-stack.md: Traefik owns ACME
+      # natively; the app only ever writes config files, never speaks ACME
+      # itself). TRAEFIK_DYNAMIC_CONFIG_DIR (.env) must match the path here.
+      - traefik_dynamic_config:/etc/traefik/dynamic
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`api.localhost`)"
@@ -77,9 +84,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # No job processors are registered yet in Module 1 - this container runs a
-    # real BullMQ worker process with an empty processor set, matching
-    # production topology from day one rather than being added later.
+    # Module 3 registers this worker's first real BullMQ processor
+    # (domain-verification's scheduled recheck job) - the empty-processor-set
+    # skeleton from Module 1 was a real, running placeholder, not a stub.
 
   web:
     build:
@@ -102,13 +109,28 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP-01 challenge (not DNS-01): needs no per-registrar API credentials,
+      # only port 80 reachable from the internet - already true for every
+      # seller's custom domain, since that's what their CNAME/A record points
+      # at (SRS FR-11.2, docs/tech-stack.md).
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_dynamic_config:/etc/traefik/dynamic
+      - traefik_acme:/letsencrypt
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  traefik_dynamic_config:
+  traefik_acme:
