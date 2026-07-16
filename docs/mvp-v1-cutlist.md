@@ -162,6 +162,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - Webhook signature verification on all payment/supplier webhooks, **and signed-
   request verification on both external-SaaS API hooks** (new in v0.6)
 - i18n-readiness discipline (SRS §3.9)
+- **Platform Event Log** (SRS §3.11, new in v0.8): lean, business-lifecycle-only
+  append-only event recording, starting with Module 1 (backfilled) — zero
+  dashboard work now, the substrate the already-specified analytics/unit-
+  economics dashboards (FR-8.10/FR-23.4) read from later
 
 ---
 

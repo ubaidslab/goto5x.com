@@ -187,6 +187,16 @@ deletes a small YAML file per verified domain, which is what makes this
 "automatic per-domain TLS" claim true without a custom cert-management
 service.
 
+**Platform Event Log (SRS §3.11, new in v0.8):** every module writes its own
+lifecycle events (`seller.signup`, `product.created`, `domain.verified`, etc.)
+into one append-only `platform_events` table via a single `EventsService.emit()`
+call — same "one reused mechanism, not one-off switches" philosophy as the
+Settings Registry, and the same immutability discipline as `AdminM`'s audit
+log. No new node in the diagram above: it's a cross-cutting write every
+module makes into Postgres, not a service of its own. Nothing reads from it
+yet — the admin analytics/unit-economics views (`AdminM`) are the intended
+future readers.
+
 **Bridges module — the two external-SaaS hooks (SRS §3.10, §5.24, new in v0.6):**
 grouped into one small module because both hooks share the same shape — a
 signed/authenticated API surface, gated by the `external_api_clients` registry

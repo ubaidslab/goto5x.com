@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.7)
+# goto5x.com — Database Schema (v1, updated for SRS v0.8)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -75,6 +75,7 @@ erDiagram
     THEMES ||--o{ TEMPLATE_ENTITLEMENTS : "entitled via"
     EXTERNAL_API_CLIENTS ||--o{ SELLER_API_TOKENS : authorizes
     STORES ||--o| DOMAINS : "attaches"
+    STORES ||--o{ PLATFORM_EVENTS : generates
     STORES ||--|| STORE_THEME_SETTINGS : configures
     STORES ||--|| STORE_SHIPPING_SETTINGS : configures
     STORES ||--|| STORE_TAX_SETTINGS : configures
@@ -775,6 +776,29 @@ Index: `idx_audit_admin_created (admin_user_id, created_at)`, `idx_audit_target
 (target_type, target_id)`, `idx_audit_impersonation (impersonation_session_id)`.
 **Immutability is a DB-level grant:** the application's runtime role has `INSERT`
 only on this table — no `UPDATE`/`DELETE` privilege exists.
+
+### `platform_events` (global, append-only — new in v0.8, SRS §3.11/FR-26.x)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| event_type | text | e.g. `seller.signup`, `store.created`, `product.created`, `media.imported`, `domain.attached`, `domain.verified` — lean, business-lifecycle-only (§3.11's binding "growth/unit-economics report" test); free text, not an enum, so a later module's new event type is a data value, not a migration |
+| actor_type | text nullable | e.g. `seller`, `admin`, `system` — null only for a genuinely unattributable system event |
+| actor_id | uuid nullable | the acting user/seller/admin's id; null for the same reason as `actor_type` |
+| store_id | uuid nullable | not every event is store-scoped (e.g. `seller.signup` happens before any store exists) |
+| entity_type | text nullable | e.g. `product`, `domain` — what `entity_id` refers to |
+| entity_id | uuid nullable | |
+| metadata | jsonb default `{}` | **IDs only, never PII** (email/name/phone/address) — same discipline as SRS §6.5's general PII-in-logs rule, enforced by code review, not a runtime scanner |
+| created_at | timestamptz | |
+
+Index: `idx_platform_events_type_created (event_type, created_at)`,
+`idx_platform_events_store (store_id)`. **Immutability is a DB-level grant**,
+identical to `admin_audit_logs`: the application's runtime role has `INSERT`
+only — no `UPDATE`/`DELETE` privilege exists. **Emission is non-blocking**: a
+failed insert here is caught and logged by the application, never allowed to
+fail or roll back the action it's describing. New Settings Registry key:
+`platform_events.retention_days` (global scope) — no archival job consumes it
+yet; the tunable exists so adding one later is a worker job, not a schema
+change.
 
 ### `admin_impersonation_sessions` (global)
 | Column | Type | Notes |

@@ -375,5 +375,33 @@ carrying into later modules:
 
 ---
 
+## Amendment approved before Module 4 (SRS v0.8): Platform Event Log
+
+Documentation + a small backfill into already-built Modules 1–3, not a new
+module in the sequence table above — every module from here on emits its own
+events as part of its own build (a new §14 checklist line, not a follow-up
+pass).
+
+- **`platform_events`** (global, append-only): same insert-only-grant
+  immutability as `admin_audit_logs`, added via its own migration + RLS-free
+  grants (it's global, not tenant-scoped, though `store_id` is nullable and
+  populated where relevant).
+- **Lean taxonomy, enforced by review not by schema:** `event_type` is free
+  text; the binding gate is SRS §3.11's "would this appear on a growth or
+  unit-economics report" test, applied by whoever reviews the module's PR,
+  not a fixed enum that would need a migration for every new module's events.
+- **Non-blocking emission:** every emission call site is wrapped so a failed
+  write is caught and logged, never allowed to fail or roll back the action
+  it describes - see `EventsService.emit()`.
+- **Backfilled emission points (Modules 1–3):** `seller.signup`,
+  `store.created`, `product.created`, `media.imported`, `domain.attached`,
+  `domain.verified` — six call sites added to already-approved code, no
+  redesign of any of it.
+- **Zero dashboard work:** FR-8.10/FR-23.4 are unchanged; this is the
+  substrate they'll read from once a later module actually builds that
+  dashboard.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

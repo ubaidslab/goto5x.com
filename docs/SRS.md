@@ -1,16 +1,18 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.7 (Build-phase amendment)
+**Version:** 0.8 (Build-phase amendment)
 **Date:** 2026-07-16
 **Status:** v0.6 formally approved; documentation phase closed, build phase
-underway. Module 1 (Foundation) built, tested, and approved. This revision is a
-build-phase amendment: it pins the Settings Registry precedence and adds
-password reset (approved during Module 1 planning), then — approved before
-Module 2 — adds regional launch gating, admin plan grants/platform subscription
-promo codes, in-app messaging (banners/popups/notifications with targeting),
-platform brand-asset management, a mobile-app-readiness NFR, a region-sharded-
-deployment Phase 4+ note, and referral attribution/cross-SaaS discount
-eligibility for the two external-SaaS hooks. No FR from v0.6 was removed or
+underway. Modules 1–3 (Foundation; Catalog & Media; Custom Domain & TLS)
+built, tested, and approved. v0.7 pinned the Settings Registry precedence,
+added password reset, regional launch gating, admin plan grants/platform
+subscription promo codes, in-app messaging, platform brand-asset management,
+a mobile-app-readiness NFR, a region-sharded-deployment Phase 4+ note, and
+referral attribution/cross-SaaS discount eligibility for the two external-SaaS
+hooks. **This revision (v0.8), approved before Module 4:** adds the Platform
+Event Log (§3.11, FR-26.x) — an append-only business-lifecycle event table
+that the already-specified analytics/unit-economics dashboards (FR-8.10,
+FR-23.4) will read from later. No FR from any prior version was removed or
 weakened — every change below is additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
@@ -115,6 +117,27 @@ cut decision, without resolving them unilaterally.
   never persisted to Postgres — Redis only, for an active import job's
   duration. Revocation is seller-initiated and audit-trailed. See FR-9.1, the
   new §6.5 bullet, and §14.2's new checklist items.
+
+**Changelog v0.7 → v0.8 (build-phase amendment, approved before Module 4):**
+- **Platform Event Log added** (§3.11, FR-26.1–26.5): an append-only
+  `platform_events` table, same insert-only-grant immutability discipline as
+  `admin_audit_logs`. Lean, business-lifecycle-only taxonomy (a new event
+  type must pass the "would this appear on a growth or unit-economics
+  report" test) — explicitly not page-view/click tracking. No PII in
+  `metadata` (§6.5). Non-blocking emission — a failed event write never fails
+  the user's action. Retention/archival threshold is a Settings Registry
+  entry (`platform_events.retention_days`); no archival job exists yet.
+- **Backfilled into Modules 1–3** (already-built, already-approved code):
+  `seller.signup`, `store.created` (Module 1); `product.created`,
+  `media.imported` (Module 2); `domain.attached`, `domain.verified`
+  (Module 3) — a small addition, not a redesign of any of those modules.
+  Every module from Module 4 onward emits its own lifecycle events as part
+  of that module's build, and gains an "events emitted" line in its §14
+  checklist.
+- **Zero dashboard work in this revision:** FR-8.10 (real-time analytics) and
+  FR-23.4 (unit-economics) are unchanged today — they read from live
+  transactional tables exactly as before; `platform_events` is a substrate
+  they read from *later*, per explicit founder instruction.
 
 ---
 
@@ -530,6 +553,48 @@ one-off integrations:
 
 ---
 
+### 3.11 Platform Event Log (Business Analytics Substrate — new)
+The founder's growth/unit-economics reporting (FR-8.10, FR-23.4) needs a
+history of *when things happened*, not just current-state tables — and that
+history cannot be reconstructed retroactively once a signup or a sale has
+already happened without being recorded. Recording starts with whichever
+module is being built when this is approved (Modules 1–3, backfilled;
+Module 4 onward, built in from the start), even though no dashboard reads
+from it yet.
+
+- **`platform_events`** (global, append-only): `event_type`, `actor_type`/
+  `actor_id`, `store_id` (nullable — not every event is store-scoped),
+  `entity_type`/`entity_id` (a generic reference to the row the event is
+  about), a small `metadata` JSON object, `created_at`. Same immutability
+  discipline as `admin_audit_logs`/`user_security_events`: the application's
+  runtime role has `INSERT` only, no `UPDATE`/`DELETE`.
+- **Lean taxonomy, binding rule:** only business-lifecycle events that would
+  plausibly appear on a growth or unit-economics report qualify —
+  `seller.signup`, `seller.verified`, `store.created`, `product.created`,
+  `media.imported`, `domain.attached`, `domain.verified`, and the equivalent
+  lifecycle events each future module introduces (`order.placed`,
+  `payout.requested`, `plan.changed`, etc.). **No page-view/click tracking,
+  no per-request noise.** A module proposing a new event type asks "would
+  this appear on a growth or unit-economics report?" — if not, it doesn't
+  get logged here.
+- **No PII in `metadata`, ever:** IDs only (already-scoped by `actor_id`/
+  `entity_id`/`store_id`) — never an email, name, phone number, or address.
+  This is the same discipline §6.5's PII-handling rule already states for
+  application logs, applied to this table specifically.
+- **Non-blocking emission (binding):** a failed event write is logged and
+  swallowed — it must never fail the user-facing action that triggered it.
+  An event log that could break a signup or an order is worse than no event
+  log.
+- **Retention/archival threshold** is a Settings Registry entry
+  (`platform_events.retention_days`), not hard-coded — no archival job exists
+  yet (nothing needs one at launch volume), but the tunable is in place so
+  adding one later is a worker job, not a schema change.
+- **Zero new infrastructure, zero dashboard work now:** one Postgres table,
+  reusing the exact insert-only-grant pattern already proven on
+  `admin_audit_logs` (Module 1). The already-specified admin analytics
+  (FR-8.10) and unit-economics (FR-23.4) dashboards read from this later;
+  nothing about either FR changes today.
+
 ## 4. User Roles & Permissions (summary)
 
 | Role | Key permissions |
@@ -846,7 +911,10 @@ requires the founder to ask an engineer for a deploy.
   role).
 - FR-8.10: **Real-time platform analytics** — GMV, revenue, commission earned,
   active store count, and top sellers, computed live against the transactional
-  tables at launch volume; extended by the unit-economics view (FR-23.4).
+  tables at launch volume; extended by the unit-economics view (FR-23.4). Both
+  this and FR-23.4 are the intended eventual readers of `platform_events`
+  (§3.11/FR-26.x) — recording starts now (Module 1 onward, backfilled), no
+  dashboard work changes today.
 - FR-8.11: System health dashboard (queue depth, error rates, VPS resource usage).
 - FR-8.12: Admin accounts require mandatory MFA (not optional).
 - FR-8.13: **Listing/content moderation queue** — supplier listings and store
@@ -1231,6 +1299,31 @@ login, and email verification. Approved for Module 1:
   already-approved signup endpoint; the admin allowed-countries list reuses the
   Settings Registry admin CRUD already shipped in Module 1.
 
+### 5.26 Platform Event Log (Business Analytics Substrate — new)
+The architecture and table shape are specified in §3.11; this section is the
+functional requirement that emission actually happens, module by module.
+- FR-26.1: **Every module emits its own lifecycle events** into
+  `platform_events` at the point of the state change (signup, verification,
+  creation, attach/verify, etc.) — never inferred after the fact from other
+  tables. Modules 1–3 are backfilled with their events retroactively (this is
+  a small addition to existing code, not a redesign); every module from
+  Module 4 onward emits its events as part of that module's own build, not a
+  follow-up pass.
+- FR-26.2: **Lean taxonomy is enforced at review time, not by a schema
+  constraint** — `event_type` is free text (a fixed enum would fight future
+  modules), but §3.11's "would this appear on a growth or unit-economics
+  report" rule is a binding review gate for any new event type.
+- FR-26.3: Emission is **non-blocking**: an event-write failure is caught,
+  logged, and discarded — it never surfaces as an error to the user and never
+  rolls back the action it's describing.
+- FR-26.4: **No PII in `metadata`** — enforced by convention and code review
+  (same as §6.5's general PII-in-logs discipline), not by a runtime PII
+  scanner, which would be disproportionate machinery for a lean internal
+  analytics log.
+- FR-26.5: The Module 1–3 backfill emits, at minimum: `seller.signup`,
+  `store.created` (Module 1); `product.created`, `media.imported` (Module 2);
+  `domain.attached`, `domain.verified` (Module 3).
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -1284,7 +1377,9 @@ login, and email verification. Approved for Module 1:
   (FR-24.10).
 - **PII handling:** buyer PII is excluded from application logs by default; access
   to raw PII in the database is limited to the roles that functionally need it.
-  The buyer order-status link uses a signed, unguessable token.
+  The buyer order-status link uses a signed, unguessable token. The same rule
+  applies to `platform_events.metadata` (§3.11/FR-26.4): IDs only, never an
+  email, name, phone number, or address.
 - **Dependency hygiene:** automated dependency vulnerability scanning runs in CI.
 - **Content/legal risk:** listing moderation exists specifically to reduce
   marketplace liability for counterfeit or prohibited goods, linked directly to
@@ -1344,7 +1439,8 @@ ReferralConversion, NewsletterSubscriber`. **New in v0.7:**
 `GoogleDriveConnection` (FR-9.1, closes a schema gap found while planning
 Module 2 — the token store FR-9.1 always assumed but never had a table) — all
 v1.0. The `Announcement` entity gains `channel`/`target_type`/`target_id` fields
-(FR-8.15) rather than a new table.
+(FR-8.15) rather than a new table. **New in v0.8:** `PlatformEvent` (§3.11,
+FR-26.x) — v1.0, recording starts immediately, no dashboard reads from it yet.
 
 Every tenant-scoped table among the above carries `store_id` and is protected by
 RLS (§3.2) — no exceptions for new tables. `LedgerEntry` is append-only. Full
@@ -1538,6 +1634,10 @@ next module starts. Each item is written to be testable, not aspirational.
       next request (FR-25.5)
 - [ ] A **buyer** can shop any storefront regardless of country — regional
       gating never applies to buyer-side access (FR-25.5)
+- [ ] **Events emitted (backfilled, v0.8):** a successful signup produces a
+      `seller.signup` row in `platform_events`; creating a store produces a
+      `store.created` row — both with the correct `actor_id`/`store_id`, no
+      PII in `metadata` (§3.11/FR-26.5)
 - [ ] Page load meets the sub-2s first-contentful-paint target (§6)
 - [ ] Legal/content pages (ToS, Privacy, Refund, About, Contact) are linked,
       render correctly, and are served from admin-editable content (FR-12.1), not
@@ -1590,6 +1690,10 @@ next module starts. Each item is written to be testable, not aspirational.
       applied to a checkout on store B
 - [ ] **Tenant isolation, release gate:** the full automated cross-tenant test
       suite passes for every dashboard API route (§3.2)
+- [ ] **Events emitted (backfilled, v0.8):** creating a product produces a
+      `product.created` row in `platform_events`; a successful Google Drive
+      or direct upload produces a `media.imported` row — both with no PII in
+      `metadata` (§3.11/FR-26.5)
 
 ### 14.3 Supplier Portal
 - [ ] Supplier registration/verification workflow completes end-to-end (FR-3.1)
@@ -1728,6 +1832,9 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Google Drive import copies files into MinIO; the storefront still serves
       those images after simulating Drive being unavailable (FR-9.1, FR-9.2)
 - [ ] Cloudflare CDN correctly caches and serves MinIO-backed assets
+- [ ] **Events emitted (backfilled, v0.8):** see §14.2's `media.imported` item
+      — restated here since this is media's own checklist section
+      (§3.11/FR-26.5)
 
 ### 14.10 Notifications
 - [ ] Order/payout/listing email notifications fire correctly and are not
@@ -1738,6 +1845,10 @@ next module starts. Each item is written to be testable, not aspirational.
       domain within the documented time window (FR-11.2)
 - [ ] The `domains.domain_name` unique index correctly resolves the tenant on
       every request, with no ambiguity for two similarly-named domains (FR-11.1)
+- [ ] **Events emitted (backfilled, v0.8):** attaching a domain produces a
+      `domain.attached` row in `platform_events`; a successful verification
+      produces a `domain.verified` row — both with no PII in `metadata`
+      (§3.11/FR-26.5)
 
 ### 14.12 Security & Compliance (cross-cutting, applies to every module above)
 - [ ] The full automated cross-tenant test suite passes as a release gate (§3.2)
@@ -1893,6 +2004,22 @@ next module starts. Each item is written to be testable, not aspirational.
       seller on a paid plan vs. the Free Plan, returns only the eligibility
       boolean (never discount terms), and is rejected when called unsigned
       (FR-24.14)
+
+### 14.23 Platform Event Log (cross-cutting, applies to every module from here on)
+- [ ] Every lifecycle event listed for a given module (FR-26.5 and each later
+      module's own list) produces exactly one `platform_events` row with the
+      correct `event_type`/`actor_type`/`actor_id`/`store_id`/`entity_type`/
+      `entity_id` (FR-26.1)
+- [ ] `metadata` on a sampled event from every module contains no PII — IDs
+      only (FR-26.4)
+- [ ] A simulated event-write failure (e.g. a deliberately broken DB call)
+      does not fail or roll back the user-facing action that triggered it
+      (FR-26.3)
+- [ ] `UPDATE`/`DELETE` on `platform_events` fails at the database grant
+      level, same as `admin_audit_logs` (§3.11)
+- [ ] `platform_events.retention_days` resolves correctly through the
+      Settings Registry (no archival job exists yet to consume it — this
+      only proves the tunable itself works)
 
 ---
 
