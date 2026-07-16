@@ -328,3 +328,23 @@ model AdminAuditLog {
   @@index([targetType, targetId], name: "idx_audit_target")
   @@map("admin_audit_logs")
 }
+
+// Module 3.5/v0.8 amendment: Platform Event Log (SRS §3.11, FR-26.x). Global,
+// append-only, same immutability discipline as AdminAuditLog above - no RLS
+// (nothing reads this yet; when a reader ships it's admin-only, same as the
+// audit log, not seller-facing).
+model PlatformEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  eventType  String   @map("event_type")
+  actorType  String?  @map("actor_type")
+  actorId    String?  @map("actor_id") @db.Uuid
+  storeId    String?  @map("store_id") @db.Uuid
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([eventType, createdAt], name: "idx_platform_events_type_created")
+  @@index([storeId], name: "idx_platform_events_store")
+  @@map("platform_events")
+}

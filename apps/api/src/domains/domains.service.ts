@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { EventsService } from "../events/events.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { TraefikDynamicConfigService } from "./traefik-dynamic-config.service";
 
@@ -20,6 +21,7 @@ export class DomainsService {
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
     private readonly traefikConfig: TraefikDynamicConfigService,
+    private readonly events: EventsService,
   ) {}
 
   async attach(sellerId: string, storeId: string, domainNameInput: string) {
@@ -37,11 +39,21 @@ export class DomainsService {
     }
 
     try {
-      return await this.tenantPrisma.run(sellerId, async (tx) => {
+      const domain = await this.tenantPrisma.run(sellerId, async (tx) => {
         const store = await tx.store.findUnique({ where: { id: storeId } });
         if (!store) throw new NotFoundException("Store not found.");
         return tx.domain.create({ data: { storeId, domainName } });
       });
+      // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
+      await this.events.emit({
+        eventType: "domain.attached",
+        actorType: "seller",
+        actorId: sellerId,
+        storeId,
+        entityType: "domain",
+        entityId: domain.id,
+      });
+      return domain;
     } catch (err) {
       // Deliberately NOT a pre-check findUnique() before this create(): RLS
       // scopes that read to the calling seller's own stores, so a domain

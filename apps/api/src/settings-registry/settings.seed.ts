@@ -105,11 +105,32 @@ export async function seedModule3Settings(prisma: PrismaClient) {
   });
 }
 
+/**
+ * v0.8 amendment's one settings key - the Platform Event Log's
+ * retention/archival threshold (SRS §3.11). No archival job reads it yet;
+ * it exists so adding one later is a worker job, not a schema change.
+ */
+export async function seedPlatformEventsSettings(prisma: PrismaClient) {
+  await prisma.settingsDefinition.upsert({
+    where: { key: "platform_events.retention_days" },
+    create: {
+      key: "platform_events.retention_days",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 730,
+      validation: { min: 30, max: 3650 },
+      description: "How long platform_events rows are kept before a future archival job may remove them.",
+    },
+    update: {},
+  });
+}
+
 if (require.main === module) {
   const prisma = new PrismaClient();
   Promise.resolve()
     .then(() => seedModule1Settings(prisma))
     .then(() => seedModule3Settings(prisma))
+    .then(() => seedPlatformEventsSettings(prisma))
     .then(() => {
       // eslint-disable-next-line no-console
       console.log("Settings seeded.");

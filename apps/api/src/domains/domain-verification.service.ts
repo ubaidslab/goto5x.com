@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Domain } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { EventsService } from "../events/events.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { DNS_RESOLVER, IDnsResolver } from "./dns-resolver.interface";
 import { TLS_PROBER, ITlsProber } from "./tls-prober.interface";
@@ -26,6 +27,7 @@ export class DomainVerificationService {
     @Inject(DNS_RESOLVER) private readonly dnsResolver: IDnsResolver,
     @Inject(TLS_PROBER) private readonly tlsProber: ITlsProber,
     private readonly traefikConfig: TraefikDynamicConfigService,
+    private readonly events: EventsService,
   ) {}
 
   async verifyDomain(domainId: string): Promise<Domain> {
@@ -35,7 +37,8 @@ export class DomainVerificationService {
     const dnsVerified = await this.checkDns(domain.domainName);
 
     if (dnsVerified) {
-      if (domain.verificationStatus !== "verified") {
+      const wasAlreadyVerified = domain.verificationStatus === "verified";
+      if (!wasAlreadyVerified) {
         // Written before the DB update, deliberately: if this throws, the DB
         // never records "verified" for a domain Traefik doesn't actually
         // know about yet - the next scheduled recheck retries both together.
@@ -45,6 +48,18 @@ export class DomainVerificationService {
         where: { id: domainId },
         data: { verificationStatus: "verified", verifiedAt: domain.verifiedAt ?? new Date() },
       });
+      if (!wasAlreadyVerified) {
+        // SRS §3.11/FR-26.5 - only on the transition, not every recheck of an
+        // already-verified domain; non-blocking (FR-26.3). No seller session
+        // is ever in scope here (see class doc comment), hence actor "system".
+        await this.events.emit({
+          eventType: "domain.verified",
+          actorType: "system",
+          storeId: updated.storeId,
+          entityType: "domain",
+          entityId: updated.id,
+        });
+      }
       return this.maybeProbeTls(updated);
     }
 

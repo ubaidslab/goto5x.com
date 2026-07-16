@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../../prisma/tenant-prisma.service";
 import { RedisService } from "../../common/redis/redis.service";
+import { EventsService } from "../../events/events.service";
 import { mediaTypeFromMimetype, sanitizeFilename } from "../media.util";
 import { ObjectStorageService } from "../object-storage.service";
 import { DRIVE_CLIENT, IDriveClient } from "./drive-client.interface";
@@ -29,6 +30,7 @@ export class DriveImportService {
     private readonly connections: DriveConnectionsService,
     private readonly redis: RedisService,
     private readonly objectStorage: ObjectStorageService,
+    private readonly events: EventsService,
     @Inject(DRIVE_CLIENT) private readonly driveClient: IDriveClient,
   ) {}
 
@@ -60,6 +62,16 @@ export class DriveImportService {
           }),
         );
         result.succeeded.push({ fileId: file.id, mediaAssetId: asset.id });
+        // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
+        await this.events.emit({
+          eventType: "media.imported",
+          actorType: "seller",
+          actorId: sellerId,
+          storeId,
+          entityType: "media_asset",
+          entityId: asset.id,
+          metadata: { source: "google_drive_import" },
+        });
       } catch (err) {
         result.failed.push({ fileId: file.id, reason: err instanceof Error ? err.message : "unknown error" });
       }

@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { EventsService } from "../events/events.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
@@ -13,10 +14,13 @@ import { UpdateProductDto } from "./dto/update-product.dto";
  */
 @Injectable()
 export class ProductsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   async create(sellerId: string, storeId: string, dto: CreateProductDto) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    const product = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
       if (dto.categoryId) {
@@ -33,6 +37,16 @@ export class ProductsService {
         },
       });
     });
+    // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
+    await this.events.emit({
+      eventType: "product.created",
+      actorType: "seller",
+      actorId: sellerId,
+      storeId,
+      entityType: "product",
+      entityId: product.id,
+    });
+    return product;
   }
 
   async list(sellerId: string, storeId: string) {

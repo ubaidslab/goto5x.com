@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
+import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
     private readonly securityEvents: SecurityEventService,
+    private readonly events: EventsService,
   ) {}
 
   async signup(dto: SignupDto, ip: string): Promise<{ userId: string }> {
@@ -57,10 +59,20 @@ export class AuthService {
         emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60_000),
         seller: { create: { businessName: dto.businessName } },
       },
+      include: { seller: true },
     });
 
     const verifyUrl = `${this.config.getOrThrow<string>("APP_BASE_URL")}/verify-email?token=${token}`;
     await this.email.sendVerificationEmail(user.email, verifyUrl);
+
+    // SRS §3.11/FR-26.5 - after the signup itself has succeeded (non-blocking, FR-26.3).
+    await this.events.emit({
+      eventType: "seller.signup",
+      actorType: "seller",
+      actorId: user.seller!.id,
+      entityType: "seller",
+      entityId: user.seller!.id,
+    });
 
     return { userId: user.id };
   }

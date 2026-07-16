@@ -54,6 +54,7 @@ describe("DomainVerificationService", () => {
     };
     const tlsProber: jest.Mocked<ITlsProber> = { probe: jest.fn().mockResolvedValue(false) };
     const traefikConfig = { writeRouterConfig: jest.fn().mockResolvedValue(undefined), removeRouterConfig: jest.fn() };
+    const events = { emit: jest.fn().mockResolvedValue(undefined) };
 
     const service = new DomainVerificationService(
       prismaAdmin as any,
@@ -61,12 +62,13 @@ describe("DomainVerificationService", () => {
       dnsResolver,
       tlsProber,
       traefikConfig as any,
+      events as any,
     );
-    return { service, prismaAdmin, dnsResolver, tlsProber, traefikConfig, domains };
+    return { service, prismaAdmin, dnsResolver, tlsProber, traefikConfig, events, domains };
   }
 
   it("moves pending -> verified when the CNAME matches the configured target, and writes the Traefik config", async () => {
-    const { service, dnsResolver, traefikConfig } = buildHarness({
+    const { service, dnsResolver, traefikConfig, events } = buildHarness({
       id: "d1",
       domainName: "shop.example.com",
       verificationStatus: "pending",
@@ -80,6 +82,10 @@ describe("DomainVerificationService", () => {
     expect(result.verificationStatus).toBe("verified");
     expect(result.verifiedAt).toBeInstanceOf(Date);
     expect(traefikConfig.writeRouterConfig).toHaveBeenCalledWith("shop.example.com");
+    // SRS §3.11/FR-26.5 - emitted on the transition to verified.
+    expect(events.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "domain.verified", entityId: "d1" }),
+    );
   });
 
   it("moves pending -> verified when the A record matches the configured IP (apex domain path)", async () => {
@@ -110,7 +116,7 @@ describe("DomainVerificationService", () => {
   });
 
   it("does not write a Traefik config again for a domain that is already verified (no-op on the file, still probes TLS)", async () => {
-    const { service, dnsResolver, traefikConfig, tlsProber } = buildHarness({
+    const { service, dnsResolver, traefikConfig, tlsProber, events } = buildHarness({
       id: "d1",
       domainName: "shop.example.com",
       verificationStatus: "verified",
@@ -124,6 +130,8 @@ describe("DomainVerificationService", () => {
 
     expect(traefikConfig.writeRouterConfig).not.toHaveBeenCalled();
     expect(result.tlsStatus).toBe("issued");
+    // Already verified before this call - no duplicate domain.verified event.
+    expect(events.emit).not.toHaveBeenCalled();
   });
 
   it("does not downgrade an already-verified domain when a later check doesn't match (lean v1.0 scope, documented)", async () => {

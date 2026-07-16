@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { EventsService } from "../events/events.service";
 import { mediaTypeFromMimetype, sanitizeFilename } from "./media.util";
 import { ObjectStorageService } from "./object-storage.service";
 
@@ -23,6 +24,7 @@ export class MediaAssetsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly objectStorage: ObjectStorageService,
+    private readonly events: EventsService,
   ) {}
 
   async uploadDirect(sellerId: string, storeId: string, file: UploadableFile, productId?: string) {
@@ -40,11 +42,22 @@ export class MediaAssetsService {
       return this.objectStorage.putObject(key, file.buffer, file.mimetype);
     });
 
-    return this.tenantPrisma.run(sellerId, (tx) =>
+    const asset = await this.tenantPrisma.run(sellerId, (tx) =>
       tx.mediaAsset.create({
         data: { storeId, productId: productId ?? null, url, source: "upload", type },
       }),
     );
+    // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
+    await this.events.emit({
+      eventType: "media.imported",
+      actorType: "seller",
+      actorId: sellerId,
+      storeId,
+      entityType: "media_asset",
+      entityId: asset.id,
+      metadata: { source: "upload" },
+    });
+    return asset;
   }
 
   async list(sellerId: string, storeId: string) {

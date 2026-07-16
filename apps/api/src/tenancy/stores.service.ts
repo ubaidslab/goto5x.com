@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { EventsService } from "../events/events.service";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
 
@@ -12,10 +13,13 @@ import { UpdateStoreDto } from "./dto/update-store.dto";
  */
 @Injectable()
 export class StoresService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   async create(sellerId: string, dto: CreateStoreDto) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    const store = await this.tenantPrisma.run(sellerId, async (tx) => {
       const existingSlug = await tx.store.findUnique({ where: { slug: dto.slug } });
       if (existingSlug) {
         throw new ConflictException(`Slug "${dto.slug}" is already taken.`);
@@ -24,6 +28,16 @@ export class StoresService {
         data: { sellerId, name: dto.name, slug: dto.slug },
       });
     });
+    // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
+    await this.events.emit({
+      eventType: "store.created",
+      actorType: "seller",
+      actorId: sellerId,
+      storeId: store.id,
+      entityType: "store",
+      entityId: store.id,
+    });
+    return store;
   }
 
   async listOwn(sellerId: string) {

@@ -10,6 +10,7 @@ import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.intercep
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
 import { DomainsModule } from "./domains/domains.module";
+import { EventsModule } from "./events/events.module";
 import { HealthModule } from "./health/health.module";
 import { MediaModule } from "./media/media.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -22,6 +23,7 @@ import { TenancyModule } from "./tenancy/tenancy.module";
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]), // generic API-wide guard; auth-specific limits use RateLimitService
     PrismaModule,
     RedisModule,
+    EventsModule,
     AdminModule,
     SettingsModule,
     AuthModule,

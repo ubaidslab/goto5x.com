@@ -61,15 +61,17 @@ describe("DriveImportService", () => {
       getDecryptedRefreshToken: jest.fn().mockResolvedValue("stored-refresh-token"),
       markUsed: jest.fn().mockResolvedValue(undefined),
     };
+    const events = { emit: jest.fn().mockResolvedValue(undefined) };
 
     const service = new DriveImportService(
       tenantPrisma as any,
       connections as any,
       redis as any,
       objectStorage as any,
+      events as any,
       driveClient,
     );
-    return { service, driveClient, redis, connections, objectStorage, createdAssets };
+    return { service, driveClient, redis, connections, objectStorage, events, createdAssets };
   }
 
   it("imports every listed file when no fileIds filter is given, creating one media_asset per file", async () => {
@@ -77,7 +79,7 @@ describe("DriveImportService", () => {
       { id: "f1", name: "a.png", mimeType: "image/png" },
       { id: "f2", name: "b.png", mimeType: "image/png" },
     ];
-    const { service, createdAssets } = buildHarness(files);
+    const { service, createdAssets, events } = buildHarness(files);
 
     const result = await service.importFiles(SELLER_ID, STORE_ID);
 
@@ -85,6 +87,11 @@ describe("DriveImportService", () => {
     expect(result.failed).toHaveLength(0);
     expect(createdAssets).toHaveLength(2);
     expect(createdAssets.every((a) => a.source === "google_drive_import")).toBe(true);
+    // SRS §3.11/FR-26.5 - one media.imported event per successfully imported file.
+    expect(events.emit).toHaveBeenCalledTimes(2);
+    expect(events.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "media.imported", metadata: { source: "google_drive_import" } }),
+    );
   });
 
   it("imports only the requested fileIds when a filter is provided", async () => {
@@ -106,13 +113,15 @@ describe("DriveImportService", () => {
       { id: "good", name: "good.png", mimeType: "image/png" },
       { id: "bad", name: "bad.pdf", mimeType: "application/pdf" }, // unsupported mimetype -> mediaTypeFromMimetype throws
     ];
-    const { service, createdAssets } = buildHarness(files);
+    const { service, createdAssets, events } = buildHarness(files);
 
     const result = await service.importFiles(SELLER_ID, STORE_ID);
 
     expect(result.succeeded).toEqual([{ fileId: "good", mediaAssetId: expect.any(String) }]);
     expect(result.failed).toEqual([{ fileId: "bad", reason: expect.stringContaining("Unsupported media type") }]);
     expect(createdAssets).toHaveLength(1);
+    // Only the successfully-imported file emits an event - the failed one never got as far as a media_asset row.
+    expect(events.emit).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes and caches the access token on a cache miss, then reuses the cached value on the next call", async () => {
