@@ -17,7 +17,7 @@ here rather than improvising in code.
 | # | Module | Depends on | SRS §14 checklist(s) it primarily targets |
 |---|---|---|---|
 | 1 | **Foundation** (this plan) | — | Partial 14.0, 14.8, 14.12 |
-| 2 | Catalog & Media | 1 | Partial 14.1 (data layer only), 14.9 |
+| 2 | Catalog & Media | 1 | Partial 14.2 (FR-2.1 product/variant/inventory CRUD only — the rest of 14.2 ships in later modules, e.g. Module 6's shipping/discount items), 14.9 |
 | 3 | Custom Domain & TLS | 1 | 14.11 |
 | 4 | Theme Engine & Storefront Rendering v1.0 | 2 | 14.1 |
 | 5 | Discovery & Merchandising | 2, 4 | 14.16 |
