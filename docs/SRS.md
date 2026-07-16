@@ -1,11 +1,17 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.6 (Draft — final pre-build revision)
+**Version:** 0.7 (Build-phase amendment)
 **Date:** 2026-07-16
-**Status:** Discussion draft — v0.4 and v0.5 approved as foundation; this revision
-fixes a documentation regression, resolves the four v0.5 timeline flags, adds two
-external-SaaS integration hooks, small storefront additions, and is intended to be
-the last revision before the build phase begins.
+**Status:** v0.6 formally approved; documentation phase closed, build phase
+underway. Module 1 (Foundation) built, tested, and approved. This revision is a
+build-phase amendment: it pins the Settings Registry precedence and adds
+password reset (approved during Module 1 planning), then — approved before
+Module 2 — adds regional launch gating, admin plan grants/platform subscription
+promo codes, in-app messaging (banners/popups/notifications with targeting),
+platform brand-asset management, a mobile-app-readiness NFR, a region-sharded-
+deployment Phase 4+ note, and referral attribution/cross-SaaS discount
+eligibility for the two external-SaaS hooks. No FR from v0.6 was removed or
+weakened — every change below is additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -73,6 +79,33 @@ cut decision, without resolving them unilaterally.
 - **Two new risks** (19–20) for the SaaS hooks' license/entitlement and API-token
   attack surfaces; several small consistency fixes (see §12, and the completeness
   audit delivered alongside this revision).
+
+**Changelog v0.6 → v0.7 (build-phase amendments, this revision):**
+- **Pinned the Settings Registry precedence** (§3.8) to `seller > store > plan >
+  category > global`, resolved during Module 1 planning (previously an open
+  proposal in `docs/build-plan.md`).
+- **Added §5.25 Authentication & Account Security** (FR-25.1–25.4): self-serve
+  password reset, approved as a genuine gap found during Module 1 planning and
+  built in Module 1 alongside signup/login.
+- **Approved before Module 2 — seven further additions**, each slotted into the
+  existing build sequence (see `docs/build-plan.md` for exact module numbers):
+  regional launch gating with an admin-managed allowed-countries list and a
+  waitlist for non-launched countries (FR-25.5); admin-granted plans and
+  platform-level subscription promotion codes, distinct from store-level
+  discount codes (FR-7.8–7.9); in-app messaging — banners, popups, and
+  in-app notifications, each targetable and scheduled (FR-8.15, extends FR-8.7);
+  platform brand-asset management (logo/favicon/hero images), plus a confirmation
+  that per-plan template-tier gating already has no gap (FR-12.3); a mobile-app-
+  readiness NFR making the API the single source of truth (§6); a Phase 4+
+  region-sharded-deployment architecture note, not a v1.0 build item (§3.6); and
+  referral attribution plus cross-SaaS discount eligibility for both external-SaaS
+  hooks (FR-24.13–24.14).
+- **One inconsistency found and fixed while amending:** `docs/mvp-v1-cutlist.md`
+  listed "scheduled/multi-banner announcements" as deferred to v1.1, which had
+  already been contradicted by v0.6's own FR-8.7 (which specified *scheduled*
+  banners for v1.0). FR-8.15 supersedes both — targeted, scheduled messaging
+  across three channels is now explicitly v1.0 scope, and the cutlist is
+  corrected accordingly.
 
 ---
 
@@ -227,6 +260,21 @@ revision per the founder's request (§9, §10).
   is called by). It never depends on either product's own infrastructure,
   monetization, or roadmap to function — a seller with neither connected sees a
   fully working platform.
+- **Regional launch gating (binding, new — founder decision):** seller account
+  creation is Pakistan-only at launch (FR-25.5); buyer-side storefront access is
+  never gated by country. The allowed-country list is a Settings Registry entry,
+  not a hard-coded check, so opening a new region is an admin operation, never a
+  deploy.
+- **Region-sharding readiness (binding, Phase 4+ architecture note only, new):**
+  no module may hard-code an assumption that all data lives in one region beyond
+  the existing i18n/currency rules already binding above. This is a documentation
+  constraint now, not a build requirement — the actual per-region DB/stack split
+  is Phase 4+ (§3.6, §10) and is not being built in v1.0.
+- **API-first / mobile-app readiness (binding, new):** the NestJS API is the
+  single source of truth for every business rule; `apps/web` (Next.js) consumes
+  it like any other client and must never hold logic the API doesn't also
+  enforce. This is what makes future iOS/Android apps (Phase 4, §10) a new client
+  against an existing API, not a rewrite — no app work ships now.
 
 ### 2.6 Assumptions & Dependencies
 - Safepay's sole-proprietor-friendly onboarding (§5.6a, §11) is assumed sufficient
@@ -369,6 +417,16 @@ Because tenancy is row-based, sessions are stateless, workers are stateless, med
 lives in object storage (not local disk) behind an S3-compatible API, and DB access
 already goes through a pooler, each phase transition above is an **infrastructure
 change**, not an application rewrite — verified module-by-module.
+
+**Phase 4+ architecture note — region-sharded deployments (roadmap only, not a
+v1.0 build item):** beyond Phase 4's regional read replicas, a further evolution
+is a full per-region deployment (its own DB + app/worker stack per region) with a
+**global admin aggregation view** that queries across regions for platform-wide
+analytics (FR-8.10/FR-23.4) and control-plane actions. This is documented here so
+today's build avoids closing off the option — no v1.0 module may hard-code an
+assumption that all tenants/data live in a single region beyond the existing
+i18n/currency rules (§3.9, §2.5) that are already binding. No region-sharding code
+is written until Phase 4.
 
 ### 3.7 Release & Versioning Strategy
 - Environments: `dev` → `staging` → `production`. **Staging runs as a separate
@@ -730,6 +788,16 @@ support person to actually scope a role for.
 - FR-7.7: **Launch-campaign pricing** — time-limited or first-N-sellers
   promotional pricing/commission rates, expressed as Settings Registry entries
   with an optional expiry timestamp or a counter condition.
+- FR-7.8: **Admin-granted plans (new)** — an admin can directly grant any plan,
+  including the Free Plan, to a specific seller from the plan editor (FR-8.2),
+  bypassing normal checkout/billing for that one assignment. Recorded in
+  `admin_audit_logs` like every other control-plane mutation (before/after plan).
+- FR-7.9: **Platform-level subscription promotion codes (new)** — an admin can
+  create a one-time discount code for **subscription billing** (a plan/billing
+  discount), optionally targeted at a specific user, distinct from a seller's own
+  store-level `discount_codes` (FR-2.11/FR-5.5), which discount products at
+  checkout, not the seller's own subscription. A platform promo code is redeemed
+  at most once (or up to an admin-set redemption limit) and can carry an expiry.
 
 ### 5.8 Platform Admin Terminal — the Control Plane
 The admin terminal is not "a management screen" — it is the platform's control
@@ -780,6 +848,14 @@ requires the founder to ask an engineer for a deploy.
   admin terminal, mirroring the Supplier Adapter registry (FR-4.9). Disabling a
   client immediately rejects further calls from it without affecting any other
   integration.
+- FR-8.15: **In-app messaging (extends FR-8.7, new)** — announcements are not
+  limited to a single platform-wide banner. An admin can create a message on any
+  of three channels — **banner**, **popup**, or **in-app notification** — each
+  independently **targeted** (all sellers / a specific plan / a specific seller)
+  and **scheduled** (start/end window, same mechanism as FR-8.7's existing
+  scheduling). Maintenance mode (FR-8.7) remains the one global, non-targetable
+  kill-switch — targeting only applies to the messaging channels, not to
+  maintenance mode.
 
 ### 5.9 Media Management
 - FR-9.1: Seller connects Google Drive via OAuth to bulk-import product
@@ -808,6 +884,18 @@ requires the founder to ask an engineer for a deploy.
   Policy — covering the marketplace model, the 3% commission, the per-transaction
   hold, and the rolling reserve — ships as `docs/legal/*.md` for human legal
   review before launch.
+- FR-12.3: **Platform brand asset management (new)** — the admin-editable content
+  capability in FR-12.1 extends to the platform's own visual assets (logo,
+  favicon, marketing hero images), stored and versioned the same way as content
+  pages (a current pointer + an append-only revision history), so a brand refresh
+  is a data operation, never a deploy.
+  - **Confirmation (no gap found):** per-plan visual/template tiers are already
+    fully covered by existing FRs — FR-7.1 (plan editor gates `themes.tier`
+    access) and FR-8.6 (template management assigns which plans can access a
+    given template) — independently of, and layered under, the marketplace
+    entitlement mechanism (FR-24.5). FR-12.3 only adds **platform-owned** brand
+    assets to admin control; it does not change how seller-facing template tiers
+    are gated.
 
 ### 5.13 Customers (CRM)
 - FR-13.1: A **customer record** is automatically created (or matched by email) in
@@ -1071,6 +1159,27 @@ follow.
   + product data), not a party to that product's billing relationship with the
   seller.
 
+#### 5.24c Shared hook requirements (referral attribution & cross-SaaS discounts, new)
+Both SaaS products are founder-owned and connect via the same signed-API-key
+pattern (§3.10); these two requirements apply identically to both hooks:
+- FR-24.13: **Referral attribution** — every SSO handoff (FR-24.8) and every
+  signed API call from either SaaS (FR-24.3, FR-24.9) carries a verifiable
+  signal that the seller originated from goto5x.com, so the founder can confirm
+  (and, later, revenue-share against) genuine cross-product attribution. This is
+  **distinct from the seller-to-seller referral program** (FR-22.6, Phase 1.1) —
+  that rewards a seller for referring another seller to goto5x.com; this
+  attributes a goto5x.com seller's activity on a *different, founder-owned*
+  product. No new table: the attribution event is recorded in
+  `admin_audit_logs` as a system actor, the same pattern already used for
+  Template Install grants (FR-24.6).
+- FR-24.14: **Cross-SaaS discount eligibility** — goto5x.com exposes a small,
+  signed, read-only eligibility-check endpoint (e.g. "is this seller on an
+  active paid plan") that either SaaS can call to decide whether a seller
+  qualifies for a cross-product discount on *that SaaS's own* pricing. goto5x.com
+  never applies or knows the discount terms themselves — it only answers the
+  eligibility question, consistent with FR-24.7/FR-24.12's rule that each
+  product's own billing stays inside that product.
+
 ### 5.25 Authentication & Account Security (new — closes a gap identified during Module 1 planning)
 No prior version of this SRS specified password reset, despite specifying signup,
 login, and email verification. Approved for Module 1:
@@ -1090,6 +1199,18 @@ login, and email verification. Approved for Module 1:
 - FR-25.4: Completing a reset invalidates the token immediately (single-use) and
   invalidates all of that user's existing Redis-backed sessions (§3.2a) — a
   compromised session cannot outlive a password reset.
+- FR-25.5: **Regional launch gating (new).** Signup captures the applicant's
+  country. **Seller** account creation succeeds only for countries on an
+  admin-managed **allowed-countries list** — a Settings Registry entry
+  (`auth.seller_signup_allowed_countries`), so opening a new region is a config
+  change, never a deploy. A non-allowed-country visitor attempting seller signup
+  sees a "launching in your region soon" message instead of an error, and their
+  email + country is captured in a `seller_signup_waitlist` table for future
+  launch-campaign outreach — never silently dropped. **Buyer-side access is never
+  gated by country** — a buyer anywhere can shop any storefront. Built in
+  **Module 13 (Seller Onboarding Wizard)**, not reworked into Module 1's
+  already-approved signup endpoint; the admin allowed-countries list reuses the
+  Settings Registry admin CRUD already shipped in Module 1.
 
 ---
 
@@ -1106,6 +1227,7 @@ login, and email verification. Approved for Module 1:
 | Internationalization | No hard-coded UI strings or currency/date formatting outside a translation-key/locale layer, from v1.0 (§3.9) — RTL/Urdu later is content work, not a rewrite |
 | **Buyer-facing polish** | The storefront, PDF receipts/invoices (FR-19.2), the order-status page, and transactional emails are held to the **same premium visual bar as the marketing site** (§5.0, §13) — "luxury feel" extends to every surface a *buyer* sees |
 | Cost efficiency | Self-host-first by default (§9); every recurring third-party dependency justified against a self-hosted/build-in-house alternative; **every feature added since v0.4, including both v0.6 SaaS hooks, is plain Postgres tables + application code + a small API surface — none of it adds infrastructure cost**, reconfirmed in this revision |
+| **Client/mobile-app readiness (new)** | The API (`apps/api`) is the single source of truth for every business rule; `apps/web` is a client of it, not a place logic can hide. No app work ships in v1.0 — this NFR only guarantees that Phase 4 mobile apps (§10) are a new client, not an API/business-logic rewrite (§2.5) |
 
 ### 6.5 Security & Compliance (expanded)
 - **Multi-tenant isolation:** enforced at both the application layer (mandatory
@@ -1190,7 +1312,11 @@ other account-security events, deliberately separate from `AdminAuditLog`, which
 is scoped to platform-admin control-plane actions, not general account security),
 and, documented ahead for v1.1 — `ReturnRequest, StoreContentPage,
 StoreContentPageRevision, SupportTicket, SupportTicketMessage, ReferralLink,
-ReferralConversion, NewsletterSubscriber`.
+ReferralConversion, NewsletterSubscriber`. **New in v0.7:**
+`SellerSignupWaitlist` (FR-25.5), `PlatformPromoCode` (FR-7.9),
+`PlatformBrandAsset, PlatformBrandAssetRevision` (FR-12.3) — all v1.0. The
+`Announcement` entity gains `channel`/`target_type`/`target_id` fields (FR-8.15)
+rather than a new table.
 
 Every tenant-scoped table among the above carries `store_id` and is protected by
 RLS (§3.2) — no exceptions for new tables. `LedgerEntry` is append-only. Full
@@ -1264,9 +1390,12 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
 - **Phase 3:** Advanced theme customizer (animation presets, AI-assisted design),
   deeper analytics, **admin sub-roles/seller staff accounts (reaffirmed here, not
   pulled forward into any earlier phase)**.
-- **Phase 4:** Multi-VPS scale-out, international payment gateways, mobile apps,
-  **RTL/Urdu storefront support** (content work only, per §3.9), **Markaz
-  supplier-adapter evaluation** (pending API verification).
+- **Phase 4:** Multi-VPS scale-out, international payment gateways, mobile apps
+  (consuming the existing API per the mobile-readiness NFR, §6), **region-sharded
+  deployments** (per-region DB/stack + a global admin aggregation view — §3.6
+  architecture note only, not yet a committed build), **RTL/Urdu storefront
+  support** (content work only, per §3.9), **Markaz supplier-adapter evaluation**
+  (pending API verification).
 
 ---
 
@@ -1372,6 +1501,15 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Repeated reset requests for the same account/IP are rate-limited (FR-25.2)
 - [ ] Every reset request and completion produces a `UserSecurityEvent` row
       (FR-25.3)
+- [ ] A seller-signup attempt from a country **not** on the Settings-Registry
+      allowed-countries list shows the "launching in your region soon" message
+      (not an error) and creates a `seller_signup_waitlist` row with the
+      submitted email + country (FR-25.5)
+- [ ] Adding a country to the allowed-countries list via the Settings Registry
+      (no deploy) immediately allows seller signup from that country on the very
+      next request (FR-25.5)
+- [ ] A **buyer** can shop any storefront regardless of country — regional
+      gating never applies to buyer-side access (FR-25.5)
 - [ ] Page load meets the sub-2s first-contentful-paint target (§6)
 - [ ] Legal/content pages (ToS, Privacy, Refund, About, Contact) are linked,
       render correctly, and are served from admin-editable content (FR-12.1), not
@@ -1502,6 +1640,13 @@ next module starts. Each item is written to be testable, not aspirational.
       coded-theme access) enforce correctly for a seller on that plan
 - [ ] Billing-cycle mechanics are correct for a full period even though v1.0
       launches on a Free Plan + simple paid tiers
+- [ ] An admin can grant any plan, including Free, directly to a specific seller,
+      bypassing checkout; the grant is captured in `admin_audit_logs` with the
+      seller's before/after plan (FR-7.8)
+- [ ] A platform-level subscription promo code redeems correctly against
+      subscription billing, respects its redemption limit/expiry, and cannot be
+      applied at a seller's storefront checkout (proving it's distinct from
+      store-level `discount_codes`, FR-7.9)
 
 ### 14.8 Platform Admin Terminal — Control Plane
 - [ ] Every FR-8.x item has a passing test: feature flags, plan editor,
@@ -1521,6 +1666,22 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Enabling maintenance mode shows the maintenance page to buyers/sellers while
       an allowlisted admin IP still reaches the admin terminal (FR-8.7)
 - [ ] Content pages are editable from the admin terminal and versioned (FR-12.1)
+- [ ] Platform brand assets (logo, favicon, hero images) are editable from the
+      admin terminal and versioned the same way as content pages (FR-12.3)
+- [ ] A Free-Plan seller with a marketplace template entitlement still sees only
+      the base template tier otherwise — confirming FR-7.1/FR-8.6 plan-tier
+      gating and FR-24.5 entitlement gating remain independently correct after
+      FR-12.3 (no regression introduced by brand-asset management)
+- [ ] A banner/popup/in-app-notification message targeted at "plan X" is visible
+      only to sellers on plan X, one targeted at a specific seller is visible
+      only to that seller, and one targeted "all" is visible platform-wide
+      (FR-8.15)
+- [ ] A scheduled message (banner/popup/in-app notification) becomes visible at
+      its start time and stops at its end time without a deploy (FR-8.15,
+      extends FR-8.7's existing scheduling)
+- [ ] Enabling maintenance mode still applies globally regardless of any
+      per-plan/per-seller message targeting in flight (FR-8.7 vs FR-8.15
+      precedence)
 - [ ] The external-API client registry lists the Template Store and Social Media
       SaaS clients; disabling one immediately rejects further calls from it
       without affecting the other (FR-8.14)
@@ -1687,6 +1848,13 @@ next module starts. Each item is written to be testable, not aspirational.
       dashboard; a revoked token is rejected on its very next use (FR-24.10)
 - [ ] Both external-API clients are individually toggleable from the admin
       registry without affecting each other or any other module (FR-8.14)
+- [ ] An SSO handoff and a signed API call from either SaaS both carry a
+      verifiable referral-attribution signal, recorded in `admin_audit_logs` as a
+      system actor (FR-24.13)
+- [ ] The cross-SaaS discount-eligibility endpoint answers correctly for a
+      seller on a paid plan vs. the Free Plan, returns only the eligibility
+      boolean (never discount terms), and is rejected when called unsigned
+      (FR-24.14)
 
 ---
 

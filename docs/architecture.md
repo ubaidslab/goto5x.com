@@ -189,6 +189,12 @@ mechanism (no second login), and a seller-scoped, revocable token
 storefront). Both directions are **new API routes and two small tables only** —
 no new server, no new database, no new paid service; disabling either client from
 `AdminM`'s registry takes effect immediately and independently of the other.
+**Referral attribution and cross-SaaS discount eligibility (SRS FR-24.13/24.14,
+new in v0.7):** both hooks now carry a signed attribution signal on every SSO
+handoff/API call (logged to `AdminAuditLog` as a system actor, no new table), and
+`BridgesM` exposes one small signed read-only endpoint either SaaS can call to
+check a seller's plan-based discount eligibility — goto5x.com never knows or
+applies that SaaS's own discount terms, only answers the eligibility question.
 
 **Staging (SRS §3.7):** not pictured above to keep the diagram readable, but staging
 is a second instance of this entire box (`App`, `Worker`, `Redis`, `Postgres`,
@@ -254,3 +260,11 @@ rewrite traps": **no**, provided the four binding rules from SRS §3 are honored
 the first commit — app servers are stateless, sessions live in Redis/JWT not memory,
 media lives in object storage not local disk, and DB access always goes through a
 pooler.
+
+**Beyond Phase 4 — region-sharded deployments (SRS §3.6, roadmap note only, new in
+v0.7):** a further evolution not pictured above is a full per-region deployment —
+its own DB + app/worker stack per region — with a global admin aggregation view
+querying across regions for platform-wide analytics and control-plane actions.
+No code for this ships now; it's documented so v1.0 modules don't hard-code a
+single-region assumption beyond the i18n/currency rules already binding (SRS §3.9,
+§2.5).

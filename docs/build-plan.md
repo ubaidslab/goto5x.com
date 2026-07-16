@@ -28,9 +28,9 @@ here rather than improvising in code.
 | 10 | Payouts & Disbursement | 9 | 14.6 (payout half) |
 | 11 | Plans, Pricing & Business Guard-Rails | 1, 9 | 14.7, 14.21 |
 | 12 | Customers, Reviews & Data Portability | 8 | 14.13, 14.14, 14.18, 14.19 (invoice) |
-| 13 | Seller Onboarding Wizard | 4, 8 | 14.20 |
-| 14 | Admin Control Plane completion | 1, 9, 10, 11 | Remainder of 14.8 |
-| 15 | External-SaaS Bridges | 4, 2 | 14.22 |
+| 13 | Seller Onboarding Wizard | 4, 8 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) |
+| 14 | Admin Control Plane completion | 1, 9, 10, 11 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3), both new in v0.7 |
+| 15 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 16 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
 | 17 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
 
@@ -67,6 +67,28 @@ isn't a blocker for starting the build — it's a known gate later.
    signup/login/verification, since it's the same auth surface.
 3. **Feature-flags-as-Settings-Registry — RESOLVED, acknowledged correct.** No
    separate table or mechanism; unchanged from the original plan.
+
+---
+
+## Amendments approved before Module 2 (SRS v0.7)
+
+Documentation-only pass, no Module 1 code touched. Seven items, each slotted into
+the module table above rather than creating a new module:
+
+| # | Item | SRS FR(s) | Slotted into |
+|---|---|---|---|
+| 1 | Regional launch gating (PK-only seller signup, allowed-countries Settings Registry entry, waitlist for blocked attempts) | FR-25.5 | Module 13 (Onboarding Wizard) — the signup endpoint itself is Module 1's, already approved/closed, so this ships as a Module 13 addition rather than reopening Module 1 |
+| 2 | Admin-granted plans + platform-level subscription promo codes | FR-7.8–7.9 | Module 11 (Plans, Pricing & Guard-Rails) — same module that already owns the plan editor |
+| 3 | In-app messaging: banners/popups/notifications, targeted + scheduled | FR-8.15 | Module 14 (Admin Control Plane completion) — extends FR-8.7, already slotted there |
+| 4 | Platform brand-asset management (logo/favicon/hero swaps); confirmed no gap in per-plan template-tier gating | FR-12.3 | Module 16 (Platform's Own Site — premium pass) — same branding-asset dependency already noted for that module |
+| 5 | Mobile-app-readiness NFR (API as single source of truth) | §6 NFR | No module — a standing architectural discipline from now on, not a deliverable; verified by code review each module, not a checklist item |
+| 6 | Region-sharded deployments (per-region DB/stack + global admin aggregation view) | §3.6 architecture note | No module — Phase 4+ roadmap note only, not a v1.0 build item |
+| 7 | Referral attribution + cross-SaaS discount eligibility for both SaaS hooks | FR-24.13–24.14 | Module 15 (External-SaaS Bridges) — same module that owns both hooks |
+
+**One inconsistency caught and fixed during this pass:** the Settings Registry
+precedence line in this document's own "Foundational architecture decisions"
+section (Module 1 plan, below) still read the original *proposed* ordering after
+the founder had already corrected it — fixed in place, see that section.
 
 ---
 
@@ -172,8 +194,10 @@ until build times actually justify a second one).
 - **RLS policies live as raw SQL** inside the Prisma migration folder (Prisma's
   schema DSL can't express `CREATE POLICY`/`GRANT`/`REVOKE`) — checked into the
   same migration history, not a separate undocumented script.
-- **Settings Registry precedence:** `seller > plan > category > store > global`
-  (flagged above — proposed, not yet founder-confirmed).
+- **Settings Registry precedence:** `seller > store > plan > category > global`
+  (most-specific-wins; founder-confirmed, see "Flags surfaced" above — this was
+  a stale, already-superseded line left over from before that decision, caught
+  and fixed during the v0.7 documentation pass).
 
 ### Migration list (Prisma, in order)
 

@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.6 — final pre-build revision)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.7 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -93,6 +93,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 
 **Seller onboarding**
 - Guided post-signup wizard: template → logo → first product → domain (FR-20.1)
+- **Regional launch gating (new in v0.7):** seller signup is Pakistan-only,
+  gated by an admin-managed Settings Registry allowed-countries list; a blocked
+  non-PK attempt shows a "launching soon" message and captures email+country to
+  a waitlist (FR-25.5). Buyer-side access is never region-gated.
 
 **Payments, commission & payout**
 - 3% default commission (post-discount amount), append-only ledger with
@@ -117,13 +121,18 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - Unit-economics admin dashboard (FR-23.4)
 - Velocity/abuse limits (FR-23.5)
 
-**External-SaaS integration hooks (new in v0.6)**
+**External-SaaS integration hooks (new in v0.6, extended in v0.7)**
 - **Marketing entry point** in the seller dashboard (FR-24.8), SSO handoff to the
   Social Media SaaS, no second login
 - **Product Feed API**: seller-scoped, rate-limited, tenant-isolated, revocable
   token (FR-24.9–24.11)
 - Both hooks gated by an admin-manageable **external-API client registry**
   (FR-8.14), mirroring the supplier adapter registry
+- **Referral attribution + cross-SaaS discount eligibility (new in v0.7):** every
+  SSO handoff/API call carries a verifiable "came from goto5x.com" signal
+  (audit-logged, no new table), and a small signed endpoint lets either SaaS
+  check a seller's plan-based discount eligibility without goto5x.com knowing
+  that SaaS's own discount terms (FR-24.13–24.14)
 
 **Admin terminal — Control Plane**
 - Settings Registry as the underlying mechanism for everything above
@@ -132,6 +141,17 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   management, maintenance mode, payout freeze/release, manually-assisted refunds,
   immutable audit log, live platform analytics (incl. unit-economics view),
   mandatory admin MFA, content-page editor, **external-API client registry**
+- **Admin-granted plans & platform subscription promo codes (new in v0.7):** an
+  admin can grant any plan (incl. Free) to a specific seller, and issue one-time,
+  optionally user-targeted subscription discount codes — a separate mechanism
+  from a seller's own store-level discount codes (FR-7.8–7.9)
+- **In-app messaging (new in v0.7, supersedes the v1.1-deferred item below):**
+  banners, popups, and in-app notifications, each independently targetable
+  (all/plan/seller) and scheduled, extending the existing announcements/
+  maintenance-mode mechanism (FR-8.15)
+- **Platform brand-asset management (new in v0.7):** logo/favicon/hero image
+  swaps are admin-editable and versioned like content pages (FR-12.3); confirmed
+  no gap in existing per-plan template-tier gating (FR-7.1/FR-8.6)
 
 **Infrastructure & security foundations (non-negotiable)**
 - Tenant-scoping middleware + Postgres RLS across **every** tenant table
@@ -168,7 +188,7 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 | Listing/content moderation automation | v1.0's admin-assisted catalog is small enough to eyeball manually |
 | "Login as seller" impersonation (full secure flow) | `admin_impersonation_sessions` table already exists in v1.0 schema |
 | Supplier lifecycle self-serve controls | Matches suppliers being admin-assisted in v1.0 |
-| Scheduled/multi-banner announcements | v1.0 ships only the single maintenance-mode toggle |
+| ~~Scheduled/multi-banner announcements~~ | **Corrected in v0.7 — this was already stale.** v0.6's own FR-8.7 specified *scheduled* banners for v1.0, contradicting this row. FR-8.15 (new in v0.7) goes further and moves targeted, scheduled, multi-channel messaging (banner/popup/in-app notification) into v1.0 outright — see the Admin terminal section above. Nothing about messaging remains deferred to v1.1. |
 | Suspicious-order flagging queue (`order_flags` UI) | Admin reviews orders directly at launch volume |
 | Automated one-click refunds via Payment Adapter | Manual-assisted refund is sufficient at launch volume |
 | `platform_metrics_snapshots` (pre-aggregated analytics) | Live queries are fast enough at v1.0 volume |
@@ -184,7 +204,7 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 | Tiered plan proration | v1.0 ships the simple next-cycle rule (FR-7.5) |
 | Coded-theme escape hatch, dispute workflow, SMS/WhatsApp notifications, second payment gateway, gated per-seller COD, shipping zones/weight rates, advanced discounts | Unchanged — see SRS §10 |
 | **Admin sub-roles / seller staff accounts** | **Reaffirmed Phase 3, not pulled forward** (per the founder's explicit confirmation in this revision) — a single admin role is fine until there's more than one admin/support person to scope a role for |
-| Multi-VPS scale-out, international payment gateways, mobile apps | Unchanged — see SRS §10 |
+| Multi-VPS scale-out, international payment gateways, mobile apps (API-first NFR is binding from v1.0, SRS §6/§2.5, so this is a new client, not a rewrite), region-sharded deployments (architecture note only, SRS §3.6) | Unchanged/extended — see SRS §10 |
 
 ---
 
@@ -206,8 +226,13 @@ instance, the BullMQ worker, and the self-hosted MinIO already budgeted for v1.0
 - Every guard-rail (free-plan limits, dormant lifecycle) is a Settings Registry
   entry + a scheduled job on the existing worker.
 
-**Nothing in this document set, across v0.4/v0.5/v0.6, requires a new billed
-service, a new server, or infrastructure beyond the single VPS.**
+**Nothing in this document set, across v0.4/v0.5/v0.6/v0.7, requires a new billed
+service, a new server, or infrastructure beyond the single VPS** — the seven
+v0.7 additions are three new Postgres tables (`seller_signup_waitlist`,
+`platform_promo_codes`, `platform_brand_assets`/`platform_brand_asset_revisions`),
+a handful of new columns/values on existing tables (`users.country`,
+`announcements.channel`/`target_type`/`target_id`), and application code — no
+new infrastructure.
 
 ---
 

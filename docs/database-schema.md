@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.6)
+# goto5x.com — Database Schema (v1, updated for SRS v0.7)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -141,7 +141,20 @@ hard-coded integration.
 | email_verification_expires_at | timestamptz nullable | |
 | password_reset_token_hash | text nullable | new — FR-25.1; single-use, cleared on completion |
 | password_reset_expires_at | timestamptz nullable | new — FR-25.1; TTL from `auth.password_reset_token_ttl_minutes` |
+| country | text nullable | new — ISO 3166-1 alpha-2, captured at signup (FR-25.5); drives the seller-signup regional gate — never used to restrict buyer-side access |
 | created_at, updated_at | timestamptz | |
+
+### `seller_signup_waitlist` (global — new, FR-25.5)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| email | text | not unique — the same person may retry after their country launches |
+| country | text | ISO 3166-1 alpha-2, as submitted at the blocked signup attempt |
+| requested_at | timestamptz | |
+
+Index: `idx_waitlist_country (country, requested_at)` — the admin's per-country
+export for a future launch campaign. Not a `users`/`sellers` row: the signup never
+completed, so there is no account to attach this to.
 
 ### `user_security_events` (global, append-only — new, FR-25.3)
 | Column | Type | Notes |
@@ -683,6 +696,25 @@ including the Free Plan's higher default commission (FR-7.3/FR-7.4).
 
 Index: `idx_subscriptions_seller (seller_id)`.
 
+### `platform_promo_codes` (global — new, FR-7.9)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| code | text unique | |
+| discount_type | enum(`percent`,`fixed`) | applies to subscription billing, never a storefront checkout |
+| discount_value | numeric(12,2) | |
+| target_user_id | uuid FK → users.id, nullable | null = redeemable by any account; set = single-user-targeted |
+| max_redemptions | integer default 1 | admin-configurable; not necessarily single-use |
+| redeemed_count | integer default 0 | |
+| expires_at | timestamptz nullable | |
+| created_by | uuid FK → admin_users.id | |
+| created_at | timestamptz | |
+
+Deliberately a **separate table from `discount_codes`** (tenant, store-level,
+product checkout discounts, FR-2.11/FR-5.5): a platform promo code discounts a
+*seller's own subscription bill*, not a buyer's cart, and is global (no
+`store_id`) rather than tenant-scoped.
+
 ### `admin_users` (global)
 | Column | Type | Notes |
 |---|---|---|
@@ -762,19 +794,25 @@ matching `admin_audit_logs` row.
 
 Index: `idx_order_flags_status (status, created_at)`.
 
-### `announcements` (global, FR-8.7)
+### `announcements` (global, FR-8.7, extended in v0.7 for FR-8.15)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | message | text | |
 | level | enum(`info`,`warning`,`critical`) | |
-| starts_at, ends_at | timestamptz | scheduling window |
+| channel | enum(`banner`,`popup`,`in_app_notification`) default `'banner'` | new — FR-8.15; `banner` preserves the original v0.6 behavior exactly |
+| target_type | enum(`all`,`plan`,`seller`) default `'all'` | new — FR-8.15 |
+| target_id | uuid nullable | new — FR-8.15; `plans.id` or `sellers.id` depending on `target_type`; null when `target_type = 'all'` |
+| starts_at, ends_at | timestamptz | scheduling window (unchanged — FR-8.7 already specified scheduling) |
 | is_active | boolean | manual kill-switch independent of the schedule |
 | created_by | uuid FK → admin_users.id | |
 | created_at | timestamptz | |
 
-Note: platform-wide **maintenance mode** is a `settings_values` row
-(`platform.maintenance_mode`, scope `global`), not a row here.
+Index: `idx_announcements_target (target_type, target_id)` for the resolver that
+picks which messages apply to the current seller/plan. Note: platform-wide
+**maintenance mode** is a `settings_values` row (`platform.maintenance_mode`,
+scope `global`), not a row here, and is unaffected by `target_type` — FR-8.7's
+maintenance toggle stays the one global, non-targetable kill-switch.
 
 ### `content_pages` (global — FR-12.1)
 | Column | Type | Notes |
@@ -797,6 +835,16 @@ Note: platform-wide **maintenance mode** is a `settings_values` row
 | created_at | timestamptz | never updated |
 
 Unique: `(content_page_id, version)`.
+
+### `platform_brand_assets` (global — new, FR-12.3) and `platform_brand_asset_revisions` (global, append-only)
+Mirrors the `content_pages`/`content_page_revisions` pattern exactly, so a brand
+refresh is a data operation like any content edit:
+
+`platform_brand_assets`: `id, asset_key unique (enum: logo, favicon, og_image,
+marketing_hero), current_version, updated_by (FK admin_users), updated_at`.
+`platform_brand_asset_revisions`: `id, brand_asset_id (FK
+platform_brand_assets.id), version, file_url (MinIO, §3.3), updated_by (FK
+admin_users), created_at`. Unique: `(brand_asset_id, version)`.
 
 ### `import_jobs` (tenant — FR-18.1–18.2)
 | Column | Type | Notes |
