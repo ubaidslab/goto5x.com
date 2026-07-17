@@ -1,20 +1,27 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.8); this README covers running the code.
+(approved v0.9); this README covers running the code.
 
-**Status:** Modules 1–3 approved; Platform Event Log amendment (SRS §3.11)
+**Status:** Modules 1–4 built (Foundation; Catalog & Media; Custom Domain &
+TLS; Theme Engine & Storefront Rendering); Modules 1–3 formally approved,
+Module 4 awaiting founder review. Platform Event Log amendment (SRS §3.11)
 built and backfilled — see `docs/build-plan.md` for the full module sequence
-and what is/isn't in scope yet. Module 4 (Theme Engine & Storefront
-Rendering) next.
+and what is/isn't in scope yet. Module 5 (Discovery & Merchandising) next.
 
 ---
 
 ## Architecture at a glance
 
 - `apps/api` — NestJS modular monolith (see `docs/architecture.md`)
-- `apps/web` — Next.js (bare functional pages only in Module 1 — no design
-  pass yet; that's a later module)
+- `apps/web` — Next.js. Dashboard/auth pages are still bare functional (no
+  design pass yet). The storefront (Module 4: home + product pages,
+  multi-tenant Host-header routing, sitemap/robots) is real, functional, and
+  componentized, but ships with three *structurally* distinct built-in
+  themes rather than the bespoke, hand-designed premium visual bar the SRS
+  ultimately calls for — that pass is blocked on branding assets not yet
+  delivered (`docs/build-plan.md`'s Module 4 section has the full
+  disclosure)
 - PostgreSQL (via Prisma), Redis, MinIO, Traefik — see `docker-compose.yml`
   for the full production topology, mirrored locally
 
@@ -62,6 +69,12 @@ Two Postgres roles back every environment (`docs/build-plan.md`
    ```sh
    npx ts-node src/settings-registry/settings.seed.ts
    ```
+   Then seed Module 4's built-in theme catalog + its one settings key
+   (`theme.coded_mode_enabled`) - every store-creation call fails closed if no
+   theme has been seeded yet:
+   ```sh
+   npx ts-node src/theme-engine/themes.seed.ts
+   ```
 7. For real media features (Module 2), start a real MinIO instance (or the
    `docker-compose.yml` one) and create the bucket named by `MINIO_BUCKET`,
    plus a real Google Cloud OAuth Client ID for Drive import. Neither is
@@ -74,6 +87,13 @@ Two Postgres roles back every environment (`docs/build-plan.md`
 9. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from the repo root.
    Run the worker too if you want to see the domain-verification recheck job
    actually fire: `pnpm start:worker` (from `apps/api`).
+10. `PLATFORM_HOSTNAMES` (Module 4, `apps/web`) is a comma-separated list of
+    hostnames (including port, e.g. `localhost:3000`) that serve the
+    platform's own site; any other incoming Host header is treated as a
+    tenant storefront request. Defaults cover `localhost:3000`/
+    `app.localhost(:3000)` — override it if you run `next dev`/`next start`
+    on a different port, or requests to your own hostname will 404 as an
+    unresolvable storefront instead of showing the platform site.
 
 **Important — `prisma migrate reset`:** this command drops and recreates the
 entire `public` schema, which wipes the schema-level grants
@@ -130,6 +150,27 @@ and successfully completes its own Let's Encrypt HTTP-01 challenge is a
 `docker compose up --build` + a real owned domain's pre-launch smoke test,
 same as the other two gaps above.
 
+**Also unverified against the real thing (Module 4):** `apps/web` has no
+automated test harness (no prior module needed one), so the storefront
+rendering pages, `middleware.ts`'s Host-header routing, and `app/sitemap.ts`/
+`app/robots.ts` were verified manually in this sandbox — a `next build`
+production build, then a live `next dev`/`next start` boot hit with `curl -H
+"Host: ..."` for a platform hostname, a tenant subdomain, and an
+unresolvable hostname (all three behaved correctly: platform page, rendered
+storefront, 404). The SEO fallback chain and hostname/canonical-domain
+resolution the sitemap/robots data actually depends on **are** covered by
+`apps/api`'s automated suite (`seo-fallback.util.spec.ts`,
+`storefront.e2e-spec.ts`) — what's manual here is only the thin Next.js
+passthrough over that already-tested data. Please click through the
+storefront (home + a product page) and check `/sitemap.xml`/`/robots.txt`
+against a real custom domain and the free subdomain as part of the same
+pre-launch smoke test as the gaps above. Three *structurally* distinct
+built-in themes ship in v1.0 (different default section order/color scheme)
+rather than the bespoke, hand-designed premium visual bar the SRS ultimately
+calls for — see `docs/build-plan.md`'s Module 4 section for why (branding
+assets not yet delivered) and confirm this is an acceptable interim state
+before launch.
+
 ---
 
 ## Running tests
@@ -164,13 +205,19 @@ database, not a mock):
      (`www.github.com`, `dns.google`) to prove `NodeDnsResolverService`/
      `NodeTlsProberService` genuinely work - no mocking, no test double. This
      needs outbound internet access from wherever you run the suite.
+   - Module 4's `storefront.e2e-spec.ts` reuses the same real-domain
+     verification flow to prove a *verified* custom domain becomes
+     `canonicalHostname` while an unverified one does not resolve at all -
+     no new external dependency beyond what Module 3 already needs.
 2. Run:
    ```sh
    pnpm test:e2e
    ```
 
-All 58 e2e tests + 50 unit tests pass as of this amendment (see the Platform
-Event Log verification note delivered alongside this build for the full list).
+All 74 e2e tests + 61 unit tests pass as of Module 4 (see this module's
+verification report for the full list). `apps/web` has no automated test
+suite - see the Module 4 disclosure above for what was verified manually
+instead.
 
 ---
 
@@ -197,6 +244,7 @@ compromised secret should kill every session, not quietly persist).
 | `DRIVE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts a seller's stored Drive refresh token at rest (SRS FR-9.1/§6.5); the short-lived access token is never persisted to Postgres at all, so there is no equivalent key needed for it |
 | `TRAEFIK_DYNAMIC_CONFIG_DIR` | Any writable directory the API can write to and (in production) Traefik can read from - a shared Docker volume in `docker-compose.yml` |
 | `ACME_EMAIL` | A real email address - Let's Encrypt requires one for expiry/problem notices. Read only by the `traefik` service, not the app |
+| `PLATFORM_HOSTNAMES` (`apps/web`) | Comma-separated hostnames (with port, if non-default) that serve the platform's own site rather than a tenant storefront (Module 4). Not a secret - no default outside local dev needed since production always sets it to the platform's real domain(s) |
 
 ---
 

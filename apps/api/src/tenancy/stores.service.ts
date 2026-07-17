@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { CreateStoreDto } from "./dto/create-store.dto";
@@ -24,9 +24,32 @@ export class StoresService {
       if (existingSlug) {
         throw new ConflictException(`Slug "${dto.slug}" is already taken.`);
       }
-      return tx.store.create({
+      const created = await tx.store.create({
         data: { sellerId, name: dto.name, slug: dto.slug },
       });
+      // SRS FR-1.2/§14.1 (Module 4) - every store gets a theme the moment it
+      // exists, so the customizer/storefront never have to handle "no theme
+      // assigned yet" as a state. `themes` has no RLS (global catalog), so
+      // this read is unaffected by the seller-scoped session this
+      // transaction is already running under.
+      const defaultTheme = await tx.theme.findFirst({
+        where: { tier: "free", isActive: true },
+        orderBy: { name: "asc" },
+      });
+      if (!defaultTheme) {
+        // Deliberately fails loudly rather than silently creating a store
+        // with no theme settings - this is a deployment/seeding bug (see
+        // README's local-setup step 6b), not a recoverable user-facing
+        // condition, same discipline as a missing Settings Registry key
+        // throwing instead of guessing a value.
+        throw new InternalServerErrorException(
+          "No active free theme is seeded - run src/theme-engine/themes.seed.ts before creating stores.",
+        );
+      }
+      await tx.storeThemeSettings.create({
+        data: { storeId: created.id, themeId: defaultTheme.id },
+      });
+      return created;
     });
     // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
     await this.events.emit({

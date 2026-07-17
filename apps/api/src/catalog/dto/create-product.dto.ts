@@ -17,4 +17,14 @@ export class CreateProductDto {
   @IsOptional()
   @IsEnum(["draft", "active", "archived"])
   status?: ProductStatus;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(70)
+  seoTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  seoDescription?: string;
 }

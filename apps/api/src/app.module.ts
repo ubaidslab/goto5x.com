@@ -15,7 +15,9 @@ import { HealthModule } from "./health/health.module";
 import { MediaModule } from "./media/media.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SettingsModule } from "./settings-registry/settings.module";
+import { StorefrontModule } from "./storefront/storefront.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
+import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { TenancyModule } from "./tenancy/tenancy.module";
     CatalogModule,
     MediaModule,
     DomainsModule,
+    ThemeEngineModule,
+    StorefrontModule,
     HealthModule,
   ],
   providers: [

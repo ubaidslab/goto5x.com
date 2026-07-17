@@ -187,6 +187,24 @@ deletes a small YAML file per verified domain, which is what makes this
 "automatic per-domain TLS" claim true without a custom cert-management
 service.
 
+**Theme Engine & Storefront Rendering (SRS FR-1.x/FR-11.2, Module 4):**
+`apps/web` serves both the platform's own site and every tenant storefront
+from one deployment, differentiated purely by the incoming Host header —
+Next.js middleware rewrites any non-platform hostname under `/storefront`,
+where a Server Component resolves the real store via the same public,
+unauthenticated `/storefront/*` API a buyer's browser never sees directly.
+Hostname resolution reuses Module 3's `domains` table (verified custom
+domain first) and falls back to a `stores.slug`-based free subdomain —
+one resolver, not two parallel lookup paths. `store_theme_settings` (tenant,
+RLS-protected the same way as every other tenant table since Module 2) holds
+the customizer's bounded token set (colors, fonts, logo/banner, section
+show/hide/reorder — SRS Risk Register #10's deliberate scope limit); the
+storefront and the seller-facing customizer's live preview render from the
+*same* section components, so "live preview matches published output" is
+true by construction. `sitemap.xml`/`robots.txt` are Next.js special files
+that read the same resolved-store data per request (no static generation, no
+cron) and honor `stores.access_mode` for the noindex/no-sitemap case.
+
 **Platform Event Log (SRS §3.11, new in v0.8):** every module writes its own
 lifecycle events (`seller.signup`, `product.created`, `domain.verified`, etc.)
 into one append-only `platform_events` table via a single `EventsService.emit()`

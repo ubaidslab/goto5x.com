@@ -8,6 +8,7 @@ import {
   seedModule3Settings,
   seedPlatformEventsSettings,
 } from "../../src/settings-registry/settings.seed";
+import { seedBuiltInThemes, seedModule4Settings } from "../../src/theme-engine/themes.seed";
 
 /**
  * Builds a real NestJS app wired to the real local Postgres/Redis started for
@@ -44,7 +45,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       admin_audit_logs, platform_events, settings_values, settings_definitions,
-      domains,
+      domains, store_theme_settings, themes,
       media_assets, product_variants, products, categories,
       google_drive_connections,
       stores, admin_users, sellers, user_security_events, users, plans
@@ -56,6 +57,12 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedModule1Settings(prisma);
   await seedModule3Settings(prisma);
   await seedPlatformEventsSettings(prisma);
+  await seedModule4Settings(prisma);
+  // Themes aren't a Settings Registry concept, but every store-creation test
+  // across every module needs at least one seeded theme to exist (Module 4
+  // auto-assigns a default theme in StoresService.create()) - seeded
+  // alongside settings for exactly that reason, not because it's settings data.
+  await seedBuiltInThemes(prisma);
 }
 
 /**

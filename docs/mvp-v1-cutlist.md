@@ -166,6 +166,19 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   append-only event recording, starting with Module 1 (backfilled) — zero
   dashboard work now, the substrate the already-specified analytics/unit-
   economics dashboards (FR-8.10/FR-23.4) read from later
+- **SEO controls + sitemap/robots pulled forward into Module 4** (SRS FR-1.5,
+  new in v0.9): originally grouped under Storefront Discovery's FR-16.6 above,
+  now built alongside the Theme Engine instead of deferred — Module 5 only
+  extends the same generator with collection pages once those exist.
+
+**Store builder, build-phase note (Module 4 built):** the "3 hand-built
+premium templates" line above ships in v1.0 as three *structurally* distinct
+built-in themes (different default section order/color scheme) — a real,
+functional, componentized storefront + customizer, not a placeholder. The
+bespoke, hand-designed premium visual bar the line originally promised is
+blocked on branding assets not yet delivered (same founder-acknowledged gate
+as the platform's own site, `docs/build-plan.md`'s "Known sequencing risk"),
+and is a founder sign-off item before launch, not a v1.1 cut.
 
 ---
 

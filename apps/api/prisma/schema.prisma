@@ -90,6 +90,18 @@ enum DomainTlsStatus {
   error
 }
 
+enum StoreAccessMode {
+  public
+  coming_soon
+  password_protected
+}
+
+enum ThemeTier {
+  free
+  premium
+  marketplace
+}
+
 model User {
   id                            String    @id @default(uuid()) @db.Uuid
   email                         String    @unique
@@ -155,17 +167,26 @@ model AdminUser {
 }
 
 model Store {
-  id        String      @id @default(uuid()) @db.Uuid
-  sellerId  String      @map("seller_id") @db.Uuid
-  name      String
-  slug      String      @unique
-  status    StoreStatus @default(active)
-  currency  String      @default("PKR")
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  id             String          @id @default(uuid()) @db.Uuid
+  sellerId       String          @map("seller_id") @db.Uuid
+  name           String
+  slug           String          @unique
+  status         StoreStatus     @default(active)
+  // Module 4: pulled forward from its originally-planned Module 5
+  // introduction (FR-16.5) - see docs/build-plan.md's Module 4 amendment
+  // note. Only the column + noindex/sitemap read-side behavior are in scope
+  // here; the coming-soon page content and password-gate flow themselves
+  // are Module 5's job (§14.16).
+  accessMode     StoreAccessMode @default(public) @map("access_mode")
+  seoTitle       String?         @map("seo_title")
+  seoDescription String?         @map("seo_description")
+  currency       String          @default("PKR")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
-  seller  Seller   @relation(fields: [sellerId], references: [id])
-  domains Domain[]
+  seller             Seller              @relation(fields: [sellerId], references: [id])
+  domains            Domain[]
+  themeSettings      StoreThemeSettings?
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -205,17 +226,19 @@ model Category {
 }
 
 model Product {
-  id            String            @id @default(uuid()) @db.Uuid
-  storeId       String            @map("store_id") @db.Uuid
-  categoryId    String?           @map("category_id") @db.Uuid
-  title         String
-  description   String?
-  status        ProductStatus     @default(draft)
-  sourceType    ProductSourceType @default(self) @map("source_type")
-  averageRating Decimal           @default(0) @map("average_rating") @db.Decimal(2, 1)
-  reviewCount   Int               @default(0) @map("review_count")
-  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  id             String            @id @default(uuid()) @db.Uuid
+  storeId        String            @map("store_id") @db.Uuid
+  categoryId     String?           @map("category_id") @db.Uuid
+  title          String
+  description    String?
+  status         ProductStatus     @default(draft)
+  sourceType     ProductSourceType @default(self) @map("source_type")
+  averageRating  Decimal           @default(0) @map("average_rating") @db.Decimal(2, 1)
+  reviewCount    Int               @default(0) @map("review_count")
+  seoTitle       String?           @map("seo_title")
+  seoDescription String?           @map("seo_description")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
   category Category?        @relation(fields: [categoryId], references: [id])
   variants ProductVariant[]
@@ -269,6 +292,42 @@ model GoogleDriveConnection {
   revokedAt              DateTime?              @map("revoked_at") @db.Timestamptz
 
   @@map("google_drive_connections")
+}
+
+// Module 4 (Theme Engine & Storefront Rendering). Global catalog - every
+// seller reads the same rows. `tier` is descriptive/future-proofing only in
+// v1.0: SRS §14.1's checklist requires every v1.0 template be selectable at
+// store creation regardless of plan (no gating enforced yet - that's Module
+// 11/14's job to wire to real plan state, same "off for every seller in
+// v1.0" precedent as `theme.coded_mode_enabled` below).
+model Theme {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String
+  tier            ThemeTier @default(free)
+  previewImageUrl String?   @map("preview_image_url")
+  version         String    @default("1.0.0")
+  isActive        Boolean   @default(true) @map("is_active")
+
+  storeThemeSettings StoreThemeSettings[]
+
+  @@map("themes")
+}
+
+// Module 4. Tenant, 1:1 with store - auto-created (with a default theme)
+// the moment a store is created, so this row always exists by the time the
+// storefront or customizer reads it.
+model StoreThemeSettings {
+  id         String   @id @default(uuid()) @db.Uuid
+  storeId    String   @unique @map("store_id") @db.Uuid
+  themeId    String   @map("theme_id") @db.Uuid
+  settings   Json     @default("{}")
+  customCode String?  @map("custom_code")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+  theme Theme @relation(fields: [themeId], references: [id])
+
+  @@map("store_theme_settings")
 }
 
 model Plan {

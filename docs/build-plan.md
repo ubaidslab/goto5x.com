@@ -375,6 +375,72 @@ carrying into later modules:
 
 ---
 
+## Module 4 — Theme Engine & Storefront Rendering: built
+
+Scope: FR-1.1–FR-1.6 (theme catalog, bounded-token customizer, live preview,
+mobile-responsive, SEO controls, coded-mode escape hatch gated off in v1.0)
+and FR-1.5/v0.9's pulled-forward sitemap/robots requirement. See the Module 4
+verification report for the full test/checklist mapping. Architecture
+decisions and disclosed scope boundaries worth carrying into later modules:
+
+- **Multi-tenant storefront routing via Host header, not path prefix:**
+  `apps/web` serves the platform's own site and every tenant storefront from
+  one deployment. Next.js middleware rewrites any hostname that isn't the
+  platform's own under `/storefront`; the page itself resolves the real store
+  through the public `/storefront/*` API. `app/sitemap.ts`/`app/robots.ts`
+  read the Host header directly (excluded from the middleware rewrite) since
+  they're Next.js special files, not composable route targets.
+- **One hostname resolver, reused by both the seller-facing domain feature
+  and the public storefront:** `StorefrontService.resolveStoreIdByHostname`
+  checks Module 3's `domains` table (verified only - an unverified custom
+  domain never resolves, matching what Traefik would actually do in
+  production) before falling back to the `<slug>.<platform_root_domain>`
+  free subdomain. `canonicalHostname` in the public store response is the
+  one source of truth both product-page `<link rel=canonical>` tags and the
+  sitemap generator read from - never two independent guesses at the
+  "real" URL.
+- **`stores.access_mode` pulled forward from Module 5** (documented reason
+  on the column itself, `docs/database-schema.md`): only the column and the
+  noindex/no-sitemap read-side behavior are in scope here. The coming-soon
+  page content and password-gate flow are still Module 5's job (FR-16.5,
+  §14.16) - exposing the column now does not imply that feature is built.
+- **Scope boundary, disclosed rather than silently substituted:** the SRS
+  vision and `docs/mvp-v1-cutlist.md` both describe hand-built, motion-rich
+  premium templates (FR-1.1). True premium-bar *visual* design work is
+  gated on branding assets not yet delivered (this table's own "Known
+  sequencing risk" note above). Module 4 ships one real, fully functional,
+  componentized storefront rendering engine with three *structurally*
+  distinct built-in themes (different default section order/color scheme -
+  `apps/api/src/theme-engine/themes.seed.ts`, `apps/web/lib/theme-presets.ts`)
+  rather than three bespoke hand-designed visual templates. The founder
+  sign-off checklist item in §14.1 requiring the actual premium visual bar
+  cannot close until branding assets land - same gate this table already
+  flagged for Module 16, not a new one.
+- **No plan-based theme-tier gating enforced yet:** `themes.tier` exists on
+  the catalog (free/premium/marketplace) for Modules 11/14 to wire to real
+  plan/entitlement state later; §14.1 explicitly requires every v1.0 theme
+  be selectable regardless of plan, so v1.0 enforces none of it - same
+  "off for every seller in v1.0" precedent as `theme.coded_mode_enabled`.
+- **Pre-existing Module 1 bug fixed in passing, not a Module 4 change:**
+  `app/(admin)/login` and `app/(admin)/settings` both resolved to bare
+  `/login`/`/settings` (a route group doesn't add a path segment) rather
+  than the `/admin/login`/`/admin/settings` the platform home page's own
+  link already expected - undetected until this module's `next build`
+  verification, the first time anyone had run a production web build. Fixed
+  by moving both under a real `admin/` path segment; no behavior change to
+  Module 1's actual admin auth/settings logic.
+- **Testing boundary, stated plainly:** `apps/web` has no unit-test harness
+  in this repo (no prior module needed one). The SEO fallback chain and
+  hostname/canonical-domain resolution - the parts of "sitemap/robots
+  correctness" that can actually go wrong - are unit- and e2e-tested in
+  `apps/api` instead, where the real logic lives; `app/sitemap.ts`/
+  `app/robots.ts` are thin passthroughs over that already-tested data,
+  verified manually (`next build` + a live dev-server smoke test against
+  both a platform hostname and a tenant subdomain, including the noindex/
+  no-sitemap path) rather than by an automated web-side suite.
+
+---
+
 ## Amendment approved before Module 4 (SRS v0.8): Platform Event Log
 
 Documentation + a small backfill into already-built Modules 1–3, not a new
