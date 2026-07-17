@@ -694,6 +694,54 @@ FR-27.6/§14.8.
    this page — the same negative-access guarantee §14.25 already proved at
    the API layer, now proved at the UI layer too.
 
+## Module 7 — Shipping, Tax & Discounts: built
+
+Scope: FR-2.10 (store shipping settings), FR-2.11 (discount code CRUD),
+FR-19.3 (store tax settings). See the Module 7 verification report for the
+full test/checklist mapping. Architecture decisions worth carrying into
+later modules:
+
+- **Explicit `store Store @relation(...)` field added to all three new
+  models**, unlike `Product` (see Module 6's note above on the bug that
+  caused). `StoreShippingSettings`/`StoreTaxSettings`/`DiscountCode` all
+  follow `Collection`/`Domain`'s pattern instead, specifically to avoid
+  repeating that class of compile error in a future module that needs to
+  traverse from one of these to `Store`.
+- **Auto-created with v1.0 defaults at store-creation time**, same
+  discipline as `StoreThemeSettings` (Module 4): `StoresService.create()`
+  now also creates a `store_shipping_settings` and `store_tax_settings` row
+  in the same transaction. Module 9 (Orders, Cart & Checkout) can therefore
+  assume both rows always exist for any store - no "no settings configured
+  yet" state to special-case at checkout.
+- **Scope boundary, deliberately not built here:** validating a discount
+  code at checkout (expiry/usage-limit/store match, FR-5.5) and
+  incrementing `usage_count` atomically, and the actual tax computation +
+  invoice itemization (FR-19.3) are Modules 9 and 14's job respectively,
+  once checkout/invoicing exist. This module ships the seller-configured
+  CRUD + tenant isolation only - §14.2's "shipping settings... applied
+  correctly at checkout" and "a code created for store A cannot be applied
+  to a checkout on store B" checklist lines will be re-verified end-to-end
+  once Module 9 exists, not silently skipped now.
+- **`code`/`type` are not editable on an existing discount code** (v1.0
+  scope call, not in the SRS text) - a seller who wants a different
+  code/type deactivates the old one (`isActive: false`) and creates a new
+  one. `value`/`expiresAt`/`usageLimit`/`isActive` remain editable.
+- **Percentage-value cap (≤100) is a service-layer check, not a DTO
+  decorator** - `class-validator`'s `@ValidateIf` would have skipped the
+  unconditional `@IsNumber`/`@IsPositive` checks on the same field when the
+  type is `fixed_amount`, so the cross-field rule (percentage only) lives in
+  `DiscountCodesService` instead, checked on both create and update.
+- **Migration workflow, same as Module 5's:** `prisma migrate diff --script`
+  again proposed the same bogus `DROP INDEX "idx_products_search"` /
+  `ALTER COLUMN "search_vector" DROP DEFAULT` lines against the generated
+  column; stripped, hand-written, applied via `migrate deploy` as the
+  Postgres superuser (not `app_runtime`/`app_admin` - see README's local
+  setup step 6 for why).
+- **Testing boundary, same as Module 6:** apps/web has no automated test
+  harness and this module shipped no apps/web changes (no seller-dashboard
+  UI for shipping/tax/discount settings yet - that's a later dashboard-
+  completion pass, not blocking since the API is the deliverable here).
+
 ---
 
 *Update this document as each module is approved and built — it is the running

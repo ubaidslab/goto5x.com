@@ -47,9 +47,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 
 **Catalog & storefront commerce**
 - Manual product entry, Google Drive media import (into self-hosted MinIO)
-- Store shipping settings (flat rate + free threshold, FR-2.10)
-- Basic tax settings (FR-19.3): one rate per store, inclusive/exclusive toggle
-- Basic discount codes (FR-2.11/FR-5.5)
+- **Store shipping settings (flat rate + free threshold, FR-2.10) — Module 7 built**
+- **Basic tax settings (FR-19.3): one rate per store, inclusive/exclusive toggle — Module 7 built**
+- **Basic discount codes (FR-2.11) — Module 7 built the CRUD; FR-5.5's
+  checkout-time validation is Module 9's job once checkout exists**
 
 **Storefront discovery & merchandising — Module 5 built**
 - Collections (FR-16.1) · storefront search & filters (FR-16.2) · navigation

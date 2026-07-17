@@ -1,15 +1,16 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.10); this README covers running the code.
+(approved v0.11); this README covers running the code.
 
-**Status:** Modules 1–5 approved; Module 6 (Listing Moderation Engine) built,
+**Status:** Modules 1–6 approved; Module 7 (Shipping, Tax & Discounts) built,
 awaiting founder review. Platform Event Log amendment (SRS §3.11) built and
 backfilled. The v0.10 amendment added two new modules to the sequence
 (Listing Moderation Engine, Module 6; Seller Account Security: 2FA +
 Devices, Module 11, before Payouts) and a binding Financial Truth Invariant
-NFR (§3.12) — see `docs/build-plan.md` for the full, current module
-sequence and numbering. Module 7 next.
+NFR (§3.12). The v0.11 amendment slotted the moderation queue's bare
+functional admin page into Module 16 — see `docs/build-plan.md` for the
+full, current module sequence and numbering. Module 8 next.
 
 ---
 
@@ -190,10 +191,17 @@ smoke test as the gaps above.
 
 **Module 6 (Listing Moderation Engine):** no `apps/web` changes at all -
 the moderation queue is `apps/api`-only in this module (a REVIEWER admin
-dashboard page is future work, out of this module's scope). Fully covered
-by the automated e2e suite (`moderation.e2e-spec.ts`), including the
-negative-access test proving a REVIEWER account cannot reach any admin
+dashboard page is now explicitly slotted into Module 16, see the v0.11
+amendment in `docs/build-plan.md`, rather than left implicit). Fully
+covered by the automated e2e suite (`moderation.e2e-spec.ts`), including
+the negative-access test proving a REVIEWER account cannot reach any admin
 surface besides the queue.
+
+**Module 7 (Shipping, Tax & Discounts):** also no `apps/web` changes - same
+API-first precedent as Module 2's catalog/media (which never got a seller-
+dashboard page either). Shipping/tax settings and discount-code CRUD are
+fully covered by the automated e2e suite (`store-settings.e2e-spec.ts`),
+including tenant isolation at both the app layer and the database (RLS).
 
 ---
 
@@ -238,11 +246,11 @@ database, not a mock):
    pnpm test:e2e
    ```
 
-All 102 e2e tests + 70 unit tests pass as of Module 6 (see this module's
+All 112 e2e tests + 70 unit tests pass as of Module 7 (see this module's
 verification report for the full list), stable across 3 consecutive full
 runs. `apps/web` has no automated test suite - see the Module 4/5
-disclosures above for what was verified manually instead (Module 6 shipped
-no apps/web changes - the moderation queue is API-only this module).
+disclosures above for what was verified manually instead (Modules 6 and 7
+shipped no apps/web changes at all - see their disclosures above).
 
 ---
 

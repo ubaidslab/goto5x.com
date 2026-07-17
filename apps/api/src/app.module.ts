@@ -18,6 +18,7 @@ import { ModerationModule } from "./moderation/moderation.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SettingsModule } from "./settings-registry/settings.module";
 import { StorefrontModule } from "./storefront/storefront.module";
+import { StoreSettingsModule } from "./store-settings/store-settings.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
 
@@ -35,6 +36,7 @@ import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
     CatalogModule,
     MediaModule,
     ModerationModule,
+    StoreSettingsModule,
     DomainsModule,
     ThemeEngineModule,
     DiscoveryModule,

@@ -60,6 +60,12 @@ export class StoresService {
       await tx.storeThemeSettings.create({
         data: { storeId: created.id, themeId: defaultTheme.id },
       });
+      // Module 7 (FR-2.10/FR-19.3) - same "never a missing-row state" reasoning
+      // as themeSettings above: every store has a shipping/tax settings row
+      // (with sensible v1.0 defaults) the moment it exists, so Module 9's
+      // checkout never has to special-case "no settings configured yet".
+      await tx.storeShippingSettings.create({ data: { storeId: created.id } });
+      await tx.storeTaxSettings.create({ data: { storeId: created.id } });
       return created;
     });
     // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).
