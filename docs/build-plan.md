@@ -1090,6 +1090,50 @@ No code was written for this amendment - it is a pure design/SRS revision
 ahead of Module 10, per the founder's explicit "wait for my approval before
 starting the revised Module 10" instruction.
 
+## Amendment approved during Module 10's rollout (SRS v0.16) — Seller Identity & Commission-Fraud Defense
+
+Slotted into **Module 12 (Trust & Safety System)**, extending it rather than
+adding a new numbered module — full spec in `docs/SRS.md` §5.30/FR-30.1–30.6,
+checklist in §14.30. Module 12 has not started (Module 10 is in progress);
+this is documentation only, staged for when Module 12's turn comes:
+
+1. **CNIC at seller activation** (FR-30.1) — required, format/checksum
+   validated, encrypted at rest (`sellers.cnic_encrypted`), unique via a
+   deterministic hash (`sellers.cnic_hash`) spanning every seller regardless
+   of lifecycle state so a banned seller's CNIC can never re-register.
+2. **Name-consistency rule** (FR-30.2) — a self-declared account title +
+   explicit ownership checkbox on every payment instrument
+   (`store_payment_instructions`, itself still an **outstanding
+   implementation gap from Module 9's v0.15 pivot** — see the flag below),
+   with a string-similarity mismatch routed to the existing admin
+   review-queue pattern, never a hard block.
+3. **Payment-account uniqueness** (FR-30.3) — hashed-fingerprint unique
+   constraint per instrument type, hard block on reuse.
+4. **Title-verification adapter** (FR-30.4) — a `TitleVerificationAdapter`
+   interface, one v1.0 implementation (`ManualReviewAdapter`); Raast/1Link
+   documented as the first paid T&S upgrade, same adapter-swap discipline
+   as the Payment Gateway and Supplier adapters.
+5. **Risk score** (FR-30.5) — rule-based, Settings-Registry-weighted,
+   three outcomes only (auto-approve/manual review/block); reuses
+   `user_security_events` (new `device_fingerprint` column, new `signup`
+   event type) rather than a new table.
+6. **Re-registration check** (FR-30.6) — ties into the existing FR-6.18
+   invoice-suspension mechanism.
+
+**Flagging a pre-existing gap surfaced while writing this amendment:**
+`store_payment_instructions` (Direct Seller Collection's payment-instruction
+table, SRS §5.6c, v0.15) is fully specified in `docs/database-schema.md` but
+was **never actually implemented** — no Prisma model, no migration, no
+controller — despite Module 9 (Orders, Cart & Checkout) having already been
+built and approved on top of the v0.15 pivot. This amendment's name-
+consistency fields (FR-30.2) extend that same not-yet-built table. This is
+not new scope creep from this amendment; it is a gap in already-approved
+scope, surfaced here because Module 12 now depends on it. It needs to be
+built — likely as a small Module 9 follow-up or pulled into Module 12
+directly — before FR-30.2/30.3 can be implemented.
+
+No code was written for this amendment.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

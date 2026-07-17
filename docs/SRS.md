@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.15 (Build-phase amendment)
+**Version:** 0.16 (Build-phase amendment)
 **Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -56,7 +56,23 @@ multi-store aggregated dashboard as its flagship, paid-tier feature) and
 seller dashboard personalization (FR-28.4, plan-gated). No FR from any
 prior version was deleted; every dormant-mode FR keeps its exact meaning
 for its own eventual reactivation — every change below is additive or
-explicitly superseding, never a silent rewrite.
+explicitly superseding, never a silent rewrite. **v0.16 (approved during
+Module 10's rollout)** adds **Seller Identity & Commission-Fraud Defense**
+(§5.30, slotted into Module 12 alongside the Trust & Safety System it
+extends): mandatory, unique, encrypted-at-rest CNIC at seller activation
+(FR-30.1); a name-consistency rule flagging (never hard-blocking, except
+for exact account-number reuse) a mismatch between a seller's declared
+legal name and the account title on any payment instrument they add
+(FR-30.2); payment-account-number uniqueness across sellers (FR-30.3, hard
+block); an adapter-seamed path to automated Raast/1Link title verification
+as the documented first paid T&S upgrade (FR-30.4); a rule-based,
+Settings-Registry-weighted risk score with exactly three outcomes —
+auto-approve / manual review / block — computed from identity, payment,
+and device/IP signals (FR-30.5); and a check tying re-registration attempts
+by a commission-suspended seller's identity cluster back into the
+enforcement ladder (FR-30.6). §14.30 added. No code was written for this
+amendment — Module 12 has not started; Module 10's UI rollout continues
+using the design system approved at its checkpoint.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -2068,6 +2084,110 @@ system.
   FR-6.18's automated invoice-grace-period suspension, which is a distinct,
   narrowly-scoped billing mechanism, not a T&S escalation.
 
+### 5.30 Seller Identity & Commission-Fraud Defense (new, v0.16)
+Direct Seller Collection means the platform bills commission on a seller's
+*self-reported* sales (§5.29's anti-underreporting guard-rails already cover
+under-reporting volume). This section closes the adjacent gap: proving the
+seller behind an account is a real, singular, accountable person, and that
+the payment instrument they collect buyer money on is actually theirs — so a
+banned or non-paying seller cannot simply re-register under a new email and
+keep operating.
+
+- FR-30.1: **CNIC required at seller activation.** A seller cannot activate a
+  store (same activation gate as FR-6.14's payment-instruction requirement)
+  without a valid CNIC number on file: 13 digits, format- and
+  checksum-validated at entry (reject malformed input before it is ever
+  stored). **Unique, permanent, one CNIC = one seller account, for life** —
+  a CNIC attached to a `banned` seller can never be used to activate another
+  seller account, enforced by a database-level unique constraint on the
+  CNIC's deterministic hash (never the plaintext) spanning every seller
+  regardless of lifecycle state, since sellers are never hard-deleted
+  (§3.2's existing soft-lifecycle discipline). **Encrypted at rest**
+  (app-level AES-256-GCM, same mechanism and key-management discipline as
+  the Google Drive refresh token, §6.5) — the plaintext CNIC is never
+  logged and never returned in any API response; only the seller's own
+  masked view (last 4 digits) is ever rendered. **No CNIC image/document
+  upload in v1.0** — document-based verification is an explicit, documented
+  future upgrade (FR-30.4 describes the adapter seam it will plug into).
+- FR-30.2: **Name-consistency rule for payment instruments.** Every payment
+  instrument a seller adds (bank account, JazzCash, Easypaisa —
+  `store_payment_instructions`, §5.6c) requires a self-declared account
+  title at entry, plus an explicit checkbox declaration ("this account is
+  registered in my own legal name") — both required before the instrument
+  can be saved. A normalized string-similarity check (transliteration- and
+  whitespace/case-tolerant, since Urdu-to-Roman transliteration variance is
+  normal in Pakistan) compares the declared title against the seller's
+  registered legal name (`business_name` today; a future FR-30.5 field
+  described below distinguishes "legal name" from "trading/business name"
+  if the founder later wants that split). **A mismatch never hard-blocks
+  — it queues the instrument into the same admin review-queue pattern as
+  the Listing Moderation Engine (§5.27)**, consistent with this SRS's
+  "flag for human review, don't auto-punish on a fuzzy signal" discipline
+  (§5.29's FR-29.4 uses the identical principle for T&S escalation). A
+  reviewer may additionally require documentary proof (a bank/wallet
+  statement or app screenshot, uploaded the same way as any other admin-
+  reviewed attachment) before approving a **high-risk** seller's instrument
+  — "high-risk" is itself an input from FR-30.4's risk score, not a
+  separate ad hoc judgment call.
+- FR-30.3: **Payment-account uniqueness across sellers.** A bank account
+  number, JazzCash number, or Easypaisa number can back at most one seller
+  account platform-wide — enforced the same way as FR-30.1's CNIC
+  uniqueness, a unique constraint over each instrument type's normalized,
+  hashed fingerprint (never the plaintext account number, which is not
+  otherwise sensitive enough to warrant full encryption but is still hashed
+  here purely to make the uniqueness constraint queryable without a
+  plaintext-equality index). A second seller attempting to save an
+  already-claimed account number is rejected outright (this one **is** a
+  hard block, not a review-queue flag — two accounts legitimately sharing
+  one bank account is not a real-world case worth tolerating false
+  positives for, unlike name spelling variance).
+- FR-30.4: **Automated title verification — adapter-seamed, deferred.**
+  Raast/1Link (or an equivalent bank-account-name-lookup API) is the
+  documented **first paid Trust & Safety upgrade** once revenue supports
+  the integration cost — automatically confirming a declared account title
+  matches the bank's own name-on-file, removing the manual review step for
+  the common case. Built the same way this SRS already handles every
+  future-swap point (the Payment Gateway Adapter interface, §5.6d; the
+  Supplier Adapter interface, §5.3): a `TitleVerificationAdapter` interface
+  with exactly one implementation in v1.0 (`ManualReviewAdapter`, which
+  always returns "unverified, pending human review" and does nothing
+  else) — swapping in a real API-backed adapter later is a new
+  implementation of the same interface, never a rewrite of FR-30.2's
+  review-queue logic. Phone-number OTP verification and a NADRA
+  identity-verification API are noted here as further **future** upgrades
+  in the same category — documented, not built, in v1.0.
+- FR-30.5: **Risk score (rule-based, zero-cost, Settings-Registry-weighted)**
+  computed at seller activation and re-evaluated whenever a scored input
+  changes (a new payment instrument, a flagged name-consistency result,
+  etc.): inputs are email-verified (boolean), CNIC present-and-valid
+  (boolean), FR-30.2's name-consistency result, FR-30.3's account-number
+  reuse check, a device fingerprint and IP history at signup (extending
+  `user_security_events`, FR-25.3 — a new `device_fingerprint` column and a
+  `signup` event type on that existing table, not a new one), and
+  business-name similarity to other sellers' business names (a cheap
+  reuse-pattern signal, same string-similarity utility as FR-30.2). Every
+  input's weight and the auto-approve/manual-review/block thresholds are
+  Settings Registry entries (matching every other rule engine this SRS
+  specifies, §5.27/§5.29/FR-23.5) — **never hard-coded.** **Exactly three
+  outcomes, no finer gradation:** auto-approve, manual review (the same
+  reviewer-queue pattern as FR-30.2 and §5.27), or block. **Device
+  fingerprint and IP history are score inputs only — never, by themselves,
+  a sole automated block trigger** (consistent with §5.29's "a flag informs
+  a human, never auto-penalizes past what's explicitly specified"
+  discipline; only FR-30.3's exact-match account reuse and FR-6.18's
+  invoice-grace-period suspension remain hard, fully-automated actions).
+  Every score computation and every resulting decision is audit-logged
+  (`admin_audit_logs` if a human acted on it; a `platform_events` entry —
+  IDs only, no PII in `metadata`, per §6.5 — for the automated computation
+  itself, the same "zero new infrastructure" pattern §5.29 already uses).
+- FR-30.6: **Tied to commission enforcement.** FR-6.18's existing
+  unpaid-invoice suspension is unchanged; this adds one new check on top of
+  it: a seller attempting to re-register whose CNIC hash, any payment
+  fingerprint (FR-30.3), or device-fingerprint/IP cluster (FR-30.5) matches
+  a seller currently `suspended` for non-payment is **flagged and blocked
+  pending review** rather than silently allowed to activate a fresh store —
+  closing the exact evasion path a purely email-based ban could never stop.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -2970,6 +3090,45 @@ gate is §14.6c, below.
       explicit admin action — proven by constructing a flag-worthy condition
       and confirming the seller's account is unaffected until an admin acts
       (FR-29.4)
+
+### 14.30 Seller Identity & Commission-Fraud Defense (new, v0.16)
+- [ ] A malformed CNIC (wrong length, bad checksum) is rejected at entry
+      with a clear error, before it is ever stored (FR-30.1)
+- [ ] A CNIC already attached to any seller — active, suspended, or banned —
+      cannot be reused to activate a second seller account (FR-30.1)
+- [ ] The stored CNIC is encrypted at rest; no log line, error message, or
+      API response ever contains the plaintext value; the seller's own view
+      shows only a masked (last-4) form (FR-30.1)
+- [ ] Saving a payment instrument without both the declared account title
+      and the explicit "registered in my own name" checkbox is rejected
+      (FR-30.2)
+- [ ] A declared account title that clearly matches the seller's name
+      (allowing for reasonable transliteration variance) saves without a
+      flag; a clearly mismatched title lands the instrument in the review
+      queue without blocking the seller from continuing to use the
+      dashboard otherwise (FR-30.2)
+- [ ] A second seller attempting to save a bank/JazzCash/Easypaisa number
+      already claimed by another seller account is hard-rejected (FR-30.3)
+- [ ] The `TitleVerificationAdapter` interface has exactly one v1.0
+      implementation (manual-review-only); swapping in a stub second
+      implementation requires no change to FR-30.2's review-queue logic
+      (FR-30.4)
+- [ ] A deliberately constructed high-score-input combination (missing
+      email verification, invalid CNIC, mismatched title, reused account
+      fingerprint) resolves to `block`; a clean combination resolves to
+      `auto-approve`; a partial combination resolves to `manual review` —
+      all three outcomes are reachable and no fourth outcome exists
+      (FR-30.5)
+- [ ] Every automated risk-score computation is captured in
+      `platform_events` with IDs only, no PII, in `metadata`; every
+      human decision acting on a flagged score is captured in
+      `admin_audit_logs` (FR-30.5)
+- [ ] A device fingerprint or IP match alone (with every other input clean)
+      never resolves to `block` by itself (FR-30.5)
+- [ ] A seller suspended for non-payment (FR-6.18) who attempts
+      re-registration with the same CNIC, a previously-used payment
+      fingerprint, or a matching device/IP cluster is flagged and blocked
+      pending review, not silently allowed to activate (FR-30.6)
 
 ---
 

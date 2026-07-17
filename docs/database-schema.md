@@ -168,8 +168,9 @@ completed, so there is no account to attach this to.
 |---|---|---|
 | id | uuid PK | |
 | user_id | uuid FK → users.id | |
-| event_type | text | e.g. `password_reset_requested`, `password_reset_completed`, `email_verified` |
+| event_type | text | e.g. `password_reset_requested`, `password_reset_completed`, `email_verified`, `signup` (**new, v0.16, FR-30.5** — one row per signup, feeding the risk score's IP-history input) |
 | ip_address | inet | |
+| device_fingerprint | text nullable | **new, v0.16 (FR-30.5)** — a coarse, client-computed fingerprint (not a persistent tracking ID) recorded only on the `signup` event type; a risk-score input alongside IP history, never a sole automated block trigger (§5.30) |
 | created_at | timestamptz | never updated |
 
 Index: `idx_security_events_user (user_id, created_at)`. Deliberately separate
@@ -189,7 +190,16 @@ from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
 | agreement_version_accepted | text nullable | **new, v0.15 (Trust & Safety, FR-29.1)** — the Seller Agreement content-page version (FR-12.1's existing versioning) this seller has accepted; null or stale (not the current published version) blocks every dashboard action except the acceptance prompt itself |
 | agreement_accepted_at | timestamptz nullable | |
 | agreement_accepted_ip | text nullable | same "recorded, never used to profile" discipline as every other IP-adjacent field this SRS specifies (§6.5) |
+| cnic_encrypted | text nullable | **new, v0.16 (FR-30.1)** — app-level AES-256-GCM ciphertext of the seller's 13-digit CNIC, same key-management discipline as `google_drive_connections.refresh_token_encrypted`. Nullable only until activation; required to go live (FR-6.14-style activation gate) |
+| cnic_hash | text unique nullable | **new, v0.16 (FR-30.1)** — deterministic HMAC-SHA256 of the normalized CNIC (never the plaintext, never the reversible ciphertext) — the unique index is what actually enforces "one CNIC, one seller, forever": it spans every seller row regardless of `status`, since sellers are never hard-deleted |
+| cnic_verified | boolean default false | **new, v0.16 (FR-30.1)** — always `false` in v1.0 (no document upload/verification exists yet); reserved for the future document-verification upgrade |
+| risk_score | integer nullable | **new, v0.16 (FR-30.5)** — last-computed rule-based score; recomputed on activation and whenever a scored input changes |
+| risk_tier | enum(`auto_approve`,`manual_review`,`blocked`) nullable | **new, v0.16 (FR-30.5)** — the three-outcome decision derived from `risk_score` against Settings-Registry thresholds |
+| risk_assessed_at | timestamptz nullable | **new, v0.16 (FR-30.5)** | |
+| title_verification_method | enum(`manual`,`raast_1link`) default `'manual'` | **new, v0.16 (FR-30.4)** — which `TitleVerificationAdapter` implementation last evaluated this seller's payment-instrument titles; always `manual` in v1.0, the field exists so the future adapter swap needs no migration |
 | created_at, updated_at | timestamptz | |
+
+Index: `idx_sellers_cnic_hash (cnic_hash) UNIQUE`.
 
 ### `stores` (tenant root)
 | Column | Type | Notes |
@@ -739,7 +749,11 @@ created (same "never a missing-row state to handle" discipline as
 | id | uuid PK | |
 | store_id | uuid FK → stores.id, unique | |
 | bank_account_title, bank_account_number, bank_name | text nullable | shown to the buyer at order confirmation if configured (FR-6.14) |
-| jazzcash_number, easypaisa_number | text nullable | |
+| jazzcash_number, jazzcash_account_title | text nullable | **account title added, v0.16 (FR-30.2)** — a wallet has an account-holder name too, needed for the name-consistency check |
+| easypaisa_number, easypaisa_account_title | text nullable | **account title added, v0.16 (FR-30.2)** |
+| bank_account_fingerprint, jazzcash_fingerprint, easypaisa_fingerprint | text unique nullable (each its own partial unique index, non-null only) | **new, v0.16 (FR-30.3)** — deterministic hash of the normalized account number, same pattern as `sellers.cnic_hash`; the unique index is what enforces "one payment account, one seller" platform-wide. The plaintext account number itself is not encrypted (not sensitive enough to warrant it, unlike a CNIC) but is hashed here purely to make the uniqueness constraint queryable |
+| name_declared_self_owned | boolean default false | **new, v0.16 (FR-30.2)** — the seller's explicit "this account is registered in my own legal name" checkbox; required `true` before the instrument saves |
+| name_consistency_status | enum(`match`,`flagged`,`reviewer_approved`) nullable | **new, v0.16 (FR-30.2)** — result of the string-similarity check against the seller's registered name; `flagged` routes into the same admin review-queue pattern as the Listing Moderation Engine (§5.27), never a hard block on its own |
 | cod_enabled | boolean default false | unconditionally permissible in v1.0 (no ledger-balance gate, unlike the dormant mode's version, §5.6a) |
 | updated_at | timestamptz | |
 
@@ -747,7 +761,10 @@ A store cannot go live (FR-6.14) unless at least one of
 `bank_account_number`/`jazzcash_number`/`easypaisa_number` is set or
 `cod_enabled` is true — enforced at the application layer, not a database
 constraint (the same store-readiness-gate pattern as Module 4's
-`StoreThemeSettings` requiring a theme before launch).
+`StoreThemeSettings` requiring a theme before launch). **v0.16 (FR-30.3):**
+a `bank_account_number`/`jazzcash_number`/`easypaisa_number` already claimed
+(by fingerprint) by another seller is rejected outright at save time,
+before the store-readiness check ever runs.
 
 ### `seller_payout_accounts` (global, seller-scoped) — DORMANT in v1.0, see §5.6d
 | Column | Type | Notes |
