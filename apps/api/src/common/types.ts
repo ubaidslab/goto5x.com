@@ -3,6 +3,7 @@ import { Request } from "express";
 export interface JwtAccessPayload {
   sub: string; // user id
   sellerId?: string;
+  supplierId?: string;
   adminUserId?: string;
   adminRole?: "super_admin" | "support" | "reviewer";
   mfaVerified?: boolean;

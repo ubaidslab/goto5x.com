@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.11)
+# goto5x.com — Database Schema (v1, updated for SRS v0.12)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -419,6 +419,7 @@ response ever serializes `refresh_token_encrypted`.
 | user_id | uuid FK → users.id, unique | |
 | business_name | text | |
 | verification_status | enum(`pending`,`verified`,`rejected`) | |
+| printify_shop_id | text nullable | **added in Module 8** - v1.0 simplification: one platform-level Printify API credential (`PRINTIFY_API_KEY` env var) plus this one non-secret field per supplier, rather than a full per-supplier Printify OAuth connect flow (which would mirror Module 2's Google Drive OAuth) - disclosed in `docs/build-plan.md`'s Module 8 section, not a silent gap |
 | created_at | timestamptz | |
 
 ### `supplier_adapters` (global registry — FR-4.9)

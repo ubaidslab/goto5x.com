@@ -49,30 +49,45 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const { token, tokenHash } = generateToken();
+    const role = dto.role ?? "seller";
 
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
         passwordHash,
-        roleFlags: ["seller"],
+        roleFlags: [role],
         emailVerificationTokenHash: tokenHash,
         emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60_000),
-        seller: { create: { businessName: dto.businessName } },
+        ...(role === "supplier"
+          ? { supplier: { create: { businessName: dto.businessName } } }
+          : { seller: { create: { businessName: dto.businessName } } }),
       },
-      include: { seller: true },
+      include: { seller: true, supplier: true },
     });
 
     const verifyUrl = `${this.config.getOrThrow<string>("APP_BASE_URL")}/verify-email?token=${token}`;
     await this.email.sendVerificationEmail(user.email, verifyUrl);
 
     // SRS §3.11/FR-26.5 - after the signup itself has succeeded (non-blocking, FR-26.3).
-    await this.events.emit({
-      eventType: "seller.signup",
-      actorType: "seller",
-      actorId: user.seller!.id,
-      entityType: "seller",
-      entityId: user.seller!.id,
-    });
+    // Module 8 (FR-3.1) - `supplier.signup` is a new eventType, no schema
+    // change needed (platform_events.event_type is a free-form string).
+    await this.events.emit(
+      role === "supplier"
+        ? {
+            eventType: "supplier.signup",
+            actorType: "supplier",
+            actorId: user.supplier!.id,
+            entityType: "supplier",
+            entityId: user.supplier!.id,
+          }
+        : {
+            eventType: "seller.signup",
+            actorType: "seller",
+            actorId: user.seller!.id,
+            entityType: "seller",
+            entityId: user.seller!.id,
+          },
+    );
 
     return { userId: user.id };
   }
@@ -102,14 +117,14 @@ export class AuthService {
   async login(dto: LoginDto): Promise<TokenPair> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      include: { seller: true },
+      include: { seller: true, supplier: true },
     });
 
     if (!user || !user.passwordHash || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
-    return this.issueTokens(user.id, { sellerId: user.seller?.id });
+    return this.issueTokens(user.id, { sellerId: user.seller?.id, supplierId: user.supplier?.id });
   }
 
   async refresh(sessionId: string, refreshToken: string): Promise<TokenPair> {
@@ -120,8 +135,11 @@ export class AuthService {
     // Destroy the old session and issue a new one (refresh-token rotation).
     await this.sessions.destroySession(sessionId);
 
-    const seller = await this.prisma.seller.findUnique({ where: { userId } });
-    return this.issueTokens(userId, { sellerId: seller?.id });
+    const [seller, supplier] = await Promise.all([
+      this.prisma.seller.findUnique({ where: { userId } }),
+      this.prisma.supplier.findUnique({ where: { userId } }),
+    ]);
+    return this.issueTokens(userId, { sellerId: seller?.id, supplierId: supplier?.id });
   }
 
   async logout(sessionId: string): Promise<void> {

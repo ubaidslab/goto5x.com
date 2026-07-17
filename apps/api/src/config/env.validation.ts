@@ -75,6 +75,9 @@ class EnvironmentVariables {
 
   @IsString()
   TRAEFIK_DYNAMIC_CONFIG_DIR!: string;
+
+  @IsString()
+  PRINTIFY_API_KEY!: string;
 }
 
 /**

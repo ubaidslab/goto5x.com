@@ -5,6 +5,8 @@ import { Worker } from "bullmq";
 import { AppModule } from "../app.module";
 import { DomainVerificationService } from "../domains/domain-verification.service";
 import { DOMAIN_VERIFICATION_QUEUE_NAME } from "../domains/domain-verification.queue";
+import { SupplierSyncService } from "../suppliers/supplier-sync.service";
+import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -17,8 +19,9 @@ async function main() {
   const appContext = await NestFactory.createApplicationContext(AppModule);
   const config = appContext.get(ConfigService);
   const domainVerification = appContext.get(DomainVerificationService);
+  const supplierSync = appContext.get(SupplierSyncService);
 
-  const worker = new Worker(
+  const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
     async () => {
       const result = await domainVerification.recheckOutstandingDomains();
@@ -31,16 +34,33 @@ async function main() {
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 
-  worker.on("failed", (job, err) => {
+  domainWorker.on("failed", (job, err) => {
     // eslint-disable-next-line no-console
     console.error(`domain-verification job ${job?.id} failed:`, err);
   });
 
+  // Module 8 (FR-4.3) - price/stock sync. SupplierSyncService itself never
+  // throws for the whole batch (per-supplier failures are caught and
+  // logged inside it), so this processor has nothing extra to catch.
+  const supplierSyncWorker = new Worker(
+    SUPPLIER_SYNC_QUEUE_NAME,
+    async () => supplierSync.syncAllEnabledAdapters(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  supplierSyncWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`supplier-sync job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
-  console.log("goto5x worker started (domain-verification processor registered - Module 3).");
+  console.log(
+    "goto5x worker started (domain-verification processor - Module 3; supplier-sync processor - Module 8).",
+  );
 
   const shutdown = async () => {
-    await worker.close();
+    await domainWorker.close();
+    await supplierSyncWorker.close();
     await appContext.close();
     process.exit(0);
   };

@@ -4,16 +4,17 @@ Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
 (approved v0.12); this README covers running the code.
 
 **Status:** Modules 1–7 approved; Module 8 (Suppliers & Printify Adapter)
-next. Platform Event Log amendment (SRS §3.11) built and backfilled. The
-v0.10 amendment added two new modules to the sequence (Listing Moderation
-Engine, Module 6; Seller Account Security: 2FA + Devices, Module 12, before
-Payouts) and a binding Financial Truth Invariant NFR (§3.12). The v0.11
-amendment slotted the moderation queue's bare functional admin page into
-Module 17. The v0.12 amendment inserted a new **Seller Dashboard UI**
-module (Module 10, after Orders/Cart/Checkout) plus a binding SIMPLICITY
-INVARIANT NFR (§3.13) governing it and every seller-facing screen after —
-see `docs/build-plan.md` for the full, current module sequence and
-numbering.
+built, awaiting founder review. Platform Event Log amendment (SRS §3.11)
+built and backfilled. The v0.10 amendment added two new modules to the
+sequence (Listing Moderation Engine, Module 6; Seller Account Security: 2FA
++ Devices, Module 12, before Payouts) and a binding Financial Truth
+Invariant NFR (§3.12). The v0.11 amendment slotted the moderation queue's
+bare functional admin page into Module 17. The v0.12 amendment inserted a
+new **Seller Dashboard UI** module (Module 10, after Orders/Cart/Checkout)
+plus a binding SIMPLICITY INVARIANT NFR (§3.13) governing it and every
+seller-facing screen after — see `docs/build-plan.md` for the full,
+current module sequence and numbering. Module 9 (Orders, Cart & Checkout)
+next.
 
 ---
 
@@ -206,6 +207,19 @@ dashboard page either). Shipping/tax settings and discount-code CRUD are
 fully covered by the automated e2e suite (`store-settings.e2e-spec.ts`),
 including tenant isolation at both the app layer and the database (RLS).
 
+**Module 8 (Suppliers & Printify Adapter):** also no `apps/web` changes -
+the Seller Dashboard UI module (Module 10) is where seller/supplier-facing
+screens land. The Printify integration itself is unverified against the
+real live API - no Printify test account/credentials exist in this
+environment (same disclosure as Module 2's Google Drive client); e2e tests
+seed a `supplier_listings` row directly and a dedicated unit test
+(`printify.adapter.spec.ts`) injects a fake `IPrintifyClient`. Several
+§14.3/§14.4 checklist items (multi-store order aggregation, the
+fulfillment checklist, checkout country-blocking/price-revalidation,
+wiring oversell protection into a live order) genuinely need Module 9
+(Orders, Cart & Checkout) to exist first - flagged explicitly in this
+module's build-plan section, not silently skipped.
+
 ---
 
 ## Running tests
@@ -249,7 +263,7 @@ database, not a mock):
    pnpm test:e2e
    ```
 
-All 112 e2e tests + 70 unit tests pass as of Module 7 (see this module's
+All 123 e2e tests + 77 unit tests pass as of Module 8 (see this module's
 verification report for the full list), stable across 3 consecutive full
 runs. `apps/web` has no automated test suite - see the Module 4/5
 disclosures above for what was verified manually instead (Modules 6 and 7
@@ -281,6 +295,7 @@ visitor out, which is the same intended blast radius as a session.
 | `ADMIN_MFA_ISSUER_NAME` | Whatever name should show up in an admin's authenticator app |
 | `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` | A Google Cloud OAuth 2.0 Client ID (Drive API, read-only scope) |
 | `DRIVE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts a seller's stored Drive refresh token at rest (SRS FR-9.1/§6.5); the short-lived access token is never persisted to Postgres at all, so there is no equivalent key needed for it |
+| `PRINTIFY_API_KEY` | A Printify Personal Access Token (Printify account settings → Connections). v1.0 uses one platform-level credential, not a per-supplier OAuth connection - see docs/build-plan.md's Module 8 section |
 | `TRAEFIK_DYNAMIC_CONFIG_DIR` | Any writable directory the API can write to and (in production) Traefik can read from - a shared Docker volume in `docker-compose.yml` |
 | `ACME_EMAIL` | A real email address - Let's Encrypt requires one for expiry/problem notices. Read only by the `traefik` service, not the app |
 | `PLATFORM_HOSTNAMES` (`apps/web`) | Comma-separated hostnames (with port, if non-default) that serve the platform's own site rather than a tenant storefront (Module 4). Not a secret - no default outside local dev needed since production always sets it to the platform's real domain(s) |

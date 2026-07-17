@@ -122,6 +122,37 @@ enum DiscountType {
   fixed_amount
 }
 
+// Module 8 (Supplier Portal, FR-3.1).
+enum SupplierVerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+// Module 8 (FR-2.6/FR-3.1). Only three states - there is no separate
+// "awaiting supplier acceptance" state: per FR-2.6, *either* path (seller
+// invites, or supplier self-registers and requests a link) lands in
+// `pending_seller_review` - the seller always gives the final go-ahead
+// regardless of who initiated contact.
+enum StoreSupplierLinkStatus {
+  pending_seller_review
+  active
+  revoked
+}
+
+enum InvitedBy {
+  seller
+  supplier
+}
+
+// Module 8 (FR-2.7/FR-3.2). No "auto-publish" path exists - every
+// supplier-sourced listing sits here until a seller explicitly decides.
+enum ListingReviewStatus {
+  pending
+  approved
+  rejected
+}
+
 enum ThemeTier {
   free
   premium
@@ -145,6 +176,7 @@ model User {
   updatedAt                     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   seller           Seller?
+  supplier         Supplier?
   adminUser        AdminUser?
   securityEvents   UserSecurityEvent[]
 
@@ -228,6 +260,8 @@ model Store {
   shippingSettings   StoreShippingSettings?
   taxSettings        StoreTaxSettings?
   discountCodes      DiscountCode[]
+  supplierLinks      StoreSupplierLink[]
+  listingReviews     ListingReview[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -415,6 +449,128 @@ model DiscountCode {
 
   @@unique([storeId, code], name: "uniq_discount_code_store")
   @@map("discount_codes")
+}
+
+// Module 8 (Supplier Portal, FR-3.1). Global profile, same shape as `Seller`
+// - a supplier is its own account type, not a Seller sub-role. `role_flags`
+// on the underlying User can hold both (`{seller,supplier}`) if the same
+// person ever operates as both, but that merge flow is not built in v1.0.
+model Supplier {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  userId             String                     @unique @map("user_id") @db.Uuid
+  businessName       String                     @map("business_name")
+  verificationStatus SupplierVerificationStatus @default(pending) @map("verification_status")
+  // v1.0 simplification (disclosed, not a silent gap - see
+  // docs/build-plan.md's Module 8 section): a full per-supplier Printify
+  // OAuth connect flow (mirroring Module 2's Google Drive OAuth) is out of
+  // scope for this module. v1.0 ships one platform-level Printify API
+  // credential (env var, PrintifyHttpClient) and this one non-secret field
+  // - the specific Printify shop that supplier's sync pulls from.
+  printifyShopId     String?                    @map("printify_shop_id")
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+
+  user       User                @relation(fields: [userId], references: [id])
+  storeLinks StoreSupplierLink[]
+  listings   SupplierListing[]
+
+  @@map("suppliers")
+}
+
+// Module 8 (FR-4.9 registry). Global - mirrors `external_api_clients`'
+// enable/disable-without-a-deploy pattern (Module 6 amendment context,
+// `docs/architecture.md`). API keys/credentials never live in `config` -
+// only non-secret adapter configuration.
+model SupplierAdapter {
+  id          String   @id @default(uuid()) @db.Uuid
+  adapterType String   @unique @map("adapter_type")
+  displayName String   @map("display_name")
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  config      Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("supplier_adapters")
+}
+
+// Module 8 (FR-2.6/FR-3.1). Tenant (store_id) - RLS-protected the same way
+// as every other tenant table, which covers the SELLER's own isolation
+// guarantee ("seller A cannot see seller B's supplier links"). A supplier's
+// own cross-store view (FR-3.3) necessarily spans multiple sellers' stores
+// at once, which no single-seller-keyed RLS policy can express - that read
+// path uses PrismaAdminService (BYPASSRLS) with an explicit
+// `WHERE supplier_id = ...` filter instead (see SupplierLinksService).
+model StoreSupplierLink {
+  id         String                  @id @default(uuid()) @db.Uuid
+  storeId    String                  @map("store_id") @db.Uuid
+  supplierId String                  @map("supplier_id") @db.Uuid
+  status     StoreSupplierLinkStatus @default(pending_seller_review)
+  invitedBy  InvitedBy               @map("invited_by")
+  approvedAt DateTime?               @map("approved_at") @db.Timestamptz
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  store          Store           @relation(fields: [storeId], references: [id])
+  supplier       Supplier        @relation(fields: [supplierId], references: [id])
+  listingReviews ListingReview[]
+
+  @@unique([storeId, supplierId], name: "uniq_store_supplier")
+  @@index([supplierId, status], name: "idx_ssl_supplier_status")
+  @@map("store_supplier_links")
+}
+
+// Module 8 (FR-3.2/FR-4.1-4.9). Global - a supplier's catalog, sourced by
+// whichever Supplier Adapter (SRS §3.5) is enabled for `adapterType`. Not
+// RLS-protected (same "global, admin/supplier-session-scoped at the app
+// layer" reasoning as `suppliers`/`supplier_adapters` - see
+// docs/database-schema.md's tenant-strategy note).
+model SupplierListing {
+  id                       String   @id @default(uuid()) @db.Uuid
+  supplierId               String   @map("supplier_id") @db.Uuid
+  adapterType              String   @map("adapter_type")
+  externalProductId        String   @map("external_product_id")
+  title                    String
+  price                    Decimal  @db.Decimal(12, 2)
+  // Module 8 note: Printify (v1.0's only adapter, FR-4.1) is print-on-
+  // demand - there is no real finite stock ceiling to sync. This column
+  // still exists generically (for CJ Dropshipping, Phase 1.1, FR-4.2,
+  // which DOES have real finite inventory) and the atomic decrement
+  // mechanism (FR-4.5) is built and tested now against this column
+  // directly; wiring it into a live checkout is Module 9's job.
+  stockQuantity            Int      @default(999999) @map("stock_quantity")
+  shippingCost             Decimal  @default(0) @map("shipping_cost") @db.Decimal(12, 2)
+  estimatedDeliveryMinDays Int      @map("estimated_delivery_min_days")
+  estimatedDeliveryMaxDays Int      @map("estimated_delivery_max_days")
+  supportedCountries       String[] @map("supported_countries")
+  rawPayload               Json     @map("raw_payload")
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  supplier       Supplier        @relation(fields: [supplierId], references: [id])
+  listingReviews ListingReview[]
+
+  @@unique([supplierId, externalProductId], name: "uniq_supplier_listing_external")
+  @@map("supplier_listings")
+}
+
+// Module 8 (FR-2.7/FR-3.2). Tenant via `storeId` (denormalized, RLS-
+// protected same pattern as `collection_products`) - the seller's approval
+// queue. On approval, `productId` is set to the newly-created `products`
+// row (source_type = 'supplier') - see ListingReviewsService.approve().
+model ListingReview {
+  id                  String              @id @default(uuid()) @db.Uuid
+  storeId             String              @map("store_id") @db.Uuid
+  storeSupplierLinkId String              @map("store_supplier_link_id") @db.Uuid
+  supplierListingId   String              @map("supplier_listing_id") @db.Uuid
+  status              ListingReviewStatus @default(pending)
+  reviewedBy          String?             @map("reviewed_by") @db.Uuid
+  reviewedAt          DateTime?           @map("reviewed_at") @db.Timestamptz
+  productId           String?             @map("product_id") @db.Uuid
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  store             Store             @relation(fields: [storeId], references: [id])
+  storeSupplierLink StoreSupplierLink @relation(fields: [storeSupplierLinkId], references: [id])
+  supplierListing   SupplierListing   @relation(fields: [supplierListingId], references: [id])
+
+  @@index([storeSupplierLinkId, status], name: "idx_listing_reviews_link_status")
+  @@map("listing_reviews")
 }
 
 model ProductVariant {

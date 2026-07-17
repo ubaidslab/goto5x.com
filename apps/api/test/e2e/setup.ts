@@ -9,6 +9,7 @@ import {
   seedModule3Settings,
   seedPlatformEventsSettings,
 } from "../../src/settings-registry/settings.seed";
+import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
 import { seedBuiltInThemes, seedModule4Settings } from "../../src/theme-engine/themes.seed";
 
 /**
@@ -49,9 +50,10 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       domains, store_theme_settings, themes,
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, discount_codes,
+      listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
       media_assets, product_variants, products, categories,
       google_drive_connections,
-      stores, admin_users, sellers, user_security_events, users, plans
+      stores, admin_users, sellers, suppliers, user_security_events, users, plans
     RESTART IDENTITY CASCADE
   `);
 }
@@ -62,6 +64,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedPlatformEventsSettings(prisma);
   await seedModule4Settings(prisma);
   await seedModerationSettings(prisma);
+  await seedSupplierSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded

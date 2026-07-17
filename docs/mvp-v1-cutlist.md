@@ -93,12 +93,17 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   email is captured + abandoned-cart **flagging** (FR-15.2) — recovery emails are
   v1.1
 
-**Supplier (proves the differentiator, with real buyer-facing transparency)**
+**Supplier (proves the differentiator, with real buyer-facing transparency) — Module 8 built**
 - Supplier Adapter interface as the real internal contract from day one; **one
   adapter implemented: Printify**
-- Listing transparency (FR-4.6), checkout country-blocking (FR-4.7), live price
-  re-validation (FR-4.8), admin adapter registry (FR-4.9)
-- Basic order forwarding + tracking pull-back
+- Supplier Portal: registration, seller-invite/supplier-request links, and
+  the listing-review approval queue (FR-2.6/FR-2.7/FR-3.1/FR-3.2)
+- Listing transparency (FR-4.6) and the admin adapter registry (FR-4.9) are
+  live now; checkout country-blocking (FR-4.7), live price re-validation
+  (FR-4.8), and multi-store order/fulfillment tracking (FR-3.3/FR-3.4/FR-5.2)
+  need Module 9 (Orders, Cart & Checkout) to exist and land there
+- Oversell protection's atomic decrement mechanism (FR-4.5) is built and
+  tested now; wiring it into a live checkout is Module 9's job
 
 **Orders & checkout**
 - Cart + checkout, payment via **Safepay only** (COD deferred/gated, §5.6a)

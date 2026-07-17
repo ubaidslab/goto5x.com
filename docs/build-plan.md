@@ -789,6 +789,89 @@ Full text lives in `docs/SRS.md`'s v0.11→v0.12 changelog and the new
    create a discount, view orders) - not a subjective design-taste check,
    a testable requirement.
 
+## Module 8 — Suppliers & Printify Adapter: built
+
+Scope: FR-2.6/FR-3.1-3.4 (Supplier Portal - registration, seller/supplier-
+initiated links, listing review queue, adapter registry) and FR-4.1/4.3/
+4.6/4.9 (Printify Adapter - the only v1.0 implementation of the Supplier
+Adapter interface, §3.5). See the Module 8 verification report for the
+full test/checklist mapping. Architecture decisions worth carrying into
+later modules:
+
+- **A genuine sequencing gap, flagged rather than silently built around:**
+  §14.3/§14.4's checklist requires several behaviors that need `order_items`
+  to exist - the multi-store dashboard's order aggregation (FR-3.3), the
+  fulfillment checklist (FR-3.4), tracking-triggered buyer notification
+  (FR-5.2), checkout blocking on an unsupported delivery country (FR-4.7),
+  checkout-time price re-validation (FR-4.8), and wiring oversell protection
+  (FR-4.5) into a live order. None of this can exist before Module 9
+  (Orders, Cart & Checkout) does, yet Module 9 depends on Module 8. Handled
+  the same way the Financial Truth Invariant already established for every
+  money-adjacent module: build what's real now (the mechanism/data layer),
+  defer the checkout-time enforcement, and disclose the split explicitly
+  rather than stub it silently. Concretely, this module built and tested:
+  the full Supplier Portal (registration/links/review queue), the Printify
+  Adapter's real methods, storefront transparency rendering (FR-4.6), the
+  adapter registry (FR-4.9), and the oversell-protection *mechanism*
+  (`SupplierListingsService.decrementStock()`, an atomic conditional
+  UPDATE, unit- and e2e-tested in isolation) - not yet wired into a live
+  checkout, which is Module 9's job.
+- **`Supplier`/`StoreSupplierLink`/`SupplierListing`/`ListingReview` all
+  carry an explicit `store`/`supplier` relation field**, same reasoning as
+  Module 7's note above - `Product`'s missing relation (Module 6) is the
+  cautionary precedent, not the pattern to repeat.
+- **Two different tenancy answers for the same table shape:**
+  `store_supplier_links`/`listing_reviews` are RLS-protected the normal way
+  (store_id-keyed), which correctly protects the *seller's* isolation
+  guarantee. A *supplier's* own multi-store view (FR-3.3) necessarily spans
+  multiple sellers' stores at once - no single-seller-keyed RLS policy can
+  express that, so `SupplierPortalService` uses `PrismaAdminService`
+  (BYPASSRLS) with an explicit `WHERE supplier_id = ...` filter instead -
+  now the third documented legitimate BYPASSRLS use case (see that
+  service's doc comment). `suppliers`/`supplier_adapters`/
+  `supplier_listings` are global tables (no RLS at all), same category as
+  `categories`/`themes`.
+- **v1.0 simplification, disclosed:** one platform-level Printify API
+  credential (`PRINTIFY_API_KEY` env var) plus a single non-secret
+  `suppliers.printify_shop_id` field, rather than a full per-supplier
+  Printify OAuth connect flow (which would mirror Module 2's Google Drive
+  OAuth - a substantial feature of its own). Flagged in
+  `docs/database-schema.md`'s note on that column, not silently assumed.
+- **Approved supplier listings bypass Module 6's moderation engine
+  entirely** (`moderationStatus: "not_required"`, set directly, never
+  routed through `ModerationService`) - the Listing Moderation Engine's own
+  SRS text (§5.27) scopes itself to "self-fulfilled seller product
+  listings"; a supplier listing already has its own human-review gate
+  right here (`listing_reviews`), serving the same purpose Module 6 exists
+  for.
+- **`PrintifyAdapter`/`PrintifyHttpClient` unverified against the real live
+  API** - no Printify test account/credentials exist in this environment,
+  same disclosure as Module 2's Google Drive client. `PrintifyHttpClient`
+  is shaped from Printify's public v1 API documentation; e2e tests seed a
+  `supplier_listings` row directly (bypassing sync) and unit tests
+  (`printify.adapter.spec.ts`) inject a fake `IPrintifyClient`, mirroring
+  the exact pattern Module 2 established for `IDriveClient`.
+- **`AuthService.signup()`/`login()`/`refresh()` extended, not duplicated:**
+  a supplier is created through the same `/auth/signup` endpoint (a new
+  optional `role` field, default `seller`) rather than a second signup
+  flow, reusing every existing mechanism (rate limiting, email
+  verification, session/JWT issuance) - same "second controller, not new
+  infrastructure" discipline as Module 6's 2FA reuse.
+- **Sandbox note, not a code issue:** mid-build, an earlier `prisma migrate
+  reset` (needed to fold in the `printify_shop_id` column before this
+  branch was committed) silently wiped the `app_runtime`/`app_admin` schema
+  grants `scripts/bootstrap-db.sql` sets up - manifesting as every e2e test
+  file's `beforeAll` hanging/failing with `permission denied for schema
+  public`. Fixed by re-running `bootstrap-db.sql` plus the immutability
+  `REVOKE`s (`admin_audit_logs`, `user_security_events`, `platform_events`)
+  against the local dev DB - exactly the remediation the script's own
+  comments already document. Not a lasting change to any migration file;
+  worth remembering for any future `migrate reset` in this same sandbox.
+- **Testing boundary, same as Modules 6/7:** apps/web has no automated test
+  harness and this module shipped no apps/web changes (no seller/supplier-
+  dashboard UI yet - Module 10, Seller Dashboard UI, is where that lands,
+  per the v0.12 amendment above).
+
 ---
 
 *Update this document as each module is approved and built — it is the running

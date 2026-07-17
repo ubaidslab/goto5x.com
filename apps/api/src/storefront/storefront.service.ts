@@ -173,7 +173,8 @@ export class StorefrontService {
       include: { variants: true, media: true },
       orderBy: { createdAt: "desc" },
     });
-    return products.map((product) => this.toPublicProduct(product, store));
+    const transparencyByProductId = await this.batchSupplierTransparency(products.map((p) => p.id));
+    return products.map((product) => this.toPublicProduct(product, store, transparencyByProductId.get(product.id)));
   }
 
   async getProduct(hostname: string, productId: string, unlockToken?: string) {
@@ -191,7 +192,35 @@ export class StorefrontService {
     ) {
       throw new NotFoundException("Product not found.");
     }
-    return this.toPublicProduct(product, store);
+    const transparencyByProductId = await this.batchSupplierTransparency([product.id]);
+    return this.toPublicProduct(product, store, transparencyByProductId.get(product.id));
+  }
+
+  /**
+   * FR-4.6 (Module 8) - shipping cost, estimated delivery, and supported
+   * countries for supplier-sourced products. `products` has no direct FK to
+   * `supplier_listings`; the only documented path is
+   * `listing_reviews.product_id` + `.supplier_listing_id` on the same
+   * (approved) row - batched here to avoid an N+1 per product.
+   */
+  private async batchSupplierTransparency(productIds: string[]) {
+    const reviews = await this.prismaAdmin.listingReview.findMany({
+      where: { productId: { in: productIds }, status: "approved" },
+      include: { supplierListing: true },
+    });
+    return new Map(
+      reviews
+        .filter((r) => r.productId !== null)
+        .map((r) => [
+          r.productId as string,
+          {
+            shippingCost: r.supplierListing.shippingCost,
+            estimatedDeliveryMinDays: r.supplierListing.estimatedDeliveryMinDays,
+            estimatedDeliveryMaxDays: r.supplierListing.estimatedDeliveryMaxDays,
+            supportedCountries: r.supplierListing.supportedCountries,
+          },
+        ]),
+    );
   }
 
   /**
@@ -366,6 +395,12 @@ export class StorefrontService {
       media: unknown[];
     },
     store: { seoTitle: string | null; seoDescription: string | null },
+    supplierTransparency?: {
+      shippingCost: unknown;
+      estimatedDeliveryMinDays: number;
+      estimatedDeliveryMaxDays: number;
+      supportedCountries: string[];
+    },
   ) {
     const seo = resolveSeoFallback({
       seoTitle: product.seoTitle,
@@ -384,6 +419,8 @@ export class StorefrontService {
       media: product.media,
       seoTitle: seo.title,
       seoDescription: seo.description,
+      // FR-4.6 (Module 8) - null for self-fulfilled products.
+      supplierShipping: supplierTransparency ?? null,
     };
   }
 }
