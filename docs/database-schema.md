@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.14 — Module 9 built; two documented columns added, `order_items.created_at`/`tracking_updates.store_id`, see their table notes below)
+# goto5x.com — Database Schema (v1, updated for SRS v0.15 — payment-model pivot: `ledger_entries` gains two new v1.0-active entry types, `seller_invoices`/`store_payment_instructions` are new design-level tables (not yet built), `plans.plan_type` and `sellers.agreement_*` columns added; the dormant Platform-Collected-mode tables are unchanged, only retitled — see each table's own note below)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -25,7 +25,8 @@ founder before any Module 2 code was written, not improvised silently.
   new: `store_theme_settings, store_shipping_settings, store_tax_settings,
   discount_codes, product_variants, media_assets, listing_reviews, order_items,
   order_flags, customers, product_reviews, carts, collections, collection_products,
-  store_navigation_menus, order_notes, order_timeline_events, import_jobs`, and
+  store_navigation_menus, order_notes, order_timeline_events, import_jobs,
+  store_payment_instructions` (new, v0.15), and
   (v1.1-ahead) `return_requests, store_content_pages, newsletter_subscribers`.
 - Global (platform-level, not tenant-owned) tables: `users`, `suppliers`,
   `supplier_listings`, `supplier_adapters`, `themes`, `plans`, `categories`,
@@ -35,9 +36,10 @@ founder before any Module 2 code was written, not improvised silently.
   `template_entitlements`, `external_api_clients`, `seller_api_tokens` (new in
   v0.6), and (v1.1-ahead) `support_tickets`, `support_ticket_messages`,
   `referral_links`, `referral_conversions`.
-- `ledger_entries`, `payouts`, `seller_payout_accounts`, `seller_onboarding_progress`,
-  and `template_entitlements`/`seller_api_tokens` are scoped by `seller_id`, not
-  `store_id`, using the same "own-row-only" access rule as tenant RLS.
+- `ledger_entries`, `payouts`, `seller_payout_accounts`, `seller_invoices` (new,
+  v0.15), `seller_onboarding_progress`, and `template_entitlements`/
+  `seller_api_tokens` are scoped by `seller_id`, not `store_id`, using the same
+  "own-row-only" access rule as tenant RLS.
 
 ## Currency strategy
 
@@ -184,6 +186,9 @@ from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
 | kyc_status | enum(`unverified`,`pending`,`verified`) | drives hold graduation (FR-6.3) and payout risk summary (FR-6.9) |
 | kyc_verified_at | timestamptz nullable | |
 | is_trusted | boolean default false | **added in the Listing Moderation Engine module** (FR-27.4) — admin-granted only, never auto-earned by a threshold. A trusted seller's listings skip both new-seller probation and the keyword/category moderation queue |
+| agreement_version_accepted | text nullable | **new, v0.15 (Trust & Safety, FR-29.1)** — the Seller Agreement content-page version (FR-12.1's existing versioning) this seller has accepted; null or stale (not the current published version) blocks every dashboard action except the acceptance prompt itself |
+| agreement_accepted_at | timestamptz nullable | |
+| agreement_accepted_ip | text nullable | same "recorded, never used to profile" discipline as every other IP-adjacent field this SRS specifies (§6.5) |
 | created_at, updated_at | timestamptz | |
 
 ### `stores` (tenant root)
@@ -673,25 +678,78 @@ Index: `idx_payments_gateway_txn (gateway_transaction_id)` unique — idempotent
 webhook handling.
 
 ### `ledger_entries` (append-only — single source of truth for balances, seller-scoped)
+**v0.15 note: this table is NOT dormant — it is reused for both models,
+just with different active entry types (see SRS §5.6c's own text: "the
+ledger stays").** `sale_credit`/`gateway_fee_debit`/`hold_release`/
+`reserve_hold`/`reserve_release`/`payout_debit`/`commission_debit`/
+`refund_adjustment` are the **dormant Platform-Collected mode's** types
+(§5.6d) — unused by any v1.0 code path, retained for its reactivation.
+**`commission_accrued`/`commission_waived` (new, v0.15) are v1.0's only
+active types** — FR-6.16/FR-6.20. A v1.0 entry leaves `balance_bucket`,
+`hold_release_at`, and `reserve_release_at` unpopulated (null) — those
+columns have no meaning for a receivable-direction entry; adding them for
+the dormant types already covers every column this table will ever need,
+no migration required for either model.
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | seller_id | uuid FK → sellers.id | |
 | order_id | uuid FK → orders.id, nullable | |
-| type | enum(`sale_credit`,`commission_debit`,`gateway_fee_debit`,`hold_release`,`reserve_hold`,`reserve_release`,`payout_debit`,`refund_adjustment`) | |
-| amount | numeric(12,2) | signed (+/-) |
+| type | enum(`sale_credit`,`commission_debit`,`gateway_fee_debit`,`hold_release`,`reserve_hold`,`reserve_release`,`payout_debit`,`refund_adjustment`,`commission_accrued`,`commission_waived`) | the last two are new, v0.15, and the only types v1.0 code ever writes |
+| amount | numeric(12,2) | signed (+/-); a `commission_accrued` entry is positive (seller owes the platform), `commission_waived` is negative (reduces that receivable) |
 | currency | text | denormalized at entry-creation time |
-| balance_bucket | enum(`pending`,`available`,`reserved`) | |
-| hold_release_at | timestamptz nullable | set on `sale_credit` rows for the hold-release scheduled job (FR-6.2) |
-| reserve_release_at | timestamptz nullable | set on `reserve_hold` rows for the reserve-release scheduled job (FR-6.13); additive to, and independent of, `hold_release_at` |
+| balance_bucket | enum(`pending`,`available`,`reserved`) nullable | **dormant-mode only** (v0.15) — null on every v1.0 (`commission_accrued`/`commission_waived`) entry |
+| hold_release_at | timestamptz nullable | set on `sale_credit` rows for the hold-release scheduled job (FR-6.2) — **dormant-mode only** |
+| reserve_release_at | timestamptz nullable | set on `reserve_hold` rows for the reserve-release scheduled job (FR-6.13) — **dormant-mode only** |
 | created_at | timestamptz | never updated — corrections are new offsetting rows, never edits |
 
 Index: `idx_ledger_seller_created (seller_id, created_at)`. Partial indexes:
 `idx_ledger_pending_release ON ledger_entries (hold_release_at) WHERE
 balance_bucket = 'pending'` and `idx_ledger_reserve_release ON ledger_entries
-(reserve_release_at) WHERE type = 'reserve_hold'`.
+(reserve_release_at) WHERE type = 'reserve_hold'` — both **dormant-mode
+only**; a v1.0 seller's **outstanding commission balance** is instead
+`SUM(amount) WHERE type IN ('commission_accrued','commission_waived') AND
+seller_id = ... AND invoice_id IS NULL` (i.e. not yet attached to a
+generated invoice) — see `seller_invoices` below.
 
-### `seller_payout_accounts` (global, seller-scoped)
+### `seller_invoices` (new, v0.15 — v1.0's commission-invoicing table, not yet built)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| seller_id | uuid FK → sellers.id | |
+| period_start, period_end | timestamptz | the billing period this invoice summarizes (FR-6.17) |
+| total_amount | numeric(12,2) | sum of that period's `commission_accrued`/`commission_waived` ledger entries at generation time — a snapshot, not a live computation, so a later entry never silently changes an already-generated invoice |
+| currency | text | |
+| status | enum(`pending`,`paid`,`overdue`) | `overdue` is set by the same scheduled job that checks the grace period (FR-6.18), not a manually-set value |
+| due_date | timestamptz | `period_end` + a configurable number of days |
+| paid_at | timestamptz nullable | |
+| paid_by | uuid FK → admin_users.id, nullable | the admin who manually verified payment (FR-6.17) |
+| created_at | timestamptz | |
+
+Index: `idx_seller_invoices_seller_status (seller_id, status)`. Index:
+`idx_seller_invoices_overdue_check (status, due_date)` — the grace-period
+scheduled job's primary query (FR-6.18).
+
+### `store_payment_instructions` (new, v0.15 — Direct Seller Collection, not yet built)
+One row per store, auto-created with empty defaults the moment a store is
+created (same "never a missing-row state to handle" discipline as
+`StoreShippingSettings`/`StoreTaxSettings`, Module 7).
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| store_id | uuid FK → stores.id, unique | |
+| bank_account_title, bank_account_number, bank_name | text nullable | shown to the buyer at order confirmation if configured (FR-6.14) |
+| jazzcash_number, easypaisa_number | text nullable | |
+| cod_enabled | boolean default false | unconditionally permissible in v1.0 (no ledger-balance gate, unlike the dormant mode's version, §5.6a) |
+| updated_at | timestamptz | |
+
+A store cannot go live (FR-6.14) unless at least one of
+`bank_account_number`/`jazzcash_number`/`easypaisa_number` is set or
+`cod_enabled` is true — enforced at the application layer, not a database
+constraint (the same store-readiness-gate pattern as Module 4's
+`StoreThemeSettings` requiring a theme before launch).
+
+### `seller_payout_accounts` (global, seller-scoped) — DORMANT in v1.0, see §5.6d
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -705,7 +763,7 @@ balance_bucket = 'pending'` and `idx_ledger_reserve_release ON ledger_entries
 
 Index: `idx_payout_accounts_seller (seller_id)`.
 
-### `payouts` (seller-scoped)
+### `payouts` (seller-scoped) — DORMANT in v1.0, see §5.6d
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -732,6 +790,7 @@ primary query.
 |---|---|---|
 | id | uuid PK | |
 | name | text | Free / Starter / Growth / Premium |
+| plan_type | enum(`seller`,`supplier`) default `'seller'` | **new, v0.15** — `supplier` is the new Supplier Premium Plan tier (FR-7.10); every plan before this amendment is implicitly `seller`, which is exactly this column's default, so no backfill/migration ambiguity |
 | price | numeric(12,2) | 0 for the Free Plan (FR-7.3) |
 | currency | text default `'PKR'` | plans aren't store-scoped, so they need their own explicit currency column |
 | billing_interval | enum(`monthly`,`yearly`,`none`) | `none` for the Free Plan, which has no billing cycle (FR-7.3) |
@@ -741,7 +800,10 @@ primary query.
 
 Commission-rate overrides and feature limits for a plan are **not** columns on
 this table — they are `settings_values` rows scoped to `('plan', plans.id)`,
-including the Free Plan's higher default commission (FR-7.3/FR-7.4).
+including the Free Plan's higher default commission (FR-7.3/FR-7.4). The
+Supplier Premium Plan's flagship gate — access to the multi-store aggregated
+dashboard (FR-3.3) — is the same mechanism: a `settings_values` row scoped to
+the supplier's assigned plan, not a new column here.
 
 ### `subscriptions`
 | Column | Type | Notes |

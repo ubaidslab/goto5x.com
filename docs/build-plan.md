@@ -14,6 +14,22 @@ here rather than improvising in code.
 
 ## Full Module Sequence (build order)
 
+**v0.15 renumbering note (read this before citing any module number below):**
+the payment-model pivot (SRS v0.15 changelog) removes the former **Payouts &
+Disbursement** module entirely from the active v1.0 sequence (its content is
+dormant, not deleted — SRS §5.6d) and inserts a new **Trust & Safety System**
+module in its place, net module count unchanged (still 20). Concretely:
+old Module 11 (Payments & Ledger) is renamed **Commission & Invoicing
+Engine** and shrinks to match SRS §5.6c; old Module 12 (Seller Account
+Security: 2FA + Devices) becomes Module 13; old Module 13 (Payouts &
+Disbursement) is **removed from the active sequence** (dormant, reactivated
+only alongside SRS §5.6d); a **new Module 12 (Trust & Safety System)** takes
+its numeric slot; old Modules 14–20 are otherwise unchanged in content, only
+shifted where their dependency list referenced the old Module 13. Any
+verification report or prior build-plan section citing "Module 11/12/13"
+from before this amendment is describing the **old** numbering — cross-check
+against this table, not memory.
+
 | # | Module | Depends on | SRS §14 checklist(s) it primarily targets |
 |---|---|---|---|
 | 1 | **Foundation** (this plan) | — | Partial 14.0, 14.8, 14.12 |
@@ -25,14 +41,14 @@ here rather than improvising in code.
 | 7 | Shipping, Tax & Discounts | 2 | Partial 14.2, 14.19 (tax) |
 | 8 | Suppliers & Printify Adapter | 2 | 14.3, 14.4 |
 | 9 | Orders, Cart & Checkout | 2, 6, 7, 8 | 14.5, 14.15, 14.17 |
-| 10 | **Seller Dashboard UI** (new, v0.12) | 2, 4, 7, 9 | 14.26 — the actual rendered screens for product/media (Module 2), shipping/tax/discount (Module 7), and order management (Module 9), governed by the SIMPLICITY INVARIANT (SRS §3.13) |
-| 11 | Payments & Ledger | 9 | 14.6 (payments/ledger half) |
-| 12 | **Seller Account Security: 2FA + Devices** (new, v0.10) | 1 | 14.24 |
-| 13 | Payouts & Disbursement | 11, 12 | 14.6 (payout half) — depends on 12 so `required_for_payout_actions` MFA enforcement (FR-25.6) exists before a payout-request gate can check it |
-| 14 | Plans, Pricing & Business Guard-Rails | 1, 11 | 14.7, 14.21 |
+| 10 | **Seller Dashboard UI** (new, v0.12; scope extended v0.15) | 2, 4, 7, 9 | 14.26 — the actual rendered screens for product/media (Module 2), shipping/tax/discount (Module 7), and order management (Module 9), plus **dashboard personalization (FR-28.4, new v0.15)** — all governed by the SIMPLICITY INVARIANT (SRS §3.13) |
+| 11 | **Commission & Invoicing Engine** (renamed + rescoped v0.15, was "Payments & Ledger") | 9 | 14.6c — Direct Seller Collection payment instructions (FR-6.14), invoice-based commission ledger (FR-6.16), monthly invoicing + manual verification (FR-6.17), grace-period auto-suspension (FR-6.18). **Does not build §14.6's dormant Safepay/hold/reserve/payout content** — that's §5.6d's reactivation scope, not v1.0's |
+| 12 | **Trust & Safety System** (new, v0.15 — replaces the former Payouts & Disbursement module in this numeric slot) | 1, 6, 9, 11 | 14.29 — versioned Seller Agreement (FR-29.1/29.2), the rule-based T&S engine extending Module 6 moderation + FR-23.5 signup-velocity + Module 11's cancellation-rate/pending-forever-rate monitors (FR-6.19/29.3), and the enforcement ladder on top of Module 1's existing seller-lifecycle admin controls (FR-29.4) |
+| 13 | **Seller Account Security: 2FA + Devices** (new, v0.10; renumbered v0.15 from 12) | 1 | 14.24 — **sequencing rationale changed:** no longer gated by a Payouts module (dormant), stands on its own as general account-security hardening |
+| 14 | Plans, Pricing & Business Guard-Rails (scope extended v0.15) | 1, 11 | 14.7, 14.21 — plus **Supplier Premium Plan (FR-7.10, new v0.15)** |
 | 15 | Customers, Reviews & Data Portability | 9 | 14.13, 14.14, 14.18, 14.19 (invoice) |
 | 16 | Seller Onboarding Wizard | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
-| 17 | Admin Control Plane completion | 1, 6, 11, 13, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), and the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11) |
+| 17 | Admin Control Plane completion | 1, 6, 11, 12, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11), commission-invoice verification screen (Module 11) and T&S enforcement/risk-view screens (Module 12) |
 | 18 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 19 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
 | 20 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
@@ -42,12 +58,9 @@ the full reasoning, this is just the sequencing consequence): **Listing
 Moderation Engine** slots right after Discovery & Merchandising because it's a
 launch-blocking legal-safety requirement, not a Discovery feature — Discovery
 itself still ships first, unmodified, with the moderation-status filter added
-as a small follow-up when Module 6 lands. **Seller Account Security** slots
-immediately before Payouts & Disbursement (not alongside Seller Onboarding,
-Module 16, despite both touching seller-facing auth/account concerns) because
-`required_for_payout_actions` MFA enforcement is meaningless if 2FA doesn't
-exist yet by the time a seller can request a payout — Module 16 comes after
-Payouts in this table, which would be too late.
+as a small follow-up when Module 6 lands. **Seller Account Security**
+(Module 13 as of v0.15's renumbering, originally Module 12) no longer has a
+Payouts dependency to justify its position — see the v0.15 note below.
 
 **One module inserted in v0.12** (see the SRS's own v0.11→v0.12 changelog):
 **Seller Dashboard UI** slots immediately after Orders, Cart & Checkout
@@ -55,6 +68,27 @@ Payouts in this table, which would be too late.
 whose screens it builds — and before Seller Onboarding Wizard (now Module
 16, which gained a dependency on Module 10 for exactly this reason: it links
 a new seller into real screens, not placeholders).
+
+**v0.15 payment-model pivot — module sequence consequence (see SRS's own
+v0.14→v0.15 changelog for the full business-model reasoning):** the former
+Module 13 (Payouts & Disbursement) built nothing in v1.0 — it disbursed money
+the platform never held, under Direct Seller Collection — so it is removed
+from the active sequence entirely (its full content is preserved, unbuilt,
+as SRS §5.6d for a future reactivation). The former Module 12 (Seller Account
+Security: 2FA + Devices) shifts to Module 13, since its original reason for
+sitting immediately before Payouts (`required_for_payout_actions` MFA
+enforcement) no longer applies — it now sits wherever is convenient, kept
+adjacent to Module 12 for topical proximity (both are account/trust-adjacent
+hardening), not because of a hard dependency. The former Module 11 (Payments
+& Ledger) is renamed **Commission & Invoicing Engine** and rescoped to
+exactly SRS §5.6c/§14.6c — materially smaller than before (no gateway
+integration, no hold/reserve engine, no payout queue). A **new Module 12
+(Trust & Safety System)** fills the vacated numeric slot, since it is the
+compensating control the pivot specifically requires and depends on Module
+11 existing first (its anti-underreporting monitors read Module 11's
+invoice/commission data). Module 17 (Admin Control Plane completion)'s
+dependency list is updated from "1, 6, 11, 13, 14" to "1, 6, 11, 12, 14"
+accordingly.
 
 **Notifications is not its own module** — it is cross-cutting. Each module that
 produces a notification-worthy event (order confirmed in Module 9, payout status
@@ -1005,6 +1039,56 @@ Architecture decisions worth carrying into later modules:
   test harness and this module shipped no apps/web changes - Module 10
   (Seller Dashboard UI) is where order/cart screens land, per the v0.12
   amendment.
+
+## Amendment approved before Module 10 (SRS v0.15) — major business-model pivot
+
+A founder-directed pivot, deliberately timed before Payments/Ledger (old
+Module 11) was built - the founder's own words: "good timing since payments
+aren't built yet." Full text lives in `docs/SRS.md`'s v0.14→v0.15 changelog
+and the new §5.6c/§5.29/FR-7.10/FR-28.4. Summary for this document's own
+purposes:
+
+1. **Payment model: Direct Seller Collection replaces platform-collected
+   payments for v1.0.** Buyers pay sellers directly (seller-configured bank
+   transfer/JazzCash/Easypaisa instructions, plus unconditionally-permitted
+   COD); Module 9's already-built `OrdersService.markAsPaid()` is unchanged
+   and is now the universal payment-confirmation path. Commission becomes
+   invoice-based (default 1%, down from 3%): accrued per confirmed sale,
+   billed monthly, manually verified by an admin in v1.0, with automated
+   store suspension (reusing Module 9's existing FR-5.3 mechanism) for
+   non-payment past a grace period.
+2. **Safepay/hold/reserve/payout-disbursement (old Module 11's gateway half
+   + old Module 13 entirely) become dormant, not deleted** — SRS §5.6d,
+   the exact specification for a future reactivation (international
+   expansion, a regulatory requirement, or scale). See the "v0.15
+   renumbering note" at the top of this document's module-sequence table
+   for the concrete module-number consequences.
+3. **New Trust & Safety System (Module 12, new numeric slot)** compensates
+   for the accountability a payment gateway used to provide for free: a
+   versioned Seller Agreement (timestamp+IP acceptance), a rule-based T&S
+   engine extending Module 6's moderation history + FR-23.5's signup-
+   velocity limiting + new cancellation-rate/pending-forever-rate monitors,
+   and an enforcement ladder built entirely on Module 1's existing seller-
+   lifecycle admin controls (FR-8.4) — no parallel permissions system.
+4. **Supplier Premium Plan (FR-7.10)** — folds into the existing Plans
+   module (14): a new `supplier` plan type, the multi-store aggregated
+   dashboard (FR-3.3, already built in Module 8/9) becomes the paid tier's
+   flagship feature. **Confirmed, no gap:** a seller's own multi-supplier
+   management was already fully covered by FR-2.6/FR-2.7 and Module 8/9's
+   store-scoped design before this amendment — only the supplier's own
+   cross-store view needed a new FR.
+5. **Dashboard personalization (FR-28.4)** folds into Module 10 (Seller
+   Dashboard UI, not yet built) — plan-gated themes/wallpapers, reusing the
+   Settings-Registry plan-gating mechanism FR-7.1 already established.
+6. **`docs/legal/*.md` updated** (terms-of-service.md, refund-policy.md,
+   privacy-policy.md) to reflect the facilitation-workspace/seller-
+   responsibility/indemnification framing and the versioned-agreement
+   mechanism — still flagged for human counsel review, same discipline as
+   every prior legal draft.
+
+No code was written for this amendment - it is a pure design/SRS revision
+ahead of Module 10, per the founder's explicit "wait for my approval before
+starting the revised Module 10" instruction.
 
 ---
 

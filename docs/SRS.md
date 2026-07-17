@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.14 (Build-phase amendment)
+**Version:** 0.15 (Build-phase amendment)
 **Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -28,13 +28,35 @@ legal-safety check). New FR-27.8 (§5.27) runs the same banned/restricted-
 keyword and restricted-category checks, and the same trusted-seller
 bypass, on a supplier listing at the moment of seller approval; new-seller
 probation stays scoped to self-fulfilled listings only. §14.25 gained two
-lines. **This revision (v0.14), approved after Module 9:** Module 9
-(Orders, Cart & Checkout) built; completes Module 8's deferred FR-3.3/3.4/
-4.5/4.7/4.8 wiring; fixes a found-during-build completeness gap in
-FR-2.7/3.2 (a supplier listing's approval now also creates its
-`product_variants` row); clarifies FR-5.3's suspended-store behavior. No FR
-from any prior version was removed or weakened — every change below is
-additive.
+lines. v0.14 (approved after Module 9): Module 9 (Orders, Cart & Checkout)
+built; completed Module 8's deferred FR-3.3/3.4/4.5/4.7/4.8 wiring; fixed a
+found-during-build completeness gap in FR-2.7/3.2 (a supplier listing's
+approval now also creates its `product_variants` row); clarified FR-5.3's
+suspended-store behavior. **This revision (v0.15), approved before Module
+10 — a major business-model pivot, good timing since Payments (Module
+10/11) had not yet been built:** v1.0 replaces platform-collected payments
+with **Direct Seller Collection** (§5.6c) — buyers pay sellers directly
+(bank/JazzCash/Easypaisa/COD, all unconditionally permitted since the
+platform never touches the money); the existing Module 9 mark-as-paid path
+is unchanged and is now the universal payment-confirmation mechanism;
+commission becomes **invoice-based** (default 1%, down from 3%), accrued
+per confirmed sale and billed monthly, with manual admin payment
+verification and automated grace-period store suspension for non-payment.
+The dormant Platform-Collected mode (Safepay, hold, reserve, payout/
+disbursement — §5.6/§5.6a/§5.6b, retitled but **not one word of their
+content changed**) is retained verbatim for a future reactivation. A new
+**Trust & Safety System** (§5.29) — a versioned Seller Agreement
+(timestamp+IP acceptance, re-acceptance on version change), a zero-cost
+rule-based T&S engine extending existing mechanisms (Module 6 moderation,
+FR-23.5 signup-velocity limits, new anti-underreporting monitors), and an
+enforcement ladder built on the existing seller-lifecycle admin controls
+(FR-8.4) — compensates for the accountability a payment gateway used to
+provide for free. Also new: a Supplier Premium Plan (FR-7.10, the
+multi-store aggregated dashboard as its flagship, paid-tier feature) and
+seller dashboard personalization (FR-28.4, plan-gated). No FR from any
+prior version was deleted; every dormant-mode FR keeps its exact meaning
+for its own eventual reactivation — every change below is additive or
+explicitly superseding, never a silent rewrite.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -340,6 +362,69 @@ closure — flagged before being silently improvised):**
   written - there is no ledger yet to compensate. Module 10/11 closes this
   the same way Module 9 closed Module 8's FR-4.5/4.7/4.8 deferral.
 
+**Changelog v0.14 → v0.15 (major business-model amendment, approved before
+Module 10 - timed deliberately, since Payments/Ledger had not yet been
+built):**
+- **Payment model pivot: Direct Seller Collection replaces platform-collected
+  payments for v1.0 (new §5.6c, FR-6.14-6.20).** Buyers pay sellers directly
+  via seller-configured instructions (bank transfer/JazzCash/Easypaisa, plus
+  an unconditionally-permitted COD - the commission-inversion problem that
+  gated COD before doesn't apply once the platform never holds any sale's
+  funds). Module 9's existing `markAsPaid()` is unchanged and is now the
+  universal payment-confirmation path for every order - the Financial Truth
+  Invariant (§3.12) is unaffected.
+- **Commission becomes invoice-based, default 1% (down from 3%).** Accrued
+  per confirmed sale as a `commission_accrued` ledger entry (the append-only
+  `LedgerEntry` structure is retained; only the entries' direction changes -
+  receivable from the seller, not payable to them); a scheduled job
+  generates one monthly invoice per seller; v1.0 payment verification is
+  manual (an admin marks an invoice paid, audit-logged); non-payment past a
+  configurable grace period triggers **automated store suspension**, reusing
+  Module 9's existing `suspended`/`403 store_suspended` mechanism (FR-5.3) -
+  the platform's only enforcement lever without held funds.
+- **Anti-underreporting guard-rails (FR-6.19):** since the platform can no
+  longer independently verify a sale happened, per-seller cancellation-rate
+  and pending-forever-rate monitors feed the new Trust & Safety system,
+  identified in the risk register as v1.0's central new financial-integrity
+  risk (Risk 21, effectively replacing the now-inapplicable Risk 6).
+- **§5.6/§5.6a/§5.6b (Safepay, hold, hold-graduation, rolling reserve,
+  payout/disbursement) are retitled DORMANT, not deleted.** Not one word of
+  their content changed - they are the exact specification for reactivating
+  platform-held payment collection later (international expansion, a
+  regulatory requirement, or scale). Every existing cross-reference to
+  FR-6.1-6.13 elsewhere in this document (risk register, checklists, role
+  descriptions) is unaffected in meaning; only §5.6/5.6a/5.6b's heading and
+  §14.6's checklist gained an explicit "dormant" framing. The Payment
+  Adapter and Disbursement Adapter patterns (§3.5) stay in the architecture
+  unchanged, ready for that reactivation.
+- **New §5.29 Trust & Safety System:** a versioned Seller Agreement (FR-29.1,
+  timestamp+IP acceptance, forced re-acceptance on version change), its
+  facilitation-workspace/indemnification legal grounding (FR-29.2, drafted
+  in `docs/legal/terms-of-service.md`, flagged for counsel review per the
+  same discipline as every other legal draft), a zero-cost rule-based T&S
+  engine that extends existing mechanisms rather than duplicating them
+  (FR-29.3 - Module 6 moderation history, FR-23.5 signup-velocity limits,
+  FR-6.19's new monitors, plus new bypass-attempt detection), and an
+  enforcement ladder (FR-29.4: warning → restriction → suspension →
+  permanent ban) built entirely on FR-8.4's existing seller-lifecycle admin
+  controls - no parallel permissions system.
+- **Supplier Premium Plan (new monetization, FR-7.10):** the plan mechanism
+  (FR-7.1-7.9) gains a `supplier` plan type; the multi-store aggregated
+  dashboard (FR-3.3) becomes the paid tier's flagship feature, free tier
+  covers single-seller basics. **Confirmed, no gap:** a seller's own
+  multi-supplier management (one seller, many linked suppliers, one
+  dashboard) was already fully covered by FR-2.6/FR-2.7 and Module 8/9's
+  store-scoped design - only the *supplier's* cross-store view needed this
+  new FR.
+- **Seller dashboard personalization (FR-28.4, slotted into the existing
+  Seller Dashboard UI module, Module 10):** plan-gated dashboard themes/
+  wallpapers, reusing the exact Settings-Registry plan-gating mechanism
+  FR-7.1 already established for template tiers - cheap to build, still
+  governed by the SIMPLICITY INVARIANT (§3.13).
+- Module 10/11's scope is correspondingly simplified - see
+  `docs/build-plan.md`'s revised module sequence for the concrete
+  renumbering.
+
 ---
 
 ## 1. Introduction
@@ -453,9 +538,9 @@ Direct competitor: **Shopify**. Differentiation strategy:
 | Role | Description |
 |---|---|
 | **Buyer** | Shops on a seller's storefront; needs no account (v1.0) — order status via a secure emailed link (FR-5.4); optional accounts are v1.1 (FR-22.1) |
-| **Seller** | Owns a store; manages catalog, design, discovery, customers, orders (including manual/phone orders), shipping, discounts, tax, payouts, and connections to the Template Store/Social Media SaaS |
+| **Seller** | Owns a store; manages catalog, design, discovery, customers, orders (including manual/phone orders), shipping, discounts, tax, payment collection instructions, commission invoices, and connections to the Template Store/Social Media SaaS |
 | **Supplier** | Lists products for one or more sellers; fulfills orders and provides tracking |
-| **Platform Admin** | goto5x.com staff; manages sellers, suppliers, commissions/plans, payouts, disputes, platform health, content pages, business guard-rails, and the external-API client registry (§5.24) |
+| **Platform Admin** | goto5x.com staff; manages sellers, suppliers, commission invoices, Trust & Safety enforcement, disputes, platform health, content pages, business guard-rails, and the external-API client registry (§5.24) |
 
 ### 2.4 Operating Environment
 Single VPS at Phase 1 (app, DB, Redis, MinIO, worker, same-VPS staging stack),
@@ -627,6 +712,13 @@ built the same way: never as a one-off, hard-coded connection.
 - **Disbursement Adapter:** v1.0's manual adapter and a future API-based adapter
   both implement the same interface so the payout queue/ledger/notification logic
   never changes when the disbursement mechanism does (FR-6.11, §5.6b).
+- **v0.15 pivot note:** both patterns above remain specified exactly as written,
+  for the **dormant "Platform-Collected Payments" mode** (§5.6d) — v1.0 ships
+  under **Direct Seller Collection** (§5.6c) instead, which needs neither a
+  payment gateway nor a disbursement mechanism at all (the platform never holds
+  buyer funds). Nothing here is deleted; a future re-activation (international
+  expansion, a regulatory requirement, or scale) implements these two adapters
+  exactly as already specified, with zero redesign.
 
 In every case, the orchestrating module (Suppliers, Payments, Payouts) contains zero
 gateway/supplier-specific branching — that logic lives entirely inside the adapter
@@ -806,12 +898,21 @@ from it yet.
 An order/sale **exists** — in a seller's own dashboard, in any analytics or
 report view (seller-facing or admin-facing), and in `platform_events` — **only
 after its payment has been verified**: a signed, verified gateway webhook
-confirming payment (§5.6a), or an explicit seller mark-as-paid action for a
-manual/offline order (§5.17). This is a binding constraint on every module
-that touches orders, payments, ledger entries, payouts, or analytics, pinned
-now specifically so Orders, Cart & Checkout and Payments & Ledger (Modules 9
-and 10 as of v0.10's renumbering, `docs/build-plan.md`) are **designed
-around it from their first schema draft**, not retrofitted afterward.
+confirming payment (§5.6a/§5.6d, the dormant Platform-Collected mode), or an
+explicit seller mark-as-paid action for a manual/offline order (§5.17). This is
+a binding constraint on every module that touches orders, payments, ledger
+entries, payouts, or analytics, pinned now specifically so Orders, Cart &
+Checkout and Payments & Ledger (Modules 9 and 10 as of v0.10's renumbering,
+`docs/build-plan.md`) are **designed around it from their first schema draft**,
+not retrofitted afterward.
+
+**v0.15 pivot note (Direct Seller Collection, §5.6c):** v1.0 ships no gateway
+webhook path at all — `OrdersService.markAsPaid()` (Module 9, already built)
+is the **sole** confirmation path for every order regardless of source. This
+invariant is unchanged by the pivot; it is, if anything, *more* load-bearing
+now, since it is also the mechanism the new commission-invoicing model
+(§5.6c) accrues commission against — a pending order is not just "not a sale
+yet," it is also not yet a commission-bearing event.
 
 - **No pending/unconfirmed/failed order counts as a sale, anywhere,** even
   transiently. A cart that has been submitted but not yet paid is not an
@@ -866,9 +967,9 @@ that module's first mockup, not retrofitted after screens already exist.
 | Role | Key permissions |
 |---|---|
 | Buyer | Browse, checkout, and look up order status via a secure emailed link — no platform account required (FR-5.4); optional account in v1.1 (FR-22.1) |
-| Seller | Full control of own store(s): design, catalog, discovery, customers, shipping, discounts, tax, orders (including manual), supplier links, payout requests, and revocable connections to the Template Store/Social Media SaaS |
+| Seller | Full control of own store(s): design, catalog, discovery, customers, shipping, discounts, tax, orders (including manual), supplier links, payment collection instructions, commission invoices, and revocable connections to the Template Store/Social Media SaaS |
 | Supplier | Submit listings, view/fulfill orders **only** across stores they are explicitly linked to — never a global view of the platform's orders |
-| Platform Admin | Full oversight: approve/suspend sellers & suppliers, configure commission/plans/reserves, approve payouts, resolve disputes, manage template & adapter registries (including the external-API client registry, §5.24), edit content pages, view platform analytics |
+| Platform Admin | Full oversight: approve/suspend sellers & suppliers, configure commission/plans, verify commission-invoice payment, enforce Trust & Safety actions, resolve disputes, manage template & adapter registries (including the external-API client registry, §5.24), edit content pages, view platform analytics |
 | Reviewer (new, v0.10) | **One narrow admin sub-role, not a general permissions system:** sees only the Listing Moderation Engine's queue (§5.27); can approve or reject a queued product with notes. No access to any other admin surface — commission/plans, payouts, seller/supplier lifecycle, settings, or the audit log itself |
 
 Fine-grained permission scopes (e.g. seller staff sub-accounts, a general
@@ -1056,7 +1157,17 @@ audit log — one purpose-built role, not the start of a general framework.
   supplier-fulfilled items use their adapter-provided rate (FR-4.6); the order
   total is the sum of both.
 
-### 5.6 Payments, Commission & Ledger Engine
+### 5.6 Payments, Commission & Ledger Engine — DORMANT in v1.0 (Platform-Collected Payments mode, §5.6d)
+**v0.15 pivot:** v1.0 ships under **Direct Seller Collection** (§5.6c) instead
+of this section's model — the platform never holds buyer funds, so nothing
+below is built for launch. **Nothing here is deleted or wrong** — it is the
+exact, unchanged specification for reactivating platform-held payment
+collection later (international expansion, a regulatory requirement, or
+scale), preserved verbatim so that future work is "flip this mode back on,"
+never "redesign it from scratch." Every FR-6.1–FR-6.13 number below keeps its
+existing meaning; every other place in this document that cites one of them
+(risk register, checklists, role descriptions) is describing this dormant
+mode specifically.
 - FR-6.1: Commission of 3% is deducted per completed sale, calculated on the
   **product + shipping subtotal actually charged to the buyer, net of any discount
   code applied (FR-5.5), before payment-gateway fees** (gateway fees are a
@@ -1089,7 +1200,7 @@ audit log — one purpose-built role, not the start of a general framework.
   admin's own manual confirmation at the point of marking an order paid, which is
   itself an audited action (FR-8.9).
 
-### 5.6a Payment Gateway Strategy (Pakistan-first, prepaid launch)
+### 5.6a Payment Gateway Strategy (Pakistan-first, prepaid launch) — DORMANT in v1.0, see §5.6 note above
 - **v1.0 launch: Safepay only.** A prepaid-only launch keeps commission capture
   clean: buyer pays → platform receives the full amount → 3% commission is
   deducted in the ledger (FR-6.1) → the remainder is credited to the seller's
@@ -1110,7 +1221,7 @@ audit log — one purpose-built role, not the start of a general framework.
   goto5x.com's own ledger and are **gateway-agnostic by construction** — switching
   or adding a gateway never touches that code, only a new Payment Adapter (§3.5).
 
-### 5.6b Payout Request & Disbursement Engine
+### 5.6b Payout Request & Disbursement Engine — DORMANT in v1.0, see §5.6 note above
 - FR-6.7: A seller can request a payout of any amount **up to their current
   `available_balance`** (post-hold, post-reserve); a request exceeding available
   balance is rejected before it reaches the approval queue.
@@ -1139,6 +1250,85 @@ audit log — one purpose-built role, not the start of a general framework.
   sale is its own ledger entry class (`reserve_hold`), released via
   `reserve_release` after a configurable period if undisputed. All parameters are
   Settings Registry entries.
+
+### 5.6c Direct Seller Collection & Commission Invoicing (v1.0 model, new — v0.15)
+**The platform never touches buyer money in any v1.0 flow.** A buyer pays the
+seller directly, out-of-platform; the platform's revenue is a commission
+*invoice* the seller owes it after the fact, not a deduction from funds it
+held. This is a full inversion of §5.6's ledger direction — the ledger now
+tracks what a seller **owes the platform**, not what the platform owes the
+seller.
+- FR-6.14: **Seller payment instructions.** A seller configures the payment
+  methods their storefront accepts and the exact instructions buyers see:
+  bank transfer (account title/number/bank name), JazzCash number, Easypaisa
+  number, and a **Cash on Delivery** toggle — COD is unconditionally
+  permissible in v1.0 (unlike the dormant mode's gated version, FR-6.1's
+  note) since the platform never holds money to deduct a commission from at
+  the point of sale either way. At least one method must be configured before
+  a store can go live; checkout/order-confirmation surfaces the seller's
+  configured instructions to the buyer once an order is placed.
+- FR-6.15: **Order confirmation is unchanged from Module 9.** An order stays
+  `pending` until the seller marks it paid (`OrdersService.markAsPaid()`,
+  FR-17.1, already built) — this *is* the payment-confirmation step under
+  Direct Seller Collection, not merely a manual-order convenience path
+  anymore. The Financial Truth Invariant (§3.12) is unchanged: no pending
+  order counts as a sale anywhere.
+- FR-6.16: **Invoice-based commission, default 1%.** Marking an order paid
+  accrues a `commission_accrued` ledger entry (default **1%** of the same
+  post-discount product+shipping subtotal FR-6.1 already defines) —
+  configurable per plan/category/seller via the same Settings Registry
+  mechanism FR-6.1/FR-8.3 already specify, unchanged. The ledger itself
+  (append-only `LedgerEntry` table, FR-6.4's structure) is retained; only the
+  entry types and the direction of what a computed balance represents
+  change (§5.6c's entries net to a seller's **outstanding commission
+  balance**, not an available-for-payout balance).
+- FR-6.17: **Monthly commission invoice.** A scheduled job generates one
+  invoice per seller per billing period, summing that period's
+  `commission_accrued` entries. **v1.0 payment verification is manual** — an
+  admin marks an invoice `paid` once the seller has settled it outside the
+  platform (bank transfer to the platform's own account), an audit-logged
+  control-plane action (FR-8.9) exactly like every other admin mutation. No
+  online invoice-payment gateway ships in v1.0 (would reintroduce the
+  gateway dependency this pivot removes) — a future phase may add one behind
+  the same Payment Adapter interface (§3.5) without changing the invoicing
+  logic itself.
+- FR-6.18: **Grace period → automated suspension.** An invoice unpaid past a
+  configurable grace period (Settings Registry, `billing.invoice_grace_period_days`)
+  triggers **automated store suspension** — reusing the exact `suspended`
+  store status and buyer-facing "temporarily unavailable" behavior Module 9
+  already built (FR-5.3), not a new suspension mechanism. Suspension lifts
+  automatically once an admin marks the invoice paid. This is the platform's
+  only enforcement lever for non-payment, since it never holds seller funds
+  to withhold instead.
+- FR-6.19: **Anti-underreporting guard-rails.** Because the platform cannot
+  independently verify a direct-collection sale happened, every
+  storefront-placed order is recorded regardless of its eventual status
+  (already true — Financial Truth Invariant + Module 9's own design), and two
+  new per-seller monitors feed the Trust & Safety system (§5.29):
+  a **cancellation-rate** monitor (share of a seller's orders marked
+  `cancelled` rather than paid, over a rolling window) and a
+  **pending-forever-rate** monitor (share of orders that sit in `pending`
+  past a configurable age without being marked paid *or* cancelled — the
+  most direct proxy for "buyer paid the seller directly and the seller never
+  told the platform"). Both thresholds are Settings Registry entries; both
+  feed admin risk views (§5.29), never a silent auto-penalty.
+- FR-6.20: **Commission disputes/adjustments.** If a seller disputes an
+  accrued commission (e.g. the underlying order was genuinely cancelled
+  before fulfillment), an admin can record a `commission_waived` ledger entry
+  against that specific line — same "freezes/adjusts one entry, never a
+  blanket balance rewrite" discipline as the dormant mode's FR-6.5.
+
+### 5.6d Platform-Collected Payments (dormant — Phase 2+/international re-activation)
+This is the same mode §5.6/§5.6a/§5.6b already fully specify (Safepay-first
+gateway strategy, per-transaction hold, hold graduation, rolling reserve,
+payout request/approval, manual-then-API disbursement) — this subsection
+exists only as an explicit pointer so a future reactivation effort starts
+here, not by re-reading the whole document to find it. **Reactivation
+trigger conditions (non-binding guidance, not a build item):** international
+buyers/sellers where direct bank-detail exchange is impractical or
+unsafe, a regulatory requirement that the platform hold funds in escrow, or
+transaction volume high enough that direct-collection's trust-based model
+no longer scales. None of these are expected at v1.0 launch.
 
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans (e.g. Free / Starter / Growth / Premium) priced in the
@@ -1175,6 +1365,26 @@ audit log — one purpose-built role, not the start of a general framework.
   store-level `discount_codes` (FR-2.11/FR-5.5), which discount products at
   checkout, not the seller's own subscription. A platform promo code is redeemed
   at most once (or up to an admin-set redemption limit) and can carry an expiry.
+- FR-7.10: **Supplier Premium Plan (new monetization, v0.15).** The plan
+  mechanism (FR-7.1–7.9) gains a second **plan type** — `seller` (existing) and
+  `supplier` (new) — reusing the exact same Settings Registry-gated plan
+  editor (FR-8.2), not a parallel billing system. A **free supplier tier**
+  covers single-seller basics (registration, listing submission to one linked
+  store, FR-3.1/FR-3.2); the **paid supplier tier** unlocks the **multi-store
+  aggregated dashboard** (FR-3.3) as its flagship feature — a supplier
+  connected to more than one seller's store sees the unified cross-store view
+  only on a paid plan; a free-tier supplier connected to multiple stores still
+  functions correctly per-store, just without the aggregated view. Pricing is
+  founder-set data via the same plan editor, same as every other plan.
+- **Confirmation (no gap found):** a **seller's own** multi-supplier management
+  — one seller, many linked local suppliers, one seller-side dashboard — is
+  already fully covered by existing FRs and requires no new work: FR-2.6/
+  FR-2.7 (a seller can link and review listings from any number of suppliers)
+  and FR-27.8/Module 8's build already scope the seller's listing-review queue
+  and Module 9's order dashboard to the **store**, not to a single supplier —
+  a seller with five linked suppliers already sees all five suppliers'
+  listings/orders in one place with zero additional FRs. FR-7.10 above is
+  specifically the **supplier's own** cross-store view, a distinct concern.
 
 ### 5.8 Platform Admin Terminal — the Control Plane
 The admin terminal is not "a management screen" — it is the platform's control
@@ -1195,7 +1405,11 @@ requires the founder to ask an engineer for a deploy.
 - FR-8.4: **Seller lifecycle control** — approve, suspend, ban, or limit a seller;
   read-only "view any store" access; a secure, time-boxed, reason-required
   **"login as seller" impersonation** mode, fully audit-logged; instant
-  force-disable of a single store.
+  force-disable of a single store. **This is the admin action surface the
+  Trust & Safety enforcement ladder (§5.29) escalates into** — warning and
+  restriction are lighter-weight states this same lifecycle control already
+  needs to express (a "limited" seller), suspension and ban are the existing
+  actions verbatim.
 - FR-8.5: **Supplier lifecycle control** — the same approve/suspend/ban controls as
   FR-8.4, plus platform-level listing approve/reject for policy violations.
 - FR-8.6: **Template management** — publish/unpublish a template, mark it free or
@@ -1775,6 +1989,84 @@ a dedicated module rather than left implicit.
   shared list/detail/form pattern (§3.13(d)) is established once in this
   module and reused by every screen it builds, rather than each screen
   inventing its own layout.
+- FR-28.4: **Dashboard personalization (new, v0.15).** A seller can choose a
+  dashboard theme/wallpaper for their own admin experience (purely cosmetic —
+  never the storefront theme, which stays FR-1.1/FR-1.2's separate system).
+  **Plan-gated:** the Free Plan offers a small built-in set; higher plans
+  unlock more options — gated the same Settings-Registry way FR-7.1 already
+  gates template tiers, cheap to build since it reuses the existing
+  plan-scoped feature-gate mechanism rather than introducing a new one. Still
+  governed by the SIMPLICITY INVARIANT (§3.13) — personalization is an
+  option behind a settings screen, never a default-view distraction.
+
+### 5.29 Trust & Safety System (new, v0.15 — expanded into its own section given Direct Seller Collection's pivot)
+Direct Seller Collection (§5.6c) removes the platform from the money path,
+which removes the built-in accountability a payment gateway/hold/reserve
+model gave the platform for free. This section is the compensating control:
+legal grounding (a versioned agreement every seller explicitly accepts) plus
+a zero-cost, rule-based detection-and-enforcement engine, extending
+mechanisms this SRS already specifies rather than inventing a parallel
+system.
+
+- FR-29.1: **Versioned Seller Agreement.** A seller must accept the current
+  version of the Seller Agreement (`docs/legal/terms-of-service.md`, once
+  finalized) at signup — acceptance records a timestamp and the accepting
+  IP address, the same discipline FR-25.3's security-event logging already
+  applies to auth actions. **Re-acceptance on version change:** publishing a
+  new agreement version (reusing FR-12.1's existing versioned-content-page
+  mechanism — this is not a new content system) requires every seller to
+  re-accept before their next dashboard action succeeds; a seller who has
+  not re-accepted sees only the acceptance prompt, nothing else.
+- FR-29.2: **Facilitation-workspace legal grounding (drafted in
+  `docs/legal/terms-of-service.md`, flagged for human counsel review, same
+  discipline as every other legal draft, FR-12.2).** The agreement states
+  plainly that the platform provides a facilitation workspace only; sellers
+  bear full responsibility for their own listings, sales, fulfillment, and
+  legal compliance; and a seller indemnifies the platform against losses
+  caused by that seller's own Trust & Safety bypass attempts or platform
+  abuse. This is legal text, not application logic — no code enforces
+  indemnification directly, but FR-29.1's acceptance record is what makes
+  the agreement enforceable if it's ever needed.
+- FR-29.3: **T&S engine (zero-cost, rule-based) — extends existing
+  mechanisms, introduces no parallel system:**
+  - **Signup velocity** — extends FR-23.5's existing per-identity/signup-rate
+    limiting; a T&S flag (not just a hard block) fires when a configurable
+    threshold is crossed, for admin review rather than only a rejection.
+  - **Listing-content flags** — extends the Listing Moderation Engine
+    (§5.27) directly; every FR-27.1–27.8 decision already recorded is itself
+    a T&S-relevant signal, not a new detector.
+  - **Cancellation-rate / pending-forever-rate flags** — FR-6.19, above.
+  - **Bypass-attempt detection (new)** — repeated banned/restricted-keyword
+    submissions from the same seller in a short window (a configurable
+    count/window, Settings Registry) is itself a signal distinct from any
+    single blocked listing: one blocked attempt is normal moderation;
+    *repeated* attempts to word around the same block is a bypass pattern.
+    Detected from data the Listing Moderation Engine already writes (no new
+    write path) — a read-side rule over existing `platform_events`/
+    moderation-decision history.
+  - **All thresholds are Settings Registry entries**, matching every other
+    rule engine this SRS specifies (§5.27, FR-23.5) — never hard-coded.
+  - **All enforcement actions are audit-logged** (`admin_audit_logs`,
+    FR-8.9) — no exception, same as every other control-plane mutation.
+  - **Zero new infrastructure:** signals are computed from tables that
+    already exist (`orders`, `platform_events`, moderation decisions) and
+    surfaced as admin **risk views** — read queries, not a new persistent
+    "flags" table for every signal. Where a flag needs to persist past a
+    single admin session (e.g. "this seller is under a bypass-attempt
+    review"), it reuses the existing seller lifecycle state (FR-8.4's
+    "limit a seller") rather than introducing a separate flag store.
+- FR-29.4: **Enforcement ladder (admin-controlled, not automated
+  escalation)** — warning → restriction → suspension → permanent ban.
+  Warning and restriction are two states of FR-8.4's existing "limit a
+  seller" control (a restricted seller might be blocked from new listings
+  or new orders while remaining otherwise operational); suspension and ban
+  are FR-8.4's existing actions verbatim. **No step auto-fires from a T&S
+  flag** — every escalation is an explicit admin action reviewing the
+  flag(s) first, consistent with this SRS's existing "risk summary informs
+  a human, never auto-penalizes" discipline (the same pattern the dormant
+  mode's FR-6.9 already used for payout risk). The one exception remains
+  FR-6.18's automated invoice-grace-period suspension, which is a distinct,
+  narrowly-scoped billing mechanism, not a T&S escalation.
 
 ---
 
@@ -1943,22 +2235,31 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
   coming-soon mode, SEO structured data, WhatsApp button, social links, FAQ
   accordion); Customers/CRM; product reviews; cart persistence (email-first) +
   abandoned-cart flagging; ONE supplier integration (Printify) with full
-  transparency; Safepay-only checkout; shipping + tax settings; discount codes;
-  manual orders (mark-as-paid only); order notes/tags/timeline + editing; CSV
-  import/export (core fields); one branded PDF invoice; seller onboarding wizard;
-  commission + ledger + hold + rolling reserve; payout request → admin approval →
-  manual disbursement; the Free Plan + inverse commission laddering + yearly
-  billing + launch-campaign pricing; Business Guard-Rails; the admin Control Plane
-  (including the external-API client registry); the Template Install/License API
-  and the Product Feed API (both hooks, goto5x.com's side only); legal/content
-  pages.
+  transparency; **Direct Seller Collection checkout (v0.15 — bank transfer/
+  JazzCash/Easypaisa/COD, no payment gateway)**; shipping + tax settings;
+  discount codes; manual orders + mark-as-paid as the universal payment-
+  confirmation path (§5.6c); order notes/tags/timeline + editing; CSV
+  import/export (core fields); one branded PDF invoice; seller onboarding
+  wizard; **invoice-based commission ledger (default 1%) + monthly seller
+  invoicing + grace-period auto-suspension (v0.15, replaces hold/reserve/
+  payout for v1.0)**; the Free Plan + inverse commission laddering + yearly
+  billing + launch-campaign pricing + **Supplier Premium Plan (v0.15)**;
+  Business Guard-Rails; **the Trust & Safety System (v0.15 — versioned
+  Seller Agreement, rule-based T&S engine, enforcement ladder)**; the admin
+  Control Plane (including the external-API client registry); the Template
+  Install/License API and the Product Feed API (both hooks, goto5x.com's
+  side only); legal/content pages.
 - **Phase 1.1:** CJ Dropshipping adapter, self-serve supplier registration + full
-  multi-store dashboard, listing moderation queue, hold graduation logic, scheduled
-  payout mode, API-based disbursement adapter, optional buyer accounts,
+  multi-store dashboard, listing moderation queue, optional buyer accounts,
   abandoned-cart recovery emails, returns/refunds workflow, per-store content pages
   + blog, support/ticket system, referral program, low-stock alerts + newsletter
   capture, **the manual-order payment-link flow** (FR-22.8), **CSV metafields/
   complex option combinations** (FR-22.9).
+- **Phase 2 (or later, on reactivation trigger — §5.6d):** Platform-Collected
+  Payments mode — Safepay-first gateway integration, per-transaction hold +
+  hold-graduation logic, rolling reserve, payout request → admin approval →
+  disbursement (manual, then API-based) — the entire dormant §5.6/§5.6a/§5.6b
+  specification, built exactly as already written, no redesign required.
 - **Phase 2:** Tiered plan proration, coded-theme escape hatch, dispute workflow,
   SMS/WhatsApp notifications, second payment gateway, gated per-seller COD,
   shipping zones/weight-based rates, advanced discounts (auto-apply, BOGO,
@@ -1977,10 +2278,16 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
 
 ## 11. Payment Gateway Research Summary
 
+**v0.15 note:** this research predates the Direct Seller Collection pivot
+(§5.6c) and now describes the **dormant Platform-Collected Payments mode**
+(§5.6d) exclusively — none of it is built for v1.0 launch, which needs no
+payment gateway at all. Retained verbatim as the exact research base for that
+mode's eventual reactivation.
+
 | Option | Verdict for Phase 1 |
 |---|---|
-| **Safepay** | **Chosen as v1.0's sole payment method.** YC-backed, modern API, explicitly startup/SME-friendly onboarding, no setup fees, supports individual/sole-proprietor accounts (with stricter limits), unifies cards + mobile wallets + Raast under one integration. |
-| **Cash on Delivery** | **Deferred from v1.0** (see §5.6a) — inverts commission collection since the platform never holds the money to deduct 3% from; reintroduced later as a per-seller, balance-gated Settings Registry flag rather than a launch-day payment method. |
+| **Safepay** | **Chosen as the Platform-Collected mode's sole payment method** (dormant in v1.0, §5.6d). YC-backed, modern API, explicitly startup/SME-friendly onboarding, no setup fees, supports individual/sole-proprietor accounts (with stricter limits), unifies cards + mobile wallets + Raast under one integration. |
+| **Cash on Delivery** | **Unconditionally available in v1.0** under Direct Seller Collection (FR-6.14) — the commission-inversion problem that deferred it under the old model doesn't apply once the platform never holds any sale's funds in the first place. The *dormant* mode's gated, balance-checked version (§5.6a) remains specified for its own eventual reactivation. |
 | **PayFast PK** | Deferred to Phase 1.x. Reputable and PCI-DSS compliant, but onboarding is described as "enterprise-paced" with heavier documentation/notarization requirements — not the fastest path to a solo founder's first live payment. |
 | **Direct JazzCash / Easypaisa merchant APIs** | Deferred to Phase 1.x/2. Requires a direct merchant agreement with the telco/bank (registered company, settlement account), lower-level integration — better economics at volume, not the fastest Phase 1 path. |
 | **Stripe (via foreign entity)** | Deferred to Phase 4. Stripe does not onboard Pakistani entities directly; would require a foreign entity — relevant only once the platform serves international buyers. |
@@ -1992,17 +2299,17 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
 | # | Risk | Mitigation |
 |---|---|---|
 | 1 | **Solo founder + AI capacity vs. Shopify-class scope** — over-scoping stalls or burns out the build | Hard MVP cut-list (`docs/mvp-v1-cutlist.md`), phase-gated roadmap (§10) with module-level checklist gating (§14), no feature enters v1.0 without another leaving it |
-| 2 | **Payment gateway access as an individual/new entity blocks launch** | Safepay chosen specifically for fast sole-proprietor onboarding (§5.6a) |
+| 2 | **Payment gateway access as an individual/new entity blocks launch — resolved differently than planned (v0.15):** Direct Seller Collection (§5.6c) removes this risk entirely rather than mitigating it — v1.0 needs no payment gateway at all, since the platform never holds buyer funds. Safepay onboarding research (§5.6a/§11) is retained for the dormant Platform-Collected mode's eventual reactivation | N/A — risk removed by the payment-model pivot, not mitigated |
 | 3 | **Cross-tenant data leakage** (row-level tenancy bug exposes seller A's data to seller B) | Mandatory scoping middleware + Postgres RLS backstop + release-gating cross-tenant test suite (§3.2, §6.5, §14) |
-| 4 | **Ledger/commission bugs cause silent financial loss or seller distrust** | Append-only ledger, no destructive balance edits, daily reconciliation job against gateway settlement reports (FR-6.4, FR-6.6) |
+| 4 | **Ledger/commission bugs cause silent financial loss or seller distrust** | Append-only ledger unchanged by the v0.15 pivot (FR-6.4/FR-6.16), no destructive balance edits; the dormant mode's gateway-settlement reconciliation (FR-6.6) has no v1.0 equivalent since there's no gateway to reconcile against — correctness instead rests on FR-6.19's anti-underreporting monitors and the admin's own manual invoice-payment verification (FR-6.17) |
 | 5 | **Single VPS is a single point of failure** | Off-box automated backups + tested restore runbook from day 1 (§6, Availability row) |
-| 6 | **Fraud via new-seller hold bypass** (fake accounts cashing out before the 22-day hold) | Per-transaction (not account-level) hold, identity verification gating hold graduation, the payout approval queue's risk summary, and the rolling reserve (FR-6.2, FR-6.3, FR-6.9, FR-6.13) |
+| 6 | **Superseded by Risk 21 (v0.15):** hold-bypass fraud is a Platform-Collected-mode risk (dormant, §5.6d) — its mitigation (FR-6.2, FR-6.3, FR-6.9, FR-6.13) is unchanged and retained for that mode's eventual reactivation, but it is not a v1.0 risk since v1.0 never holds seller funds to bypass a hold on | Mitigation retained for §5.6d's reactivation; not applicable to v1.0 — see Risk 21 for v1.0's actual top financial-integrity risk |
 | 7 | **Supplier API fragility/change** (Printify/CJ API changes or rate limits break live stores) | Adapter interface isolates blast radius to one adapter; cached last-known catalog degrades gracefully instead of breaking (§3.5, FR-4.3); admin adapter registry (FR-4.9) allows disabling a broken adapter instantly |
-| 8 | **Regulatory/legal exposure** (counterfeit goods, buyer data protection, Pakistani e-commerce/tax rules) | Listing moderation queue (FR-8.13) linked to payout freeze (FR-6.10); legal consultation on SECP/PECA/data-protection obligations tracked as an explicit open item (§13); legal content drafts in `docs/legal/` flagged for human review |
+| 8 | **Regulatory/legal exposure** (counterfeit goods, buyer data protection, Pakistani e-commerce/tax rules) | Listing moderation queue (FR-8.13) linked to the Trust & Safety enforcement ladder (§5.29/FR-29.4) — the dormant mode's payout-freeze linkage (FR-6.10) is retained for its reactivation; legal consultation on SECP/PECA/data-protection obligations tracked as an explicit open item (§13); legal content drafts in `docs/legal/` — now including the versioned Seller Agreement's facilitation-workspace/indemnification language (FR-29.1/FR-29.2) — flagged for human review |
 | 9 | **"AI/premium 3D template" scope creep** stalls Phase 1 chasing a generative-design problem that isn't solved | Phase 1 templates are hand-built to a high visual bar (FR-1.1); animation presets and AI tooling deferred to Phase 3 (FR-1.7) |
 | 10 | **Over-building the theme engine/customizer** (a multi-year problem for a small team) | Phase 1 customizer is deliberately scoped to a bounded token set (FR-1.2); expand only after MVP validates demand |
-| 11 | **A bad admin config value breaks the platform** (e.g. commission set to 105%, or the wrong seller's payouts frozen) | `settings_definitions` enforces a validation rule per key (range/type) rejected before it reaches the database; every change is audit-logged with before/after values (FR-8.9) |
-| 12 | **Manual disbursement is a human-in-the-loop process** — admin fatigue or error transferring funds via bank/Raast could delay or misdirect a payout | The status flow (FR-6.12) is visible to the seller so delays are transparent, not silent; the Disbursement Adapter pattern (FR-6.11) means automating this in Phase 1.x requires no change to the queue or ledger |
+| 11 | **A bad admin config value breaks the platform** (e.g. commission set to 105%, or the wrong seller's store wrongly suspended for a paid invoice) | `settings_definitions` enforces a validation rule per key (range/type) rejected before it reaches the database; every change is audit-logged with before/after values (FR-8.9) |
+| 12 | **Superseded by Risk 22 (v0.15):** manual disbursement is a Platform-Collected-mode risk (dormant, §5.6d) — its mitigation (FR-6.11, FR-6.12) is unchanged and retained for that mode's eventual reactivation, but v1.0 disburses nothing (the platform never holds seller funds) | Mitigation retained for §5.6d's reactivation; not applicable to v1.0 — see Risk 22 for v1.0's actual manual-process risk |
 | 13 | **Self-hosted MinIO is a new single point of failure for media**, now living on the same VPS as everything else | Same off-box backup discipline as the database (Risk 5) extends to the MinIO data directory; the Cloudflare CDN cache in front of it means a brief MinIO hiccup doesn't immediately take already-cached images offline |
 | 14 | **Discount code abuse** (bulk-generated codes used to reduce effective commission, or a leaked code used far beyond its intended reach) | Usage limits and expiry are enforced server-side at checkout (FR-5.5, never client-side); commission is calculated on the post-discount amount (FR-6.1), so a discount reduces seller revenue and platform commission proportionally |
 | 15 | **CSV import/export scope, resolved (v0.6):** a shallow "Shopify-compatible" importer risks being compatible in name only | Bounded to core fields (title, description, price, variants/options, images, inventory) with unmapped fields listed explicitly per upload (FR-18.1); metafields/complex option combos are an explicit v1.1 fast-follow (FR-22.9), not a silent gap |
@@ -2011,6 +2318,8 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
 | 18 | **"Luxury" PDF invoices as an open-ended polish trap, resolved (v0.6):** unbounded design-iteration risk | Bounded to exactly one template meeting a "clean and professional" bar with a single founder sign-off (FR-19.2); further polish is an explicitly time-boxed backlog item, never a launch gate |
 | 19 | **Template license/entitlement bypass (new in v0.6)** — a forged or replayed call to the Template Install API could grant a seller a premium template without a valid Template Store purchase, undercutting that product's monetization | Signed/authenticated requests (§6.5) verified before any entitlement is granted; every grant/revoke is audit-logged (FR-24.6) as a traceable, reversible action; the external-API client registry (FR-8.14) can disable the integration instantly if abuse is detected |
 | 20 | **Product Feed API token leak or abuse (new in v0.6)** — a leaked seller token could expose product data beyond intended use, or be scraped at volume | Tokens are seller-scoped (never platform-wide), revocable at any time from the dashboard (FR-24.10), rate-limited like every other public API surface, and the feed is read-only and limited to fields already public on the storefront — no data exposure beyond what a buyer could already see |
+| 21 | **Seller under-reporting/non-remittance of commission (new, v0.15 — Direct Seller Collection's central new risk, effectively replacing Risk 6):** since the platform never touches buyer money, it has no independent way to confirm a sale happened or that a marked-paid order was reported honestly — a seller could simply never mark an order paid, or falsely mark it cancelled, to avoid the commission invoice | Every storefront order is recorded regardless of later status (Financial Truth Invariant, §3.12); cancellation-rate and pending-forever-rate monitors (FR-6.19) feed Trust & Safety risk views (§5.29) for admin review; non-payment past a grace period auto-suspends the store (FR-6.18) — the platform's only enforcement lever without held funds; the versioned Seller Agreement (FR-29.1/FR-29.2) makes deliberate under-reporting an explicit, indemnified breach, not an ambiguous gray area |
+| 22 | **Manual invoice-payment verification is a human-in-the-loop process (v0.15)** — admin fatigue or error confirming a seller's off-platform commission payment could delay a legitimate un-suspension or wrongly clear a non-payment | Invoice status changes are audit-logged (FR-8.9) and visible to the seller through the full lifecycle, same transparency discipline as the dormant mode's payout status flow (FR-6.12); a future phase can add automated bank-statement matching behind the same Payment Adapter interface (§3.5) with no change to the invoicing/suspension logic |
 
 ---
 
@@ -2214,7 +2523,12 @@ next module starts. Each item is written to be testable, not aspirational.
       only reachable as an internal pending/draft state until payment is
       verified
 
-### 14.6 Payments, Commission, Ledger & Payout Engine
+### 14.6 Payments, Commission, Ledger & Payout Engine — DORMANT in v1.0 (see §14.6c below for what v1.0 actually gates on)
+**v0.15 pivot:** every item below describes the dormant Platform-Collected
+Payments mode (§5.6d) and is **not built or gated in v1.0** — retained
+verbatim as the exact acceptance checklist a future reactivation must satisfy,
+so that work starts here rather than rediscovering these tests. v1.0's real
+gate is §14.6c, below.
 - [ ] Safepay checkout succeeds end-to-end in sandbox and in production
 - [ ] Webhook signature verification rejects a forged/unsigned webhook (must fail
       closed)
@@ -2250,6 +2564,40 @@ next module starts. Each item is written to be testable, not aspirational.
       and is excluded from every balance/payout-eligibility calculation —
       proven with a deliberately-constructed unpaid order, not assumed
 
+### 14.6c Direct Seller Collection & Commission Invoicing (v1.0 — new, v0.15)
+- [ ] A store cannot go live without at least one configured payment method
+      (bank/JazzCash/Easypaisa/COD) (FR-6.14)
+- [ ] The buyer sees the seller's configured payment instructions after placing
+      an order; COD is available with no ledger balance gate, unlike the
+      dormant mode's version (FR-6.14)
+- [ ] Marking an order paid (`OrdersService.markAsPaid()`) is the only path to
+      `confirmed`, exactly as Module 9 already proved — no regression
+      introduced by this amendment (FR-6.15)
+- [ ] Marking an order paid accrues a `commission_accrued` ledger entry at the
+      correct rate (default 1%, plan/category/seller override via Settings
+      Registry) on the correct post-discount subtotal (FR-6.16)
+- [ ] A scheduled job generates one invoice per seller per billing period,
+      correctly summing that period's `commission_accrued` entries and
+      excluding entries outside the period (FR-6.17)
+- [ ] An admin can mark an invoice `paid`; the action is captured in
+      `admin_audit_logs` with before/after invoice status (FR-6.17, FR-8.9)
+- [ ] An invoice left unpaid past the configured grace period triggers
+      automated store suspension via the exact FR-5.3 mechanism (`403
+      store_suspended`, storefront blocked, existing orders still
+      fulfillable); marking the invoice paid lifts the suspension
+      automatically (FR-6.18)
+- [ ] **Financial Truth Invariant (§3.12, restated for this model):** an
+      unpaid/pending order accrues no `commission_accrued` entry and appears
+      in no invoice — proven with a deliberately-constructed pending order
+- [ ] Cancellation-rate and pending-forever-rate monitors correctly flag a
+      seller crossing their configured thresholds and correctly do *not* flag
+      one who stays under them (FR-6.19)
+- [ ] An admin can record a `commission_waived` entry against a specific
+      invoice line without altering any other entry on that invoice
+      (FR-6.20)
+- [ ] Every monetary display shows the store's configured currency, never a
+      hard-coded `"PKR"` string
+
 ### 14.7 Subscription Plans, Pricing & Billing
 - [ ] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
       (FR-8.2)
@@ -2273,6 +2621,10 @@ next module starts. Each item is written to be testable, not aspirational.
       subscription billing, respects its redemption limit/expiry, and cannot be
       applied at a seller's storefront checkout (proving it's distinct from
       store-level `discount_codes`, FR-7.9)
+- [ ] A free-tier supplier connected to two+ stores functions correctly per
+      store but cannot reach the aggregated multi-store dashboard; upgrading
+      to the paid supplier plan unlocks it with no other behavior change
+      (FR-7.10)
 
 ### 14.8 Platform Admin Terminal — Control Plane
 - [ ] Every FR-8.x item has a passing test: feature flags, plan editor,
@@ -2595,6 +2947,29 @@ next module starts. Each item is written to be testable, not aspirational.
       tests already proved, re-confirmed at the rendering layer
 - [ ] A shared list/detail/form component pattern is reused across every
       screen this module builds, not a bespoke layout per screen (FR-28.3)
+- [ ] A Free-Plan seller sees only the built-in dashboard theme/wallpaper
+      set; a higher-plan seller sees the correct additional options gated by
+      Settings Registry precedence, not hard-coded per plan (FR-28.4)
+
+### 14.29 Trust & Safety System (new, v0.15)
+- [ ] Signup fails closed (acceptance prompt only, no dashboard access)
+      until the current Seller Agreement version is accepted; a version
+      bump correctly forces re-acceptance for existing sellers (FR-29.1)
+- [ ] Every acceptance records the correct timestamp and IP (FR-29.1)
+- [ ] Signup-velocity, cancellation-rate, pending-forever-rate, and
+      bypass-attempt thresholds each correctly flag a deliberately
+      constructed over-threshold case and do *not* flag an under-threshold
+      one (FR-29.3)
+- [ ] A repeated banned/restricted-keyword submission pattern from the same
+      seller is detected as a bypass-attempt signal distinct from a single
+      blocked listing (FR-29.3)
+- [ ] Every T&S enforcement action (warning/restriction/suspension/ban) is
+      captured in `admin_audit_logs` with actor, target, and reason (FR-29.4,
+      FR-8.9)
+- [ ] No T&S flag auto-escalates a seller's lifecycle state without an
+      explicit admin action — proven by constructing a flag-worthy condition
+      and confirming the seller's account is unaffected until an admin acts
+      (FR-29.4)
 
 ---
 

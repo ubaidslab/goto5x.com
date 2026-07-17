@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.14 — build-phase amendment)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.15 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -115,13 +115,21 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   a supplier listing now also creates the one `product_variants` row every
   cart/order line needs — previously the product existed but had no
   variant, so it was silently unpurchasable
+- **New in v0.15:** the multi-store aggregated dashboard (FR-3.3, above) is
+  now gated to the paid Supplier Premium Plan tier — a free-tier supplier
+  connected to multiple stores still works correctly per-store, just
+  without the unified cross-store view (FR-7.10, see "Pricing & plans"
+  below)
 
 **Orders & checkout — Module 9 built**
 - Email-first cart persistence (FR-15.1, locked UX decision) and checkout,
   creating a `pending` order; abandoned-cart **flagging** (FR-15.2,
-  recovery emails are v1.1). **Real gateway payment (Safepay) is Module
-  10/11's job** — Module 9's only v1.0 payment path is the seller's own
-  manual mark-as-paid (FR-17.1); COD stays deferred/gated (§5.6a)
+  recovery emails are v1.1). **Payment model, updated v0.15: Direct Seller
+  Collection** (§5.6c) — the buyer pays the seller directly (bank transfer/
+  JazzCash/Easypaisa/COD, seller-configured), and Module 9's existing
+  mark-as-paid (FR-17.1) is the universal payment-confirmation path for
+  *every* order, not just manual ones. No gateway integration ships in
+  v1.0 — see "Payments, commission & invoicing" below
 - Order dashboard: list, filter by status/tag, manual tracking entry;
   supplier-side order view + tracking upload (FR-3.3/FR-3.4)
 - Buyer email notifications on confirmed/shipped/delivered (FR-5.2); buyer
@@ -166,13 +174,25 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   (default 3), with a seller-scoped override as the mechanism for a future
   paid extra-device-slot add-on (monetization decision deferred to launch)
 
-**Payments, commission & payout**
-- 3% default commission (post-discount amount), append-only ledger with
-  `reserved` bucket, fixed 22-day hold, rolling reserve mechanism (default 0%)
-- Payout request → admin approval queue with risk summary → **manual
-  Disbursement Adapter** → full status visibility to seller
-- Daily reconciliation job (correctly excluding `manual`-type payments, clarified
-  in v0.6); currency-ready schema throughout
+**Payments, commission & invoicing (rewritten v0.15 — Direct Seller Collection)**
+- **The platform never touches buyer money in v1.0.** No gateway
+  integration, no per-transaction hold, no rolling reserve, no payout/
+  disbursement engine — all dormant, not deleted (SRS §5.6d, reactivated
+  only on a future international/regulatory/scale trigger)
+- **Invoice-based commission, default 1% (down from the dormant mode's 3%)**
+  of the post-discount amount, accrued per confirmed sale as a
+  `commission_accrued` ledger entry — the append-only ledger structure is
+  retained, only its direction changes (receivable from the seller)
+- **Monthly commission invoice** per seller; v1.0 verification is a manual
+  admin action (mark paid, audit-logged); non-payment past a configurable
+  grace period **automatically suspends the store**, reusing Module 9's
+  existing suspended-store mechanism (FR-5.3) — the platform's only
+  enforcement lever without held funds
+- **Anti-underreporting guard-rails:** every storefront order is recorded
+  regardless of later status; per-seller cancellation-rate and
+  pending-forever-rate monitors feed the new Trust & Safety system, below
+  (FR-6.19)
+- Currency-ready schema throughout, unchanged
 
 **Pricing & plans**
 - **Free Plan** as a first-class tier: no billing cycle, tight limits, one store
@@ -181,6 +201,31 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - Plan changes take effect next billing cycle, no proration (FR-7.5)
 - Yearly billing with admin-configurable discount (FR-7.6)
 - Launch-campaign pricing as Settings Registry config (FR-7.7)
+- **Supplier Premium Plan (new, v0.15):** a `supplier` plan type reusing the
+  same plan editor; the multi-store aggregated dashboard (FR-3.3, already
+  built) is the paid tier's flagship feature, free tier covers
+  single-seller basics (FR-7.10)
+
+**Trust & Safety System (new, v0.15)**
+- **Versioned Seller Agreement:** accepted at signup (timestamp + IP
+  recorded), forced re-acceptance on version change (FR-29.1); the
+  facilitation-workspace/seller-responsibility/indemnification legal
+  grounding is drafted in `docs/legal/terms-of-service.md`, flagged for
+  counsel review same as every other legal draft (FR-29.2)
+- **Zero-cost, rule-based T&S engine** — extends existing mechanisms
+  rather than duplicating them: Module 6's moderation history, the
+  existing signup-velocity limiting (FR-23.5), the new cancellation-rate/
+  pending-forever-rate monitors, and new bypass-attempt detection (repeated
+  banned/restricted-keyword retries) (FR-29.3)
+- **Enforcement ladder** (warning → restriction → suspension → permanent
+  ban), built entirely on the existing seller-lifecycle admin controls
+  (FR-8.4) — no parallel permissions system; every action audit-logged
+  (FR-29.4)
+
+**Seller Dashboard UI — personalization (new, v0.15)**
+- Plan-gated dashboard themes/wallpapers (FR-28.4), reusing the same
+  Settings-Registry plan-gating mechanism template tiers already use
+  (FR-7.1) — cheap, still governed by the SIMPLICITY INVARIANT (§3.13)
 
 **Business Guard-Rails**
 - Free-plan enforcement at creation time (FR-23.1)
@@ -262,13 +307,11 @@ and is a founder sign-off item before launch, not a v1.1 cut.
 | CJ Dropshipping adapter | Proves the Supplier Adapter interface is genuinely generic |
 | Self-serve supplier registration + full multi-store dashboard UI | v1.0 supplier connections are admin-assisted |
 | Listing review/approval self-serve UI | Ships with self-serve supplier onboarding |
-| Hold graduation logic | Needs real transaction data to calibrate thresholds |
-| Scheduled payout mode (FR-6.8) | Automation on top of the v1.0 request flow |
-| API-based Disbursement Adapter (FR-6.11) | Manual adapter proves the queue/ledger first |
-| Advanced sales-velocity anomaly detection (FR-6.9) | v1.0 uses a simple threshold check |
+| **Platform-Collected Payments mode in full (v0.15)** — Safepay integration, per-transaction hold, hold graduation, rolling reserve, payout request/approval, disbursement (manual then API-based) | Dormant, not v1.1 — reactivated only on an international/regulatory/scale trigger (SRS §5.6d); fully specified already, zero redesign needed |
+| Advanced sales-velocity anomaly detection (dormant mode's FR-6.9) | v1.0's Trust & Safety engine (§5.29) uses simple configurable thresholds instead |
 | Optional buyer accounts (FR-22.1) | Schema-ready: `orders.buyer_id` nullable-FK since v0.4 |
 | Abandoned-cart recovery emails (FR-22.2) | Sends against the v1.0 `carts.status='abandoned'` flag |
-| Returns/refunds seller-side workflow (FR-22.3) | Reuses the existing refund/ledger mechanism |
+| Returns/refunds seller-side workflow (FR-22.3) | Handled directly between buyer/seller under Direct Seller Collection; a disputed commission uses the new `commission_waived` entry (FR-6.20), not the dormant mode's refund/ledger mechanism |
 | Per-store content pages + blog (FR-22.4) | Mirrors the v1.0 platform-level content-page pattern |
 | Support/ticket system (FR-22.5) | Self-hosted, no third-party helpdesk SaaS |
 | Referral program (FR-22.6) | Reward terms are Settings Registry config |

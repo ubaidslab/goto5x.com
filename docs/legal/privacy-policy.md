@@ -5,7 +5,7 @@
 
 # goto5x.com — Privacy Policy (Draft)
 
-**Last updated:** [date] · **Version:** draft-1
+**Last updated:** [date] · **Version:** draft-2
 
 ## 1. What This Policy Covers
 This policy describes how goto5x.com ("the Platform") collects, uses, and protects
@@ -14,8 +14,11 @@ the Platform.
 
 ## 2. Data We Collect
 - **Sellers/Suppliers:** account details, business information, KYC/identity
-  verification documents, bank/Raast payout account details, store content, order
-  and sales data.
+  verification documents, **payment-collection instructions they configure for
+  buyers to pay them directly** (bank account details, JazzCash/Easypaisa
+  numbers — see §3, "Direct Seller Collection"), store content, order and
+  sales data, and **Seller Agreement acceptance records** (the accepted
+  version, timestamp, and IP address — see `docs/SRS.md` FR-29.1).
 - **Buyers:** name, shipping address, email, phone (where provided), and order
   contents, collected at checkout for the purpose of fulfilling that order. Buyers
   are not required to create an account.
@@ -25,12 +28,18 @@ the Platform.
 ## 3. How We Use Data
 - To operate Seller stores, process orders, and forward fulfillment information to
   the relevant Supplier.
-- To process payments, commission, holds, and payouts, including fraud/risk
-  assessment (e.g. the risk summary shown to admin reviewers before a payout is
-  approved — see `docs/SRS.md` FR-6.9).
-- To send transactional communications (order confirmations, shipping updates,
-  payout status) — the Buyer order-status link uses a secure, unguessable token
-  rather than any predictable identifier.
+- **Direct Seller Collection:** the Platform is never a party to payment for
+  an order — a Seller's configured payment instructions (bank/JazzCash/
+  Easypaisa/COD) are shown to a Buyer after checkout so the Buyer can pay
+  the Seller directly. The Platform separately invoices the Seller a
+  commission on each sale they confirm as paid; this invoicing uses order
+  and sales data already collected, not new payment data.
+- To assess Trust & Safety risk (e.g. the cancellation-rate/pending-forever-
+  rate monitors and the admin risk views described in `docs/SRS.md` §5.29),
+  and to record and enforce Seller Agreement acceptance.
+- To send transactional communications (order confirmations, shipping
+  updates, commission-invoice status) — the Buyer order-status link uses a
+  secure, unguessable token rather than any predictable identifier.
 - To maintain an audit log of administrative actions for security and accountability
   (`admin_audit_logs` — this log is never used to profile Buyers; it records
   platform-operations actions, not shopping behavior).
@@ -38,8 +47,14 @@ the Platform.
 ## 4. Data Sharing
 - **With Suppliers:** the minimum order and shipping information needed to fulfill
   an order.
-- **With payment processors:** transaction data necessary to process a payment;
-  goto5x.com does not store raw card details.
+- **With Buyers, from Sellers:** a Seller's own configured payment-collection
+  instructions (bank/JazzCash/Easypaisa details, or a Cash on Delivery
+  indicator) are shown to a Buyer after they place an order, so the Buyer
+  can pay that Seller directly — goto5x.com is not a party to that payment
+  and does not process, hold, or store any card, bank-transaction, or
+  mobile-wallet-transaction detail. [If a future Platform-Collected
+  Payments mode is reactivated (`docs/SRS.md` §5.6d), this section will be
+  updated to describe payment-processor data sharing at that time.]
 - **With Google (Drive import):** only where a Seller explicitly connects their
   Google Drive account to import media; goto5x.com accesses only what the Seller
   authorizes.
@@ -69,8 +84,11 @@ the Platform.
 - Tenant data isolation is enforced both in application logic and at the database
   level (Row-Level Security), so one Seller's data is never accessible through
   another Seller's account.
-- Payment data is handled by licensed payment processors; goto5x.com never stores
-  raw card numbers.
+- goto5x.com never collects, processes, or stores any card, bank-transaction,
+  or mobile-wallet-transaction detail — payment happens directly between
+  Buyer and Seller (§3, Direct Seller Collection); only the Seller's own
+  configured payment-collection instructions (not transaction data) pass
+  through the Platform.
 - Administrative access requires mandatory multi-factor authentication, and every
   administrative action is logged immutably.
 - [Add specifics on encryption at rest/in transit once finalized with the technical
