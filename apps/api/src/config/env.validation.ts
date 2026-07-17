@@ -78,6 +78,10 @@ class EnvironmentVariables {
 
   @IsString()
   PRINTIFY_API_KEY!: string;
+
+  @IsOptional()
+  @IsString()
+  CORS_ALLOWED_ORIGINS?: string;
 }
 
 /**
