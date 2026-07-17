@@ -1,13 +1,13 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.11 (Build-phase amendment)
+**Version:** 0.12 (Build-phase amendment)
 **Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
-underway. Modules 1–5 (Foundation; Catalog & Media; Custom Domain & TLS;
-Theme Engine & Storefront Rendering; Discovery & Merchandising) and Module 6
-(Listing Moderation Engine) built, tested, and approved. v0.7 pinned
-the Settings Registry precedence, added password reset, regional launch
-gating, admin plan grants/platform subscription promo codes, in-app
+underway. Modules 1–7 (Foundation; Catalog & Media; Custom Domain & TLS;
+Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
+Moderation Engine; Shipping, Tax & Discounts) built, tested, and approved.
+v0.7 pinned the Settings Registry precedence, added password reset, regional
+launch gating, admin plan grants/platform subscription promo codes, in-app
 messaging, platform brand-asset management, a mobile-app-readiness NFR, a
 region-sharded-deployment Phase 4+ note, and referral attribution/cross-SaaS
 discount eligibility for the two external-SaaS hooks. v0.8 added the Platform
@@ -15,15 +15,20 @@ Event Log (§3.11, FR-26.x). v0.9 closed a schema gap found while planning
 Module 4 (SEO field placement, sitemap/robots pulled forward). v0.10 (approved
 before Module 5) added seller account security (§5.25), the Financial Truth
 Invariant (§3.12), the zero-cost rule-based Listing Moderation Engine
-(§5.27), and one reaffirming line on the premium-UI-bar dependency. **This
-revision (v0.11), approved after Module 6:** one slotting confirmation — a
-bare functional moderation-queue admin page (list, view a queued product,
-approve/reject with notes; no design pass) is a launch-blocking requirement
-of FR-27.6 and is explicitly slotted into Module 16 (Admin Control Plane
-completion), since Module 6 itself was deliberately built API-only (SRS
-§14.25 is entirely backend-behavioral and never required a UI, so the gap
-went unnoticed until now). No FR from any prior version was removed or
-weakened — every change below is additive.
+(§5.27), and one reaffirming line on the premium-UI-bar dependency. v0.11
+(approved after Module 6) slotted the moderation queue's bare functional
+admin page into Module 16. **This revision (v0.12), approved after Module
+7:** closes a genuine gap surfaced by reviewing the module sequence — no
+module owned the seller-dashboard *UI* for Modules 2/7's already-built APIs
+(product/media, shipping/tax/discount screens). A new **Seller Dashboard
+UI** module (§5.28, FR-28.1–28.3) is inserted immediately after Module 9
+(Orders, Cart & Checkout, so order screens are included too) and before the
+Seller Onboarding Wizard, which needs real screens to link a new seller
+into. A new binding **SIMPLICITY INVARIANT** NFR (§3.13) governs that
+module and every seller-facing screen thereafter: the dashboard must be
+more readable and beginner-friendly than Shopify's, never more complex.
+§14.26 is the new module's Acceptance Checklist. No FR from any prior
+version was removed or weakened — every change below is additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -242,6 +247,35 @@ closure — flagged before being silently improvised):**
   completion)**, alongside that module's other bare-functional admin
   surfaces, rather than left implicit. §14.8 (Module 16's checklist) gains
   one line for it.
+
+**Changelog v0.11 → v0.12 (build-phase amendment, approved after Module 7):**
+- **New Seller Dashboard UI module (§5.28, FR-28.1–28.3):** Modules 2
+  (Catalog & Media) and 7 (Shipping, Tax & Discounts) both shipped API-only
+  by deliberate precedent — no seller-dashboard pages existed for products/
+  media or shipping/tax/discount codes, only the endpoints those pages will
+  call. Reviewing the sequence after Module 7 surfaced that **no module
+  owned building those pages** — §14.2's checklist tests backend behavior,
+  not a rendered screen, and the Seller Onboarding Wizard (old Module 15)
+  assumes real dashboard screens already exist to link a new seller into.
+  Closed now with a dedicated module, inserted **immediately after Module 9
+  (Orders, Cart & Checkout)** so order-management screens are included too,
+  and before the Onboarding Wizard (renumbered accordingly, see
+  `docs/build-plan.md`). Scope also sweeps in any other seller-facing
+  screen still missing its UI by the time this module is actually built
+  (e.g. the Supplier Portal's seller-side view), confirmed against the
+  then-current module list rather than assumed complete from this list alone.
+- **New SIMPLICITY INVARIANT (§3.13, binding NFR):** "advanced under the
+  hood, effortless on the surface" — the seller dashboard must be more
+  readable and beginner-friendly than Shopify's, never more complex. Five
+  rules: (a) glanceable, plain-language screens; (b) progressive disclosure
+  — advanced options behind expanders, never cluttering the default view;
+  (c) every core task (add product, set shipping, create discount, view
+  orders) completable with zero documentation; (d) consistent layout
+  patterns across every screen; (e) purposeful empty states that explain
+  the screen and offer the next action. Governs the Seller Dashboard UI
+  module first, and every seller-facing screen in any module after it.
+  §14.26 (new) is that module's Acceptance Checklist, including a
+  "beginner walkthrough" review against these five rules for each core task.
 
 ---
 
@@ -735,6 +769,35 @@ around it from their first schema draft**, not retrofitted afterward.
   total it could otherwise appear in — not assumed correct because the happy
   path was tested.
 
+### 3.13 SIMPLICITY INVARIANT (binding NFR, new — governs the Seller Dashboard UI module and every seller-facing screen thereafter)
+"Advanced under the hood, expertly capable — effortless on the surface." The
+seller dashboard must be **more readable and beginner-friendly than
+Shopify's, never more complex.** This is a binding design constraint on the
+Seller Dashboard UI module (§5.28, new in v0.12) and on every seller-facing
+screen built in any module after it — pinned now so it governs design from
+that module's first mockup, not retrofitted after screens already exist.
+
+- **(a) Glanceable:** every screen answers its main question at a glance —
+  plain language, no jargon. Urdu-friendly phrasing is a later i18n-readiness
+  concern (§3.9), not required in v1.0's English-only UI, but no v1.0 label
+  or copy may be written in a way that would resist a clean translation later.
+- **(b) Progressive disclosure:** advanced options exist but sit behind
+  clearly-labeled expanders/sections, never cluttering the default view. A
+  screen's first paint shows only what a seller needs for the common case.
+- **(c) Zero-documentation core tasks:** a brand-new seller must be able to
+  complete every core task — add a product, set a shipping rate, create a
+  discount code, view orders — without reading documentation.
+- **(d) Consistent layout patterns:** the same placement for save/cancel
+  actions, the same list/detail structure, across every screen — learning one
+  screen teaches the seller how every other screen works.
+- **(e) Purposeful empty states:** an empty screen always explains what the
+  screen is *for* and offers the next action (e.g. "No products yet — add
+  your first product" with the button right there), never a bare empty table.
+- **Testable, cross-cutting §14 requirement:** the Seller Dashboard UI
+  module's Acceptance Checklist (§14.26) includes a "beginner walkthrough"
+  review against rules (a)-(e) for each core task, and any later module that
+  adds a new seller-facing screen re-affirms it still holds for that screen.
+
 ## 4. User Roles & Permissions (summary)
 
 | Role | Key permissions |
@@ -849,6 +912,12 @@ audit log — one purpose-built role, not the start of a general framework.
 - FR-2.12: **Marketing entry point** — the dashboard includes a "Marketing" section
   serving as the polished handoff to the founder's Social Media SaaS. Full detail
   in §5.24b.
+- FR-2.13: **UI build note (v0.12):** the FRs above describe this dashboard's
+  required data and behavior; the actual rendered screens for product/media
+  and shipping/tax/discount management are built in the dedicated Seller
+  Dashboard UI module (§5.28), not each functional module that defines them
+  — see that section for why, and for the SIMPLICITY INVARIANT (§3.13) every
+  screen it builds must satisfy.
 
 ### 5.3 Supplier Portal
 - FR-3.1: Supplier registration and verification workflow (independent
@@ -1586,6 +1655,38 @@ Catalog (Module 2, already built) or Discovery (Module 5) themselves.
   both currently show every `active` product regardless of moderation state,
   which was correct at the time each shipped (this FR didn't exist yet) and
   is disclosed here as the follow-up this module's own build must make.
+
+### 5.28 Seller Dashboard UI (new, v0.12 — closes a gap identified across Modules 2 and 7)
+Modules 2 (Catalog & Media) and 7 (Shipping, Tax & Discounts) both shipped
+API-only, by deliberate precedent at the time — apps/web had no seller-
+dashboard pages for products, media, shipping, tax, or discount codes, only
+the underlying endpoints those pages will eventually call. Reviewing the
+module sequence after Module 7 surfaced that **no module actually owns
+building those pages** — §14.2's checklist tests backend behavior, not a
+rendered screen, and Module 15 (Seller Onboarding Wizard) assumes real
+dashboard screens exist to link a new seller into, rather than building
+them itself. This is a genuine gap, not a deferred decision, closed now by
+a dedicated module rather than left implicit.
+
+- FR-28.1: **Scope.** The core "run my store" seller-dashboard screens still
+  missing a UI as of this amendment: product/variant/media management
+  (Module 2), shipping/tax/discount-code settings (Module 7), and order
+  management (Module 9, Orders/Cart/Checkout) — slotted immediately after
+  Module 9 specifically so order screens can be included, per founder
+  instruction. Any other seller-facing screen still missing its UI by the
+  time this module is actually built (e.g. the Supplier Portal's seller-
+  side view, Module 8) is swept into this module's scope too rather than
+  left as yet another silent gap — confirmed against the then-current
+  module list before this module's implementation plan is written, not
+  assumed complete from this list alone.
+- FR-28.2: **Governed by the SIMPLICITY INVARIANT (§3.13, binding NFR)** —
+  see that section for the five rules this module's every screen must
+  satisfy. This is the module where that invariant is first applied, and
+  the bar every seller-facing screen in every later module must also clear.
+- FR-28.3: **Consistent component set, not per-screen bespoke layout.** A
+  shared list/detail/form pattern (§3.13(d)) is established once in this
+  module and reused by every screen it builds, rather than each screen
+  inventing its own layout.
 
 ---
 
@@ -2369,6 +2470,26 @@ next module starts. Each item is written to be testable, not aspirational.
       (FR-27.6, §4)
 - [ ] Every moderation decision (queued reason, approve, reject) is captured
       in `admin_audit_logs` with the correct reviewer/admin actor (FR-27.6)
+
+### 14.26 Seller Dashboard UI (new, v0.12)
+- [ ] **Beginner walkthrough review:** each core task (add a product, set a
+      shipping rate, create a discount code, view orders) passes a review
+      against the SIMPLICITY INVARIANT's five rules (§3.13(a)-(e)) — a
+      reviewer completes the task using only what's on screen, no
+      documentation, and confirms: the screen's purpose is clear at a
+      glance; advanced options were behind an expander, not cluttering the
+      default view; save/cancel and list/detail placement matched every
+      other screen reviewed; and an empty state (before anything exists)
+      explained itself and offered the next action (FR-28.1/28.2)
+- [ ] Product/media, shipping/tax/discount-code, and order-management
+      screens are all present and functional against the real API — no
+      screen still links to a "coming soon" placeholder (FR-28.1)
+- [ ] Tenant isolation holds at the UI layer too: seller A's dashboard never
+      renders seller B's data even transiently (e.g. a stale client cache
+      after switching stores) — same guarantee §14.2/§14.5's API-level
+      tests already proved, re-confirmed at the rendering layer
+- [ ] A shared list/detail/form component pattern is reused across every
+      screen this module builds, not a bespoke layout per screen (FR-28.3)
 
 ---
 

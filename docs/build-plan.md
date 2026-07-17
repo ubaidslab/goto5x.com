@@ -25,16 +25,17 @@ here rather than improvising in code.
 | 7 | Shipping, Tax & Discounts | 2 | Partial 14.2, 14.19 (tax) |
 | 8 | Suppliers & Printify Adapter | 2 | 14.3, 14.4 |
 | 9 | Orders, Cart & Checkout | 2, 6, 7, 8 | 14.5, 14.15, 14.17 |
-| 10 | Payments & Ledger | 9 | 14.6 (payments/ledger half) |
-| 11 | **Seller Account Security: 2FA + Devices** (new, v0.10) | 1 | 14.24 |
-| 12 | Payouts & Disbursement | 10, 11 | 14.6 (payout half) — depends on 11 so `required_for_payout_actions` MFA enforcement (FR-25.6) exists before a payout-request gate can check it |
-| 13 | Plans, Pricing & Business Guard-Rails | 1, 10 | 14.7, 14.21 |
-| 14 | Customers, Reviews & Data Portability | 9 | 14.13, 14.14, 14.18, 14.19 (invoice) |
-| 15 | Seller Onboarding Wizard | 4, 9 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) |
-| 16 | Admin Control Plane completion | 1, 6, 10, 12, 13 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), and the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11) |
-| 17 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
-| 18 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
-| 19 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
+| 10 | **Seller Dashboard UI** (new, v0.12) | 2, 4, 7, 9 | 14.26 — the actual rendered screens for product/media (Module 2), shipping/tax/discount (Module 7), and order management (Module 9), governed by the SIMPLICITY INVARIANT (SRS §3.13) |
+| 11 | Payments & Ledger | 9 | 14.6 (payments/ledger half) |
+| 12 | **Seller Account Security: 2FA + Devices** (new, v0.10) | 1 | 14.24 |
+| 13 | Payouts & Disbursement | 11, 12 | 14.6 (payout half) — depends on 12 so `required_for_payout_actions` MFA enforcement (FR-25.6) exists before a payout-request gate can check it |
+| 14 | Plans, Pricing & Business Guard-Rails | 1, 11 | 14.7, 14.21 |
+| 15 | Customers, Reviews & Data Portability | 9 | 14.13, 14.14, 14.18, 14.19 (invoice) |
+| 16 | Seller Onboarding Wizard | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
+| 17 | Admin Control Plane completion | 1, 6, 11, 13, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), and the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11) |
+| 18 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
+| 19 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
+| 20 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
 
 **Two modules inserted in v0.10** (see the SRS's own v0.9→v0.10 changelog for
 the full reasoning, this is just the sequencing consequence): **Listing
@@ -43,18 +44,25 @@ launch-blocking legal-safety requirement, not a Discovery feature — Discovery
 itself still ships first, unmodified, with the moderation-status filter added
 as a small follow-up when Module 6 lands. **Seller Account Security** slots
 immediately before Payouts & Disbursement (not alongside Seller Onboarding,
-Module 15, despite both touching seller-facing auth/account concerns) because
+Module 16, despite both touching seller-facing auth/account concerns) because
 `required_for_payout_actions` MFA enforcement is meaningless if 2FA doesn't
-exist yet by the time a seller can request a payout — Module 15 comes after
+exist yet by the time a seller can request a payout — Module 16 comes after
 Payouts in this table, which would be too late.
+
+**One module inserted in v0.12** (see the SRS's own v0.11→v0.12 changelog):
+**Seller Dashboard UI** slots immediately after Orders, Cart & Checkout
+(Module 9) — the last of the three already-built-API-only modules (2, 7, 9)
+whose screens it builds — and before Seller Onboarding Wizard (now Module
+16, which gained a dependency on Module 10 for exactly this reason: it links
+a new seller into real screens, not placeholders).
 
 **Notifications is not its own module** — it is cross-cutting. Each module that
 produces a notification-worthy event (order confirmed in Module 9, payout status
-in Module 12, review-moderation outcome in Module 14, etc.) adds its own email
+in Module 13, review-moderation outcome in Module 15, etc.) adds its own email
 trigger inside that module. Calling this out explicitly rather than silently
 folding it into "later."
 
-**Known sequencing risk:** Module 18 (and to a lesser extent Module 4's final
+**Known sequencing risk:** Module 19 (and to a lesser extent Module 4's final
 visual sign-off) depends on final branding assets, which SRS §13 open question 3
 records as not yet delivered. Later modules can proceed on functional
 templates/placeholder branding; the *founder sign-off* checklist items in 14.0/14.1
@@ -94,9 +102,10 @@ the table below are as they stood at v0.7** (Onboarding Wizard = 13, Plans = 11,
 Admin Control Plane completion = 14, Platform's Own Site = 16, External-SaaS
 Bridges = 15) — v0.10 inserted two new modules (Listing Moderation Engine,
 Seller Account Security), shifting these to 15, 13, 16, 18, and 17
-respectively in the module sequence table above. Not renumbered here to keep
-this a historical record of what was decided and why, not a second copy of
-the current sequence table.
+respectively; v0.12 then inserted a third (Seller Dashboard UI, after Module
+9), shifting them again to 16, 14, 17, 19, and 18 respectively in the module
+sequence table above. Not renumbered here to keep this a historical record
+of what was decided and why, not a second copy of the current sequence table.
 
 | # | Item | SRS FR(s) | Slotted into |
 |---|---|---|---|
@@ -519,7 +528,12 @@ improvised, resolved by the founder, applied to `docs/SRS.md` (FR-1.5) and
 
 Four items, documentation-only this pass — none built yet, each slotted into
 the module sequence table above. Full FR text lives in `docs/SRS.md`'s
-v0.9→v0.10 changelog and the new §3.12/§5.25/§5.27/§4 sections.
+v0.9→v0.10 changelog and the new §3.12/§5.25/§5.27/§4 sections. **Module
+numbers below are as they stood at v0.10** (Seller Account Security = 11,
+Payouts = 12, Seller Onboarding = 15, Platform's Own Site = 18) — v0.12's
+Seller Dashboard UI insertion shifted these to 12, 13, 16, and 19
+respectively in the current sequence table above; not renumbered here for
+the same historical-record reason as the Module 2 amendments section.
 
 1. **Seller Account Security: 2FA + Devices (new Module 11).** TOTP 2FA
    reuses `users.mfa_secret`/`mfa_enabled` and the `otplib` enroll/verify
@@ -679,7 +693,9 @@ Architecture decisions worth carrying into later modules:
 
 One slotting confirmation, no behavior change, nothing built yet this pass.
 Full text lives in `docs/SRS.md`'s v0.10→v0.11 changelog and the amended
-FR-27.6/§14.8.
+FR-27.6/§14.8. **Module 16 below is the number as it stood at v0.11** —
+v0.12's Seller Dashboard UI insertion shifted Admin Control Plane completion
+to Module 17 in the current sequence table above.
 
 1. **Listing Moderation Engine's queue admin page, slotted into Module 16
    (Admin Control Plane completion).** Module 6 built the queue's four API
@@ -741,6 +757,37 @@ later modules:
   harness and this module shipped no apps/web changes (no seller-dashboard
   UI for shipping/tax/discount settings yet - that's a later dashboard-
   completion pass, not blocking since the API is the deliverable here).
+
+## Amendment approved before Module 8 (SRS v0.12)
+
+One new module inserted, no behavior change to anything already built.
+Full text lives in `docs/SRS.md`'s v0.11→v0.12 changelog and the new
+§3.13/§5.28/§14.26 sections.
+
+1. **Seller Dashboard UI (new Module 10), plus the SIMPLICITY INVARIANT
+   (§3.13, binding NFR).** Reviewing the sequence after Module 7 surfaced
+   that Modules 2 (Catalog & Media) and 7 (Shipping, Tax & Discounts) both
+   shipped API-only by deliberate precedent, but **no module actually owned
+   building the seller-facing screens** for either — §14.2's checklist
+   tests backend behavior, not a rendered page, and Seller Onboarding
+   Wizard (old Module 15) assumes those screens already exist to link a new
+   seller into. Closed with a dedicated module, inserted immediately after
+   Module 9 (Orders, Cart & Checkout) so order-management screens are
+   included too, and before Seller Onboarding Wizard (renumbered to Module
+   16, which now also depends on Module 10). Every module number from 10
+   onward in the sequence table above shifted by one to make room - see
+   that table's own historical-record notes on the two older amendment
+   sections above for the specific old→new mappings.
+   The SIMPLICITY INVARIANT is a binding design constraint on this module
+   and every seller-facing screen built after it: the dashboard must be
+   **more readable and beginner-friendly than Shopify's, never more
+   complex** - glanceable screens, progressive disclosure (advanced options
+   behind expanders), zero-documentation core tasks, consistent layout
+   patterns, and purposeful empty states. §14.26 (new) is this module's
+   Acceptance Checklist, including a "beginner walkthrough" review against
+   these five rules for each core task (add a product, set shipping,
+   create a discount, view orders) - not a subjective design-taste check,
+   a testable requirement.
 
 ---
 

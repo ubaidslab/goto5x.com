@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.11 — build-phase amendment)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.12 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -51,6 +51,19 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - **Basic tax settings (FR-19.3): one rate per store, inclusive/exclusive toggle — Module 7 built**
 - **Basic discount codes (FR-2.11) — Module 7 built the CRUD; FR-5.5's
   checkout-time validation is Module 9's job once checkout exists**
+
+**Seller Dashboard UI (new in v0.12)**
+- The actual rendered screens for product/media management (Module 2),
+  shipping/tax/discount-code settings (Module 7), and order management
+  (Module 9) — a gap surfaced by reviewing the sequence after Module 7,
+  since neither of those API-only modules had an owner for its UI (FR-28.1)
+- Governed by the **SIMPLICITY INVARIANT** (§3.13): more readable and
+  beginner-friendly than Shopify's, never more complex — glanceable
+  screens, progressive disclosure, zero-documentation core tasks,
+  consistent layout patterns, purposeful empty states (FR-28.2–28.3)
+- Slotted immediately after Orders, Cart & Checkout (Module 9) and before
+  Seller Onboarding Wizard, which needs real screens to link a new seller
+  into rather than placeholders
 
 **Storefront discovery & merchandising — Module 5 built**
 - Collections (FR-16.1) · storefront search & filters (FR-16.2) · navigation

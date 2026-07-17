@@ -1,16 +1,19 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.11); this README covers running the code.
+(approved v0.12); this README covers running the code.
 
-**Status:** Modules 1–6 approved; Module 7 (Shipping, Tax & Discounts) built,
-awaiting founder review. Platform Event Log amendment (SRS §3.11) built and
-backfilled. The v0.10 amendment added two new modules to the sequence
-(Listing Moderation Engine, Module 6; Seller Account Security: 2FA +
-Devices, Module 11, before Payouts) and a binding Financial Truth Invariant
-NFR (§3.12). The v0.11 amendment slotted the moderation queue's bare
-functional admin page into Module 16 — see `docs/build-plan.md` for the
-full, current module sequence and numbering. Module 8 next.
+**Status:** Modules 1–7 approved; Module 8 (Suppliers & Printify Adapter)
+next. Platform Event Log amendment (SRS §3.11) built and backfilled. The
+v0.10 amendment added two new modules to the sequence (Listing Moderation
+Engine, Module 6; Seller Account Security: 2FA + Devices, Module 12, before
+Payouts) and a binding Financial Truth Invariant NFR (§3.12). The v0.11
+amendment slotted the moderation queue's bare functional admin page into
+Module 17. The v0.12 amendment inserted a new **Seller Dashboard UI**
+module (Module 10, after Orders/Cart/Checkout) plus a binding SIMPLICITY
+INVARIANT NFR (§3.13) governing it and every seller-facing screen after —
+see `docs/build-plan.md` for the full, current module sequence and
+numbering.
 
 ---
 
