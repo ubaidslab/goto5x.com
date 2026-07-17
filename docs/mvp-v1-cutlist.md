@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.7 — build-phase amendment)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.10 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -58,6 +58,15 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   robots (FR-16.6) · WhatsApp chat/order button (FR-16.7) · **social media links**
   (FR-16.8, new in v0.6) · **FAQ accordion section type** (FR-16.9, new in v0.6)
 
+**Listing Moderation Engine (new in v0.10, launch-blocking legal safety)**
+- Zero-cost, rule-based: admin-managed banned/restricted keyword lists +
+  restricted-category rules, new-seller probation, admin-granted
+  trusted-seller bypass (FR-27.1–27.4)
+- Moderation queue + a narrow **REVIEWER** admin sub-role (moderation-queue
+  access only) — every decision audit-logged (FR-27.5–27.6)
+- Products under review are not publicly visible on the storefront or in
+  Discovery search/collections (FR-27.5)
+
 **Customers, reviews & carts**
 - Customers/CRM: auto-created records (including from manual orders — clarified
   in v0.6), list + detail view (FR-13.1–13.3)
@@ -82,6 +91,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   decision)
 - Order notes, tags, timeline, and basic pre-fulfillment editing — including
   correct inventory adjustment on edit (FR-17.2–17.5, clarified in v0.6)
+- **Financial Truth Invariant (§3.12, new in v0.10):** an order counts as a
+  sale — in dashboards, analytics, or `platform_events` — only once payment
+  is verified via signed gateway webhook or explicit mark-as-paid; pinned
+  before Orders/Payments are designed, not retrofitted after
 
 **Data portability**
 - **CSV product import — core fields only, unmapped fields listed explicitly per
@@ -97,6 +110,15 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   gated by an admin-managed Settings Registry allowed-countries list; a blocked
   non-PK attempt shows a "launching soon" message and captures email+country to
   a waitlist (FR-25.5). Buyer-side access is never region-gated.
+
+**Seller account security (new in v0.10)**
+- **TOTP 2FA for sellers** (FR-25.6), reusing Module 1's admin MFA machinery
+  — enrollment optional by default, with a Settings Registry enforcement mode
+  escalating to required-for-payout-actions or required-always
+- **Session/device management** (FR-25.7): sellers see and can revoke active
+  sessions/devices; a Settings-Registry-tunable concurrent-device limit
+  (default 3), with a seller-scoped override as the mechanism for a future
+  paid extra-device-slot add-on (monetization decision deferred to launch)
 
 **Payments, commission & payout**
 - 3% default commission (post-discount amount), append-only ledger with

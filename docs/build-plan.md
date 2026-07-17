@@ -17,35 +17,51 @@ here rather than improvising in code.
 | # | Module | Depends on | SRS §14 checklist(s) it primarily targets |
 |---|---|---|---|
 | 1 | **Foundation** (this plan) | — | Partial 14.0, 14.8, 14.12 |
-| 2 | Catalog & Media | 1 | Partial 14.2 (FR-2.1 product/variant/inventory CRUD only — the rest of 14.2 ships in later modules, e.g. Module 6's shipping/discount items), 14.9 |
+| 2 | Catalog & Media | 1 | Partial 14.2 (FR-2.1 product/variant/inventory CRUD only — the rest of 14.2 ships in later modules, e.g. Module 7's shipping/discount items), 14.9 |
 | 3 | Custom Domain & TLS | 1 | 14.11 |
 | 4 | Theme Engine & Storefront Rendering v1.0 | 2 | 14.1 |
 | 5 | Discovery & Merchandising | 2, 4 | 14.16 |
-| 6 | Shipping, Tax & Discounts | 2 | Partial 14.2, 14.19 (tax) |
-| 7 | Suppliers & Printify Adapter | 2 | 14.3, 14.4 |
-| 8 | Orders, Cart & Checkout | 2, 5, 6, 7 | 14.5, 14.15, 14.17 |
-| 9 | Payments & Ledger | 8 | 14.6 (payments/ledger half) |
-| 10 | Payouts & Disbursement | 9 | 14.6 (payout half) |
-| 11 | Plans, Pricing & Business Guard-Rails | 1, 9 | 14.7, 14.21 |
-| 12 | Customers, Reviews & Data Portability | 8 | 14.13, 14.14, 14.18, 14.19 (invoice) |
-| 13 | Seller Onboarding Wizard | 4, 8 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) |
-| 14 | Admin Control Plane completion | 1, 9, 10, 11 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3), both new in v0.7 |
-| 15 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
-| 16 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
-| 17 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
+| 6 | **Listing Moderation Engine** (new, v0.10) | 2, 5 | 14.25, plus a follow-up amendment to Module 4's storefront and Module 5's Discovery queries (moderation-status filter) |
+| 7 | Shipping, Tax & Discounts | 2 | Partial 14.2, 14.19 (tax) |
+| 8 | Suppliers & Printify Adapter | 2 | 14.3, 14.4 |
+| 9 | Orders, Cart & Checkout | 2, 6, 7, 8 | 14.5, 14.15, 14.17 |
+| 10 | Payments & Ledger | 9 | 14.6 (payments/ledger half) |
+| 11 | **Seller Account Security: 2FA + Devices** (new, v0.10) | 1 | 14.24 |
+| 12 | Payouts & Disbursement | 10, 11 | 14.6 (payout half) — depends on 11 so `required_for_payout_actions` MFA enforcement (FR-25.6) exists before a payout-request gate can check it |
+| 13 | Plans, Pricing & Business Guard-Rails | 1, 10 | 14.7, 14.21 |
+| 14 | Customers, Reviews & Data Portability | 9 | 14.13, 14.14, 14.18, 14.19 (invoice) |
+| 15 | Seller Onboarding Wizard | 4, 9 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) |
+| 16 | Admin Control Plane completion | 1, 10, 12, 13 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3), both new in v0.7 |
+| 17 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
+| 18 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
+| 19 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
+
+**Two modules inserted in v0.10** (see the SRS's own v0.9→v0.10 changelog for
+the full reasoning, this is just the sequencing consequence): **Listing
+Moderation Engine** slots right after Discovery & Merchandising because it's a
+launch-blocking legal-safety requirement, not a Discovery feature — Discovery
+itself still ships first, unmodified, with the moderation-status filter added
+as a small follow-up when Module 6 lands. **Seller Account Security** slots
+immediately before Payouts & Disbursement (not alongside Seller Onboarding,
+Module 15, despite both touching seller-facing auth/account concerns) because
+`required_for_payout_actions` MFA enforcement is meaningless if 2FA doesn't
+exist yet by the time a seller can request a payout — Module 15 comes after
+Payouts in this table, which would be too late.
 
 **Notifications is not its own module** — it is cross-cutting. Each module that
-produces a notification-worthy event (order confirmed in Module 8, payout status
-in Module 10, review-moderation outcome in Module 12, etc.) adds its own email
+produces a notification-worthy event (order confirmed in Module 9, payout status
+in Module 12, review-moderation outcome in Module 14, etc.) adds its own email
 trigger inside that module. Calling this out explicitly rather than silently
 folding it into "later."
 
-**Known sequencing risk:** Module 16 (and to a lesser extent Module 4's final
+**Known sequencing risk:** Module 18 (and to a lesser extent Module 4's final
 visual sign-off) depends on final branding assets, which SRS §13 open question 3
-records as not yet delivered. Modules 4–15 can proceed on functional
+records as not yet delivered. Later modules can proceed on functional
 templates/placeholder branding; the *founder sign-off* checklist items in 14.0/14.1
 that require the actual premium visual bar cannot close until assets land. This
-isn't a blocker for starting the build — it's a known gate later.
+isn't a blocker for starting the build — it's a known gate later. **Reaffirmed
+in v0.10 (SRS FR-1.1):** the bar is concretely apple.com-level minimalism and
+horizonx.so-level motion, including video hero banners in themes.
 
 ---
 
@@ -73,7 +89,14 @@ isn't a blocker for starting the build — it's a known gate later.
 ## Amendments approved before Module 2 (SRS v0.7)
 
 Documentation-only pass, no Module 1 code touched. Seven items, each slotted into
-the module table above rather than creating a new module:
+the module table above rather than creating a new module. **Module numbers in
+the table below are as they stood at v0.7** (Onboarding Wizard = 13, Plans = 11,
+Admin Control Plane completion = 14, Platform's Own Site = 16, External-SaaS
+Bridges = 15) — v0.10 inserted two new modules (Listing Moderation Engine,
+Seller Account Security), shifting these to 15, 13, 16, 18, and 17
+respectively in the module sequence table above. Not renumbered here to keep
+this a historical record of what was decided and why, not a second copy of
+the current sequence table.
 
 | # | Item | SRS FR(s) | Slotted into |
 |---|---|---|---|
@@ -489,6 +512,52 @@ improvised, resolved by the founder, applied to `docs/SRS.md` (FR-1.5) and
   is confirmed already present in the schema as of this amendment — no schema
   change needed to support the noindex requirement above, only the app-layer
   logic that reads it.
+
+---
+
+## Amendments approved before Module 5 (SRS v0.10)
+
+Four items, documentation-only this pass — none built yet, each slotted into
+the module sequence table above. Full FR text lives in `docs/SRS.md`'s
+v0.9→v0.10 changelog and the new §3.12/§5.25/§5.27/§4 sections.
+
+1. **Seller Account Security: 2FA + Devices (new Module 11).** TOTP 2FA
+   reuses `users.mfa_secret`/`mfa_enabled` and the `otplib` enroll/verify
+   flow Module 1 already built for admins — a second controller, not new
+   infrastructure. Enforcement mode and the concurrent-device limit are both
+   Settings Registry keys; the device limit's `seller` scope override *is*
+   the paid extra-device-slot add-on mechanism (no new scope type, no
+   billing UI built now). Session/device metadata extends the existing
+   Redis session store (§3.2a) — no new Postgres table. Inserted before
+   Payouts (Module 12), not alongside Seller Onboarding (Module 15), because
+   `required_for_payout_actions` enforcement needs 2FA to already exist.
+2. **Financial Truth Invariant (SRS §3.12) — no module of its own, a
+   cross-cutting NFR pinned now.** An order/sale exists anywhere
+   seller/admin-visible only after payment is verified (signed webhook) or a
+   manual order is explicitly marked paid. Pinned before Modules 9 (Orders/
+   Cart/Checkout) and 10 (Payments & Ledger) are designed specifically so
+   those two modules' schemas are built around it, not retrofitted. Every
+   money-adjacent module's checklist (14.5, 14.6, 14.8, 14.21, 14.23) gains a
+   line requiring a test that proves an unpaid order is excluded from every
+   count.
+3. **Listing Moderation Engine (new Module 6).** Zero-cost, rule-based:
+   Settings-Registry-backed banned/restricted keyword lists and restricted-
+   category rules, new-seller probation, admin-granted trusted-seller
+   bypass (`sellers.is_trusted`), a moderation queue, and a narrowly-scoped
+   REVIEWER admin sub-role (§4) — moderation-queue-only access, every
+   decision logged through the existing `admin_audit_logs` mechanism (no new
+   audit table). Products under review are not publicly visible
+   (`products.moderation_status`). Inserted right after Discovery &
+   Merchandising because it's a launch-blocking legal-safety requirement,
+   not a Discovery feature. **Requires a small follow-up amendment** to
+   already-built Module 4's public storefront product query and Module 5's
+   Discovery search/collection queries, adding the moderation-status filter
+   — flagged now, to be applied when Module 6 itself is built, not a silent
+   gap in either already-approved module.
+4. **Premium UI bar, reaffirmed (SRS FR-1.1):** apple.com-level minimalism,
+   horizonx.so-level motion, video hero banners in themes — still gated on
+   founder-delivered branding assets, same dependency this document already
+   flags above (Module 18, and Module 4's founder visual sign-off).
 
 ---
 

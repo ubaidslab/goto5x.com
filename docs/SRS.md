@@ -1,23 +1,29 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.9 (Build-phase amendment)
-**Date:** 2026-07-16
+**Version:** 0.10 (Build-phase amendment)
+**Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
-underway. Modules 1–3 (Foundation; Catalog & Media; Custom Domain & TLS)
-built, tested, and approved. v0.7 pinned the Settings Registry precedence,
-added password reset, regional launch gating, admin plan grants/platform
-subscription promo codes, in-app messaging, platform brand-asset management,
-a mobile-app-readiness NFR, a region-sharded-deployment Phase 4+ note, and
-referral attribution/cross-SaaS discount eligibility for the two external-SaaS
-hooks. v0.8 added the Platform Event Log (§3.11, FR-26.x) — an append-only
-business-lifecycle event table that the already-specified analytics/unit-
-economics dashboards (FR-8.10, FR-23.4) will read from later. **This revision
-(v0.9), mid-Module-4:** closes a genuine schema gap found while planning
-Module 4 (Theme Engine & Storefront Rendering) — no prior version of this SRS
-ever specified where SEO meta fields live, or that a sitemap/robots.txt was
-Module 4's responsibility rather than deferred. FR-1.5 is rewritten
-accordingly and §14.1 gains three checklist items. No FR from any prior
-version was removed or weakened — every change below is additive.
+underway. Modules 1–4 (Foundation; Catalog & Media; Custom Domain & TLS;
+Theme Engine & Storefront Rendering) built, tested, and approved. v0.7 pinned
+the Settings Registry precedence, added password reset, regional launch
+gating, admin plan grants/platform subscription promo codes, in-app
+messaging, platform brand-asset management, a mobile-app-readiness NFR, a
+region-sharded-deployment Phase 4+ note, and referral attribution/cross-SaaS
+discount eligibility for the two external-SaaS hooks. v0.8 added the Platform
+Event Log (§3.11, FR-26.x). v0.9 closed a schema gap found while planning
+Module 4 (SEO field placement, sitemap/robots pulled forward). **This
+revision (v0.10), approved before Module 5:** four amendments — (1) seller
+account security: TOTP 2FA (reusing the admin MFA machinery) plus session/
+device management with a concurrent-device limit (§5.25, FR-25.6–25.7,
+slotted as a new module before Payouts); (2) the **Financial Truth
+Invariant**, a binding cross-cutting NFR pinned now, before Orders/Cart/
+Checkout and Payments & Ledger are designed (§3.12); (3) a zero-cost,
+rule-based **Listing Moderation Engine**
+with a new narrowly-scoped REVIEWER admin sub-role, slotted as a new module
+immediately after Discovery & Merchandising (§5.27, FR-27.1–27.7); (4) one
+reaffirming line on the premium-UI-bar/branding-asset dependency (FR-1.1).
+No FR from any prior version was removed or weakened — every change below is
+additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -170,6 +176,59 @@ closure — flagged before being silently improvised):**
   domain; a hidden store serves `noindex` with no sitemap.
 - See `docs/database-schema.md`'s `stores`/`products`/`collections` table
   notes for the exact column definitions.
+
+**Changelog v0.9 → v0.10 (build-phase amendment, approved before Module 5):**
+- **Seller Account Security (§5.25, FR-25.6–25.7, new):** TOTP 2FA for
+  sellers, reusing the exact `User.mfaSecret`/`mfaEnabled` fields and
+  `otplib` machinery Module 1 already built for admin MFA — a second
+  controller/flow, not new infrastructure. Enforcement mode
+  (`auth.seller_mfa_enforcement`: `optional` / `required_for_payout_actions`
+  / `required_always`) and the concurrent-device limit
+  (`auth.max_concurrent_devices`, default 3) are both Settings Registry keys,
+  the second usable at `global`/`plan`/`seller` scope so an individual
+  seller's paid extra-device-slot add-on is just a seller-scoped override —
+  no new scope type, no billing flow built now (mechanism now, monetization
+  decision at launch, per founder instruction). Sellers see and can revoke
+  their active sessions/devices from the dashboard; the underlying session
+  store is Redis (§3.2a, already built), extended with device-label/IP/
+  last-active metadata per entry. **Slotted as a new module inserted
+  immediately before Payouts & Disbursement** (`docs/build-plan.md`) because
+  `required_for_payout_actions` enforcement is meaningless unless 2FA already
+  exists by the time a seller can request a payout.
+- **Financial Truth Invariant (§3.12, new, binding NFR):** an order/sale
+  exists in any seller-visible or admin-visible surface — dashboards,
+  analytics, reports, `platform_events` — **only** after payment is verified
+  via a signed gateway webhook, or an explicit mark-as-paid for a manual
+  order. No pending/unconfirmed/failed order counts as a sale anywhere.
+  Pinned now, **before Orders, Cart & Checkout and Payments & Ledger are
+  designed**, specifically so their schemas are built around this
+  rule rather than retrofitted to it. Every money-adjacent module's §14
+  checklist (14.5, 14.6, 14.8, 14.21, 14.23) gains a line requiring a test
+  that proves unpaid orders are excluded from every count.
+- **Listing Moderation Engine (§5.27, FR-27.1–27.7, new):** admin-managed
+  banned/restricted keyword lists and restricted-category rules (Settings
+  Registry-backed, no new table), new-seller probation (first N products
+  manually reviewed, N configurable), trusted-seller auto-approve
+  (`sellers.is_trusted`), a moderation queue, and a new, narrowly-scoped
+  **REVIEWER** admin sub-role (§4) that sees only the moderation queue —
+  every decision audit-logged via the existing `admin_audit_logs` mechanism,
+  no new audit table. Products under review are not publicly visible.
+  **Slotted as a new module immediately after Discovery & Merchandising**
+  (`docs/build-plan.md`) — zero-cost and rule-based by design, required live
+  before public launch, not gated on anything Discovery-specific. Building it
+  will require a small follow-up amendment adding a moderation-status filter
+  to Module 4's public storefront product listing and Module 5's Discovery
+  search/collection queries — flagged now, not a silent gap when that module
+  starts.
+- **FR-1.1 reaffirmed, one line:** the premium visual bar is **apple.com-level
+  minimalism** and **horizonx.so-level motion**, including video hero banners
+  in themes — still gated on founder-delivered branding assets (same
+  Module 18/Module 4 dependency `docs/build-plan.md` already flagged).
+- **§4 gains a narrow exception, not a reversal:** a full fine-grained
+  admin-permission system stays Phase 3+ (unchanged), but REVIEWER is added
+  now as one purpose-built sub-role scoped to exactly one surface (the
+  moderation queue), required for the Listing Moderation Engine's launch-
+  blocking legal-safety requirement.
 
 ---
 
@@ -626,6 +685,42 @@ from it yet.
   `admin_audit_logs` (Module 1). The already-specified admin analytics
   (FR-8.10) and unit-economics (FR-23.4) dashboards read from this later;
   nothing about either FR changes today.
+- **`order.placed` means a confirmed, paid order (binding, cross-referenced
+  from §3.12):** the Financial Truth Invariant applies here too — this event
+  fires only once a payment is verified (or a manual order is explicitly
+  marked paid), never on cart/checkout submission. Whoever designs Orders,
+  Cart & Checkout (Module 9 as of v0.10's renumbering, `docs/build-plan.md`)
+  emits it at that point, not earlier.
+
+### 3.12 Financial Truth Invariant (binding NFR, new — pinned before Orders/Cart/Checkout and Payments & Ledger are designed)
+An order/sale **exists** — in a seller's own dashboard, in any analytics or
+report view (seller-facing or admin-facing), and in `platform_events` — **only
+after its payment has been verified**: a signed, verified gateway webhook
+confirming payment (§5.6a), or an explicit seller mark-as-paid action for a
+manual/offline order (§5.17). This is a binding constraint on every module
+that touches orders, payments, ledger entries, payouts, or analytics, pinned
+now specifically so Orders, Cart & Checkout and Payments & Ledger (Modules 9
+and 10 as of v0.10's renumbering, `docs/build-plan.md`) are **designed
+around it from their first schema draft**, not retrofitted afterward.
+
+- **No pending/unconfirmed/failed order counts as a sale, anywhere,** even
+  transiently. A cart that has been submitted but not yet paid is not an
+  order in any seller-visible or admin-visible sense until the invariant
+  above is satisfied — it may exist internally as a pending/draft row, but
+  no count, total, dashboard figure, or `platform_events` row treats it as
+  a sale.
+- **Applies uniformly, not per-feature:** the seller order list, seller
+  analytics, the admin unit-economics dashboard (FR-23.4), the admin
+  real-time analytics (FR-8.10), commission/ledger entries (§5.6), and
+  payout eligibility calculations (§5.6b) all read the same underlying
+  "confirmed" state — there is exactly one signal for "this is a real sale,"
+  never a second, looser definition computed differently by a different
+  module.
+- **Testable, cross-cutting §14 requirement:** every money-adjacent module's
+  Acceptance Checklist (§14.5, §14.6, §14.8, §14.21, §14.23) includes a test
+  proving an unpaid/pending/failed order is excluded from every count and
+  total it could otherwise appear in — not assumed correct because the happy
+  path was tested.
 
 ## 4. User Roles & Permissions (summary)
 
@@ -635,12 +730,19 @@ from it yet.
 | Seller | Full control of own store(s): design, catalog, discovery, customers, shipping, discounts, tax, orders (including manual), supplier links, payout requests, and revocable connections to the Template Store/Social Media SaaS |
 | Supplier | Submit listings, view/fulfill orders **only** across stores they are explicitly linked to — never a global view of the platform's orders |
 | Platform Admin | Full oversight: approve/suspend sellers & suppliers, configure commission/plans/reserves, approve payouts, resolve disputes, manage template & adapter registries (including the external-API client registry, §5.24), edit content pages, view platform analytics |
+| Reviewer (new, v0.10) | **One narrow admin sub-role, not a general permissions system:** sees only the Listing Moderation Engine's queue (§5.27); can approve or reject a queued product with notes. No access to any other admin surface — commission/plans, payouts, seller/supplier lifecycle, settings, or the audit log itself |
 
-Fine-grained permission scopes (e.g. seller staff sub-accounts, admin sub-roles) are
-a **Phase 3+ item — reaffirmed in this revision, not pulled forward**: a single
-"platform admin" role with no internal separation is itself a security concern at
-scale (§6.5), but is out of scope until the platform has more than one admin/
-support person to actually scope a role for.
+Fine-grained permission scopes (e.g. seller staff sub-accounts, a general
+admin sub-role/permissions system) remain a **Phase 3+ item — reaffirmed in
+this revision, not pulled forward**: a single "platform admin" role with no
+internal separation is itself a security concern at scale (§6.5), but
+building a whole scoped-permissions framework is out of scope until the
+platform has more than one admin/support person to actually scope roles for.
+**Reviewer is a deliberate, narrow exception to that deferral, not a reversal
+of it:** it exists because the Listing Moderation Engine (§5.27) is a
+launch-blocking legal-safety requirement that specifically needs a
+limited-access reviewer who cannot also touch payouts, settings, or the
+audit log — one purpose-built role, not the start of a general framework.
 
 ---
 
@@ -657,7 +759,13 @@ support person to actually scope a role for.
 - FR-1.1: Seller selects from a library of premium templates at store creation.
   Even before any AI-assisted generation ships, Phase 1 templates must be
   hand-built to the same "advanced/motion-rich" visual bar described in the
-  vision — a generic theme does not satisfy this requirement.
+  vision — a generic theme does not satisfy this requirement. **Reaffirmed,
+  v0.10:** the visual bar is concretely **apple.com-level minimalism** and
+  **horizonx.so-level motion**, including video hero banners in themes — this
+  remains gated on founder-delivered branding assets not yet received (the
+  same Module 18/Module 4 dependency `docs/build-plan.md` already flags; the
+  three built-in Module 4 themes are structurally, not yet visually, at this
+  bar).
 - FR-1.2: The visual customizer's **v1.0 scope** is: colors, fonts, logo/banner
   images, and section show/hide + reorder — no code required. **Animation/motion
   preset customization is Phase 3** (FR-1.7), not v1.0.
@@ -1345,9 +1453,41 @@ login, and email verification. Approved for Module 1:
   email + country is captured in a `seller_signup_waitlist` table for future
   launch-campaign outreach — never silently dropped. **Buyer-side access is never
   gated by country** — a buyer anywhere can shop any storefront. Built in
-  **Module 13 (Seller Onboarding Wizard)**, not reworked into Module 1's
+  **Seller Onboarding Wizard** (renumbered Module 15 as of v0.10's two module
+  insertions, `docs/build-plan.md`), not reworked into Module 1's
   already-approved signup endpoint; the admin allowed-countries list reuses the
   Settings Registry admin CRUD already shipped in Module 1.
+- FR-25.6: **Seller TOTP 2FA (new, v0.10).** Sellers can enroll in TOTP-based
+  2FA through the exact same mechanism Module 1 already built for admin
+  accounts — the `User` table's `mfaSecret`/`mfaEnabled` fields and the
+  `otplib` enroll/verify flow are shared, not duplicated. **Enforcement
+  mode** is a Settings Registry entry (`auth.seller_mfa_enforcement`,
+  scoped `global`/`plan`): `optional` (seller's own choice),
+  `required_for_payout_actions` (2FA must be verified before a payout
+  request or a payout-account change succeeds, regardless of the seller's
+  own enrollment preference), or `required_always` (2FA mandatory at every
+  login, admin-style). Slotted as a new module inserted immediately before
+  Payouts & Disbursement (`docs/build-plan.md`) — `required_for_payout_actions`
+  is meaningless if 2FA doesn't exist yet by the time a seller can request one.
+- FR-25.7: **Seller session/device management (new, v0.10).** A seller's
+  dashboard lists their active sessions/devices (device label, IP,
+  first-seen/last-active timestamps) and can revoke any one of them
+  individually — revoking a session ends it immediately, same mechanism as
+  FR-25.4's password-reset-triggered invalidation, applied to a single
+  session rather than all of them. **Concurrent-device limit:** a Settings
+  Registry entry (`auth.max_concurrent_devices`, default 3), usable at
+  `global`/`plan`/`seller` scope — a plan-level override raises the limit
+  platform-wide for that plan, and a **seller-scoped override represents an
+  individual seller's paid extra-device-slot add-on** (no new Settings
+  Registry scope type needed; the existing `seller` scope already resolves
+  with higher precedence than `plan`, per §3.8's precedence order). A new
+  login beyond the resolved limit does not silently evict the oldest
+  session — it is rejected with a clear "device limit reached, revoke a
+  session first" response. The add-on's **price** is a separate global-scope
+  Settings Registry entry (`auth.extra_device_slot_price`) for a later
+  billing flow to read — **mechanism now, monetization/checkout decision at
+  launch**, per explicit founder instruction; no billing UI is built as part
+  of this FR.
 
 ### 5.26 Platform Event Log (Business Analytics Substrate — new)
 The architecture and table shape are specified in §3.11; this section is the
@@ -1373,6 +1513,63 @@ functional requirement that emission actually happens, module by module.
 - FR-26.5: The Module 1–3 backfill emits, at minimum: `seller.signup`,
   `store.created` (Module 1); `product.created`, `media.imported` (Module 2);
   `domain.attached`, `domain.verified` (Module 3).
+
+### 5.27 Listing Moderation Engine (new, v0.10 — launch-blocking legal safety, zero-cost/rule-based)
+A rule-based content-moderation layer for self-fulfilled seller product
+listings, required **live before public launch** — this is a legal-safety
+requirement, not a discovery/UX feature, so it is slotted as its own module
+immediately after Discovery & Merchandising rather than folded into either
+Catalog (Module 2, already built) or Discovery (Module 5) themselves.
+
+- FR-27.1: **Admin-managed banned/restricted keyword lists**, Settings
+  Registry-backed (`moderation.banned_keywords`, `moderation.restricted_keywords`
+  — both JSON string arrays, `global` scope, admin-editable through the
+  already-generic Settings Registry admin API — no new admin UI mechanism
+  needed). A banned keyword in a product's title/description blocks
+  submission outright with a clear reason; a restricted keyword routes the
+  listing to manual review instead of blocking it.
+- FR-27.2: **Restricted-category rules** (`moderation.restricted_categories`,
+  JSON array of category ids, `global` scope): a product in a restricted
+  category always enters the moderation queue regardless of keyword
+  matches, for categories the founder judges to need a human look
+  regardless of wording (e.g. supplements, electronics safety claims).
+- FR-27.3: **New-seller probation.** A seller's first N submitted products
+  require manual review regardless of keyword/category checks passing; N is
+  a Settings Registry entry (`moderation.new_seller_probation_count`,
+  default e.g. 10). Once a seller has N **approved** products, subsequent
+  products skip probation (still subject to keyword/category checks).
+- FR-27.4: **Trusted-seller auto-approve.** An admin can mark a seller
+  `is_trusted` (a new boolean on `sellers`); a trusted seller's listings
+  skip both probation and the keyword/category queue entirely (still
+  logged, per FR-27.6) — a manual, admin-granted status, not automatically
+  earned by a threshold, so the founder retains judgment over who bypasses
+  review.
+- FR-27.5: **Moderation queue + product visibility gate.** A product that
+  triggers any of FR-27.1–27.3 above is created with a `moderation_status`
+  of `pending` and is **not publicly visible** — excluded from the public
+  storefront (Module 4) and Discovery search/collections (Module 5) alike —
+  until a Reviewer or Admin approves it. Rejecting a listing records the
+  reviewer's notes and keeps the product hidden; the seller sees the
+  rejection reason and notes in their own dashboard.
+- FR-27.6: **REVIEWER admin sub-role (§4, new).** A narrowly-scoped admin
+  account type that sees only the moderation queue and can approve/reject
+  with notes — nothing else in the admin terminal. Every decision (approve,
+  reject, and the keyword/category/probation reason that queued it) is
+  captured in the existing `admin_audit_logs` table (Module 1) — no new
+  audit mechanism.
+- FR-27.7: **Zero-cost, rule-based only — explicitly not AI moderation.**
+  No ML/LLM content-classification service is introduced by this FR; keyword/
+  category/probation rules are the entire mechanism, kept deliberately
+  simple and free to run, matching this SRS's existing "lean, Settings-
+  Registry-driven" discipline. An AI-assisted moderation upgrade, if ever
+  wanted, is a distinct future FR, not implied by this one.
+- **Follow-up amendment required in already-built modules (flagged, not a
+  silent gap):** shipping this module requires adding a
+  `moderation_status = 'approved'` filter to Module 4's public storefront
+  product-listing query and Module 5's Discovery search/collection queries —
+  both currently show every `active` product regardless of moderation state,
+  which was correct at the time each shipped (this FR didn't exist yet) and
+  is disclosed here as the follow-up this module's own build must make.
 
 ---
 
@@ -1798,6 +1995,10 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Discount code validation: an expired code is rejected, a usage-limit-
       exceeded code is rejected, a valid code applies the correct discount (FR-5.5)
 - [ ] Mixed-cart shipping calculation is correct (FR-5.6)
+- [ ] **Financial Truth Invariant (§3.12, v0.10):** a submitted-but-unpaid
+      order never appears in the order dashboard as a completed sale; it is
+      only reachable as an internal pending/draft state until payment is
+      verified
 
 ### 14.6 Payments, Commission, Ledger & Payout Engine
 - [ ] Safepay checkout succeeds end-to-end in sandbox and in production
@@ -1830,6 +2031,10 @@ next module starts. Each item is written to be testable, not aspirational.
       for every seller in v1.0)
 - [ ] Every monetary display shows the store's configured currency, never a
       hard-coded `"PKR"` string
+- [ ] **Financial Truth Invariant (§3.12, v0.10):** an unpaid/unconfirmed/
+      failed-payment order produces no `ledger_entries` row, no commission,
+      and is excluded from every balance/payout-eligibility calculation —
+      proven with a deliberately-constructed unpaid order, not assumed
 
 ### 14.7 Subscription Plans, Pricing & Billing
 - [ ] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
@@ -1892,6 +2097,10 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] The external-API client registry lists the Template Store and Social Media
       SaaS clients; disabling one immediately rejects further calls from it
       without affecting the other (FR-8.14)
+- [ ] **Financial Truth Invariant (§3.12, v0.10):** the real-time analytics
+      dashboard (FR-8.10) and unit-economics dashboard (FR-23.4) both exclude
+      a deliberately-constructed unpaid order from every count/total they
+      display
 
 ### 14.9 Media Management
 - [ ] Google Drive import copies files into MinIO; the storefront still serves
@@ -2035,6 +2244,10 @@ next module starts. Each item is written to be testable, not aspirational.
       figure against computed revenue (FR-23.4)
 - [ ] A test identity is correctly blocked from creating more than the configured
       number of Free-Plan stores (FR-23.5)
+- [ ] **Financial Truth Invariant (§3.12, v0.10):** the free-vs-paid store
+      counts and commission figures in FR-23.4's unit-economics dashboard are
+      unaffected by a deliberately-constructed unpaid order — restated here
+      since this is Guard-Rails' own checklist section (also §14.8)
 
 ### 14.22 External-SaaS Integration Hooks
 - [ ] A store's theme-selection UI functions fully (built-in free templates
@@ -2085,6 +2298,55 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] `platform_events.retention_days` resolves correctly through the
       Settings Registry (no archival job exists yet to consume it — this
       only proves the tunable itself works)
+- [ ] **Financial Truth Invariant (§3.12, v0.10):** `order.placed` is emitted
+      only once payment is verified (or a manual order is marked paid) —
+      never on cart/checkout submission; a deliberately-constructed unpaid
+      order produces no `order.placed` row at all
+
+### 14.24 Seller Account Security (new, v0.10)
+- [ ] A seller can enroll in TOTP 2FA using the same enroll/verify flow proven
+      on admin accounts (FR-25.6); an invalid code is rejected
+- [ ] `auth.seller_mfa_enforcement` resolves correctly per scope: `optional`
+      never blocks login without 2FA; `required_for_payout_actions` blocks a
+      payout request/payout-account change (not login) for an unenrolled
+      seller; `required_always` blocks login itself without a valid code
+- [ ] A seller's dashboard lists every active session/device with correct
+      device label/IP/last-active data, and revoking one immediately ends
+      that session (its next authenticated request fails) without affecting
+      the seller's other active sessions (FR-25.7)
+- [ ] `auth.max_concurrent_devices` resolves with correct scope precedence
+      (`seller` > `plan` > `global`, per §3.8); a login attempt beyond the
+      resolved limit is rejected with a clear reason, not silently evicting
+      an existing session
+- [ ] A seller-scoped override of `auth.max_concurrent_devices` (simulating a
+      purchased extra-device-slot add-on) raises that one seller's limit
+      without affecting any other seller on the same plan
+
+### 14.25 Listing Moderation Engine (new, v0.10 — launch-blocking legal safety)
+- [ ] A product whose title/description contains a configured banned keyword
+      is rejected at submission with a clear reason (FR-27.1)
+- [ ] A product containing a configured restricted keyword is created but
+      enters the moderation queue and is not publicly visible until approved
+      (FR-27.1)
+- [ ] A product in a configured restricted category enters the moderation
+      queue regardless of its keywords passing every other check (FR-27.2)
+- [ ] A new (non-trusted) seller's first N products enter the moderation
+      queue regardless of keyword/category checks; the (N+1)th product,
+      after N approvals, does not (FR-27.3)
+- [ ] A seller marked `is_trusted` bypasses probation and the keyword/
+      category queue entirely; their listing is still recorded correctly
+      (FR-27.4)
+- [ ] A product with `moderation_status = pending` never appears in the
+      public storefront (Module 4) or Discovery search/collections
+      (Module 5) — **tenant-agnostic public-visibility test**, not just a
+      seller-dashboard check (FR-27.5)
+- [ ] A REVIEWER admin account can approve/reject a queued product with
+      notes, and cannot reach any other admin surface (commission/plans,
+      payouts, seller/supplier lifecycle, settings, the audit log itself) —
+      tested as a negative-access case, not just a positive capability check
+      (FR-27.6, §4)
+- [ ] Every moderation decision (queued reason, approve, reject) is captured
+      in `admin_audit_logs` with the correct reviewer/admin actor (FR-27.6)
 
 ---
 

@@ -1,13 +1,15 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.9); this README covers running the code.
+(approved v0.10); this README covers running the code.
 
-**Status:** Modules 1–4 built (Foundation; Catalog & Media; Custom Domain &
-TLS; Theme Engine & Storefront Rendering); Modules 1–3 formally approved,
-Module 4 awaiting founder review. Platform Event Log amendment (SRS §3.11)
-built and backfilled — see `docs/build-plan.md` for the full module sequence
-and what is/isn't in scope yet. Module 5 (Discovery & Merchandising) next.
+**Status:** Modules 1–4 built and approved (Foundation; Catalog & Media;
+Custom Domain & TLS; Theme Engine & Storefront Rendering). Platform Event Log
+amendment (SRS §3.11) built and backfilled. The v0.10 amendment added two new
+modules to the sequence (Listing Moderation Engine; Seller Account Security:
+2FA + Devices) and a binding Financial Truth Invariant NFR (§3.12) — see
+`docs/build-plan.md` for the full, current module sequence and numbering.
+Module 5 (Discovery & Merchandising) next.
 
 ---
 

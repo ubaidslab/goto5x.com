@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.8)
+# goto5x.com — Database Schema (v1, updated for SRS v0.10)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -183,6 +183,7 @@ from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
 | business_name | text | |
 | kyc_status | enum(`unverified`,`pending`,`verified`) | drives hold graduation (FR-6.3) and payout risk summary (FR-6.9) |
 | kyc_verified_at | timestamptz nullable | |
+| is_trusted | boolean default false | **added in the Listing Moderation Engine module** (FR-27.4) — admin-granted only, never auto-earned by a threshold. A trusted seller's listings skip both new-seller probation and the keyword/category moderation queue |
 | created_at, updated_at | timestamptz | |
 
 ### `stores` (tenant root)
@@ -315,11 +316,15 @@ sales) are Phase 2; this table intentionally only models the basic case.
 | search_vector | tsvector, generated | `GENERATED ALWAYS AS (to_tsvector('english', title \|\| ' ' \|\| description)) STORED`; powers FR-16.2 |
 | seo_title | text nullable | **added in Module 4** — FR-1.5. Null renders this product's own `title` |
 | seo_description | text nullable | **added in Module 4** — FR-1.5. Null derives from this product's own `description` (truncated); if `description` is also empty, falls back to the parent store's `seo_description` |
+| moderation_status | enum(`not_required`,`pending`,`approved`,`rejected`) default `'not_required'` | **added in the Listing Moderation Engine module** (FR-27.5). `not_required` = never queued (trusted seller, or no rule matched); `pending` = in the moderation queue, **not publicly visible** regardless of `status`; the public storefront (Module 4) and Discovery (Module 5) queries both require `moderation_status IN ('not_required', 'approved')` in addition to `status = 'active'` |
+| moderation_notes | text nullable | reviewer's notes on approve/reject — shown back to the seller on rejection |
 | created_at, updated_at | timestamptz | |
 
 Index: `idx_products_store_status (store_id, status)` — storefront catalog
 browsing, the highest-QPS read in the system. Index: `idx_products_search
-(search_vector)` GIN — storefront search (FR-16.2).
+(search_vector)` GIN — storefront search (FR-16.2). Index (Listing
+Moderation Engine): `idx_products_moderation_status (moderation_status)` —
+the moderation queue's own read (`WHERE moderation_status = 'pending'`).
 
 ### `categories` (global — admin-managed taxonomy)
 | Column | Type | Notes |
@@ -762,7 +767,26 @@ product checkout discounts, FR-2.11/FR-5.5): a platform promo code discounts a
 |---|---|---|
 | id | uuid PK | |
 | user_id | uuid FK → users.id, unique | |
-| role | enum(`super_admin`,`support`) | `support` sub-role reserved for Phase 3 |
+| role | enum(`super_admin`,`support`,`reviewer`) | `support` sub-role reserved for Phase 3; `reviewer` added by the Listing Moderation Engine module (SRS §4/FR-27.6) — scoped to the moderation queue only, application-layer-enforced (an `AdminAuthGuard` variant rejects every other admin route for this role) |
+
+New Settings Registry keys, v0.10 amendment (no new tables — both features
+below are entirely Settings-Registry-driven per founder instruction):
+- **Seller Account Security module:** `auth.seller_mfa_enforcement` (string
+  enum `optional`/`required_for_payout_actions`/`required_always`, scope
+  `global`/`plan`); `auth.max_concurrent_devices` (number, default 3, scope
+  `global`/`plan`/`seller` — the `seller` scope is how an individual paid
+  extra-device-slot add-on is represented, no new scope type); `auth.extra_
+  device_slot_price` (number, scope `global` — read by a future billing flow,
+  not built yet).
+- **Listing Moderation Engine module:** `moderation.banned_keywords` /
+  `moderation.restricted_keywords` (JSON string arrays, scope `global`);
+  `moderation.restricted_categories` (JSON array of `categories.id`, scope
+  `global`); `moderation.new_seller_probation_count` (number, default 10,
+  scope `global`).
+2FA itself needs no new columns — it reuses `users.mfa_secret`/
+`mfa_enabled` (already generic across account types, not admin-only, since
+Module 1). Session/device metadata stays in Redis (§3.2a), not Postgres —
+consistent with every session ever having lived there.
 | mfa_enabled | boolean | must be `true` — enforced at signup (FR-8.12) |
 
 ### `admin_audit_logs` (global, immutable — every Control Plane action)
