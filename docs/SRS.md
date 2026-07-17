@@ -1,29 +1,29 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.10 (Build-phase amendment)
+**Version:** 0.11 (Build-phase amendment)
 **Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
-underway. Modules 1–4 (Foundation; Catalog & Media; Custom Domain & TLS;
-Theme Engine & Storefront Rendering) built, tested, and approved. v0.7 pinned
+underway. Modules 1–5 (Foundation; Catalog & Media; Custom Domain & TLS;
+Theme Engine & Storefront Rendering; Discovery & Merchandising) and Module 6
+(Listing Moderation Engine) built, tested, and approved. v0.7 pinned
 the Settings Registry precedence, added password reset, regional launch
 gating, admin plan grants/platform subscription promo codes, in-app
 messaging, platform brand-asset management, a mobile-app-readiness NFR, a
 region-sharded-deployment Phase 4+ note, and referral attribution/cross-SaaS
 discount eligibility for the two external-SaaS hooks. v0.8 added the Platform
 Event Log (§3.11, FR-26.x). v0.9 closed a schema gap found while planning
-Module 4 (SEO field placement, sitemap/robots pulled forward). **This
-revision (v0.10), approved before Module 5:** four amendments — (1) seller
-account security: TOTP 2FA (reusing the admin MFA machinery) plus session/
-device management with a concurrent-device limit (§5.25, FR-25.6–25.7,
-slotted as a new module before Payouts); (2) the **Financial Truth
-Invariant**, a binding cross-cutting NFR pinned now, before Orders/Cart/
-Checkout and Payments & Ledger are designed (§3.12); (3) a zero-cost,
-rule-based **Listing Moderation Engine**
-with a new narrowly-scoped REVIEWER admin sub-role, slotted as a new module
-immediately after Discovery & Merchandising (§5.27, FR-27.1–27.7); (4) one
-reaffirming line on the premium-UI-bar/branding-asset dependency (FR-1.1).
-No FR from any prior version was removed or weakened — every change below is
-additive.
+Module 4 (SEO field placement, sitemap/robots pulled forward). v0.10 (approved
+before Module 5) added seller account security (§5.25), the Financial Truth
+Invariant (§3.12), the zero-cost rule-based Listing Moderation Engine
+(§5.27), and one reaffirming line on the premium-UI-bar dependency. **This
+revision (v0.11), approved after Module 6:** one slotting confirmation — a
+bare functional moderation-queue admin page (list, view a queued product,
+approve/reject with notes; no design pass) is a launch-blocking requirement
+of FR-27.6 and is explicitly slotted into Module 16 (Admin Control Plane
+completion), since Module 6 itself was deliberately built API-only (SRS
+§14.25 is entirely backend-behavioral and never required a UI, so the gap
+went unnoticed until now). No FR from any prior version was removed or
+weakened — every change below is additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -229,6 +229,19 @@ closure — flagged before being silently improvised):**
   now as one purpose-built sub-role scoped to exactly one surface (the
   moderation queue), required for the Listing Moderation Engine's launch-
   blocking legal-safety requirement.
+
+**Changelog v0.10 → v0.11 (build-phase amendment, approved after Module 6):**
+- **FR-27.6 amended, one slotting confirmation, no behavior change:** the
+  REVIEWER sub-role's moderation queue needs a bare functional admin page
+  (list the queue, view a queued product, approve/reject with notes — no
+  design pass) before public launch. Module 6 itself was built API-only by
+  design (the queue's four endpoints, no dashboard route) since §14.25 is
+  entirely backend-behavioral and doesn't require rendering anything to
+  pass; that meant no module currently on the books actually builds the
+  page. Explicitly slotted into **Module 16 (Admin Control Plane
+  completion)**, alongside that module's other bare-functional admin
+  surfaces, rather than left implicit. §14.8 (Module 16's checklist) gains
+  one line for it.
 
 ---
 
@@ -1556,7 +1569,10 @@ Catalog (Module 2, already built) or Discovery (Module 5) themselves.
   with notes — nothing else in the admin terminal. Every decision (approve,
   reject, and the keyword/category/probation reason that queued it) is
   captured in the existing `admin_audit_logs` table (Module 1) — no new
-  audit mechanism.
+  audit mechanism. **A bare functional admin page for this queue (list,
+  view a product, approve/reject with notes; no design pass) is required
+  before public launch — v0.11 slots it into Module 16 (Admin Control Plane
+  completion, §14.8), since Module 6 itself is API-only by design.**
 - FR-27.7: **Zero-cost, rule-based only — explicitly not AI moderation.**
   No ML/LLM content-classification service is introduced by this FR; keyword/
   category/probation rules are the entire mechanism, kept deliberately
@@ -2101,6 +2117,12 @@ next module starts. Each item is written to be testable, not aspirational.
       dashboard (FR-8.10) and unit-economics dashboard (FR-23.4) both exclude
       a deliberately-constructed unpaid order from every count/total they
       display
+- [ ] **Listing Moderation Engine admin page (FR-27.6, v0.11):** a bare
+      functional page lists the moderation queue (Module 6), lets an admin/
+      REVIEWER open a queued product's details, and approve/reject it with
+      notes — a REVIEWER account sees only this page in the admin terminal,
+      confirming §14.25's negative-access guarantee holds at the UI layer
+      too, not only at the API layer
 
 ### 14.9 Media Management
 - [ ] Google Drive import copies files into MinIO; the storefront still serves

@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.10 — build-phase amendment)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.11 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -178,6 +178,9 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - **Platform brand-asset management (new in v0.7):** logo/favicon/hero image
   swaps are admin-editable and versioned like content pages (FR-12.3); confirmed
   no gap in existing per-plan template-tier gating (FR-7.1/FR-8.6)
+- **Listing Moderation Engine queue page (new in v0.11):** a bare functional
+  page — list the queue, view a product, approve/reject with notes — the one
+  surface a REVIEWER account (Module 6) can reach (FR-27.6)
 
 **Infrastructure & security foundations (non-negotiable)**
 - Tenant-scoping middleware + Postgres RLS across **every** tenant table

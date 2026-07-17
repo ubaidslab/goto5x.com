@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.10)
+# goto5x.com — Database Schema (v1, updated for SRS v0.11 — no schema change this amendment)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b

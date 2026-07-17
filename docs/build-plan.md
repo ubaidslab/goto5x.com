@@ -31,7 +31,7 @@ here rather than improvising in code.
 | 13 | Plans, Pricing & Business Guard-Rails | 1, 10 | 14.7, 14.21 |
 | 14 | Customers, Reviews & Data Portability | 9 | 14.13, 14.14, 14.18, 14.19 (invoice) |
 | 15 | Seller Onboarding Wizard | 4, 9 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) |
-| 16 | Admin Control Plane completion | 1, 10, 12, 13 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3), both new in v0.7 |
+| 16 | Admin Control Plane completion | 1, 6, 10, 12, 13 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), and the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11) |
 | 17 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 18 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
 | 19 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
@@ -674,6 +674,25 @@ Architecture decisions worth carrying into later modules:
 - **Testing boundary, same as Modules 4-5:** apps/web has no automated test
   harness; the queue itself is API-only in this module (no dashboard UI),
   so no apps/web change was needed here.
+
+## Amendment approved before Module 7 (SRS v0.11)
+
+One slotting confirmation, no behavior change, nothing built yet this pass.
+Full text lives in `docs/SRS.md`'s v0.10→v0.11 changelog and the amended
+FR-27.6/§14.8.
+
+1. **Listing Moderation Engine's queue admin page, slotted into Module 16
+   (Admin Control Plane completion).** Module 6 built the queue's four API
+   endpoints only (list, approve, reject, plus the REVIEWER role/guard) —
+   deliberate, since §14.25 is entirely backend-behavioral and never
+   required rendering anything to pass. That left no module on the books
+   actually building the page a REVIEWER account would use day to day.
+   Rather than leave it implicit, it's now an explicit Module 16 deliverable
+   (row updated above, depends-on list gains Module 6) and §14.8 gains one
+   checklist line: a bare functional page (list the queue, view a product,
+   approve/reject with notes) with a REVIEWER account confirmed to see only
+   this page — the same negative-access guarantee §14.25 already proved at
+   the API layer, now proved at the UI layer too.
 
 ---
 
