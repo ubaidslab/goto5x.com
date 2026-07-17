@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.13 — build-phase amendment)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.14 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -50,7 +50,7 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - **Store shipping settings (flat rate + free threshold, FR-2.10) — Module 7 built**
 - **Basic tax settings (FR-19.3): one rate per store, inclusive/exclusive toggle — Module 7 built**
 - **Basic discount codes (FR-2.11) — Module 7 built the CRUD; FR-5.5's
-  checkout-time validation is Module 9's job once checkout exists**
+  checkout-time validation (expiry/usage-limit, atomic usage increment) — Module 9 built**
 
 **Seller Dashboard UI (new in v0.12)**
 - The actual rendered screens for product/media management (Module 2),
@@ -102,30 +102,45 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   adapter implemented: Printify**
 - Supplier Portal: registration, seller-invite/supplier-request links, and
   the listing-review approval queue (FR-2.6/FR-2.7/FR-3.1/FR-3.2)
-- Listing transparency (FR-4.6) and the admin adapter registry (FR-4.9) are
-  live now; checkout country-blocking (FR-4.7), live price re-validation
-  (FR-4.8), and multi-store order/fulfillment tracking (FR-3.3/FR-3.4/FR-5.2)
-  need Module 9 (Orders, Cart & Checkout) to exist and land there
-- Oversell protection's atomic decrement mechanism (FR-4.5) is built and
-  tested now; wiring it into a live checkout is Module 9's job
+- Listing transparency (FR-4.6) and the admin adapter registry (FR-4.9) —
+  Module 8 built. Checkout country-blocking (FR-4.7), live price
+  re-validation (FR-4.8), oversell protection wired into a live checkout
+  (FR-4.5), and multi-store order/fulfillment tracking + tracking upload
+  (FR-3.3/FR-3.4/FR-5.2) — **Module 9 built**, now that checkout exists
 - **Corrected in v0.13:** supplier-sourced listings run through the
   Listing Moderation Engine at the moment of seller approval (FR-27.8) -
   the seller's own approval is a fulfillment-quality gate, not a
   legal-safety one
+- **Completeness fix in v0.14 (found while building Module 9):** approving
+  a supplier listing now also creates the one `product_variants` row every
+  cart/order line needs — previously the product existed but had no
+  variant, so it was silently unpurchasable
 
-**Orders & checkout**
-- Cart + checkout, payment via **Safepay only** (COD deferred/gated, §5.6a)
-- Order dashboard: list, filter by status, manual tracking entry
-- Buyer email notifications; buyer order-status lookup via secure link (FR-5.4)
-- Mixed-cart shipping calculation (FR-5.6)
+**Orders & checkout — Module 9 built**
+- Email-first cart persistence (FR-15.1, locked UX decision) and checkout,
+  creating a `pending` order; abandoned-cart **flagging** (FR-15.2,
+  recovery emails are v1.1). **Real gateway payment (Safepay) is Module
+  10/11's job** — Module 9's only v1.0 payment path is the seller's own
+  manual mark-as-paid (FR-17.1); COD stays deferred/gated (§5.6a)
+- Order dashboard: list, filter by status/tag, manual tracking entry;
+  supplier-side order view + tracking upload (FR-3.3/FR-3.4)
+- Buyer email notifications on confirmed/shipped/delivered (FR-5.2); buyer
+  order-status lookup via secure link (FR-5.4)
+- Mixed-cart shipping calculation (FR-5.6); checkout-time discount
+  validation (FR-5.5); supplier country-blocking, live price
+  re-validation, and oversell protection wired in (FR-4.5/4.7/4.8)
 - **Manual/draft orders — mark-as-paid only** (FR-17.1, bounded per founder
   decision)
 - Order notes, tags, timeline, and basic pre-fulfillment editing — including
-  correct inventory adjustment on edit (FR-17.2–17.5, clarified in v0.6)
+  correct inventory adjustment on edit (FR-17.2–17.5, clarified in v0.6).
+  **FR-17.5's compensating-ledger-entry clause is deferred to Module
+  10/11** (`ledger_entries` doesn't exist yet) — the order's own totals and
+  stock are still correctly recomputed
 - **Financial Truth Invariant (§3.12, new in v0.10):** an order counts as a
   sale — in dashboards, analytics, or `platform_events` — only once payment
-  is verified via signed gateway webhook or explicit mark-as-paid; pinned
-  before Orders/Payments are designed, not retrofitted after
+  is verified via signed gateway webhook or explicit mark-as-paid; `pending`
+  is the only status before that, and `order.placed` fires only at
+  confirmation, never at submission
 
 **Data portability**
 - **CSV product import — core fields only, unmapped fields listed explicitly per

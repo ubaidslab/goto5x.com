@@ -262,6 +262,8 @@ model Store {
   discountCodes      DiscountCode[]
   supplierLinks      StoreSupplierLink[]
   listingReviews     ListingReview[]
+  carts              Cart[]
+  orders             Order[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -329,6 +331,7 @@ model Product {
   variants           ProductVariant[]
   media              MediaAsset[]
   collectionProducts CollectionProduct[]
+  orderItems         OrderItem[]
 
   @@index([storeId, status], name: "idx_products_store_status")
   @@index([moderationStatus], name: "idx_products_moderation_status")
@@ -445,7 +448,8 @@ model DiscountCode {
   isActive   Boolean      @default(true) @map("is_active")
   createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz
 
-  store Store @relation(fields: [storeId], references: [id])
+  store  Store   @relation(fields: [storeId], references: [id])
+  orders Order[]
 
   @@unique([storeId, code], name: "uniq_discount_code_store")
   @@map("discount_codes")
@@ -584,6 +588,7 @@ model ProductVariant {
   attributes       Json     @default("{}")
 
   product Product @relation(fields: [productId], references: [id])
+  orderItems OrderItem[]
 
   @@index([productId], name: "idx_variants_product_id")
   @@map("product_variants")
@@ -731,4 +736,222 @@ model PlatformEvent {
   @@index([eventType, createdAt], name: "idx_platform_events_type_created")
   @@index([storeId], name: "idx_platform_events_store")
   @@map("platform_events")
+}
+
+// ===== Module 9 (Orders, Cart & Checkout) =====
+
+enum CartStatus {
+  active
+  abandoned
+  converted
+  expired
+}
+
+// SRS §3.12 Financial Truth Invariant - `pending` is the only status that
+// exists before payment is verified; every seller/admin-visible count must
+// exclude it. `confirmed` is reached either via a verified gateway webhook
+// (Module 10/11, not yet wired) or an explicit manual mark-as-paid
+// (FR-17.1, built in this module).
+enum OrderStatus {
+  pending
+  confirmed
+  shipped
+  delivered
+  completed
+  cancelled
+  disputed
+}
+
+enum OrderSource {
+  storefront
+  manual
+}
+
+enum OrderItemFulfillmentStatus {
+  pending
+  confirmed
+  shipped
+  delivered
+  completed
+}
+
+// `manual` is the v1.0 mark-as-paid path (FR-17.1). The others are real
+// gateway values reserved for Module 10/11's Safepay integration - not
+// used by any code this module writes.
+enum PaymentGateway {
+  safepay
+  cod
+  payfast
+  jazzcash
+  easypaisa
+  stripe
+  manual
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
+
+// FR-15.1 (locked UX decision) - a row is only ever created once the
+// email-first checkout step completes; there is no anonymous/pre-email
+// cart row. `convertedOrderId` is a plain scalar (no Prisma relation) -
+// nothing needs to traverse Cart -> Order, only record that the
+// conversion happened.
+model Cart {
+  id               String     @id @default(uuid()) @db.Uuid
+  storeId          String     @map("store_id") @db.Uuid
+  buyerEmail       String     @map("buyer_email")
+  sessionToken     String     @unique @map("session_token")
+  items            Json       @default("[]")
+  status           CartStatus @default(active)
+  convertedOrderId String?    @map("converted_order_id") @db.Uuid
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, status, updatedAt], name: "idx_carts_store_status_updated")
+  @@map("carts")
+}
+
+// `customer_id` (documented in docs/database-schema.md as a Customers-CRM
+// FK) is deliberately absent - the `customers` table doesn't exist until
+// Module 14 (Customers, Reviews & Data Portability), which depends on this
+// module. Adding it now would be a dangling FK to a table that doesn't
+// exist yet; Module 14 adds the column back as a genuine follow-up
+// migration, not resurrected dead schema (same discipline as the
+// `manual_payment_link_token` precedent already documented for this table).
+model Order {
+  id                String      @id @default(uuid()) @db.Uuid
+  storeId           String      @map("store_id") @db.Uuid
+  buyerId           String?     @map("buyer_id") @db.Uuid
+  buyerEmail        String      @map("buyer_email")
+  statusLookupToken String      @unique @map("status_lookup_token")
+  shippingAddress   Json        @map("shipping_address")
+  status            OrderStatus @default(pending)
+  source            OrderSource @default(storefront)
+  discountCodeId    String?     @map("discount_code_id") @db.Uuid
+  discountAmount    Decimal     @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  tags              String[]    @default([])
+  shippingAmount    Decimal     @map("shipping_amount") @db.Decimal(12, 2)
+  taxAmount         Decimal     @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  totalAmount       Decimal     @map("total_amount") @db.Decimal(12, 2)
+  currency          String
+  placedAt          DateTime    @default(now()) @map("placed_at") @db.Timestamptz
+
+  store          Store                @relation(fields: [storeId], references: [id])
+  discountCode   DiscountCode?        @relation(fields: [discountCodeId], references: [id])
+  items          OrderItem[]
+  notes          OrderNote[]
+  timelineEvents OrderTimelineEvent[]
+  payments       Payment[]
+
+  @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
+  @@index([discountCodeId], name: "idx_orders_discount_code")
+  @@map("orders")
+}
+
+// Module 9 clarification: `created_at` is a genuine addition to the
+// documented schema (docs/database-schema.md's own table def omitted it,
+// but its supplier-tracking index - `(supplier_id, fulfillment_status,
+// created_at)` - requires the column to exist; same "every other table has
+// it" reasoning already applied to the `Domain` table in Module 3).
+model OrderItem {
+  id                String                     @id @default(uuid()) @db.Uuid
+  storeId           String                     @map("store_id") @db.Uuid
+  orderId           String                     @map("order_id") @db.Uuid
+  productId         String                     @map("product_id") @db.Uuid
+  variantId         String                     @map("variant_id") @db.Uuid
+  supplierId        String?                    @map("supplier_id") @db.Uuid
+  quantity          Int
+  unitPrice         Decimal                    @map("unit_price") @db.Decimal(12, 2)
+  shippingCost      Decimal                    @map("shipping_cost") @db.Decimal(12, 2)
+  fulfillmentStatus OrderItemFulfillmentStatus @default(pending) @map("fulfillment_status")
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+
+  order          Order            @relation(fields: [orderId], references: [id])
+  product        Product          @relation(fields: [productId], references: [id])
+  variant        ProductVariant   @relation(fields: [variantId], references: [id])
+  trackingUpdates TrackingUpdate[]
+
+  @@index([supplierId, fulfillmentStatus, createdAt], name: "idx_order_items_supplier_status")
+  @@index([orderId], name: "idx_order_items_order_id")
+  @@map("order_items")
+}
+
+// FR-17.2 - never surfaced on any buyer-facing query.
+model OrderNote {
+  id           String   @id @default(uuid()) @db.Uuid
+  storeId      String   @map("store_id") @db.Uuid
+  orderId      String   @map("order_id") @db.Uuid
+  authorUserId String   @map("author_user_id") @db.Uuid
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId], name: "idx_order_notes_order")
+  @@map("order_notes")
+}
+
+// FR-17.4 - append-only; `beforeValue`/`afterValue` follow the same
+// discipline as `admin_audit_logs` for `edited` events.
+model OrderTimelineEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  eventType   String   @map("event_type")
+  beforeValue Json?    @map("before_value")
+  afterValue  Json?    @map("after_value")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId, createdAt], name: "idx_order_timeline_order_created")
+  @@map("order_timeline_events")
+}
+
+// Module 9 clarification: `store_id` is a genuine addition to the
+// documented schema - every other tenant-child table gets it denormalized
+// for RLS per docs/database-schema.md's own tenant-strategy rule; this
+// table's documented definition omitted it, which would leave it as the
+// one tenant-adjacent table with no RLS policy of its own.
+model TrackingUpdate {
+  id          String   @id @default(uuid()) @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  orderItemId String   @map("order_item_id") @db.Uuid
+  trackingId  String   @map("tracking_id")
+  carrier     String?
+  uploadedBy  String   @map("uploaded_by") @db.Uuid
+  uploadedAt  DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@index([orderItemId], name: "idx_tracking_order_item")
+  @@map("tracking_updates")
+}
+
+// FR-17.1 - `manual` is this module's only writer (mark-as-paid). Real
+// gateway integration (Safepay webhook -> `succeeded` payment) is Module
+// 10/11's job; the enum/table exist now so that module extends this,
+// rather than introduces a competing payment record shape.
+model Payment {
+  id                   String         @id @default(uuid()) @db.Uuid
+  storeId              String         @map("store_id") @db.Uuid
+  orderId              String         @map("order_id") @db.Uuid
+  gateway              PaymentGateway
+  gatewayTransactionId String?        @unique @map("gateway_transaction_id")
+  amount               Decimal        @db.Decimal(12, 2)
+  currency             String
+  status               PaymentStatus
+  rawWebhookPayload    Json?          @map("raw_webhook_payload")
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
 }

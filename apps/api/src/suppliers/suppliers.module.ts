@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { ModerationModule } from "../moderation/moderation.module";
+import { EmailService } from "../notifications/email.service";
 import { SettingsModule } from "../settings-registry/settings.module";
+import { StorefrontModule } from "../storefront/storefront.module";
 import { ListingReviewsController } from "./listing-reviews.controller";
 import { ListingReviewsService } from "./listing-reviews.service";
 import { PRINTIFY_CLIENT } from "./printify/printify-client.interface";
@@ -11,13 +13,14 @@ import { SupplierAdaptersController } from "./supplier-adapters.controller";
 import { SupplierLinksController } from "./supplier-links.controller";
 import { SupplierLinksService } from "./supplier-links.service";
 import { SupplierListingsService } from "./supplier-listings.service";
+import { SupplierOrdersService } from "./supplier-orders.service";
 import { SupplierPortalController } from "./supplier-portal.controller";
 import { SupplierPortalService } from "./supplier-portal.service";
 import { SupplierSyncScheduler } from "./supplier-sync.scheduler";
 import { SupplierSyncService } from "./supplier-sync.service";
 
 @Module({
-  imports: [SettingsModule, ModerationModule],
+  imports: [SettingsModule, ModerationModule, StorefrontModule],
   controllers: [
     SupplierLinksController,
     ListingReviewsController,
@@ -29,12 +32,14 @@ import { SupplierSyncService } from "./supplier-sync.service";
     ListingReviewsService,
     SupplierPortalService,
     SupplierListingsService,
+    SupplierOrdersService,
     SupplierAdapterRegistryService,
     SupplierSyncService,
     SupplierSyncScheduler,
     PrintifyAdapter,
+    EmailService,
     { provide: PRINTIFY_CLIENT, useClass: PrintifyHttpClient },
   ],
-  exports: [SupplierListingsService, SupplierSyncService],
+  exports: [SupplierListingsService, SupplierSyncService, PrintifyAdapter],
 })
 export class SuppliersModule {}

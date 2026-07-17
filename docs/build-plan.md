@@ -906,6 +906,106 @@ v0.12→v0.13 changelog and the new FR-27.8.
    second time toward probation would double-gate the same decision, not
    add a distinct check).
 
+## Module 9 — Orders, Cart & Checkout: built
+
+Scope: FR-5.1-5.6 (Order & Fulfillment Management), FR-15.1/15.2 (Cart
+Persistence & Abandoned Carts), FR-17.1-17.5 (Manual/Draft Orders & Order
+Management Enhancements) - §14.5/§14.15/§14.17. Per this module's own
+dependency table, **§14.6 (Payments, Commission, Ledger & Payout Engine)
+was never in scope** - `ledger_entries` doesn't exist until Module 10/11.
+Architecture decisions worth carrying into later modules:
+
+- **`placeOrder()` is the one place an Order/OrderItem row is ever
+  created** - both `CheckoutService.checkout()` (storefront, buyer-facing)
+  and `CheckoutService.createManualOrder()` (FR-17.1, seller dashboard) call
+  the same private method, so a manual order and a storefront order can
+  never independently drift into different shapes. `computeOrderTotals()`
+  (`order-totals.util.ts`) is a second shared, pure function - used by both
+  order creation and `OrdersService.editOrder()` (FR-17.5) for the same
+  reason, and is exhaustively unit-tested in isolation (mirrors Module 6's
+  `decideModerationStatus()` precedent).
+- **Financial Truth Invariant, concretely enforced:** every order this
+  module creates starts `status: 'pending'`; `OrdersService.markAsPaid()`
+  is the *only* code path that ever writes `status: 'confirmed'`, and
+  correspondingly the only place `order.placed` (SRS §3.11) is ever
+  emitted - `CheckoutService.placeOrder()` emits no platform event at all.
+  Proven directly in the e2e suite: an order stays absent from
+  `platform_events` until marked paid.
+- **FR-4.5/4.7/4.8 wired into a live checkout**, completing what Module 8
+  built and tested only in isolation: `OrderPricingService` always resolves
+  a supplier item's *current* `supplier_listings.price`/`shippingCost`/
+  `supportedCountries` (no caching layer to go stale, so FR-4.8 is
+  satisfied by construction, not a special re-check step); the country
+  check is a hard `BadRequestException` before any stock is touched; stock
+  reservation (`SupplierListingsService.decrementStock()`) is attempted
+  item-by-item and any failure - or any later failure, including an
+  invalid discount code - unwinds every reservation this same request
+  already made (`incrementStock()`, new this module) before the checkout
+  fails, so a rejected order can never leave phantom stock missing.
+- **FR-2.7/FR-3.2 completeness fix, found while wiring checkout against a
+  real approved supplier listing:** `ListingReviewsService.approve()` (Module
+  8) was creating the `products` row but never a `product_variants` row -
+  every cart/order line references a `variantId`, so an approved
+  supplier-sourced product was silently unpurchasable end-to-end, and
+  nothing in Module 8's own test suite exercised an actual purchase to
+  catch it. Fixed by creating exactly one variant per approved listing
+  (v1.0 supplier listings have no options); its stored `price`/
+  `stockQuantity` are cosmetic display values only - checkout always reads
+  the live `supplier_listings` row for a supplier item, never this
+  variant's.
+- **FR-3.3/FR-3.4 completed, not newly designed:** `SupplierOrdersService`
+  (new, `suppliers/` module) gives a supplier their own multi-store order
+  view and a tracking-upload endpoint, deliberately a separate BYPASSRLS
+  code path from `OrdersService`'s seller-scoped equivalent (same
+  isolation-model split StorefrontService already established for public
+  reads vs seller CRUD) rather than a shared import - avoids a
+  cross-module circular dependency between `OrdersModule` and
+  `SuppliersModule` for no real benefit.
+- **FR-5.3 fixed at its actual root, `StorefrontService.loadActiveStoreOrThrow()`:**
+  previously collapsed every non-active store status into the same generic
+  404. A `suspended` store now resolves to `403 { code: 'store_suspended' }`
+  - distinct from a truly missing/banned/archived store (still 404) - so
+  the storefront can render "temporarily unavailable" instead of a broken
+  page. New carts/checkouts are blocked for a suspended store; the seller
+  dashboard's `OrdersService` never checks `store.status` at all, so
+  existing orders stay fully fulfillable, per the FR's own text. One
+  pre-existing Module 4/5 e2e assertion (`storefront.e2e-spec.ts`) asserted
+  the old, less-correct 404-for-everything behavior - updated to assert the
+  new distinct code, plus a new assertion that banned/archived stores keep
+  the plain 404.
+- **FR-17.5 ("Basic order editing") bounded scope, disclosed:** only
+  existing line-item quantities and the shipping address are editable, and
+  only while `pending`/`confirmed` - matches the FR text's own "Basic"
+  framing, same bounding precedent as FR-17.1's mark-as-paid-only scope.
+  Quantity changes adjust `product_variants.stock_quantity` in both
+  directions and the order's totals are correctly recomputed through the
+  same `computeOrderTotals()` checkout itself uses. **The FR's
+  "compensating ledger entry" clause is not implemented** - `ledger_entries`
+  doesn't exist until Module 10/11; that module closes this the same way
+  Module 9 closed Module 8's FR-4.5/4.7/4.8 deferral.
+- **`order.placed`'s forwarding side-effect:** `OrdersService.markAsPaid()`
+  also forwards each supplier-fulfilled line to `PrintifyAdapter.forwardOrder()`
+  (FR-3.4) - directly injected, same "no registry indirection until a
+  second adapter exists" reasoning as `SupplierSyncService`. Per-item
+  failures are caught and logged, never thrown - a supplier network
+  hiccup must never undo a payment confirmation that already succeeded
+  (proven in the e2e suite: a real 403 from Printify's live API, since no
+  test credential exists in this sandbox, is swallowed and mark-as-paid
+  still returns 201). `pullTrackingUpdate()` remains built-and-tested in
+  isolation (Module 8) but unwired - v1.0's documented tracking UX is a
+  supplier's manual upload (§5.3 FR-3.4's own text: "supplier uploads
+  tracking ID"), not adapter-side polling, so there is no live caller for
+  it yet.
+- **Cart abandonment (FR-15.2)** mirrors the exact `SupplierSyncScheduler`/
+  `Worker` BullMQ pattern (`CartAbandonmentScheduler` + a third worker
+  registered in `worker.main.ts`) - ships the flagging mechanism and
+  `carts.status = 'abandoned'` only; recovery emails are v1.1 (§5.22,
+  FR-22.2), per the FR's own text.
+- **Testing boundary, same as Modules 6/7/8:** apps/web has no automated
+  test harness and this module shipped no apps/web changes - Module 10
+  (Seller Dashboard UI) is where order/cart screens land, per the v0.12
+  amendment.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

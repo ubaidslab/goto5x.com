@@ -122,13 +122,28 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
     expect(res.body.accessMode).toBe("coming_soon");
   });
 
-  it("a suspended store's hostname does not resolve publicly at all", async () => {
-    const { storeId } = await signupLoginAndCreateStore("storefront-suspended@example.com", "storefront-suspended-store");
-    await superuser.store.update({ where: { id: storeId }, data: { status: "suspended" } });
+  it(
+    "a suspended store's hostname resolves to a distinct 'temporarily unavailable' state, not a generic not-found " +
+      "(FR-5.3, Module 9 - superseding this test's earlier 404-only expectation)",
+    async () => {
+      const { storeId } = await signupLoginAndCreateStore("storefront-suspended@example.com", "storefront-suspended-store");
+      await superuser.store.update({ where: { id: storeId }, data: { status: "suspended" } });
+
+      const res = await request(app.getHttpServer())
+        .get("/storefront/store")
+        .query({ hostname: "storefront-suspended-store.goto5x.com" });
+      expect(res.status).toBe(403);
+      expect(res.body.message).toMatchObject({ code: "store_suspended" });
+    },
+  );
+
+  it("a banned/archived store's hostname still resolves as a plain not-found, same as no store at all", async () => {
+    const { storeId } = await signupLoginAndCreateStore("storefront-banned@example.com", "storefront-banned-store");
+    await superuser.store.update({ where: { id: storeId }, data: { status: "banned" } });
 
     const res = await request(app.getHttpServer())
       .get("/storefront/store")
-      .query({ hostname: "storefront-suspended-store.goto5x.com" });
+      .query({ hostname: "storefront-banned-store.goto5x.com" });
     expect(res.status).toBe(404);
   });
 

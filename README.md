@@ -1,9 +1,9 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.13); this README covers running the code.
+(approved v0.14); this README covers running the code.
 
-**Status:** Modules 1–8 approved; Module 9 (Orders, Cart & Checkout) next.
+**Status:** Modules 1–9 approved; Module 10 (Seller Dashboard UI) next.
 Platform Event Log amendment (SRS §3.11) built and backfilled. The v0.10
 amendment added two new modules to the sequence (Listing Moderation
 Engine, Module 6; Seller Account Security: 2FA + Devices, Module 12,
@@ -14,9 +14,13 @@ module (Module 10, after Orders/Cart/Checkout) plus a binding SIMPLICITY
 INVARIANT NFR (§3.13) governing it and every seller-facing screen after.
 The v0.13 amendment closed a gap found reviewing Module 8: supplier-
 sourced listings now run through the Listing Moderation Engine (FR-27.8)
-at the moment of seller approval, not just the seller's own review gate —
-see `docs/build-plan.md` for the full, current module sequence and
-numbering.
+at the moment of seller approval, not just the seller's own review gate.
+The v0.14 amendment (approved after Module 9) completes Module 8's
+deferred supplier/checkout wiring (FR-3.3/3.4/4.5/4.7/4.8), fixes a
+found-during-build completeness gap (an approved supplier listing now
+also gets its required `product_variants` row), and clarifies FR-5.3's
+suspended-store behavior — see `docs/build-plan.md` for the full, current
+module sequence and numbering.
 
 ---
 
@@ -83,6 +87,14 @@ Two Postgres roles back every environment (`docs/build-plan.md`
    theme has been seeded yet:
    ```sh
    npx ts-node src/theme-engine/themes.seed.ts
+   ```
+   Module 9's `CartAbandonmentScheduler` resolves `cart.abandoned_after_hours`/
+   `cart.abandonment_sweep_minutes` on boot the same way Module 8's
+   `SupplierSyncScheduler` already does for its own settings keys - seed them
+   too (same pre-existing gap as Module 6/8's own seed scripts not yet listed
+   here; the e2e test harness's `seedSettings()` already covers all of them):
+   ```sh
+   npx ts-node src/orders/orders.seed.ts
    ```
 7. For real media features (Module 2), start a real MinIO instance (or the
    `docker-compose.yml` one) and create the bucket named by `MINIO_BUCKET`,
@@ -225,6 +237,24 @@ supplier-sourced listings now run through the Listing Moderation Engine
 (Module 6) at the moment of seller approval (FR-27.8), not just the
 seller's own listing-review gate - see `docs/build-plan.md`'s Module 8
 section for the corrected behavior and why the original version was wrong.
+
+**Module 9 (Orders, Cart & Checkout):** also no `apps/web` changes - same
+precedent as Modules 6/7/8; Module 10 (Seller Dashboard UI) is where order/
+cart screens land. Completes every §14.3/§14.4 item Module 8 deferred here
+(multi-store supplier order view, fulfillment checklist, checkout country-
+blocking/price-revalidation, oversell protection wired into a live
+checkout). **Found and fixed during this module's build:** a supplier
+listing's approval (Module 8) was creating a `products` row but never its
+`product_variants` row, leaving an approved supplier-sourced product
+silently unpurchasable - fixed in `ListingReviewsService.approve()`.
+**§14.6 (Payments, Commission, Ledger & Payout Engine) is out of scope**
+per this module's own dependency table - `ledger_entries` doesn't exist
+until Module 10/11, so FR-17.5's "compensating ledger entry" clause isn't
+implemented yet (the order's own totals/stock are still correctly
+recomputed). `PrintifyAdapter.forwardOrder()` is wired into mark-as-paid;
+a real, unverified-credential call to Printify's live API correctly fails
+closed (caught, logged, non-blocking) in the e2e suite, same disclosure as
+Module 8's own Printify integration.
 
 ---
 

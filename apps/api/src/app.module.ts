@@ -15,6 +15,7 @@ import { EventsModule } from "./events/events.module";
 import { HealthModule } from "./health/health.module";
 import { MediaModule } from "./media/media.module";
 import { ModerationModule } from "./moderation/moderation.module";
+import { OrdersModule } from "./orders/orders.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SettingsModule } from "./settings-registry/settings.module";
 import { StorefrontModule } from "./storefront/storefront.module";
@@ -43,6 +44,7 @@ import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
     ThemeEngineModule,
     DiscoveryModule,
     StorefrontModule,
+    OrdersModule,
     HealthModule,
   ],
   providers: [

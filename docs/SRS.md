@@ -1,12 +1,12 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.13 (Build-phase amendment)
+**Version:** 0.14 (Build-phase amendment)
 **Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
-underway. Modules 1–8 (Foundation; Catalog & Media; Custom Domain & TLS;
+underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
-Moderation Engine; Shipping, Tax & Discounts; Suppliers & Printify Adapter)
-built, tested, and approved. v0.7 pinned the Settings Registry precedence,
+Moderation Engine; Shipping, Tax & Discounts; Suppliers & Printify Adapter;
+Orders, Cart & Checkout) built, tested, and approved. v0.7 pinned the Settings Registry precedence,
 added password reset, regional launch gating, admin plan grants/platform
 subscription promo codes, in-app messaging, platform brand-asset
 management, a mobile-app-readiness NFR, a region-sharded-deployment Phase
@@ -20,16 +20,21 @@ Invariant (§3.12), the zero-cost rule-based Listing Moderation Engine
 (approved after Module 6) slotted the moderation queue's bare functional
 admin page into Module 16. v0.12 (approved after Module 7) inserted a new
 **Seller Dashboard UI** module (§5.28, Module 10) and a binding SIMPLICITY
-INVARIANT NFR (§3.13). **This revision (v0.13), approved after Module 8:**
-closes a gap identified during Module 8's review — supplier-sourced
-listings were bypassing the Listing Moderation Engine entirely (a seller's
+INVARIANT NFR (§3.13). v0.13 (approved after Module 8) closed a gap
+identified during Module 8's review — supplier-sourced listings were
+bypassing the Listing Moderation Engine entirely (a seller's
 fulfillment-quality approval is not a substitute for the platform's own
 legal-safety check). New FR-27.8 (§5.27) runs the same banned/restricted-
 keyword and restricted-category checks, and the same trusted-seller
 bypass, on a supplier listing at the moment of seller approval; new-seller
-probation stays scoped to self-fulfilled listings only. §14.25 gains two
-lines. No FR from any prior version was removed or weakened — every change
-below is additive.
+probation stays scoped to self-fulfilled listings only. §14.25 gained two
+lines. **This revision (v0.14), approved after Module 9:** Module 9
+(Orders, Cart & Checkout) built; completes Module 8's deferred FR-3.3/3.4/
+4.5/4.7/4.8 wiring; fixes a found-during-build completeness gap in
+FR-2.7/3.2 (a supplier listing's approval now also creates its
+`product_variants` row); clarifies FR-5.3's suspended-store behavior. No FR
+from any prior version was removed or weakened — every change below is
+additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -302,6 +307,38 @@ closure — flagged before being silently improvised):**
   supplier listing is blocked at approval; a restricted supplier listing
   stays invisible until platform approval, proven as two independent
   gates).
+
+**Changelog v0.13 → v0.14 (build-phase amendment, approved after Module 9):**
+- **Module 9 (Orders, Cart & Checkout) built**, completing FR-5.x/FR-15.x/
+  FR-17.x per §14.5/§14.15/§14.17, and - now that a real order exists to
+  wire against - finishing three things Module 8 explicitly deferred here:
+  FR-3.3/FR-3.4 (supplier multi-store order view + tracking upload),
+  FR-4.5/FR-4.7/FR-4.8 (oversell protection, country-block, and price
+  revalidation, all wired into a live checkout).
+- **FR-2.7/FR-3.2 completeness fix, found while building Module 9:** a
+  supplier listing's approval was creating only the `products` row, never
+  the `product_variants` row every cart/order line references by
+  `variantId` - a supplier-sourced product was therefore approved but
+  silently unpurchasable. Fixed in `ListingReviewsService.approve()`,
+  which now creates exactly one variant per approved listing (v1.0's
+  supplier listings have no options/variants of their own).
+- **FR-5.3 clarified and correctly implemented:** a `suspended` store now
+  resolves to a distinct, buyer-facing "temporarily unavailable" state
+  (`403 store_suspended`) rather than the same generic 404 a truly
+  nonexistent/banned/archived store returns - the difference this FR
+  always called for, not implemented until Module 9 needed it for
+  checkout's own suspended-store gate.
+- **§14.6 (Payments, Commission, Ledger & Payout Engine) remains entirely
+  out of Module 9's scope**, per `docs/build-plan.md`'s dependency table -
+  `ledger_entries` does not exist until Module 10/11. Module 9 builds only
+  what's real without it: a `payments` row for the v1.0 manual mark-as-paid
+  path (FR-17.1), and `order.placed` firing at that same confirmation
+  point (§3.11/§3.12). **FR-17.5's "compensating ledger entry" clause is
+  correspondingly deferred**: an edit to a confirmed order's total is
+  computed and stored correctly on the order itself (and its stock/
+  timeline effects are real), but no ledger-side compensating entry is
+  written - there is no ledger yet to compensate. Module 10/11 closes this
+  the same way Module 9 closed Module 8's FR-4.5/4.7/4.8 deferral.
 
 ---
 
@@ -2097,7 +2134,11 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Seller-initiated supplier invite creates a `store_supplier_links` row with
       the correct `invited_by` value and status (FR-2.6)
 - [ ] Listing approve/reject updates `listing_reviews` and, on approve, creates
-      the corresponding `products` row (FR-2.7)
+      the corresponding `products` row **and its one `product_variants` row**
+      (FR-2.7 - completeness fix, found and closed during Module 9: a
+      supplier-sourced product with no variant row was unpurchasable, since
+      every cart/order line references a `variantId`; v1.0's supplier
+      listings have no options, so exactly one variant per approved listing)
 - [ ] Google Drive OAuth connect + import copies media into MinIO — imported
       assets still render after the source Drive file is deleted
 - [ ] A seller can revoke their Google Drive connection from the dashboard;
@@ -2130,22 +2171,27 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] **Permission boundary:** a supplier's session returns zero results for a
       store they do not hold an active `store_supplier_links` row for
 - [ ] Multi-store dashboard aggregates `order_items` across all linked stores
-      correctly (FR-3.3)
+      correctly (FR-3.3) - proven in Module 9's test suite, once orders exist
 - [ ] Fulfillment checklist updates correctly and reflects live in the seller's
-      dashboard (FR-3.4)
-- [ ] Tracking ID upload triggers the buyer notification (FR-5.2)
+      dashboard (FR-3.4) - proven in Module 9's test suite
+- [ ] Tracking ID upload triggers the buyer notification (FR-5.2) - proven in
+      Module 9's test suite (both the seller-side and supplier-side upload path)
 
 ### 14.4 Dropshipping Supplier Integrations (Printify, v1.0)
 - [ ] Printify adapter implements the full Supplier Adapter interface (§3.5)
 - [ ] Shipping cost, estimated delivery time, and supported countries render
       correctly on the storefront product page (FR-4.6)
 - [ ] Checkout blocks an order when any cart item's supplier listing doesn't
-      support the buyer's shipping country (FR-4.7)
+      support the buyer's shipping country (FR-4.7) - proven in Module 9's
+      test suite, once checkout exists
 - [ ] Price sync propagates to the storefront within the scheduled interval; a
       checkout attempted against a stale cached price is rejected/re-validated
-      against the latest synced price (FR-4.8)
+      against the latest synced price (FR-4.8) - proven in Module 9's test
+      suite (checkout always reads the live `supplier_listings.price`)
 - [ ] **Oversell protection:** two simultaneous orders against the last unit of a
-      shared supplier stock figure — only one succeeds (FR-4.5)
+      shared supplier stock figure — only one succeeds (FR-4.5) - the
+      mechanism itself was proven in isolation in Module 8; Module 9 proves
+      it wired into a real concurrent checkout
 - [ ] Supplier API outage is simulated: storefront serves the last-known cached
       catalog instead of erroring (FR-4.3)
 - [ ] Admin can disable the Printify adapter from the adapter registry without a

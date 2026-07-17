@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.13 — no schema change this amendment)
+# goto5x.com — Database Schema (v1, updated for SRS v0.14 — Module 9 built; two documented columns added, `order_items.created_at`/`tracking_updates.store_id`, see their table notes below)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -587,6 +587,15 @@ v1.0 (FR-17.1), there is no payment-link token to store until the payment-link
 flow ships in v1.1 (FR-22.8), at which point this column is added back as a
 genuinely new migration, not resurrected dead schema.
 
+**Note (Module 9 build, no schema-doc regression — same discipline as the note
+above):** `customer_id` (FR-13.1, Customers/Reviews/Data Portability) and
+`invoice_pdf_url` (FR-19.1, self-hosted PDF invoicing) are **not present** in
+Module 9's actual `orders` table - both FRs belong to later modules whose
+own tables (`customers`) and file-generation pipeline (invoice PDFs) don't
+exist yet. Each is added back as a genuine follow-up migration by the module
+that actually needs it, not resurrected dead schema; nothing in Module 9's
+own scope (FR-5.x/15.x/17.x) reads or writes either column.
+
 ### `order_items` (tenant, child of orders)
 | Column | Type | Notes |
 |---|---|---|
@@ -600,6 +609,7 @@ genuinely new migration, not resurrected dead schema.
 | unit_price | numeric(12,2) | |
 | shipping_cost | numeric(12,2) | copied from `store_shipping_settings` (self-fulfilled) or `supplier_listings.shipping_cost` (supplier-fulfilled) at order time — a per-line-item historical snapshot |
 | fulfillment_status | enum(`pending`,`confirmed`,`shipped`,`delivered`,`completed`) | the literal per-order checklist, FR-3.4 |
+| created_at | timestamptz | **added during Module 9's build** — this table's own supplier-tracking index (below) already required the column to exist; same "every other table has it" precedent as the `Domain` table (Module 3) |
 
 Index: `idx_order_items_supplier_status (supplier_id, fulfillment_status,
 created_at)` — the supplier's multi-store order tracking view. Index:
@@ -636,6 +646,7 @@ Index: `idx_order_timeline_order_created (order_id, created_at)`.
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
+| store_id | uuid | **added during Module 9's build** — this table's documented definition omitted it, which would have left it as the one tenant-adjacent table with no RLS policy of its own; denormalized for RLS, same pattern as every other tenant-child table |
 | order_item_id | uuid FK → order_items.id | |
 | tracking_id | text | |
 | carrier | text nullable | |

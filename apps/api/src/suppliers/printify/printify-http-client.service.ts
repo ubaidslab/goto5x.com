@@ -25,6 +25,12 @@ export class PrintifyHttpClient implements IPrintifyClient {
         "Content-Type": "application/json",
         ...init?.headers,
       },
+      // Module 9 hardening: forwardOrder() (FR-3.4) runs synchronously
+      // inside OrdersService.markAsPaid() - an unresponsive third-party
+      // network call must never be able to hang a payment confirmation
+      // indefinitely. Caught the same way any other failure here is
+      // (OrdersService.forwardSupplierItems() logs and continues).
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       throw new InternalServerErrorException(`Printify API request failed: ${res.status} ${res.statusText}`);

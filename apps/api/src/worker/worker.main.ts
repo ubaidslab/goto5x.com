@@ -5,6 +5,8 @@ import { Worker } from "bullmq";
 import { AppModule } from "../app.module";
 import { DomainVerificationService } from "../domains/domain-verification.service";
 import { DOMAIN_VERIFICATION_QUEUE_NAME } from "../domains/domain-verification.queue";
+import { CartService } from "../orders/cart.service";
+import { CART_ABANDONMENT_QUEUE_NAME } from "../orders/cart-abandonment.queue";
 import { SupplierSyncService } from "../suppliers/supplier-sync.service";
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 
@@ -20,6 +22,7 @@ async function main() {
   const config = appContext.get(ConfigService);
   const domainVerification = appContext.get(DomainVerificationService);
   const supplierSync = appContext.get(SupplierSyncService);
+  const cart = appContext.get(CartService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -53,14 +56,29 @@ async function main() {
     console.error(`supplier-sync job ${job?.id} failed:`, err);
   });
 
+  // Module 9 (FR-15.2) - flags captured-email carts inactive beyond the
+  // configured window; CartService itself never throws for the whole
+  // batch (a single bad row can't block the sweep).
+  const cartAbandonmentWorker = new Worker(
+    CART_ABANDONMENT_QUEUE_NAME,
+    async () => cart.flagAbandonedCarts(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  cartAbandonmentWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`cart-abandonment job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification processor - Module 3; supplier-sync processor - Module 8).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9).",
   );
 
   const shutdown = async () => {
     await domainWorker.close();
     await supplierSyncWorker.close();
+    await cartAbandonmentWorker.close();
     await appContext.close();
     process.exit(0);
   };

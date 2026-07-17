@@ -3,7 +3,9 @@ import { CurrentSupplierId } from "../common/decorators/current-supplier.decorat
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { RequestStoreLinkDto } from "./dto/request-store-link.dto";
 import { SubmitListingReviewDto } from "./dto/submit-listing-review.dto";
+import { SupplierUploadTrackingDto } from "./dto/supplier-upload-tracking.dto";
 import { SupplierListingsService } from "./supplier-listings.service";
+import { SupplierOrdersService } from "./supplier-orders.service";
 import { SupplierPortalService } from "./supplier-portal.service";
 
 @Controller("supplier")
@@ -12,6 +14,7 @@ export class SupplierPortalController {
   constructor(
     private readonly supplierPortal: SupplierPortalService,
     private readonly supplierListings: SupplierListingsService,
+    private readonly supplierOrders: SupplierOrdersService,
   ) {}
 
   @Post("store-links")
@@ -38,5 +41,21 @@ export class SupplierPortalController {
   @Post("listings/submit-review")
   submitForReview(@CurrentSupplierId() supplierId: string, @Body() dto: SubmitListingReviewDto) {
     return this.supplierPortal.submitForReview(supplierId, dto);
+  }
+
+  /** FR-3.3 - every order item this supplier fulfills, across every connected store. */
+  @Get("orders")
+  listOwnOrderItems(@CurrentSupplierId() supplierId: string) {
+    return this.supplierOrders.listOwnOrderItems(supplierId);
+  }
+
+  /** FR-3.4 - "supplier uploads tracking ID; system relays it to the buyer." */
+  @Post("order-items/:orderItemId/tracking")
+  uploadTracking(
+    @CurrentSupplierId() supplierId: string,
+    @Param("orderItemId") orderItemId: string,
+    @Body() dto: SupplierUploadTrackingDto,
+  ) {
+    return this.supplierOrders.uploadTracking(supplierId, orderItemId, dto);
   }
 }

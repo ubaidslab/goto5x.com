@@ -16,7 +16,8 @@ const UNLOCK_TOKEN_TTL = "24h";
  * buyer may ever see. "pending"/"rejected" must leak nowhere on any public
  * surface - list, detail, search, or collection contents.
  */
-const PUBLIC_MODERATION_STATUSES = ["not_required", "approved"] as const;
+/** Exported for OrderPricingService (Module 9) - checkout must never let a buyer complete a purchase of a not-yet-publicly-visible product, same gate as every storefront read. */
+export const PUBLIC_MODERATION_STATUSES = ["not_required", "approved"] as const;
 
 interface UnlockTokenPayload {
   storeId: string;
@@ -72,22 +73,36 @@ export class StorefrontService {
     return null;
   }
 
-  private async loadActiveStoreOrThrow(hostname: string) {
+  /**
+   * FR-5.3 (Module 9) - a `suspended` store is temporarily unavailable, not
+   * gone: distinguished from a genuinely missing/banned/archived store (both
+   * still a plain 404) so the frontend can render a clear "temporarily
+   * unavailable" state rather than a broken/not-found page. This blocks new
+   * carts/checkouts/browsing for a suspended store; a store's *existing*
+   * orders remain fully fulfillable from the seller dashboard regardless -
+   * OrdersService never checks store.status. Public (not private) because
+   * CartService/CheckoutService/OrderStatusLookupService (Module 9) reuse
+   * this same hostname-resolution + status gate rather than duplicating it.
+   */
+  async loadActiveStoreOrThrow(hostname: string) {
     const storeId = await this.resolveStoreIdByHostname(hostname);
     if (!storeId) throw new NotFoundException("No store found for this hostname.");
     const store = await this.prismaAdmin.store.findUnique({
       where: { id: storeId },
       include: { themeSettings: { include: { theme: true } }, domains: true },
     });
-    // A suspended/banned/archived store is not publicly reachable at all -
-    // no different from the hostname not resolving to anything.
-    if (!store || store.status !== "active") {
+    if (!store) throw new NotFoundException("Store not found.");
+    if (store.status === "suspended") {
+      throw new ForbiddenException({ code: "store_suspended", message: "This store is temporarily unavailable." });
+    }
+    if (store.status !== "active") {
       throw new NotFoundException("Store not found.");
     }
     return store;
   }
 
-  private async canonicalHostnameFor(store: { slug: string; domains: { domainName: string; verificationStatus: string }[] }) {
+  /** Public: reused by CheckoutService (Module 9) to build the buyer order-status link (FR-5.4) against this store's real hostname. */
+  async canonicalHostnameFor(store: { slug: string; domains: { domainName: string; verificationStatus: string }[] }) {
     const verified = store.domains.find((d) => d.verificationStatus === "verified");
     if (verified) return verified.domainName;
     const rootDomain = await this.settings.resolve<string>("domains.platform_root_domain");

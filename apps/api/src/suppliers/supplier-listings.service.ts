@@ -38,4 +38,17 @@ export class SupplierListingsService {
     });
     return result.count === 1;
   }
+
+  /**
+   * Module 9 - compensates a decrementStock() that must be undone because a
+   * later item in the same multi-item checkout failed its own oversell
+   * check (see CheckoutService.reserveStock()). Not itself racy: it only
+   * ever restores a quantity this same request just took.
+   */
+  async incrementStock(listingId: string, quantity: number): Promise<void> {
+    await this.prismaAdmin.supplierListing.update({
+      where: { id: listingId },
+      data: { stockQuantity: { increment: quantity } },
+    });
+  }
 }

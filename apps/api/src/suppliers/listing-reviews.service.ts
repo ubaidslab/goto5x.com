@@ -68,6 +68,24 @@ export class ListingReviewsService {
         },
       });
 
+      // Module 9 completeness fix (found while wiring checkout against a
+      // real approved supplier listing): every purchasable product needs a
+      // `product_variants` row - Module 8 created only the `products` row
+      // here, leaving a supplier-sourced product with no variant at all,
+      // and therefore nothing a cart could ever reference. The variant's
+      // own price/stock are cosmetic display values only - OrderPricingService
+      // (Module 9) always reads the *live* `supplier_listings.price`/
+      // `stockQuantity` for a supplier item, never this row's.
+      await tx.productVariant.create({
+        data: {
+          storeId,
+          productId: product.id,
+          sku: listing.externalProductId,
+          price: listing.price,
+          stockQuantity: listing.stockQuantity,
+        },
+      });
+
       const updated = await tx.listingReview.update({
         where: { id: reviewId },
         data: {

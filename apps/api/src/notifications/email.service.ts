@@ -44,4 +44,22 @@ export class EmailService {
       `Click to reset your password (this link expires soon): ${resetUrl}`,
     );
   }
+
+  /** FR-5.4 - the order confirmation email is what actually delivers the buyer's unguessable status-lookup link (Module 9, CheckoutService). */
+  async sendOrderConfirmationEmail(to: string, storeName: string, statusUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `Your order from ${storeName}`,
+      `Thanks for your order! Track its status any time here: ${statusUrl}`,
+    );
+  }
+
+  /** FR-5.2 - fires on confirmed/shipped/delivered status changes only (Module 9, OrdersService). */
+  async sendOrderStatusEmail(to: string, storeName: string, statusLabel: string, statusUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `Your order from ${storeName} is ${statusLabel}`,
+      `Your order status has been updated to "${statusLabel}". Track it here: ${statusUrl}`,
+    );
+  }
 }

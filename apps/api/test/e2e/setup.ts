@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
+import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import {
   seedModule1Settings,
   seedModule3Settings,
@@ -51,6 +52,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, discount_codes,
       listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
+      payments, tracking_updates, order_timeline_events, order_notes, order_items, orders, carts,
       media_assets, product_variants, products, categories,
       google_drive_connections,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans
@@ -65,6 +67,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedModule4Settings(prisma);
   await seedModerationSettings(prisma);
   await seedSupplierSettings(prisma);
+  await seedOrdersSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded
