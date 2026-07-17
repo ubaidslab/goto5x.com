@@ -9,7 +9,7 @@
  * A bounded token set only (SRS Risk Register #10): colors + a fixed list
  * of section ids or a customizer would become an open-ended visual builder.
  */
-export type SectionId = "hero" | "featured_products" | "about" | "newsletter";
+export type SectionId = "hero" | "featured_products" | "about" | "newsletter" | "faq";
 
 export interface ThemeSection {
   id: SectionId;
@@ -22,11 +22,32 @@ export interface ThemeColors {
   text: string;
 }
 
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+// FR-16.4/FR-16.7 (Module 5) - both explicitly "a Theme Engine customizer
+// setting" per SRS, not a new content system, so they extend this same
+// settings JSON blob rather than getting their own table.
+export interface AnnouncementBarSettings {
+  enabled: boolean;
+  message: string;
+}
+
+export interface WhatsappSettings {
+  enabled: boolean;
+  phoneNumber: string;
+}
+
 export interface ThemeSettings {
   colors?: Partial<ThemeColors>;
   sections?: ThemeSection[];
   logoUrl?: string;
   bannerUrl?: string;
+  announcementBar?: AnnouncementBarSettings;
+  whatsapp?: WhatsappSettings;
+  faqItems?: FaqItem[];
 }
 
 export interface ResolvedThemeSettings {
@@ -34,6 +55,9 @@ export interface ResolvedThemeSettings {
   sections: ThemeSection[];
   logoUrl?: string;
   bannerUrl?: string;
+  announcementBar?: AnnouncementBarSettings;
+  whatsapp?: WhatsappSettings;
+  faqItems: FaqItem[];
 }
 
 const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSection[] }> = {
@@ -66,7 +90,7 @@ const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSectio
   },
 };
 
-export const ALL_SECTION_IDS: SectionId[] = ["hero", "featured_products", "about", "newsletter"];
+export const ALL_SECTION_IDS: SectionId[] = ["hero", "featured_products", "about", "newsletter", "faq"];
 
 export function resolveThemeSettings(themeName: string, overrides: ThemeSettings | null | undefined): ResolvedThemeSettings {
   const preset = THEME_PRESETS[themeName] ?? THEME_PRESETS.Classic;
@@ -75,5 +99,8 @@ export function resolveThemeSettings(themeName: string, overrides: ThemeSettings
     sections: overrides?.sections && overrides.sections.length > 0 ? overrides.sections : preset.sections,
     logoUrl: overrides?.logoUrl,
     bannerUrl: overrides?.bannerUrl,
+    announcementBar: overrides?.announcementBar,
+    whatsapp: overrides?.whatsapp,
+    faqItems: overrides?.faqItems ?? [],
   };
 }

@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { StoreAccessMode } from "@prisma/client";
 
 export class UpdateStoreDto {
@@ -17,10 +17,17 @@ export class UpdateStoreDto {
   @MaxLength(320)
   seoDescription?: string;
 
-  // Only the column + storefront noindex/sitemap read-side behavior are
-  // Module 4 scope (SRS FR-1.5, v0.9). The coming-soon page content and
-  // password-gate flow themselves are Module 5's job (FR-16.5, §14.16).
   @IsOptional()
   @IsEnum(["public", "coming_soon", "password_protected"])
   accessMode?: StoreAccessMode;
+
+  // Write-only (SRS FR-16.5, Module 5) - StoresService hashes this and
+  // never returns it in any response, same discipline as the Google Drive
+  // refresh token (Module 2). Required to set accessMode to
+  // password_protected if no password has ever been set before.
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  @MaxLength(200)
+  accessPassword?: string;
 }

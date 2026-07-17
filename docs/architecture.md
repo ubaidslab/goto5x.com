@@ -205,6 +205,24 @@ true by construction. `sitemap.xml`/`robots.txt` are Next.js special files
 that read the same resolved-store data per request (no static generation, no
 cron) and honor `stores.access_mode` for the noindex/no-sitemap case.
 
+**Discovery & Merchandising (SRS FR-16.x, Module 5):** extends the Theme
+Engine's rendering layer, not a parallel one — `collections`/
+`store_navigation_menus` are new tenant tables (same store_id-through-stores
+RLS pattern as every tenant table since Module 2), while the announcement
+bar, WhatsApp button, and FAQ accordion all extend `store_theme_settings`'s
+existing customizer JSON rather than getting new tables, matching FR-16.4/
+FR-16.7's own text ("a Theme Engine customizer setting"). Full-text search
+(FR-16.2) reads `products.search_vector`, a Postgres `GENERATED ALWAYS AS
+... STORED` tsvector column applied via a hand-written migration — Prisma's
+migration diffing cannot manage a generated column, so this one migration
+(and `stores.access_password_hash`) are applied with `migrate deploy`, never
+`migrate dev`. The coming-soon/password gate (FR-16.5) is enforced inside
+`StorefrontService` itself, not only in `apps/web` — the mobile-app-
+readiness NFR (v0.7) means a future mobile client hitting the same API gets
+the same 403, not a web-only check; the password-unlock credential is a
+short-lived, store-scoped JWT signed with the existing `JWT_ACCESS_SECRET`
+(no new secret introduced).
+
 **Platform Event Log (SRS §3.11, new in v0.8):** every module writes its own
 lifecycle events (`seller.signup`, `product.created`, `domain.verified`, etc.)
 into one append-only `platform_events` table via a single `EventsService.emit()`

@@ -46,6 +46,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
     TRUNCATE TABLE
       admin_audit_logs, platform_events, settings_values, settings_definitions,
       domains, store_theme_settings, themes,
+      collection_products, collections, store_navigation_menus,
       media_assets, product_variants, products, categories,
       google_drive_connections,
       stores, admin_users, sellers, user_security_events, users, plans

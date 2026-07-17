@@ -1,7 +1,19 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import { Prisma } from "@prisma/client";
+import * as bcrypt from "bcryptjs";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { resolveSeoFallback } from "./seo-fallback.util";
+
+const UNLOCK_TOKEN_TYPE = "storefront_unlock";
+const UNLOCK_TOKEN_TTL = "24h";
+
+interface UnlockTokenPayload {
+  storeId: string;
+  type: typeof UNLOCK_TOKEN_TYPE;
+}
 
 /**
  * Public, unauthenticated storefront read API - every method here runs
@@ -10,12 +22,18 @@ import { resolveSeoFallback } from "./seo-fallback.util";
  * correct tool, same reasoning as DomainsService.resolveStoreIdByHostname
  * (Module 3) - see PrismaAdminService's doc comment for the two legitimate
  * BYPASSRLS use cases.
+ *
+ * SRS's mobile-app-readiness NFR (v0.7): the coming-soon/password gate
+ * (FR-16.5) is enforced here, not left to apps/web - a future mobile app
+ * consuming this same API must see the same gate, not a web-only check.
  */
 @Injectable()
 export class StorefrontService {
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -68,6 +86,50 @@ export class StorefrontService {
     return `${store.slug}.${rootDomain}`;
   }
 
+  /**
+   * FR-16.5 - `coming_soon` never unlocks (no mechanism given to buyers);
+   * `password_protected` unlocks with a valid token for *this* store,
+   * minted by `unlock()` below. `getStorePublic` never calls this - the
+   * frontend needs store name/theme regardless of access mode to render
+   * the coming-soon/password page itself.
+   */
+  private assertAccessGranted(store: { id: string; accessMode: string }, unlockToken: string | undefined): void {
+    if (store.accessMode === "public") return;
+    if (store.accessMode === "coming_soon") {
+      throw new ForbiddenException("This store is not open to the public yet.");
+    }
+    // password_protected
+    if (!unlockToken || !this.verifyUnlockToken(unlockToken, store.id)) {
+      throw new ForbiddenException("This store is password-protected.");
+    }
+  }
+
+  private verifyUnlockToken(token: string, storeId: string): boolean {
+    try {
+      const payload = this.jwt.verify<UnlockTokenPayload>(token, {
+        secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
+      });
+      return payload.type === UNLOCK_TOKEN_TYPE && payload.storeId === storeId;
+    } catch {
+      return false;
+    }
+  }
+
+  async unlock(hostname: string, password: string): Promise<{ unlockToken: string }> {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    if (store.accessMode !== "password_protected" || !store.accessPasswordHash) {
+      throw new ForbiddenException("This store is not password-protected.");
+    }
+    if (!(await bcrypt.compare(password, store.accessPasswordHash))) {
+      throw new UnauthorizedException("Incorrect password.");
+    }
+    const unlockToken = this.jwt.sign(
+      { storeId: store.id, type: UNLOCK_TOKEN_TYPE } satisfies UnlockTokenPayload,
+      { secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"), expiresIn: UNLOCK_TOKEN_TTL },
+    );
+    return { unlockToken };
+  }
+
   async getStorePublic(hostname: string) {
     const store = await this.loadActiveStoreOrThrow(hostname);
     const canonicalHostname = await this.canonicalHostnameFor(store);
@@ -95,8 +157,9 @@ export class StorefrontService {
     };
   }
 
-  async listProducts(hostname: string) {
+  async listProducts(hostname: string, unlockToken?: string) {
     const store = await this.loadActiveStoreOrThrow(hostname);
+    this.assertAccessGranted(store, unlockToken);
     const products = await this.prismaAdmin.product.findMany({
       where: { storeId: store.id, status: "active" },
       include: { variants: true, media: true },
@@ -105,8 +168,9 @@ export class StorefrontService {
     return products.map((product) => this.toPublicProduct(product, store));
   }
 
-  async getProduct(hostname: string, productId: string) {
+  async getProduct(hostname: string, productId: string, unlockToken?: string) {
     const store = await this.loadActiveStoreOrThrow(hostname);
+    this.assertAccessGranted(store, unlockToken);
     const product = await this.prismaAdmin.product.findUnique({
       where: { id: productId },
       include: { variants: true, media: true },
@@ -115,6 +179,155 @@ export class StorefrontService {
       throw new NotFoundException("Product not found.");
     }
     return this.toPublicProduct(product, store);
+  }
+
+  /**
+   * FR-16.2 - Postgres full-text search (`search_vector`, a GENERATED
+   * column Prisma can't query through its normal typed API) plus price/
+   * category/collection filters. Runs the filter as raw SQL to get back
+   * just the matching ids (in relevance order when `q` is given), then
+   * loads the full rows through the normal typed client - keeps the JSON
+   * shape identical to listProducts()/getProduct() rather than hand-
+   * building a second response shape.
+   */
+  async search(
+    hostname: string,
+    params: { q?: string; minPrice?: number; maxPrice?: number; categoryId?: string; collectionId?: string },
+    unlockToken?: string,
+  ) {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    this.assertAccessGranted(store, unlockToken);
+
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`p.store_id = ${store.id}::uuid`,
+      Prisma.sql`p.status = 'active'`,
+    ];
+    if (params.q?.trim()) {
+      conditions.push(Prisma.sql`p.search_vector @@ plainto_tsquery('english', ${params.q.trim()})`);
+    }
+    if (params.categoryId) {
+      conditions.push(Prisma.sql`p.category_id = ${params.categoryId}::uuid`);
+    }
+    if (params.collectionId) {
+      conditions.push(
+        Prisma.sql`EXISTS (SELECT 1 FROM collection_products cp WHERE cp.product_id = p.id AND cp.collection_id = ${params.collectionId}::uuid)`,
+      );
+    }
+    if (params.minPrice !== undefined) {
+      conditions.push(
+        Prisma.sql`EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.price >= ${params.minPrice})`,
+      );
+    }
+    if (params.maxPrice !== undefined) {
+      conditions.push(
+        Prisma.sql`EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.price <= ${params.maxPrice})`,
+      );
+    }
+
+    const where = Prisma.join(conditions, " AND ");
+    const rankedIds = await this.prismaAdmin.$queryRaw<{ id: string }[]>(
+      params.q?.trim()
+        ? Prisma.sql`SELECT p.id FROM products p WHERE ${where} ORDER BY ts_rank(p.search_vector, plainto_tsquery('english', ${params.q.trim()})) DESC, p.created_at DESC`
+        : Prisma.sql`SELECT p.id FROM products p WHERE ${where} ORDER BY p.created_at DESC`,
+    );
+    if (rankedIds.length === 0) return [];
+
+    const products = await this.prismaAdmin.product.findMany({
+      where: { id: { in: rankedIds.map((r) => r.id) } },
+      include: { variants: true, media: true },
+    });
+    const byId = new Map(products.map((p) => [p.id, p]));
+    // Preserve the ranked/ordered id list from the raw query - findMany()
+    // does not guarantee result order matches `id: { in: [...] }`.
+    return rankedIds
+      .map((r) => byId.get(r.id))
+      .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      .map((product) => this.toPublicProduct(product, store));
+  }
+
+  async listCollections(hostname: string, unlockToken?: string) {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    this.assertAccessGranted(store, unlockToken);
+    const collections = await this.prismaAdmin.collection.findMany({
+      where: { storeId: store.id, isActive: true },
+      orderBy: { createdAt: "asc" },
+    });
+    return collections.map((collection) => this.toPublicCollection(collection, store));
+  }
+
+  async getCollection(hostname: string, collectionId: string, unlockToken?: string) {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    this.assertAccessGranted(store, unlockToken);
+    const collection = await this.prismaAdmin.collection.findUnique({
+      where: { id: collectionId },
+      include: {
+        products: {
+          orderBy: { sortOrder: "asc" },
+          include: { product: { include: { variants: true, media: true } } },
+        },
+      },
+    });
+    if (!collection || collection.storeId !== store.id || !collection.isActive) {
+      throw new NotFoundException("Collection not found.");
+    }
+    return {
+      ...this.toPublicCollection(collection, store),
+      products: collection.products
+        .filter((cp) => cp.product.status === "active")
+        .map((cp) => this.toPublicProduct(cp.product, store)),
+    };
+  }
+
+  async getNavigation(hostname: string) {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    const menus = await this.prismaAdmin.storeNavigationMenu.findMany({ where: { storeId: store.id } });
+    const header = menus.find((m) => m.location === "header");
+    const footer = menus.find((m) => m.location === "footer");
+    return { header: header?.items ?? [], footer: footer?.items ?? [] };
+  }
+
+  /**
+   * FR-16.2's category filter needs a list of categories to filter *by* -
+   * scoped to this store's own active products (a useful facet list), not
+   * the platform's entire global category taxonomy (Module 2's
+   * `/categories`, which stays seller-authed and untouched by this module).
+   */
+  async listCategories(hostname: string) {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    const products = await this.prismaAdmin.product.findMany({
+      where: { storeId: store.id, status: "active", categoryId: { not: null } },
+      distinct: ["categoryId"],
+      select: { category: { select: { id: true, name: true, slug: true } } },
+    });
+    return products.map((p) => p.category).filter((c): c is NonNullable<typeof c> => Boolean(c));
+  }
+
+  private toPublicCollection(
+    collection: {
+      id: string;
+      title: string;
+      slug: string;
+      description: string | null;
+      seoTitle: string | null;
+      seoDescription: string | null;
+    },
+    store: { seoTitle: string | null; seoDescription: string | null },
+  ) {
+    const seo = resolveSeoFallback({
+      seoTitle: collection.seoTitle,
+      seoDescription: collection.seoDescription,
+      fallbackName: collection.title,
+      fallbackDescription: collection.description,
+      storeDefault: { seoDescription: store.seoDescription },
+    });
+    return {
+      id: collection.id,
+      title: collection.title,
+      slug: collection.slug,
+      description: collection.description,
+      seoTitle: seo.title,
+      seoDescription: seo.description,
+    };
   }
 
   private toPublicProduct(

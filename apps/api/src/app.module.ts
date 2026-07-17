@@ -9,6 +9,7 @@ import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
+import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
 import { HealthModule } from "./health/health.module";
@@ -34,6 +35,7 @@ import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
     MediaModule,
     DomainsModule,
     ThemeEngineModule,
+    DiscoveryModule,
     StorefrontModule,
     HealthModule,
   ],

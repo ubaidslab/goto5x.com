@@ -561,5 +561,57 @@ v0.9→v0.10 changelog and the new §3.12/§5.25/§5.27/§4 sections.
 
 ---
 
+## Module 5 — Discovery & Merchandising: built
+
+Scope: FR-16.1–FR-16.9 (collections, full-text search + filters, header/
+footer navigation, announcement bar, coming-soon/password mode, structured
+data + sitemap collection pages, WhatsApp button, social links, FAQ
+accordion). See the Module 5 verification report for the full test/checklist
+mapping. Architecture decisions worth carrying into later modules:
+
+- **`products.search_vector`, deferred since Module 2, finally built:** a
+  raw-SQL `GENERATED ALWAYS AS ... STORED` column (`coalesce(description,
+  '')` guards against NULL propagating through `||`) - Prisma cannot manage
+  a generated column through its normal migration diffing (confirmed the
+  hard way: `prisma migrate dev` twice tried to auto-generate a corrective
+  migration that failed against a generated column), so this and the
+  `stores.access_password_hash` column were both applied via hand-written
+  migrations plus `prisma migrate deploy`/`migrate resolve --rolled-back`,
+  never `migrate dev`, once a schema contains anything Prisma represents as
+  `Unsupported(...)`. Worth remembering for any future generated/unsupported
+  column.
+- **The coming-soon/password gate is enforced in the API, not just
+  apps/web** (SRS mobile-app-readiness NFR, v0.7): `StorefrontService`
+  checks `stores.access_mode` on every products/search/collections call and
+  returns 403 directly; a signed, store-scoped JWT (reusing
+  `JWT_ACCESS_SECRET`, no new secret) is the password-unlock credential,
+  minted by `POST /storefront/unlock` and verified by every gated endpoint
+  - a future mobile app hits the same guarantee, not a web-only check.
+- **`stores.access_password_hash` never leaves `StoresService`:** every
+  query that could return a `Store` row explicitly strips the hash before
+  the method returns (Prisma's `omit` API turned out to be unavailable in
+  this Prisma client's generated types despite the version supposedly
+  supporting it - a plain destructure-and-strip helper was used instead,
+  with no dependency on that API working).
+- **One resolver, reused twice:** the storefront's public categories/search
+  endpoints reuse the same hostname-resolution path Module 3/4 already
+  built (`resolveStoreIdByHostname`) - no second lookup mechanism.
+- **Follow-up amendment delivered as promised:** Module 4's storefront
+  product listing and this module's Discovery search/collection endpoints
+  do **not** yet filter on a moderation status - the Listing Moderation
+  Engine module (inserted after this one, v0.10) is what adds that filter,
+  exactly as flagged in the v0.10 amendment note above; not applied here to
+  avoid building ahead of a module that doesn't exist in the codebase yet.
+- **Testing boundary, same as Module 4:** apps/web still has no automated
+  test harness. The new pages (collections, search, the coming-soon/
+  password gate, navigation/announcement-bar/WhatsApp/FAQ chrome) were
+  verified the same way Module 4's were - a production `next build`, then a
+  live dev-server smoke test with `curl -H "Host: ..."` proving the
+  storefront home/search/collection pages, the sitemap's new collection
+  entries, and the coming-soon gate all render correctly against a real
+  store created through the real API.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

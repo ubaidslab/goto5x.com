@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { PublicProduct, PublicStore } from "../../../../../lib/storefront-api";
-import { resolveThemeSettings, SectionId, ThemeSettings } from "../../../../../lib/theme-presets";
-import { AboutSection, FeaturedProductsSection, HeroSection, NewsletterSection } from "../../../../storefront/sections";
+import { FaqItem, resolveThemeSettings, SectionId, ThemeSettings } from "../../../../../lib/theme-presets";
+import { AboutSection, FaqSection, FeaturedProductsSection, HeroSection, NewsletterSection } from "../../../../storefront/sections";
 
 interface Theme {
   id: string;
@@ -15,6 +15,7 @@ const SECTION_LABELS: Record<SectionId, string> = {
   featured_products: "Featured products",
   about: "About",
   newsletter: "Newsletter signup",
+  faq: "FAQ",
 };
 
 /**
@@ -100,6 +101,32 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     setSettings({ ...settings, colors: { ...resolved.colors, [key]: value } });
   }
 
+  function setAnnouncementBar(enabled: boolean, message: string) {
+    setSettings({ ...settings, announcementBar: { enabled, message } });
+  }
+
+  function setWhatsapp(enabled: boolean, phoneNumber: string) {
+    setSettings({ ...settings, whatsapp: { enabled, phoneNumber } });
+  }
+
+  function updateFaqItems(items: FaqItem[]) {
+    setSettings({ ...settings, faqItems: items });
+  }
+
+  function addFaqItem() {
+    updateFaqItems([...resolved.faqItems, { question: "", answer: "" }]);
+  }
+
+  function updateFaqItem(index: number, field: "question" | "answer", value: string) {
+    const items = resolved.faqItems.slice();
+    items[index] = { ...items[index], [field]: value };
+    updateFaqItems(items);
+  }
+
+  function removeFaqItem(index: number) {
+    updateFaqItems(resolved.faqItems.filter((_, i) => i !== index));
+  }
+
   async function onSave() {
     setStatus(null);
     const token = localStorage.getItem("accessToken");
@@ -182,6 +209,68 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
           </ul>
         </fieldset>
 
+        <fieldset>
+          <legend>Announcement bar</legend>
+          <label>
+            <input
+              type="checkbox"
+              checked={resolved.announcementBar?.enabled ?? false}
+              onChange={(e) => setAnnouncementBar(e.target.checked, resolved.announcementBar?.message ?? "")}
+            />
+            Enabled
+          </label>
+          <input
+            type="text"
+            placeholder="Message"
+            value={resolved.announcementBar?.message ?? ""}
+            onChange={(e) => setAnnouncementBar(resolved.announcementBar?.enabled ?? false, e.target.value)}
+          />
+        </fieldset>
+
+        <fieldset>
+          <legend>WhatsApp button</legend>
+          <label>
+            <input
+              type="checkbox"
+              checked={resolved.whatsapp?.enabled ?? false}
+              onChange={(e) => setWhatsapp(e.target.checked, resolved.whatsapp?.phoneNumber ?? "")}
+            />
+            Enabled
+          </label>
+          <input
+            type="text"
+            placeholder="+92300..."
+            value={resolved.whatsapp?.phoneNumber ?? ""}
+            onChange={(e) => setWhatsapp(resolved.whatsapp?.enabled ?? false, e.target.value)}
+          />
+        </fieldset>
+
+        <fieldset>
+          <legend>FAQ</legend>
+          {resolved.faqItems.map((item, index) => (
+            <div key={index} style={{ marginBottom: 8 }}>
+              <input
+                type="text"
+                placeholder="Question"
+                value={item.question}
+                onChange={(e) => updateFaqItem(index, "question", e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="Answer"
+                value={item.answer}
+                onChange={(e) => updateFaqItem(index, "answer", e.target.value)}
+              />
+              <button type="button" onClick={() => removeFaqItem(index)}>
+                Remove
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={addFaqItem}>
+            Add question
+          </button>
+        </fieldset>
+
         <button type="button" onClick={onSave}>
           Save
         </button>
@@ -201,6 +290,8 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                 return <AboutSection key={section.id} store={previewStore} theme={resolved} />;
               case "newsletter":
                 return <NewsletterSection key={section.id} theme={resolved} />;
+              case "faq":
+                return <FaqSection key={section.id} theme={resolved} items={resolved.faqItems} />;
               default:
                 return null;
             }

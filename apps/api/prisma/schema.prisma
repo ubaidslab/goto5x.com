@@ -96,6 +96,11 @@ enum StoreAccessMode {
   password_protected
 }
 
+enum NavigationLocation {
+  header
+  footer
+}
+
 enum ThemeTier {
   free
   premium
@@ -177,16 +182,24 @@ model Store {
   // note. Only the column + noindex/sitemap read-side behavior are in scope
   // here; the coming-soon page content and password-gate flow themselves
   // are Module 5's job (§14.16).
-  accessMode     StoreAccessMode @default(public) @map("access_mode")
+  accessMode         StoreAccessMode @default(public) @map("access_mode")
+  // Module 5 (FR-16.5). Set only when accessMode = password_protected;
+  // never selected into any API response (StoresService always queries
+  // this table with `omit: { accessPasswordHash: true }` outside the one
+  // internal password-verification call) - same "never returned" discipline
+  // as the Google Drive refresh token (Module 2).
+  accessPasswordHash String?         @map("access_password_hash")
   seoTitle       String?         @map("seo_title")
   seoDescription String?         @map("seo_description")
   currency       String          @default("PKR")
   createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
-  seller             Seller              @relation(fields: [sellerId], references: [id])
+  seller             Seller                @relation(fields: [sellerId], references: [id])
   domains            Domain[]
   themeSettings      StoreThemeSettings?
+  collections        Collection[]
+  navigationMenus    StoreNavigationMenu[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -211,9 +224,6 @@ model Domain {
   @@map("domains")
 }
 
-// Module 2 (Catalog & Media). `search_vector` (FR-16.2) is deliberately absent
-// until Discovery & Merchandising (Module 5) actually reads it - see Module 1's
-// precedent on `stores` in docs/build-plan.md: no dead columns, ever.
 model Category {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -237,15 +247,80 @@ model Product {
   reviewCount    Int               @default(0) @map("review_count")
   seoTitle       String?           @map("seo_title")
   seoDescription String?           @map("seo_description")
+  // Module 5 (Discovery & Merchandising, FR-16.2). Populated by a raw-SQL
+  // GENERATED ALWAYS AS ... STORED column (migration) - Prisma can't manage
+  // a generated column's value, so it's Unsupported here (read via
+  // $queryRaw in ProductsSearchService) rather than modeled as a normal
+  // typed field. Deliberately absent until this module actually reads it -
+  // see Module 1's precedent on `stores` in docs/build-plan.md: no dead
+  // columns, ever.
+  searchVector   Unsupported("tsvector")? @map("search_vector")
   createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
-  category Category?        @relation(fields: [categoryId], references: [id])
-  variants ProductVariant[]
-  media    MediaAsset[]
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  variants           ProductVariant[]
+  media              MediaAsset[]
+  collectionProducts CollectionProduct[]
 
   @@index([storeId, status], name: "idx_products_store_status")
   @@map("products")
+}
+
+// Module 5 (Discovery & Merchandising, FR-16.1). Distinct from the global,
+// admin-managed `categories` taxonomy - a seller-defined grouping, tenant-
+// scoped, a product may belong to several.
+model Collection {
+  id             String   @id @default(uuid()) @db.Uuid
+  storeId        String   @map("store_id") @db.Uuid
+  title          String
+  slug           String
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  seoTitle       String?  @map("seo_title")
+  seoDescription String?  @map("seo_description")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  store    Store               @relation(fields: [storeId], references: [id])
+  products CollectionProduct[]
+
+  @@unique([storeId, slug], name: "uniq_collection_store_slug")
+  @@map("collections")
+}
+
+// `store_id` is denormalized directly onto this join table (not resolved
+// only through `collections`/`products`) per docs/database-schema.md's
+// tenant-strategy note - every tenant table gets the same RLS predicate
+// shape, no exceptions to reason about.
+model CollectionProduct {
+  id           String @id @default(uuid()) @db.Uuid
+  storeId      String @map("store_id") @db.Uuid
+  collectionId String @map("collection_id") @db.Uuid
+  productId    String @map("product_id") @db.Uuid
+  sortOrder    Int    @default(0) @map("sort_order")
+
+  collection Collection @relation(fields: [collectionId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@unique([collectionId, productId], name: "uniq_collection_product")
+  @@index([collectionId, sortOrder], name: "idx_collection_products_collection")
+  @@map("collection_products")
+}
+
+// Module 5 (FR-16.3). `items` holds the ordered link/text_block/social_links
+// list - see docs/database-schema.md's note on the exact shape. One row per
+// (store, location); upserted, never multiple header/footer rows per store.
+model StoreNavigationMenu {
+  id        String             @id @default(uuid()) @db.Uuid
+  storeId   String             @map("store_id") @db.Uuid
+  location  NavigationLocation
+  items     Json               @default("[]")
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([storeId, location], name: "uniq_nav_store_location")
+  @@map("store_navigation_menus")
 }
 
 model ProductVariant {

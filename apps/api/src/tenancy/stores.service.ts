@@ -1,8 +1,19 @@
-import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
+
+const BCRYPT_ROUNDS = 12; // matches AuthService's own password hashing cost
+
+/** Never let `access_password_hash` leave this service in any response. */
+function stripPasswordHash<T extends { accessPasswordHash?: string | null }>(
+  store: T,
+): Omit<T, "accessPasswordHash"> {
+  const { accessPasswordHash: _omit, ...rest } = store;
+  return rest;
+}
 
 /**
  * Every method here goes through TenantPrismaService.run(sellerId, ...),
@@ -60,28 +71,50 @@ export class StoresService {
       entityType: "store",
       entityId: store.id,
     });
-    return store;
+    return stripPasswordHash(store);
   }
 
   async listOwn(sellerId: string) {
-    return this.tenantPrisma.run(sellerId, (tx) => tx.store.findMany({ orderBy: { createdAt: "asc" } }));
+    const stores = await this.tenantPrisma.run(sellerId, (tx) => tx.store.findMany({ orderBy: { createdAt: "asc" } }));
+    return stores.map(stripPasswordHash);
   }
 
   async getOwn(sellerId: string, storeId: string) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
-      const store = await tx.store.findUnique({ where: { id: storeId } });
+    const store = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const found = await tx.store.findUnique({ where: { id: storeId } });
       // RLS already guarantees this can never be another seller's store, but
       // findUnique-by-id-alone still needs a null check for "doesn't exist at all".
-      if (!store) throw new NotFoundException("Store not found.");
-      return store;
+      if (!found) throw new NotFoundException("Store not found.");
+      return found;
     });
+    return stripPasswordHash(store);
   }
 
   async updateOwn(sellerId: string, storeId: string, dto: UpdateStoreDto) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    const store = await this.tenantPrisma.run(sellerId, async (tx) => {
+      // Selected WITH the hash here - this is the one internal read that
+      // needs to know whether a password already exists, to decide whether
+      // switching into password_protected mode is even valid.
       const existing = await tx.store.findUnique({ where: { id: storeId } });
       if (!existing) throw new NotFoundException("Store not found.");
-      return tx.store.update({ where: { id: storeId }, data: dto });
+
+      const { accessPassword, ...rest } = dto;
+      const data: typeof rest & { accessPasswordHash?: string } = { ...rest };
+
+      if (accessPassword) {
+        data.accessPasswordHash = await bcrypt.hash(accessPassword, BCRYPT_ROUNDS);
+      }
+
+      const nextAccessMode = dto.accessMode ?? existing.accessMode;
+      const willHavePassword = Boolean(data.accessPasswordHash ?? existing.accessPasswordHash);
+      if (nextAccessMode === "password_protected" && !willHavePassword) {
+        throw new BadRequestException(
+          "Set accessPassword before switching accessMode to password_protected - no password exists yet.",
+        );
+      }
+
+      return tx.store.update({ where: { id: storeId }, data });
     });
+    return stripPasswordHash(store);
   }
 }

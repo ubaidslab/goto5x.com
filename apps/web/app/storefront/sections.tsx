@@ -59,3 +59,22 @@ export function NewsletterSection({ theme }: { theme: ResolvedThemeSettings }) {
     </section>
   );
 }
+
+// FR-16.9 - a reusable section type: seller-entered Q&A pairs, expand/
+// collapse. Uses the browser's native <details>/<summary> - a real,
+// functioning accordion with zero JS, consistent with "bare functional, no
+// design pass yet."
+export function FaqSection({ theme, items }: { theme: ResolvedThemeSettings; items: { question: string; answer: string }[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section style={{ padding: "32px 24px", background: theme.colors.background, color: theme.colors.text }}>
+      <h2 style={{ color: theme.colors.primary }}>Frequently asked questions</h2>
+      {items.map((item, index) => (
+        <details key={index} style={{ marginBottom: 8 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>{item.question}</summary>
+          <p>{item.answer}</p>
+        </details>
+      ))}
+    </section>
+  );
+}

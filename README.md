@@ -3,13 +3,13 @@
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
 (approved v0.10); this README covers running the code.
 
-**Status:** Modules 1–4 built and approved (Foundation; Catalog & Media;
-Custom Domain & TLS; Theme Engine & Storefront Rendering). Platform Event Log
-amendment (SRS §3.11) built and backfilled. The v0.10 amendment added two new
-modules to the sequence (Listing Moderation Engine; Seller Account Security:
-2FA + Devices) and a binding Financial Truth Invariant NFR (§3.12) — see
-`docs/build-plan.md` for the full, current module sequence and numbering.
-Module 5 (Discovery & Merchandising) next.
+**Status:** Modules 1–4 approved; Module 5 (Discovery & Merchandising) built,
+awaiting founder review. Platform Event Log amendment (SRS §3.11) built and
+backfilled. The v0.10 amendment added two new modules to the sequence
+(Listing Moderation Engine, inserted right after Module 5; Seller Account
+Security: 2FA + Devices, inserted before Payouts) and a binding Financial
+Truth Invariant NFR (§3.12) — see `docs/build-plan.md` for the full, current
+module sequence and numbering. Module 6 (Listing Moderation Engine) next.
 
 ---
 
@@ -173,6 +173,21 @@ calls for — see `docs/build-plan.md`'s Module 4 section for why (branding
 assets not yet delivered) and confirm this is an acceptable interim state
 before launch.
 
+**Also unverified against the real thing (Module 5):** same `apps/web`
+testing boundary as Module 4 - the new collections/search pages, the
+coming-soon/password gate, and the navigation/announcement-bar/WhatsApp/FAQ
+chrome were verified via `next build` plus a live dev-server smoke test
+(real signup → real store → real product → real collection, checked over
+`curl -H "Host: ..."` including flipping `accessMode` to `coming_soon` and
+confirming the gate page renders). The gate itself, full-text search, and
+the "no password hash ever leaks" guarantee **are** covered by `apps/api`'s
+automated e2e suite (`discovery.e2e-spec.ts`, `storefront-gating.e2e-spec.ts`)
+- what's manual here is the Next.js rendering layer on top of that
+already-tested API behavior. Please click through search, a collection
+page, and the password-gate flow (set a password, confirm the wrong password
+is rejected, confirm the right one unlocks) as part of the same pre-launch
+smoke test as the gaps above.
+
 ---
 
 ## Running tests
@@ -216,10 +231,10 @@ database, not a mock):
    pnpm test:e2e
    ```
 
-All 74 e2e tests + 61 unit tests pass as of Module 4 (see this module's
-verification report for the full list). `apps/web` has no automated test
-suite - see the Module 4 disclosure above for what was verified manually
-instead.
+All 93 e2e tests + 61 unit tests pass as of Module 5 (see this module's
+verification report for the full list), stable across 3 consecutive full
+runs. `apps/web` has no automated test suite - see the Module 4/5
+disclosures above for what was verified manually instead.
 
 ---
 
@@ -229,7 +244,10 @@ instead.
 and a comment on where it comes from. Never commit a real `.env` or
 `.env.test` — both are gitignored. Rotating `JWT_ACCESS_SECRET` invalidates
 every active session; there is no migration path for that, by design (a
-compromised secret should kill every session, not quietly persist).
+compromised secret should kill every session, not quietly persist). Module 5
+reuses this same secret to sign the storefront password-gate's short-lived
+unlock token (FR-16.5) - rotating it also logs every gated storefront
+visitor out, which is the same intended blast radius as a session.
 
 | Variable | Where it comes from |
 |---|---|

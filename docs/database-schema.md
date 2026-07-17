@@ -313,7 +313,7 @@ sales) are Phase 2; this table intentionally only models the basic case.
 | source_type | enum(`self`,`supplier`) | determines whether FR-2.10 (shipping settings) or FR-4.6 (supplier rate) applies at checkout |
 | average_rating | numeric(2,1) default 0 | denormalized from `product_reviews` for storefront page-load speed (FR-14.4); recomputed transactionally whenever a review's status changes |
 | review_count | integer default 0 | same reasoning |
-| search_vector | tsvector, generated | `GENERATED ALWAYS AS (to_tsvector('english', title \|\| ' ' \|\| description)) STORED`; powers FR-16.2 |
+| search_vector | tsvector, generated | **built in Module 5.** `GENERATED ALWAYS AS (to_tsvector('english', title \|\| ' ' \|\| coalesce(description, ''))) STORED` - `coalesce()` because `description` is nullable and `\|\|` on NULL yields NULL, which would silently drop the title-only half of the index for every description-less product; powers FR-16.2 |
 | seo_title | text nullable | **added in Module 4** — FR-1.5. Null renders this product's own `title` |
 | seo_description | text nullable | **added in Module 4** — FR-1.5. Null derives from this product's own `description` (truncated); if `description` is also empty, falls back to the parent store's `seo_description` |
 | moderation_status | enum(`not_required`,`pending`,`approved`,`rejected`) default `'not_required'` | **added in the Listing Moderation Engine module** (FR-27.5). `not_required` = never queued (trusted seller, or no rule matched); `pending` = in the moderation queue, **not publicly visible** regardless of `status`; the public storefront (Module 4) and Discovery (Module 5) queries both require `moderation_status IN ('not_required', 'approved')` in addition to `status = 'active'` |

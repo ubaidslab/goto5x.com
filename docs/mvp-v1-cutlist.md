@@ -51,12 +51,17 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - Basic tax settings (FR-19.3): one rate per store, inclusive/exclusive toggle
 - Basic discount codes (FR-2.11/FR-5.5)
 
-**Storefront discovery & merchandising**
+**Storefront discovery & merchandising — Module 5 built**
 - Collections (FR-16.1) · storefront search & filters (FR-16.2) · navigation
   editor with footer text/social-link blocks (FR-16.3) · announcement bar
   (FR-16.4) · coming-soon/password mode (FR-16.5) · SEO structured data + sitemap/
   robots (FR-16.6) · WhatsApp chat/order button (FR-16.7) · **social media links**
   (FR-16.8, new in v0.6) · **FAQ accordion section type** (FR-16.9, new in v0.6)
+- All of the above are real and functional as of Module 5 - the coming-soon/
+  password gate is enforced by the API itself (not only the storefront UI),
+  and the moderation-status filter this module's product/search/collection
+  queries will need is a deliberate, disclosed follow-up for the Listing
+  Moderation Engine module, not a gap in Module 5 itself.
 
 **Listing Moderation Engine (new in v0.10, launch-blocking legal safety)**
 - Zero-cost, rule-based: admin-managed banned/restricted keyword lists +
