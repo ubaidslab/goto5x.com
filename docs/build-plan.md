@@ -611,6 +611,70 @@ mapping. Architecture decisions worth carrying into later modules:
   entries, and the coming-soon gate all render correctly against a real
   store created through the real API.
 
+## Module 6 — Listing Moderation Engine: built
+
+Scope: FR-27.1–FR-27.7 (banned/restricted keyword lists, restricted
+categories, new-seller probation, trusted-seller bypass, moderation queue +
+visibility gate, REVIEWER admin sub-role, zero-cost/rule-based only). See
+the Module 6 verification report for the full test/checklist mapping.
+Architecture decisions worth carrying into later modules:
+
+- **`Product` has no explicit Prisma relation to `Store`** (only the scalar
+  `storeId` column, unlike `Collection`/`Domain`) - discovered mid-build
+  when `ModerationService`'s seller-scoped approved-count query and the
+  queue's store-name lookup both failed to compile against a `store`
+  relation that doesn't exist. Fixed by resolving the seller's store ids
+  first (`store.findMany({ where: { sellerId } })`) and filtering/joining on
+  `storeId` directly, rather than adding a new relation field for one
+  module's convenience. Worth remembering: any future code that needs
+  `Product -> Store` must do the same two-step lookup, not assume a
+  relation exists.
+- **Pure decision function, gathered inputs:** `decideModerationStatus()`
+  (`moderation-decision.util.ts`) takes plain data in and returns a plain
+  decision out - no DB or Settings Registry access inside it - so the rule
+  logic (trusted bypass, banned-keyword block, probation, restricted
+  keyword/category) is unit-tested in isolation, with `ModerationService`
+  doing the gathering (Settings reads, seller/store lookups) and the
+  BadRequestException translation.
+- **One guard, one opt-in decorator, zero changes to existing controllers:**
+  the shared `AdminAuthGuard` now denies `adminRole === "reviewer"` by
+  default and only allows through a route explicitly marked
+  `@AllowReviewer()` (checked via injected `Reflector`). Every pre-existing
+  admin controller (audit logs, settings, domains, etc.) stays
+  reviewer-blocked with no per-controller edits - only
+  `ModerationQueueController` carries the decorator.
+- **Non-blocking vs. blocking side-effect writes, same discipline as the
+  Platform Event Log:** `recordQueued()` (triggered by a seller's product
+  creation) is best-effort/swallow-on-failure, because a bookkeeping write
+  must never block a legitimate listing; `approve()`/`reject()` (admin-
+  initiated) let audit-log errors propagate normally, matching the
+  precedent elsewhere in the codebase for who-triggered-it determining
+  blocking behavior.
+- **The moderation-status filter now covers every public product surface
+  from Modules 4-5, as required:** `StorefrontService.listProducts()`,
+  `getProduct()`, `search()` (the raw-SQL `p.moderation_status IN
+  ('not_required', 'approved')` condition), and `getCollection()`'s product
+  list all exclude `pending`/`rejected` products; `listCategories()`'s facet
+  list is filtered too for consistency. The sitemap and product JSON-LD (in
+  apps/web) are downstream of `listProducts()`/`getProduct()` respectively.
+  and therefore inherit the filter with no separate apps/web change needed
+  - proven by the e2e test asserting a pending product is invisible in the
+  list, detail (404), search, and collection-detail responses simultaneously.
+- **Pre-existing Module 4/5 e2e tests needed a one-line fix, not a
+  redesign:** `storefront.e2e-spec.ts` and `storefront-gating.e2e-spec.ts`
+  create products and assert they're immediately storefront-visible - true
+  before this module, no longer true by default now that a non-trusted
+  seller's first `new_seller_probation_count` (default 10) listings queue
+  automatically. Both files' shared `signupLoginAndCreateStore()` helper now
+  marks the test seller trusted (FR-27.4) immediately after signup, since
+  neither file is testing moderation and a trusted seller is a legitimate,
+  realistic precondition - not a workaround. `discovery.e2e-spec.ts` and
+  `catalog.e2e-spec.ts` needed no change (seller-side CRUD only, never read
+  through the storefront's public filter).
+- **Testing boundary, same as Modules 4-5:** apps/web has no automated test
+  harness; the queue itself is API-only in this module (no dashboard UI),
+  so no apps/web change was needed here.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

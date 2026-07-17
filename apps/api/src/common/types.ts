@@ -4,7 +4,7 @@ export interface JwtAccessPayload {
   sub: string; // user id
   sellerId?: string;
   adminUserId?: string;
-  adminRole?: "super_admin" | "support";
+  adminRole?: "super_admin" | "support" | "reviewer";
   mfaVerified?: boolean;
 }
 

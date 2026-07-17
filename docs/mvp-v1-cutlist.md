@@ -58,12 +58,11 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   robots (FR-16.6) · WhatsApp chat/order button (FR-16.7) · **social media links**
   (FR-16.8, new in v0.6) · **FAQ accordion section type** (FR-16.9, new in v0.6)
 - All of the above are real and functional as of Module 5 - the coming-soon/
-  password gate is enforced by the API itself (not only the storefront UI),
-  and the moderation-status filter this module's product/search/collection
-  queries will need is a deliberate, disclosed follow-up for the Listing
-  Moderation Engine module, not a gap in Module 5 itself.
+  password gate is enforced by the API itself (not only the storefront UI).
+  The moderation-status filter these queries needed was the disclosed
+  Module 5 follow-up, and it is now live as of Module 6 below.
 
-**Listing Moderation Engine (new in v0.10, launch-blocking legal safety)**
+**Listing Moderation Engine (new in v0.10, launch-blocking legal safety) — Module 6 built**
 - Zero-cost, rule-based: admin-managed banned/restricted keyword lists +
   restricted-category rules, new-seller probation, admin-granted
   trusted-seller bypass (FR-27.1–27.4)

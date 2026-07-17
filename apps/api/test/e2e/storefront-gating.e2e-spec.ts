@@ -36,6 +36,12 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
     await request(app.getHttpServer())
       .post("/auth/signup")
       .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+    // This file tests search/collections/gating, not the Listing Moderation
+    // Engine (Module 6) - marking the seller trusted (FR-27.4) sidesteps the
+    // default new-seller probation queue so `createActiveProduct` below stays
+    // immediately storefront-visible, matching every assertion here.
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });

@@ -21,6 +21,11 @@ enum KycStatus {
 enum AdminRole {
   super_admin
   support
+  // Module 6 (Listing Moderation Engine, SRS §4/FR-27.6) - a narrowly-scoped
+  // sub-role, not a general permissions system. AdminAuthGuard denies every
+  // admin route to this role by default; only a route explicitly marked
+  // @AllowReviewer() (the moderation queue) accepts it.
+  reviewer
 }
 
 enum StoreStatus {
@@ -60,6 +65,16 @@ enum ProductStatus {
 enum ProductSourceType {
   self
   supplier
+}
+
+// Module 6 (Listing Moderation Engine, FR-27.5). `not_required` = never
+// queued (trusted seller, or no rule matched); `pending` = in the queue,
+// not publicly visible regardless of `status`.
+enum ModerationStatus {
+  not_required
+  pending
+  approved
+  rejected
 }
 
 enum MediaSource {
@@ -149,6 +164,10 @@ model Seller {
   businessName   String     @map("business_name")
   kycStatus      KycStatus  @default(unverified) @map("kyc_status")
   kycVerifiedAt  DateTime?  @map("kyc_verified_at") @db.Timestamptz
+  // Module 6 (FR-27.4) - admin-granted only, never auto-earned by a
+  // threshold. Bypasses both new-seller probation and the keyword/category
+  // moderation queue entirely.
+  isTrusted      Boolean    @default(false) @map("is_trusted")
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -247,6 +266,11 @@ model Product {
   reviewCount    Int               @default(0) @map("review_count")
   seoTitle       String?           @map("seo_title")
   seoDescription String?           @map("seo_description")
+  // Module 6 (Listing Moderation Engine, FR-27.5). Every public product
+  // read path (storefront listing/detail, search, collections) filters on
+  // this - see StorefrontService's shared moderation-visible WHERE clause.
+  moderationStatus ModerationStatus @default(not_required) @map("moderation_status")
+  moderationNotes  String?          @map("moderation_notes")
   // Module 5 (Discovery & Merchandising, FR-16.2). Populated by a raw-SQL
   // GENERATED ALWAYS AS ... STORED column (migration) - Prisma can't manage
   // a generated column's value, so it's Unsupported here (read via
@@ -264,6 +288,7 @@ model Product {
   collectionProducts CollectionProduct[]
 
   @@index([storeId, status], name: "idx_products_store_status")
+  @@index([moderationStatus], name: "idx_products_moderation_status")
   @@map("products")
 }
 

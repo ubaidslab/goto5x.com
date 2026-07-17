@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
+import { ModerationService } from "../moderation/moderation.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
@@ -17,9 +18,11 @@ export class ProductsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly events: EventsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async create(sellerId: string, storeId: string, dto: CreateProductDto) {
+    let queuedReason: string | undefined;
     const product = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
@@ -27,6 +30,16 @@ export class ProductsService {
         const category = await tx.category.findUnique({ where: { id: dto.categoryId } });
         if (!category) throw new NotFoundException("Category not found.");
       }
+      // Module 6 (SRS §5.27/FR-27.1-27.5) - evaluated inside this same
+      // transaction so the probation-count check is consistent with the
+      // row being inserted. Throws (blocking creation entirely) on a
+      // banned keyword; otherwise decides the row's moderation_status.
+      const decision = await this.moderation.evaluateNewProduct(tx, sellerId, {
+        title: dto.title,
+        description: dto.description,
+        categoryId: dto.categoryId,
+      });
+      queuedReason = decision.reason;
       return tx.product.create({
         data: {
           storeId,
@@ -34,6 +47,7 @@ export class ProductsService {
           description: dto.description,
           categoryId: dto.categoryId,
           status: dto.status ?? "draft",
+          moderationStatus: decision.status,
         },
       });
     });
@@ -46,6 +60,12 @@ export class ProductsService {
       entityType: "product",
       entityId: product.id,
     });
+    // SRS §5.27/FR-27.6 - the reason a listing was queued is captured too,
+    // not only the eventual approve/reject decision. Best-effort (see
+    // ModerationService.recordQueued's own comment).
+    if (queuedReason) {
+      await this.moderation.recordQueued(product.id, storeId, queuedReason);
+    }
     return product;
   }
 

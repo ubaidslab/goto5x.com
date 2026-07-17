@@ -40,6 +40,12 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
     await request(app.getHttpServer())
       .post("/auth/signup")
       .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+    // This file tests the storefront read API (hostname resolution, SEO
+    // fallback), not the Listing Moderation Engine (Module 6) - marking the
+    // seller trusted (FR-27.4) sidesteps the default new-seller probation
+    // queue so its products stay immediately storefront-visible.
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });

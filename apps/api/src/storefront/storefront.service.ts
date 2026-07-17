@@ -10,6 +10,14 @@ import { resolveSeoFallback } from "./seo-fallback.util";
 const UNLOCK_TOKEN_TYPE = "storefront_unlock";
 const UNLOCK_TOKEN_TTL = "24h";
 
+/**
+ * Module 6 (SRS §5.27/FR-27.5) - "not_required" (trusted seller, or no rule
+ * matched) and "approved" (cleared the queue) are the only two statuses a
+ * buyer may ever see. "pending"/"rejected" must leak nowhere on any public
+ * surface - list, detail, search, or collection contents.
+ */
+const PUBLIC_MODERATION_STATUSES = ["not_required", "approved"] as const;
+
 interface UnlockTokenPayload {
   storeId: string;
   type: typeof UNLOCK_TOKEN_TYPE;
@@ -161,7 +169,7 @@ export class StorefrontService {
     const store = await this.loadActiveStoreOrThrow(hostname);
     this.assertAccessGranted(store, unlockToken);
     const products = await this.prismaAdmin.product.findMany({
-      where: { storeId: store.id, status: "active" },
+      where: { storeId: store.id, status: "active", moderationStatus: { in: [...PUBLIC_MODERATION_STATUSES] } },
       include: { variants: true, media: true },
       orderBy: { createdAt: "desc" },
     });
@@ -175,7 +183,12 @@ export class StorefrontService {
       where: { id: productId },
       include: { variants: true, media: true },
     });
-    if (!product || product.storeId !== store.id || product.status !== "active") {
+    if (
+      !product ||
+      product.storeId !== store.id ||
+      product.status !== "active" ||
+      !(PUBLIC_MODERATION_STATUSES as readonly string[]).includes(product.moderationStatus)
+    ) {
       throw new NotFoundException("Product not found.");
     }
     return this.toPublicProduct(product, store);
@@ -201,6 +214,7 @@ export class StorefrontService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`p.store_id = ${store.id}::uuid`,
       Prisma.sql`p.status = 'active'`,
+      Prisma.sql`p.moderation_status IN ('not_required', 'approved')`,
     ];
     if (params.q?.trim()) {
       conditions.push(Prisma.sql`p.search_vector @@ plainto_tsquery('english', ${params.q.trim()})`);
@@ -273,7 +287,11 @@ export class StorefrontService {
     return {
       ...this.toPublicCollection(collection, store),
       products: collection.products
-        .filter((cp) => cp.product.status === "active")
+        .filter(
+          (cp) =>
+            cp.product.status === "active" &&
+            (PUBLIC_MODERATION_STATUSES as readonly string[]).includes(cp.product.moderationStatus),
+        )
         .map((cp) => this.toPublicProduct(cp.product, store)),
     };
   }
@@ -295,7 +313,12 @@ export class StorefrontService {
   async listCategories(hostname: string) {
     const store = await this.loadActiveStoreOrThrow(hostname);
     const products = await this.prismaAdmin.product.findMany({
-      where: { storeId: store.id, status: "active", categoryId: { not: null } },
+      where: {
+        storeId: store.id,
+        status: "active",
+        categoryId: { not: null },
+        moderationStatus: { in: [...PUBLIC_MODERATION_STATUSES] },
+      },
       distinct: ["categoryId"],
       select: { category: { select: { id: true, name: true, slug: true } } },
     });

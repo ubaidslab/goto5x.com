@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
+import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import {
   seedModule1Settings,
   seedModule3Settings,
@@ -59,6 +60,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedModule3Settings(prisma);
   await seedPlatformEventsSettings(prisma);
   await seedModule4Settings(prisma);
+  await seedModerationSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded
