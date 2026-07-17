@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+/*
+ * goto5x.com Design Tokens — v1 (provisional, founder review pending)
+ * -----------------------------------------------------------------
+ * Single source of truth for every color, type, spacing, radius, shadow,
+ * and motion value used across the seller dashboard (and, later, any other
+ * apps/web surface that adopts this system). Rebranding — a new accent
+ * color, a real logo, adjusted type scale — is a change to this file only,
+ * never a per-screen rewrite. Direction: apple.com-class minimalism,
+ * horizonx.so-class motion, iOS-like polish — a clean sans-serif, a
+ * restrained neutral palette plus one confident accent, generous
+ * whitespace, and subtle depth rather than heavy borders/shadows.
+ *
+ * Values inside `@theme` are read by Tailwind v4 to generate matching
+ * utilities (e.g. --color-accent -> bg-accent/text-accent/border-accent,
+ * --radius-md -> rounded-md, --shadow-md -> shadow-md). Everything else
+ * (motion) is plain CSS custom properties consumed directly, since
+ * Tailwind has no first-class "motion token" namespace.
+ */
+@theme {
+  /* Neutrals - the near-black/near-white pairing this whole system reads
+     against; deliberately not pure #000/#fff (matches the softer, less
+     clinical iOS/Apple neutral scale). */
+  --color-canvas: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #e5e5ea;
+  --color-border-strong: #d2d2d7;
+  --color-ink: #1d1d1f;
+  --color-ink-muted: #6e6e73;
+  --color-ink-faint: #8e8e93;
+
+  /* Accent - the one confident color. Placeholder brand color pending
+     founder review (see the wordmark note in Header.tsx); every other
+     color in this file is neutral by design so a future accent swap
+     never fights a second "loud" color. */
+  --color-accent: #5b5fef;
+  --color-accent-hover: #4a4edb;
+  --color-accent-active: #3d40c4;
+  --color-accent-subtle: #eef0fe;
+  --color-on-accent: #ffffff;
+
+  /* Semantic status colors - kept muted/refined, never neon, for order
+     and product status badges. */
+  --color-success: #1f9254;
+  --color-success-subtle: #e8f6ee;
+  --color-warning: #b5750a;
+  --color-warning-subtle: #fdf1de;
+  --color-danger: #d3382f;
+  --color-danger-subtle: #fbe9e8;
+  --color-info: #2f6fed;
+  --color-info-subtle: #eaf1fe;
+
+  /* Type - Inter, loaded via next/font/google in app/layout.tsx and
+     exposed as --font-inter; falls back to the system sans stack so
+     text never flashes unstyled. */
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Radii - generous, iOS-leaning. */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+
+  /* Shadows - soft, low-opacity, large blur: depth without a hard edge. */
+  --shadow-xs: 0 1px 2px rgba(29, 29, 31, 0.04);
+  --shadow-sm: 0 2px 8px rgba(29, 29, 31, 0.06);
+  --shadow-md: 0 8px 24px rgba(29, 29, 31, 0.08);
+  --shadow-lg: 0 16px 48px rgba(29, 29, 31, 0.12);
+}
+
+/* Dark-mode token overrides - same variable names, new values, so every
+   utility class Tailwind generated from @theme above repaints for free.
+   Not wired to a manual toggle yet (no dark-mode UI ships this checkpoint)
+   - this proves the token architecture supports it when that ships. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #000000;
+    --color-surface: #1c1c1e;
+    --color-surface-raised: #2c2c2e;
+    --color-border: #38383a;
+    --color-border-strong: #48484a;
+    --color-ink: #f5f5f7;
+    --color-ink-muted: #a1a1a6;
+    --color-ink-faint: #7a7a7e;
+
+    --color-accent: #7b7ff5;
+    --color-accent-hover: #9295f7;
+    --color-accent-active: #6165e8;
+    --color-accent-subtle: #23234a;
+
+    --color-success-subtle: #113322;
+    --color-warning-subtle: #3a2a0d;
+    --color-danger-subtle: #3a1917;
+    --color-info-subtle: #112b4a;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* Motion - horizonx.so-class: confident, physics-leaning easing, never
+   linear/robotic. Applied via the .transition-smooth helper below rather
+   than Tailwind's default transition utilities, so the curve/duration
+   stay centralized here. */
+:root {
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  /* A visible, on-brand focus ring everywhere - never suppressed, only
+     restyled (accessibility non-negotiable, premium doesn't mean invisible
+     focus states). Scoped to this system's own surfaces (see
+     .app-shell-surface below), not the whole document, so it doesn't
+     reach into the still-unstyled auth/storefront pages this module
+     doesn't touch. */
+  .app-shell-surface :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* Applied once, by the (dashboard) route group's own layout - this is
+     the module-10 design system's surface, deliberately not forced onto
+     every route in the app (auth/admin/storefront are untouched, "bare
+     functional" pages outside this module's scope). */
+  .app-shell-surface {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+  }
+
+  .transition-smooth {
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-standard);
+  }
+
+  .transition-smooth-fast {
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-standard);
+  }
+}
