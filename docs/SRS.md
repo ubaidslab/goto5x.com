@@ -1,34 +1,35 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.12 (Build-phase amendment)
+**Version:** 0.13 (Build-phase amendment)
 **Date:** 2026-07-17
 **Status:** v0.6 formally approved; documentation phase closed, build phase
-underway. Modules 1–7 (Foundation; Catalog & Media; Custom Domain & TLS;
+underway. Modules 1–8 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
-Moderation Engine; Shipping, Tax & Discounts) built, tested, and approved.
-v0.7 pinned the Settings Registry precedence, added password reset, regional
-launch gating, admin plan grants/platform subscription promo codes, in-app
-messaging, platform brand-asset management, a mobile-app-readiness NFR, a
-region-sharded-deployment Phase 4+ note, and referral attribution/cross-SaaS
-discount eligibility for the two external-SaaS hooks. v0.8 added the Platform
-Event Log (§3.11, FR-26.x). v0.9 closed a schema gap found while planning
-Module 4 (SEO field placement, sitemap/robots pulled forward). v0.10 (approved
-before Module 5) added seller account security (§5.25), the Financial Truth
+Moderation Engine; Shipping, Tax & Discounts; Suppliers & Printify Adapter)
+built, tested, and approved. v0.7 pinned the Settings Registry precedence,
+added password reset, regional launch gating, admin plan grants/platform
+subscription promo codes, in-app messaging, platform brand-asset
+management, a mobile-app-readiness NFR, a region-sharded-deployment Phase
+4+ note, and referral attribution/cross-SaaS discount eligibility for the
+two external-SaaS hooks. v0.8 added the Platform Event Log (§3.11,
+FR-26.x). v0.9 closed a schema gap found while planning Module 4 (SEO
+field placement, sitemap/robots pulled forward). v0.10 (approved before
+Module 5) added seller account security (§5.25), the Financial Truth
 Invariant (§3.12), the zero-cost rule-based Listing Moderation Engine
 (§5.27), and one reaffirming line on the premium-UI-bar dependency. v0.11
 (approved after Module 6) slotted the moderation queue's bare functional
-admin page into Module 16. **This revision (v0.12), approved after Module
-7:** closes a genuine gap surfaced by reviewing the module sequence — no
-module owned the seller-dashboard *UI* for Modules 2/7's already-built APIs
-(product/media, shipping/tax/discount screens). A new **Seller Dashboard
-UI** module (§5.28, FR-28.1–28.3) is inserted immediately after Module 9
-(Orders, Cart & Checkout, so order screens are included too) and before the
-Seller Onboarding Wizard, which needs real screens to link a new seller
-into. A new binding **SIMPLICITY INVARIANT** NFR (§3.13) governs that
-module and every seller-facing screen thereafter: the dashboard must be
-more readable and beginner-friendly than Shopify's, never more complex.
-§14.26 is the new module's Acceptance Checklist. No FR from any prior
-version was removed or weakened — every change below is additive.
+admin page into Module 16. v0.12 (approved after Module 7) inserted a new
+**Seller Dashboard UI** module (§5.28, Module 10) and a binding SIMPLICITY
+INVARIANT NFR (§3.13). **This revision (v0.13), approved after Module 8:**
+closes a gap identified during Module 8's review — supplier-sourced
+listings were bypassing the Listing Moderation Engine entirely (a seller's
+fulfillment-quality approval is not a substitute for the platform's own
+legal-safety check). New FR-27.8 (§5.27) runs the same banned/restricted-
+keyword and restricted-category checks, and the same trusted-seller
+bypass, on a supplier listing at the moment of seller approval; new-seller
+probation stays scoped to self-fulfilled listings only. §14.25 gains two
+lines. No FR from any prior version was removed or weakened — every change
+below is additive.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -276,6 +277,31 @@ closure — flagged before being silently improvised):**
   module first, and every seller-facing screen in any module after it.
   §14.26 (new) is that module's Acceptance Checklist, including a
   "beginner walkthrough" review against these five rules for each core task.
+
+**Changelog v0.12 → v0.13 (build-phase amendment, approved after Module 8):**
+- **FR-27.8 (new, §5.27) - the Listing Moderation Engine now covers
+  supplier-sourced listings too, closing a gap identified during Module
+  8's review.** Module 8 shipped supplier-sourced products with
+  `moderation_status: "not_required"` set unconditionally, reasoning that
+  the seller's own listing-review approval (FR-2.7/FR-3.2) already served
+  a launch-blocking-legal-safety purpose. On review, that conflated two
+  distinct decisions: a seller approving a supplier's listing is judging
+  *fulfillment quality* ("I want to sell this in my store"), not the
+  platform's own legal-safety content check - the same check every
+  self-fulfilled listing already goes through. FR-27.8 runs
+  `ModerationService.evaluateNewProduct()` at the moment of seller
+  approval: a banned keyword blocks the approval outright; a restricted
+  keyword/category still lets the seller approve, but the resulting
+  product enters the moderation queue (invisible until a Reviewer/Admin
+  also approves it); a trusted seller's approval bypasses the engine
+  entirely, identically to a trusted seller's self-fulfilled submission.
+  **New-seller probation (FR-27.3) is explicitly scoped to self-fulfilled
+  listings only** - a supplier-sourced listing already passed the seller's
+  own review gate, so counting it toward "first N submitted products"
+  would double-gate the same decision. §14.25 gains two lines (a banned
+  supplier listing is blocked at approval; a restricted supplier listing
+  stays invisible until platform approval, proven as two independent
+  gates).
 
 ---
 
@@ -1597,11 +1623,15 @@ functional requirement that emission actually happens, module by module.
   `domain.attached`, `domain.verified` (Module 3).
 
 ### 5.27 Listing Moderation Engine (new, v0.10 — launch-blocking legal safety, zero-cost/rule-based)
-A rule-based content-moderation layer for self-fulfilled seller product
-listings, required **live before public launch** — this is a legal-safety
-requirement, not a discovery/UX feature, so it is slotted as its own module
-immediately after Discovery & Merchandising rather than folded into either
-Catalog (Module 2, already built) or Discovery (Module 5) themselves.
+A rule-based content-moderation layer for seller product listings, required
+**live before public launch** — this is a legal-safety requirement, not a
+discovery/UX feature, so it is slotted as its own module immediately after
+Discovery & Merchandising rather than folded into either Catalog (Module 2,
+already built) or Discovery (Module 5) themselves. **Amended in v0.13
+(FR-27.8, below): applies to supplier-sourced listings too, not only
+self-fulfilled ones** — a seller's approval of a supplier's listing
+(§5.3/§5.4, Module 8) is a fulfillment-quality gate, not a substitute for
+this module's legal-safety checks.
 
 - FR-27.1: **Admin-managed banned/restricted keyword lists**, Settings
   Registry-backed (`moderation.banned_keywords`, `moderation.restricted_keywords`
@@ -1648,6 +1678,27 @@ Catalog (Module 2, already built) or Discovery (Module 5) themselves.
   simple and free to run, matching this SRS's existing "lean, Settings-
   Registry-driven" discipline. An AI-assisted moderation upgrade, if ever
   wanted, is a distinct future FR, not implied by this one.
+- FR-27.8 (new, v0.13 — closes a gap identified during Module 8's review):
+  **Supplier-sourced listings run through this same engine, not a
+  parallel or weaker one.** A seller approving a supplier's submitted
+  listing (§5.3 FR-2.7, §5.4 FR-3.2) is a *fulfillment-quality* decision —
+  "I want to sell this" — not a substitute for the platform's own
+  legal-safety check on the listing's content. Concretely, at the moment
+  of seller approval: a banned keyword (FR-27.1) in the listing's title
+  blocks the approval outright, exactly as it would block a self-fulfilled
+  product's submission; a restricted keyword (FR-27.1) or restricted
+  category (FR-27.2) still creates the product but routes it into the
+  moderation queue (FR-27.5) — approved by the seller, but not publicly
+  visible until a Reviewer/Admin also approves it; a trusted seller's
+  approval (FR-27.4) bypasses this engine entirely, identically to a
+  trusted seller's self-fulfilled submission. **New-seller probation
+  (FR-27.3) is explicitly scoped to self-fulfilled listings only** — a
+  supplier-sourced listing already passed through the seller's own
+  listing-review gate before reaching this point, so counting it toward
+  "first N submitted products" would double-gate the same decision rather
+  than add a distinct check. §14.25 gains two lines for this (a banned
+  supplier listing is blocked; a restricted supplier listing is invisible
+  until platform approval).
 - **Follow-up amendment required in already-built modules (flagged, not a
   silent gap):** shipping this module requires adding a
   `moderation_status = 'approved'` filter to Module 4's public storefront
@@ -2470,6 +2521,14 @@ next module starts. Each item is written to be testable, not aspirational.
       (FR-27.6, §4)
 - [ ] Every moderation decision (queued reason, approve, reject) is captured
       in `admin_audit_logs` with the correct reviewer/admin actor (FR-27.6)
+- [ ] **(new, v0.13) A banned supplier-sourced listing is blocked at the
+      moment of seller approval** - the seller's approve action itself
+      fails with a clear reason, no product is created (FR-27.8)
+- [ ] **(new, v0.13) A restricted-keyword/category supplier-sourced
+      listing is approved by the seller but stays invisible on every
+      public storefront surface until platform approval** - proving the
+      seller's approval and the platform's moderation approval are two
+      independent gates, not one (FR-27.8)
 
 ### 14.26 Seller Dashboard UI (new, v0.12)
 - [ ] **Beginner walkthrough review:** each core task (add a product, set a

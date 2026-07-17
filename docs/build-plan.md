@@ -837,13 +837,25 @@ later modules:
   Printify OAuth connect flow (which would mirror Module 2's Google Drive
   OAuth - a substantial feature of its own). Flagged in
   `docs/database-schema.md`'s note on that column, not silently assumed.
-- **Approved supplier listings bypass Module 6's moderation engine
-  entirely** (`moderationStatus: "not_required"`, set directly, never
-  routed through `ModerationService`) - the Listing Moderation Engine's own
-  SRS text (§5.27) scopes itself to "self-fulfilled seller product
-  listings"; a supplier listing already has its own human-review gate
-  right here (`listing_reviews`), serving the same purpose Module 6 exists
-  for.
+- **Corrected before Module 9 (SRS v0.13, FR-27.8) - originally shipped
+  wrong, fixed in the same branch history:** this section first shipped
+  with approved supplier listings bypassing Module 6's moderation engine
+  entirely (`moderationStatus: "not_required"` set unconditionally),
+  reasoning that the seller's own listing-review approval already served a
+  launch-blocking-legal-safety purpose. On review, that conflated a
+  fulfillment-quality decision ("I want to sell this") with the platform's
+  own legal-safety check. `ListingReviewsService.approve()` now calls the
+  same `ModerationService.evaluateNewProduct()` self-fulfilled products go
+  through, with `applyProbation: false` (probation stays scoped to
+  self-fulfilled listings - a supplier listing already passed the seller's
+  own review gate, so counting it toward "first N products" would
+  double-gate the same decision). Banned keyword blocks the approval
+  outright; restricted keyword/category still lets the seller approve but
+  queues the product for platform moderation; a trusted seller's approval
+  bypasses the engine entirely, same as self-fulfilled. `SupplierListing`
+  has no `description`/`categoryId` fields in v1.0's schema, so only the
+  title is scanned and the restricted-category rule can never fire for a
+  supplier listing yet - a real, disclosed limitation, not a bug.
 - **`PrintifyAdapter`/`PrintifyHttpClient` unverified against the real live
   API** - no Printify test account/credentials exist in this environment,
   same disclosure as Module 2's Google Drive client. `PrintifyHttpClient`
@@ -871,6 +883,28 @@ later modules:
   harness and this module shipped no apps/web changes (no seller/supplier-
   dashboard UI yet - Module 10, Seller Dashboard UI, is where that lands,
   per the v0.12 amendment above).
+
+## Amendment approved before Module 9 (SRS v0.13)
+
+One correction, applied directly to the Module 8 code already merged into
+this branch history (see that section's "Corrected before Module 9" note
+above) rather than left as a future TODO. Full text lives in `docs/SRS.md`'s
+v0.12→v0.13 changelog and the new FR-27.8.
+
+1. **Supplier-sourced listings now run through the Listing Moderation
+   Engine (Module 6), not just the seller's own listing-review gate.**
+   Founder review of Module 8 caught that a seller's approval of a
+   supplier's listing had been treated as a substitute for the platform's
+   own legal-safety check - it isn't; it's a fulfillment-quality decision.
+   Fixed in `ListingReviewsService.approve()` (no schema change, no new
+   module): banned keyword blocks the approval outright, restricted
+   keyword/category still lets the seller approve but queues the resulting
+   product for platform moderation, trusted-seller bypass applies
+   identically to self-fulfilled, and new-seller probation is explicitly
+   scoped to self-fulfilled listings only (a supplier listing already
+   passed one human gate - the seller's own review - so counting it a
+   second time toward probation would double-gate the same decision, not
+   add a distinct check).
 
 ---
 

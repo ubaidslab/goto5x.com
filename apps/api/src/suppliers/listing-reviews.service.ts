@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { EventsService } from "../events/events.service";
+import { ModerationService } from "../moderation/moderation.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 
 /**
@@ -12,6 +13,7 @@ export class ListingReviewsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly events: EventsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async list(sellerId: string, storeId: string) {
@@ -24,15 +26,24 @@ export class ListingReviewsService {
 
   /**
    * Approving creates the corresponding `products` row (FR-2.7), same as
-   * §14.2's existing checklist item for this behavior. `moderationStatus`
-   * is set to `not_required` directly, never run through
-   * ModerationService - Module 6's engine explicitly scopes itself to
-   * "self-fulfilled seller product listings" (SRS §5.27); a supplier
-   * listing already has its own human-review gate right here, which serves
-   * the same launch-blocking-legal-safety purpose Module 6 exists for.
+   * §14.2's existing checklist item for this behavior. **Module 8
+   * amendment (SRS §5.27, v0.13):** the seller's approval here is not a
+   * substitute for platform legal safety, so this now runs the same
+   * `ModerationService.evaluateNewProduct()` self-fulfilled products go
+   * through - a banned keyword blocks the approval outright, a restricted
+   * keyword/category still routes the product into the platform
+   * moderation queue (invisible until a Reviewer/Admin approves it), and a
+   * trusted seller's approval bypasses it entirely, exactly like a
+   * self-fulfilled listing. New-seller probation (FR-27.3) does NOT apply
+   * here (`applyProbation: false`) - see decideModerationStatus's doc
+   * comment for why. `SupplierListing` has no `description`/`categoryId`
+   * fields in v1.0's schema, so only the title is scanned and the
+   * restricted-category rule can never fire for a supplier listing yet -
+   * a real, disclosed limitation (`docs/build-plan.md`), not a bug.
    */
   async approve(sellerId: string, storeId: string, reviewId: string, reviewedByUserId: string) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    let queuedReason: string | undefined;
+    const result = await this.tenantPrisma.run(sellerId, async (tx) => {
       const review = await tx.listingReview.findUnique({ where: { id: reviewId } });
       if (!review || review.storeId !== storeId) throw new NotFoundException("Listing review not found.");
       if (review.status !== "pending") throw new BadRequestException("This review has already been decided.");
@@ -41,13 +52,19 @@ export class ListingReviewsService {
         where: { id: review.supplierListingId },
       });
 
+      const decision = await this.moderation.evaluateNewProduct(tx, sellerId, {
+        title: listing.title,
+        applyProbation: false,
+      });
+      queuedReason = decision.reason;
+
       const product = await tx.product.create({
         data: {
           storeId,
           title: listing.title,
           status: "active",
           sourceType: "supplier",
-          moderationStatus: "not_required",
+          moderationStatus: decision.status,
         },
       });
 
@@ -62,17 +79,20 @@ export class ListingReviewsService {
       });
 
       return { review: updated, product };
-    }).then(async (result) => {
-      await this.events.emit({
-        eventType: "listing_review.approved",
-        actorType: "seller",
-        actorId: sellerId,
-        storeId,
-        entityType: "listing_review",
-        entityId: result.review.id,
-      });
-      return result;
     });
+
+    await this.events.emit({
+      eventType: "listing_review.approved",
+      actorType: "seller",
+      actorId: sellerId,
+      storeId,
+      entityType: "listing_review",
+      entityId: result.review.id,
+    });
+    if (queuedReason) {
+      await this.moderation.recordQueued(result.product.id, storeId, queuedReason);
+    }
+    return result;
   }
 
   async reject(sellerId: string, storeId: string, reviewId: string, reviewedByUserId: string) {

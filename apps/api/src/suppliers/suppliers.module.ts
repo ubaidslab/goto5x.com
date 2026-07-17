@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ModerationModule } from "../moderation/moderation.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { ListingReviewsController } from "./listing-reviews.controller";
 import { ListingReviewsService } from "./listing-reviews.service";
@@ -16,7 +17,7 @@ import { SupplierSyncScheduler } from "./supplier-sync.scheduler";
 import { SupplierSyncService } from "./supplier-sync.service";
 
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, ModerationModule],
   controllers: [
     SupplierLinksController,
     ListingReviewsController,

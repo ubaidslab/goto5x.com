@@ -81,15 +81,21 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
     return verify.body.accessToken as string;
   }
 
+  async function overrideGlobalSetting(key: string, value: unknown) {
+    await superuser.settingsValue.create({
+      data: { definitionKey: key, scopeType: "global", scopeId: null, value: value as any },
+    });
+  }
+
   /** Bypasses the real sync mechanism (unit-tested separately) - seeds a listing directly, matching this suite's established precedent of seeding non-focal prerequisites directly. */
-  async function seedSupplierListing(supplierEmail: string) {
+  async function seedSupplierListing(supplierEmail: string, title = "Printify Mug") {
     const user = await superuser.user.findUniqueOrThrow({ where: { email: supplierEmail }, include: { supplier: true } });
     const listing = await superuser.supplierListing.create({
       data: {
         supplierId: user.supplier!.id,
         adapterType: "printify",
         externalProductId: `ext-${Date.now()}`,
-        title: "Printify Mug",
+        title,
         price: 12.5,
         shippingCost: 5,
         estimatedDeliveryMinDays: 7,
@@ -336,5 +342,127 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
       .get("/admin/supplier-adapters")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(403);
+  });
+
+  describe("Moderation amendment (SRS §5.27, v0.13) - supplier listings run through the same engine self-fulfilled products do", () => {
+    async function linkAndActivate(sellerToken: string, storeId: string, storeSlug: string, supplierToken: string) {
+      const linkRes = await request(app.getHttpServer())
+        .post("/supplier/store-links")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSlug });
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/supplier-links/${linkRes.body.id}/approve`)
+        .set("Authorization", `Bearer ${sellerToken}`);
+      return linkRes.body.id as string;
+    }
+
+    it("a banned keyword in a supplier listing's title blocks the seller's approval outright", async () => {
+      await overrideGlobalSetting("moderation.banned_keywords", ["contraband"]);
+      const { token, storeId } = await signupLoginAndCreateStore("mod-banned-seller@example.com", "mod-banned-seller-store");
+      const supplierToken = await signupLoginSupplier("mod-banned-supplier@example.com");
+      const { listing } = await seedSupplierListing("mod-banned-supplier@example.com", "Contraband Item");
+      const linkId = await linkAndActivate(token, storeId, "mod-banned-seller-store", supplierToken);
+
+      const submit = await request(app.getHttpServer())
+        .post("/supplier/listings/submit-review")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSupplierLinkId: linkId, supplierListingId: listing.id });
+
+      const approve = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/listing-reviews/${submit.body.id}/approve`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(approve.status).toBe(400);
+
+      const review = await superuser.listingReview.findUniqueOrThrow({ where: { id: submit.body.id } });
+      expect(review.status).toBe("pending");
+      expect(review.productId).toBeNull();
+    });
+
+    it(
+      "a restricted keyword routes the approved supplier listing into the platform moderation queue - " +
+        "invisible on the storefront until a Reviewer/Admin approves it",
+      async () => {
+        await overrideGlobalSetting("moderation.new_seller_probation_count", 0);
+        await overrideGlobalSetting("moderation.restricted_keywords", ["vape"]);
+        const { token, storeId } = await signupLoginAndCreateStore("mod-restricted-seller@example.com", "mod-restricted-seller-store");
+        const hostname = "mod-restricted-seller-store.goto5x.com";
+        const supplierToken = await signupLoginSupplier("mod-restricted-supplier@example.com");
+        const { listing } = await seedSupplierListing("mod-restricted-supplier@example.com", "Vape Pen");
+        const linkId = await linkAndActivate(token, storeId, "mod-restricted-seller-store", supplierToken);
+
+        const submit = await request(app.getHttpServer())
+          .post("/supplier/listings/submit-review")
+          .set("Authorization", `Bearer ${supplierToken}`)
+          .send({ storeSupplierLinkId: linkId, supplierListingId: listing.id });
+
+        const approve = await request(app.getHttpServer())
+          .patch(`/stores/${storeId}/listing-reviews/${submit.body.id}/approve`)
+          .set("Authorization", `Bearer ${token}`);
+        expect(approve.status).toBe(200);
+        expect(approve.body.review.status).toBe("approved");
+        const productId = approve.body.product.id as string;
+        expect(approve.body.product.moderationStatus).toBe("pending");
+
+        const storefrontList = await request(app.getHttpServer()).get("/storefront/products").query({ hostname });
+        expect(storefrontList.body).toEqual([]);
+
+        const adminToken = await createAdminAndGetToken("mod-restricted-admin@example.com", "admin-password-1");
+        const queue = await request(app.getHttpServer())
+          .get("/admin/moderation/queue")
+          .set("Authorization", `Bearer ${adminToken}`);
+        expect(queue.body.map((p: any) => p.id)).toContain(productId);
+
+        await request(app.getHttpServer())
+          .post(`/admin/moderation/queue/${productId}/approve`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({});
+        const storefrontAfter = await request(app.getHttpServer()).get("/storefront/products").query({ hostname });
+        expect(storefrontAfter.body.map((p: any) => p.id)).toEqual([productId]);
+      },
+    );
+
+    it("a trusted seller's approval bypasses moderation for a supplier listing too, even past a banned keyword", async () => {
+      await overrideGlobalSetting("moderation.banned_keywords", ["contraband"]);
+      const { token, storeId } = await signupLoginAndCreateStore("mod-trusted-seller@example.com", "mod-trusted-seller-store");
+      const user = await superuser.user.findUniqueOrThrow({ where: { email: "mod-trusted-seller@example.com" } });
+      await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
+      const supplierToken = await signupLoginSupplier("mod-trusted-supplier@example.com");
+      const { listing } = await seedSupplierListing("mod-trusted-supplier@example.com", "Contraband Item");
+      const linkId = await linkAndActivate(token, storeId, "mod-trusted-seller-store", supplierToken);
+
+      const submit = await request(app.getHttpServer())
+        .post("/supplier/listings/submit-review")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSupplierLinkId: linkId, supplierListingId: listing.id });
+
+      const approve = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/listing-reviews/${submit.body.id}/approve`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(approve.status).toBe(200);
+      expect(approve.body.product.moderationStatus).toBe("not_required");
+    });
+
+    it("new-seller probation does NOT apply to supplier-sourced listings, unlike self-fulfilled products", async () => {
+      // Default probation count (10, seeded) - a brand-new, non-trusted
+      // seller's very first product would normally be queued for
+      // self-fulfilled listings (proven in moderation.e2e-spec.ts); a
+      // supplier-sourced listing skips that check entirely (FR-27.3 scope
+      // amendment).
+      const { token, storeId } = await signupLoginAndCreateStore("mod-probation-seller@example.com", "mod-probation-seller-store");
+      const supplierToken = await signupLoginSupplier("mod-probation-supplier@example.com");
+      const { listing } = await seedSupplierListing("mod-probation-supplier@example.com");
+      const linkId = await linkAndActivate(token, storeId, "mod-probation-seller-store", supplierToken);
+
+      const submit = await request(app.getHttpServer())
+        .post("/supplier/listings/submit-review")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSupplierLinkId: linkId, supplierListingId: listing.id });
+
+      const approve = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/listing-reviews/${submit.body.id}/approve`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(approve.status).toBe(200);
+      expect(approve.body.product.moderationStatus).toBe("not_required");
+    });
   });
 });

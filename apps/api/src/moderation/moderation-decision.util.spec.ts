@@ -72,4 +72,40 @@ describe("decideModerationStatus (SRS §5.27/FR-27.1-27.4)", () => {
     });
     expect(result).toEqual({ status: "not_required" });
   });
+
+  it("Module 8 amendment: applyProbation: false skips probation even for a brand-new seller (supplier-sourced listings)", () => {
+    const result = decideModerationStatus({
+      ...BASE,
+      approvedProductCount: 0,
+      probationCount: 10,
+      applyProbation: false,
+    });
+    expect(result).toEqual({ status: "not_required" });
+  });
+
+  it("Module 8 amendment: a banned keyword still blocks a supplier-sourced listing even with applyProbation: false", () => {
+    expect(() =>
+      decideModerationStatus({ ...BASE, applyProbation: false, bannedKeywords: ["widget"] }),
+    ).toThrow(BannedKeywordError);
+  });
+
+  it("Module 8 amendment: a restricted keyword still queues a supplier-sourced listing even with applyProbation: false", () => {
+    const result = decideModerationStatus({
+      ...BASE,
+      approvedProductCount: 0,
+      applyProbation: false,
+      restrictedKeywords: ["widget"],
+    });
+    expect(result).toEqual({ status: "pending", reason: "restricted_keyword" });
+  });
+
+  it("Module 8 amendment: a trusted seller still bypasses everything with applyProbation: false", () => {
+    const result = decideModerationStatus({
+      ...BASE,
+      isTrusted: true,
+      applyProbation: false,
+      bannedKeywords: ["widget"],
+    });
+    expect(result).toEqual({ status: "not_required" });
+  });
 });

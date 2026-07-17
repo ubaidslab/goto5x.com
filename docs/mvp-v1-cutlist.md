@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.12 — build-phase amendment)
+# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.13 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -84,6 +84,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   access only) — every decision audit-logged (FR-27.5–27.6)
 - Products under review are not publicly visible on the storefront or in
   Discovery search/collections (FR-27.5)
+- **Supplier-sourced listings run through the same engine (new in v0.13,
+  FR-27.8)** — a seller's approval of a supplier's listing (Module 8) is a
+  fulfillment-quality decision, not a substitute for this legal-safety
+  check; probation stays scoped to self-fulfilled listings only
 
 **Customers, reviews & carts**
 - Customers/CRM: auto-created records (including from manual orders — clarified
@@ -104,6 +108,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   need Module 9 (Orders, Cart & Checkout) to exist and land there
 - Oversell protection's atomic decrement mechanism (FR-4.5) is built and
   tested now; wiring it into a live checkout is Module 9's job
+- **Corrected in v0.13:** supplier-sourced listings run through the
+  Listing Moderation Engine at the moment of seller approval (FR-27.8) -
+  the seller's own approval is a fulfillment-quality gate, not a
+  legal-safety one
 
 **Orders & checkout**
 - Cart + checkout, payment via **Safepay only** (COD deferred/gated, §5.6a)

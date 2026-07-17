@@ -1,20 +1,22 @@
 # goto5x.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.12); this README covers running the code.
+(approved v0.13); this README covers running the code.
 
-**Status:** Modules 1–7 approved; Module 8 (Suppliers & Printify Adapter)
-built, awaiting founder review. Platform Event Log amendment (SRS §3.11)
-built and backfilled. The v0.10 amendment added two new modules to the
-sequence (Listing Moderation Engine, Module 6; Seller Account Security: 2FA
-+ Devices, Module 12, before Payouts) and a binding Financial Truth
-Invariant NFR (§3.12). The v0.11 amendment slotted the moderation queue's
-bare functional admin page into Module 17. The v0.12 amendment inserted a
-new **Seller Dashboard UI** module (Module 10, after Orders/Cart/Checkout)
-plus a binding SIMPLICITY INVARIANT NFR (§3.13) governing it and every
-seller-facing screen after — see `docs/build-plan.md` for the full,
-current module sequence and numbering. Module 9 (Orders, Cart & Checkout)
-next.
+**Status:** Modules 1–8 approved; Module 9 (Orders, Cart & Checkout) next.
+Platform Event Log amendment (SRS §3.11) built and backfilled. The v0.10
+amendment added two new modules to the sequence (Listing Moderation
+Engine, Module 6; Seller Account Security: 2FA + Devices, Module 12,
+before Payouts) and a binding Financial Truth Invariant NFR (§3.12). The
+v0.11 amendment slotted the moderation queue's bare functional admin page
+into Module 17. The v0.12 amendment inserted a new **Seller Dashboard UI**
+module (Module 10, after Orders/Cart/Checkout) plus a binding SIMPLICITY
+INVARIANT NFR (§3.13) governing it and every seller-facing screen after.
+The v0.13 amendment closed a gap found reviewing Module 8: supplier-
+sourced listings now run through the Listing Moderation Engine (FR-27.8)
+at the moment of seller approval, not just the seller's own review gate —
+see `docs/build-plan.md` for the full, current module sequence and
+numbering.
 
 ---
 
@@ -218,7 +220,11 @@ seed a `supplier_listings` row directly and a dedicated unit test
 fulfillment checklist, checkout country-blocking/price-revalidation,
 wiring oversell protection into a live order) genuinely need Module 9
 (Orders, Cart & Checkout) to exist first - flagged explicitly in this
-module's build-plan section, not silently skipped.
+module's build-plan section, not silently skipped. **v0.13 amendment:**
+supplier-sourced listings now run through the Listing Moderation Engine
+(Module 6) at the moment of seller approval (FR-27.8), not just the
+seller's own listing-review gate - see `docs/build-plan.md`'s Module 8
+section for the corrected behavior and why the original version was wrong.
 
 ---
 
@@ -263,7 +269,7 @@ database, not a mock):
    pnpm test:e2e
    ```
 
-All 123 e2e tests + 77 unit tests pass as of Module 8 (see this module's
+All 127 e2e tests + 81 unit tests pass as of the v0.13 moderation amendment (see this module's
 verification report for the full list), stable across 3 consecutive full
 runs. `apps/web` has no automated test suite - see the Module 4/5
 disclosures above for what was verified manually instead (Modules 6 and 7

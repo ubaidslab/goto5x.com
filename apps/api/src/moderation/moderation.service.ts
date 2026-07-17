@@ -16,15 +16,20 @@ export class ModerationService {
   ) {}
 
   /**
-   * Called from ProductsService.create(), inside the same seller-scoped
-   * transaction, so the approved-product count and the insert are
-   * consistent with each other. Throws BadRequestException on a banned
-   * keyword (FR-27.1) - the product is never created.
+   * Called from ProductsService.create() (self-fulfilled) and
+   * ListingReviewsService.approve() (supplier-sourced, Module 8 amendment -
+   * "seller approval is not a substitute for platform legal safety"),
+   * inside the same seller-scoped transaction as the insert, so the
+   * approved-product count and the insert are consistent with each other.
+   * Throws BadRequestException on a banned keyword (FR-27.1) - the product
+   * is never created. `applyProbation` defaults true (self-fulfilled);
+   * ListingReviewsService passes `false` - see decideModerationStatus's
+   * doc comment for why probation stays scoped to self-fulfilled listings.
    */
   async evaluateNewProduct(
     tx: Prisma.TransactionClient,
     sellerId: string,
-    input: { title: string; description?: string | null; categoryId?: string | null },
+    input: { title: string; description?: string | null; categoryId?: string | null; applyProbation?: boolean },
   ): Promise<ModerationDecision> {
     const [bannedKeywords, restrictedKeywords, restrictedCategoryIds, probationCount, seller, sellerStores] =
       await Promise.all([
@@ -53,6 +58,7 @@ export class ModerationService {
         bannedKeywords,
         restrictedKeywords,
         restrictedCategoryIds,
+        applyProbation: input.applyProbation,
       });
     } catch (err) {
       if (err instanceof BannedKeywordError) {

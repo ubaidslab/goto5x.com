@@ -24,6 +24,16 @@ export interface ModerationDecisionInput {
   bannedKeywords: string[];
   restrictedKeywords: string[];
   restrictedCategoryIds: string[];
+  // Module 8 amendment (SRS §5.27, v0.13) - new-seller probation (FR-27.3)
+  // stays scoped to self-fulfilled listings; a supplier-sourced listing
+  // already has its own human gate (the seller's listing-review approval)
+  // before it ever reaches this function, so probation would be a
+  // redundant, seller-count-driven check that doesn't map to how supplier
+  // listings actually get created. Every other rule (banned/restricted
+  // keyword, restricted category, trusted bypass) applies identically.
+  // Defaults to true so every pre-existing (self-fulfilled) call site is
+  // unaffected.
+  applyProbation?: boolean;
 }
 
 /** FR-27.1 - a banned keyword blocks submission outright, never merely queues it. */
@@ -51,8 +61,11 @@ export function decideModerationStatus(input: ModerationDecisionInput): Moderati
 
   // FR-27.3 - probation is mandatory for a new seller's first N products,
   // regardless of whether keyword/category rules would have flagged them
-  // anyway - it is not merely "whichever check fires first."
-  if (input.approvedProductCount < input.probationCount) {
+  // anyway - it is not merely "whichever check fires first." Scoped to
+  // self-fulfilled listings only (applyProbation defaults true) - see this
+  // field's doc comment above.
+  const applyProbation = input.applyProbation ?? true;
+  if (applyProbation && input.approvedProductCount < input.probationCount) {
     return { status: "pending", reason: "new_seller_probation" };
   }
 
