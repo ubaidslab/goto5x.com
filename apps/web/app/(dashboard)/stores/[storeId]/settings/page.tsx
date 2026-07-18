@@ -4,12 +4,21 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type AccessMode = "public" | "coming_soon" | "password_protected";
+
+interface PaymentInstructions {
+  bankAccountTitle: string | null;
+  bankAccountNumber: string | null;
+  bankName: string | null;
+  jazzcashNumber: string | null;
+  easypaisaNumber: string | null;
+  codEnabled: boolean;
+}
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
   { id: "default", label: "Indigo (default)", swatch: "#5b5fef" },
@@ -29,6 +38,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [dashboardTheme, setDashboardTheme] = useState("default");
   const [savingTheme, setSavingTheme] = useState(false);
 
+  const [payment, setPayment] = useState<PaymentInstructions | null>(null);
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentSaved, setPaymentSaved] = useState(false);
+
   useEffect(() => {
     api
       .get<{ accessMode: AccessMode }>(`/stores/${params.storeId}`)
@@ -37,6 +50,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     api
       .get<{ dashboardTheme: string }>("/sellers/me")
       .then((profile) => setDashboardTheme(profile.dashboardTheme))
+      .catch(() => {});
+    api
+      .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
+      .then(setPayment)
       .catch(() => {});
   }, [params.storeId]);
 
@@ -58,6 +75,30 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't save store settings.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function savePayment(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setPaymentSaved(false);
+    setSavingPayment(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      const updated = await api.patch<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`, {
+        bankAccountTitle: (form.get("bankAccountTitle") as string) || undefined,
+        bankAccountNumber: (form.get("bankAccountNumber") as string) || undefined,
+        bankName: (form.get("bankName") as string) || undefined,
+        jazzcashNumber: (form.get("jazzcashNumber") as string) || undefined,
+        easypaisaNumber: (form.get("easypaisaNumber") as string) || undefined,
+        codEnabled: form.get("codEnabled") === "on",
+      });
+      setPayment(updated);
+      setPaymentSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save payment instructions.");
+    } finally {
+      setSavingPayment(false);
     }
   }
 
@@ -106,6 +147,46 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             </form>
           </CardBody>
         </Card>
+
+        {payment && (
+          <Card>
+            <CardHeader
+              title="Payment instructions"
+              description="How buyers pay you. Shown at checkout and on their order confirmation - you'll mark each order paid yourself once you've received it."
+            />
+            <CardBody>
+              <form onSubmit={savePayment} className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <Field label="Bank account title">
+                    <Input name="bankAccountTitle" defaultValue={payment.bankAccountTitle ?? ""} />
+                  </Field>
+                  <Field label="Bank account number / IBAN">
+                    <Input name="bankAccountNumber" defaultValue={payment.bankAccountNumber ?? ""} />
+                  </Field>
+                  <Field label="Bank name">
+                    <Input name="bankName" defaultValue={payment.bankName ?? ""} />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="JazzCash number">
+                    <Input name="jazzcashNumber" defaultValue={payment.jazzcashNumber ?? ""} />
+                  </Field>
+                  <Field label="Easypaisa number">
+                    <Input name="easypaisaNumber" defaultValue={payment.easypaisaNumber ?? ""} />
+                  </Field>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" name="codEnabled" defaultChecked={payment.codEnabled} />
+                  Accept Cash on Delivery
+                </label>
+                {paymentSaved && <Alert tone="success">Saved.</Alert>}
+                <Button type="submit" loading={savingPayment}>
+                  Save payment instructions
+                </Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
 
         <Card>
           <CardHeader title="Dashboard appearance" description="Purely cosmetic - only changes how your own dashboard looks, never your storefront." />
