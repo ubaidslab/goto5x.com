@@ -28,6 +28,15 @@ interface SellerProfile {
   dashboardTheme: string;
   cnicMasked: string | null;
   activationStatus: "auto_approved" | "pending_review" | "blocked";
+  mfaEnabled: boolean;
+}
+
+interface SessionInfo {
+  sessionId: string;
+  deviceLabel: string;
+  ipAddress: string;
+  firstSeenAt: string;
+  lastActiveAt: string;
 }
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
@@ -58,6 +67,21 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [savingCnic, setSavingCnic] = useState(false);
   const [cnicSaved, setCnicSaved] = useState(false);
 
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaSecret, setMfaSecret] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [enrollingMfa, setEnrollingMfa] = useState(false);
+  const [verifyingMfa, setVerifyingMfa] = useState(false);
+  const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const currentSessionId = typeof window !== "undefined" ? localStorage.getItem("sessionId") : null;
+
+  function loadSessions() {
+    api
+      .get<SessionInfo[]>("/sellers/me/sessions")
+      .then(setSessions)
+      .catch(() => {});
+  }
+
   useEffect(() => {
     api
       .get<{ accessMode: AccessMode }>(`/stores/${params.storeId}`)
@@ -69,12 +93,14 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         setDashboardTheme(profile.dashboardTheme);
         setCnicMasked(profile.cnicMasked);
         setActivationStatus(profile.activationStatus);
+        setMfaEnabled(profile.mfaEnabled);
       })
       .catch(() => {});
     api
       .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
       .then(setPayment)
       .catch(() => {});
+    loadSessions();
   }, [params.storeId]);
 
   if (!loaded) return <PageSpinner />;
@@ -139,6 +165,45 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't save CNIC.");
     } finally {
       setSavingCnic(false);
+    }
+  }
+
+  async function beginMfaEnrollment() {
+    setError(null);
+    setEnrollingMfa(true);
+    try {
+      const result = await api.post<{ secret: string; otpauthUrl: string }>("/sellers/me/mfa/enroll");
+      setMfaSecret(result);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't start 2FA enrollment.");
+    } finally {
+      setEnrollingMfa(false);
+    }
+  }
+
+  async function verifyMfaEnrollment(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setVerifyingMfa(true);
+    try {
+      await api.post("/sellers/me/mfa/verify", { code: mfaCode });
+      setMfaEnabled(true);
+      setMfaSecret(null);
+      setMfaCode("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Invalid code - try again.");
+    } finally {
+      setVerifyingMfa(false);
+    }
+  }
+
+  async function revokeSession(sessionId: string) {
+    setError(null);
+    try {
+      await api.delete(`/sellers/me/sessions/${sessionId}`);
+      loadSessions();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't revoke that session.");
     }
   }
 
@@ -281,6 +346,86 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               </Button>
             </form>
             {cnicSaved && <Alert tone="success">Saved.</Alert>}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Security"
+            description="Two-factor authentication and the devices currently signed in to your account."
+          />
+          <CardBody className="space-y-6">
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-ink">Two-factor authentication</h3>
+              {mfaEnabled ? (
+                <Alert tone="success">2FA is enabled on your account.</Alert>
+              ) : mfaSecret ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-ink-muted">
+                    Scan this into your authenticator app, then enter the 6-digit code it shows:
+                  </p>
+                  <p className="break-all rounded-md border border-border bg-surface-muted p-2 font-mono text-xs text-ink">
+                    {mfaSecret.otpauthUrl}
+                  </p>
+                  <form onSubmit={verifyMfaEnrollment} className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Field label="6-digit code">
+                        <Input
+                          value={mfaCode}
+                          onChange={(e) => setMfaCode(e.target.value)}
+                          placeholder="123456"
+                          required
+                        />
+                      </Field>
+                    </div>
+                    <Button type="submit" loading={verifyingMfa}>
+                      Confirm
+                    </Button>
+                  </form>
+                </div>
+              ) : (
+                <Button type="button" onClick={beginMfaEnrollment} loading={enrollingMfa}>
+                  Enable 2FA
+                </Button>
+              )}
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-ink">Signed-in devices</h3>
+              {sessions === null ? (
+                <p className="text-sm text-ink-muted">Loading...</p>
+              ) : sessions.length === 0 ? (
+                <p className="text-sm text-ink-muted">No active sessions.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {sessions.map((session) => (
+                    <li
+                      key={session.sessionId}
+                      className="flex items-center justify-between gap-4 rounded-md border border-border p-3"
+                    >
+                      <div>
+                        <p className="text-sm text-ink">
+                          {session.deviceLabel}
+                          {session.sessionId === currentSessionId && (
+                            <span className="ml-2 rounded-full bg-accent-subtle px-2 py-0.5 text-xs text-accent">
+                              This device
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-ink-muted">
+                          {session.ipAddress} - last active {new Date(session.lastActiveAt).toLocaleString()}
+                        </p>
+                      </div>
+                      {session.sessionId !== currentSessionId && (
+                        <Button variant="ghost" size="sm" onClick={() => revokeSession(session.sessionId)}>
+                          Revoke
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </CardBody>
         </Card>
 
