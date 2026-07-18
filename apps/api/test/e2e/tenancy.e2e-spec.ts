@@ -29,7 +29,7 @@ describe("Tenant isolation on stores (e2e) - SRS §3.2/§14.2/§14.12 release ga
   async function signupAndLogin(email: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });

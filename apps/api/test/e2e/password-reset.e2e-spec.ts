@@ -27,7 +27,7 @@ describe("Password reset (e2e) - SRS FR-25.1-25.4 / §14.0 checklist items", () 
   });
 
   async function signupAndLogin(email: string, password: string) {
-    await request(app.getHttpServer()).post("/auth/signup").send({ email, password, businessName: "PR Test" });
+    await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true, email, password, businessName: "PR Test" });
     return request(app.getHttpServer()).post("/auth/login").send({ email, password });
   }
 

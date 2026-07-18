@@ -13,6 +13,7 @@ import {
 } from "../../src/settings-registry/settings.seed";
 import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
 import { seedBuiltInThemes, seedModule4Settings } from "../../src/theme-engine/themes.seed";
+import { seedSellerAgreementV1, seedTrustSafetySettings } from "../../src/trust-safety/trust-safety.seed";
 
 /**
  * Builds a real NestJS app wired to the real local Postgres/Redis started for
@@ -57,6 +58,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       payments, tracking_updates, order_timeline_events, order_notes, order_items, orders, carts,
       media_assets, product_variants, products, categories,
       google_drive_connections,
+      seller_agreement_versions,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans
     RESTART IDENTITY CASCADE
   `);
@@ -71,11 +73,17 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedSupplierSettings(prisma);
   await seedOrdersSettings(prisma);
   await seedBillingSettings(prisma);
+  await seedTrustSafetySettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded
   // alongside settings for exactly that reason, not because it's settings data.
   await seedBuiltInThemes(prisma);
+  // Same reasoning as themes above - every seller signup requires a current
+  // Seller Agreement version to accept (SRS FR-29.1); reseeded fresh per
+  // test file so a version published mid-suite by one test never leaks
+  // into another file's run.
+  await seedSellerAgreementV1(prisma);
 }
 
 /**

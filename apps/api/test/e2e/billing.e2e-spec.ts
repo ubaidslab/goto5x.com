@@ -35,7 +35,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
   async function signupLoginAndCreateStore(email: string, slug: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });
@@ -45,7 +45,12 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ name: `Store for ${email}`, slug });
     const user = await superuser.user.findUniqueOrThrow({ where: { email } });
-    await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
+    await superuser.seller.update({
+      where: { userId: user.id },
+      // Module 12 (FR-30.1) - checkout also requires a CNIC on file; not
+      // this file's focus, so set a synthetic hash directly.
+      data: { isTrusted: true, cnicHash: `test-cnic-hash-${user.id}` },
+    });
     await superuser.storePaymentInstructions.update({
       where: { storeId: store.body.id },
       data: { codEnabled: true },

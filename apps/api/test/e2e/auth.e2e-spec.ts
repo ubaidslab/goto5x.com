@@ -27,7 +27,7 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
   });
 
   it("signup -> verify-email -> login -> lands in an authenticated session", async () => {
-    const signupRes = await request(app.getHttpServer()).post("/auth/signup").send({
+    const signupRes = await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "founder@example.com",
       password: "correct-horse-battery",
       businessName: "Test Store",
@@ -82,7 +82,7 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
   });
 
   it("rejects login with the wrong password", async () => {
-    await request(app.getHttpServer()).post("/auth/signup").send({
+    await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "founder2@example.com",
       password: "correct-horse-battery",
       businessName: "Test Store 2",
@@ -94,7 +94,7 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
   });
 
   it("refresh rotates the session and the old refresh token can't be reused", async () => {
-    await request(app.getHttpServer()).post("/auth/signup").send({
+    await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "founder3@example.com",
       password: "correct-horse-battery",
       businessName: "Test Store 3",
@@ -118,7 +118,7 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
   });
 
   it("logout destroys the session so its refresh token no longer works", async () => {
-    await request(app.getHttpServer()).post("/auth/signup").send({
+    await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "founder4@example.com",
       password: "correct-horse-battery",
       businessName: "Test Store 4",
@@ -149,7 +149,7 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
     const attempt = (n: number) =>
       request(app.getHttpServer())
         .post("/auth/signup")
-        .send({ email: `rl${n}@example.com`, password: "correct-horse-battery", businessName: `RL ${n}` });
+        .send({ agreementAccepted: true, email: `rl${n}@example.com`, password: "correct-horse-battery", businessName: `RL ${n}` });
 
     expect((await attempt(1)).status).toBe(201);
     expect((await attempt(2)).status).toBe(201);

@@ -42,7 +42,7 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
   async function signupLoginAndCreateStore(email: string, slug: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });
@@ -57,7 +57,7 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
   async function signupLoginSupplier(email: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Supplier ${email}`, role: "supplier" });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Supplier ${email}`, role: "supplier" });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });

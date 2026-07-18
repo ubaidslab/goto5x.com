@@ -36,7 +36,7 @@ describe("Custom domains & TLS (e2e) - SRS FR-11.1/FR-11.2, §14.11", () => {
   async function signupLoginAndCreateStore(email: string, slug: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });

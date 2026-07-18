@@ -38,7 +38,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
   async function signupLoginAndCreateStore(email: string, slug: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });
@@ -60,13 +60,18 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
       where: { storeId: store.body.id },
       data: { codEnabled: true },
     });
+    // Module 12 (FR-30.1) - checkout also requires a CNIC on file for the
+    // seller; not this file's focus (identity verification), so set a
+    // synthetic hash directly rather than every test going through the
+    // real CNIC-set endpoint.
+    await superuser.seller.update({ where: { userId: user.id }, data: { cnicHash: `test-cnic-hash-${user.id}` } });
     return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
   }
 
   async function signupLoginSupplier(email: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Supplier ${email}`, role: "supplier" });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Supplier ${email}`, role: "supplier" });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });

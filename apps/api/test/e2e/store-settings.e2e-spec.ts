@@ -36,7 +36,7 @@ describe("Shipping, Tax & Discounts (e2e) - SRS FR-2.10/FR-2.11/FR-19.3, §14.2"
   async function signupLoginAndCreateStore(email: string, slug: string) {
     await request(app.getHttpServer())
       .post("/auth/signup")
-      .send({ email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });
@@ -324,6 +324,10 @@ describe("Shipping, Tax & Discounts (e2e) - SRS FR-2.10/FR-2.11/FR-19.3, §14.2"
           bankAccountNumber: "PK00BANK0000000000000000",
           bankName: "Test Bank",
           jazzcashNumber: "03001234567",
+          // Module 12 (FR-30.2) - a declared title + ownership checkbox is
+          // now required alongside any filled instrument.
+          jazzcashAccountTitle: "Checkpoint Store",
+          nameDeclaredSelfOwned: true,
           codEnabled: true,
         });
       expect(update.status).toBe(200);
@@ -382,6 +386,29 @@ describe("Shipping, Tax & Discounts (e2e) - SRS FR-2.10/FR-2.11/FR-19.3, §14.2"
         .patch(`/stores/${storeId}/payment-instructions`)
         .set("Authorization", `Bearer ${token}`)
         .send({ codEnabled: true });
+
+      // Module 12 (FR-30.1) - the checkout readiness gate also requires a
+      // CNIC on file; still gated even with a payment method configured.
+      const manualOrderStillNoCnic = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/orders`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          buyerEmail: "buyer@example.com",
+          shippingAddress: {
+            fullName: "Test Buyer",
+            line1: "1 Test St",
+            city: "Lahore",
+            country: "PK",
+            phone: "03001234567",
+          },
+          items: [{ productId: product.body.id, variantId: variant.body.id, quantity: 1 }],
+        });
+      expect(manualOrderStillNoCnic.status).toBe(400);
+
+      await request(app.getHttpServer())
+        .patch("/sellers/me/cnic")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ cnic: "3541234567899" });
 
       const manualOrderWithPayment = await request(app.getHttpServer())
         .post(`/stores/${storeId}/orders`)

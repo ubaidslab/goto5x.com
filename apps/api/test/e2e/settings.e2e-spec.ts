@@ -98,7 +98,7 @@ describe("Settings Registry admin API + cache (e2e) - SRS §14.8", () => {
   });
 
   it("non-admin (seller) sessions cannot reach the settings admin API", async () => {
-    await request(app.getHttpServer()).post("/auth/signup").send({
+    await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "notanadmin@example.com",
       password: "correct-horse-battery",
       businessName: "Not Admin",
