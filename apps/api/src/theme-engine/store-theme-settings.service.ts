@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { UpdateStoreThemeSettingsDto } from "./dto/update-store-theme-settings.dto";
 
@@ -14,6 +15,7 @@ export class StoreThemeSettingsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async getForStore(sellerId: string, storeId: string) {
@@ -34,11 +36,13 @@ export class StoreThemeSettingsService {
   async update(sellerId: string, storeId: string, dto: UpdateStoreThemeSettingsDto) {
     // FR-1.6 (Phase 2 coded-theme escape hatch) - gated by plan at the app
     // layer, resolved through the Settings Registry rather than a hardcoded
-    // check, per SRS §3.8. No planId in context yet (Module 11 hasn't given
-    // sellers a real plan assignment) - every seller resolves to the
-    // `global` default, which SRS §14.1 requires be `false` in v1.0.
+    // check, per SRS §3.8. FR-7.16 (Module 14) - bundled as a developer perk
+    // on qualifying paid tiers; the real seller->plan context now resolves
+    // this correctly instead of always falling through to the `global`
+    // default.
     if (dto.customCode !== undefined) {
-      const codedModeEnabled = await this.settings.resolve<boolean>("theme.coded_mode_enabled", { sellerId });
+      const context = await this.subscriptions.getPlanContext(sellerId);
+      const codedModeEnabled = await this.settings.resolve<boolean>("theme.coded_mode_enabled", context);
       if (!codedModeEnabled) {
         throw new ForbiddenException("Custom theme code is not enabled for your plan.");
       }

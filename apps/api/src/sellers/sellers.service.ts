@@ -1,5 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable } from "@nestjs/common";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 
 /**
@@ -12,6 +14,8 @@ export class SellersService {
   constructor(
     private readonly prisma: PrismaRuntimeService,
     private readonly identity: SellerIdentityService,
+    private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async getProfile(sellerId: string) {
@@ -35,7 +39,19 @@ export class SellersService {
     return { ...rest, cnicMasked, mfaEnabled: user.mfaEnabled };
   }
 
+  /**
+   * SRS §5.28/FR-28.4 - plan-gated (Module 14 cross-check, closing the open
+   * item carried since Module 10: "no real seller->plan assignment existed
+   * until now"). The Free Plan's global default is the small built-in set;
+   * higher tiers override with more options via the same Settings Registry
+   * mechanism FR-7.1 already uses for template tiers.
+   */
   async updateDashboardTheme(sellerId: string, dashboardTheme: string) {
+    const context = await this.subscriptions.getPlanContext(sellerId);
+    const allowedThemes = await this.settings.resolve<string[]>("dashboard.personalization_allowed_themes", context);
+    if (!allowedThemes.includes(dashboardTheme)) {
+      throw new ForbiddenException("This dashboard theme is not available on your plan.");
+    }
     return this.prisma.seller.update({
       where: { id: sellerId },
       data: { dashboardTheme },

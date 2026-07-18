@@ -33,7 +33,16 @@ export class LedgerService {
     currency: string,
   ): Promise<void> {
     const commissionBase = round2(Number(order.totalAmount) - Number(order.taxAmount));
-    const ratePercent = await this.settings.resolve<number>("billing.commission_rate_percent", { sellerId });
+    // FR-7.4 (inverse commission laddering) - resolves against the seller's
+    // real plan assignment now that one exists (Module 14); `subscriptions`
+    // has no RLS (it's a global table), so it's safe to read via the same
+    // tenant-scoped `tx` this call already runs inside.
+    const subscription = await tx.subscription.findUnique({ where: { sellerId } });
+    const baseRatePercent = await this.settings.resolve<number>("billing.commission_rate_percent", {
+      sellerId,
+      planId: subscription?.planId,
+    });
+    const ratePercent = Math.max(0, baseRatePercent - (await this.launchCampaignDiscountPercent(tx, sellerId)));
     const amount = round2((commissionBase * ratePercent) / 100);
 
     await tx.ledgerEntry.create({
@@ -45,6 +54,31 @@ export class LedgerService {
         currency,
       },
     });
+  }
+
+  /**
+   * FR-7.7 - launch-campaign pricing: a time-limited or first-N-sellers
+   * discount off the resolved commission rate. Both conditions are
+   * optional (empty expiry / zero seller_limit = that condition isn't
+   * set); when neither is set, discount_percent alone still gates the
+   * whole thing (0 = campaign off).
+   */
+  private async launchCampaignDiscountPercent(tx: Prisma.TransactionClient, sellerId: string): Promise<number> {
+    const discountPercent = await this.settings.resolve<number>("billing.launch_campaign_discount_percent");
+    if (discountPercent <= 0) return 0;
+
+    const expiry = await this.settings.resolve<string>("billing.launch_campaign_expiry");
+    if (expiry && new Date(expiry) < new Date()) return 0;
+
+    const sellerLimit = await this.settings.resolve<number>("billing.launch_campaign_seller_limit");
+    if (sellerLimit > 0) {
+      const seller = await tx.seller.findUnique({ where: { id: sellerId }, select: { createdAt: true } });
+      if (!seller) return 0;
+      const rank = await tx.seller.count({ where: { createdAt: { lte: seller.createdAt } } });
+      if (rank > sellerLimit) return 0;
+    }
+
+    return discountPercent;
   }
 
   /** FR-6.20 - waives (reduces) a specific accrued commission without touching any other entry. */

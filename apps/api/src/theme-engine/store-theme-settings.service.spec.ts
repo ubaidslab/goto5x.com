@@ -24,7 +24,8 @@ describe("StoreThemeSettingsService", () => {
     };
     const tenantPrisma = { run: jest.fn().mockImplementation(async (_sellerId: string, fn: any) => fn(tx)) };
     const settings = { resolve: jest.fn().mockResolvedValue(codedModeEnabled) };
-    const service = new StoreThemeSettingsService(tenantPrisma as any, settings as any);
+    const subscriptions = { getPlanContext: jest.fn().mockResolvedValue({ sellerId: SELLER_ID, planId: undefined }) };
+    const service = new StoreThemeSettingsService(tenantPrisma as any, settings as any, subscriptions as any);
     return { service, tx, settings };
   }
 
@@ -40,7 +41,7 @@ describe("StoreThemeSettingsService", () => {
     await expect(service.update(SELLER_ID, STORE_ID, { customCode: "<script>alert(1)</script>" })).rejects.toThrow(
       ForbiddenException,
     );
-    expect(settings.resolve).toHaveBeenCalledWith("theme.coded_mode_enabled", { sellerId: SELLER_ID });
+    expect(settings.resolve).toHaveBeenCalledWith("theme.coded_mode_enabled", { sellerId: SELLER_ID, planId: undefined });
   });
 
   it("allows setting customCode when theme.coded_mode_enabled resolves to true", async () => {
