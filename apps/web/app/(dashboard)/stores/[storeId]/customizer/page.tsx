@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PublicProduct, PublicStore } from "../../../../../lib/storefront-api";
-import { FaqItem, resolveThemeSettings, SectionId, ThemeSettings } from "../../../../../lib/theme-presets";
-import { AboutSection, FaqSection, FeaturedProductsSection, HeroSection, NewsletterSection } from "../../../../storefront/sections";
+import { PublicProduct, PublicStore } from "@/lib/storefront-api";
+import { FaqItem, resolveThemeSettings, SectionId, ThemeSettings } from "@/lib/theme-presets";
+import { AboutSection, FaqSection, FeaturedProductsSection, HeroSection, NewsletterSection } from "@/app/storefront/sections";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
+import { ApiError, api } from "@/lib/dashboard-api";
 
 interface Theme {
   id: string;
@@ -25,10 +32,11 @@ const SECTION_LABELS: Record<SectionId, string> = {
  * section components the real storefront uses (app/storefront/sections.tsx)
  * against this page's in-progress, unsaved local state, so "live preview
  * output matches published output exactly" (§14.1) by construction, not by
- * coincidence - it is the same code.
+ * coincidence - it is the same code. The preview pane deliberately does not
+ * pick up this module's dashboard design system - it must look like the
+ * live storefront, which is a separate, seller-configured visual system.
  */
 export default function CustomizerPage({ params }: { params: { storeId: string } }) {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [themes, setThemes] = useState<Theme[]>([]);
   const [store, setStore] = useState<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"] } | null>(
     null,
@@ -36,41 +44,39 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [themeId, setThemeId] = useState("");
   const [settings, setSettings] = useState<ThemeSettings>({});
-  const [status, setStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const headers = { Authorization: `Bearer ${token}` };
+    api.get<Theme[]>("/themes").then(setThemes).catch(() => {});
 
-    fetch(`${apiBase}/themes`, { headers })
-      .then((res) => res.json())
-      .then(setThemes)
-      .catch(() => {});
-
-    fetch(`${apiBase}/stores/${params.storeId}`, { headers })
-      .then((res) => res.json())
+    api
+      .get<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"] }>(`/stores/${params.storeId}`)
       .then((s) => setStore({ id: s.id, name: s.name, slug: s.slug, accessMode: s.accessMode }))
       .catch(() => {});
 
-    fetch(`${apiBase}/stores/${params.storeId}/theme-settings`, { headers })
-      .then((res) => res.json())
+    api
+      .get<{ themeId: string; settings: ThemeSettings }>(`/stores/${params.storeId}/theme-settings`)
       .then((ts) => {
         setThemeId(ts.themeId);
-        setSettings((ts.settings as ThemeSettings) ?? {});
+        setSettings(ts.settings ?? {});
       })
       .catch(() => {});
 
-    fetch(`${apiBase}/stores/${params.storeId}/products`, { headers })
-      .then((res) => res.json())
+    api
+      .get<Array<{ id: string; title: string; description: string | null; averageRating: string; reviewCount: number; variants?: unknown[]; seoTitle?: string; seoDescription?: string | null }>>(
+        `/stores/${params.storeId}/products`,
+      )
       .then((list) =>
         setProducts(
-          list.map((p: any) => ({
+          list.map((p) => ({
             id: p.id,
             title: p.title,
             description: p.description,
             averageRating: p.averageRating,
             reviewCount: p.reviewCount,
-            variants: p.variants ?? [],
+            variants: (p.variants ?? []) as PublicProduct["variants"],
             media: [],
             seoTitle: p.seoTitle ?? p.title,
             seoDescription: p.seoDescription ?? null,
@@ -78,7 +84,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
         ),
       )
       .catch(() => {});
-  }, [apiBase, params.storeId]);
+  }, [params.storeId]);
 
   const themeName = themes.find((t) => t.id === themeId)?.name ?? "Classic";
   const resolved = resolveThemeSettings(themeName, settings);
@@ -128,22 +134,20 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
   }
 
   async function onSave() {
-    setStatus(null);
-    const token = localStorage.getItem("accessToken");
-    const res = await fetch(`${apiBase}/stores/${params.storeId}/theme-settings`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ themeId, settings }),
-    });
-    if (res.ok) {
-      setStatus("Saved.");
-    } else {
-      const body = await res.json().catch(() => ({}));
-      setStatus(`Error: ${body.message ?? res.statusText}`);
+    setError(null);
+    setSaved(false);
+    setSaving(true);
+    try {
+      await api.patch(`/stores/${params.storeId}/theme-settings`, { themeId, settings });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save theme settings.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  if (!store) return <main>Loading…</main>;
+  if (!store) return <PageSpinner />;
 
   const previewStore: PublicStore = {
     id: store.id,
@@ -158,145 +162,157 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
   };
 
   return (
-    <main style={{ maxWidth: "none", display: "grid", gridTemplateColumns: "320px 1fr", gap: 24 }}>
-      <div>
-        <h1>Customize {store.name}</h1>
+    <div>
+      <PageHeader title={`Customize ${store.name}`} />
 
-        <label>
-          Theme
-          <select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
-            {themes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {error && <Alert tone="danger">{error}</Alert>}
+      {saved && <Alert tone="success">Saved.</Alert>}
 
-        <fieldset>
-          <legend>Colors</legend>
-          <label>
-            Primary
-            <input type="color" value={resolved.colors.primary} onChange={(e) => setColor("primary", e.target.value)} />
-          </label>
-          <label>
-            Background
-            <input type="color" value={resolved.colors.background} onChange={(e) => setColor("background", e.target.value)} />
-          </label>
-          <label>
-            Text
-            <input type="color" value={resolved.colors.text} onChange={(e) => setColor("text", e.target.value)} />
-          </label>
-        </fieldset>
+      <div className="grid grid-cols-[360px_1fr] gap-6">
+        <div className="space-y-4">
+          <Card>
+            <CardBody>
+              <Field label="Theme">
+                <Select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
+                  {themes.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </CardBody>
+          </Card>
 
-        <fieldset>
-          <legend>Sections (show/hide, reorder)</legend>
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {resolved.sections.map((section, index) => (
-              <li key={section.id}>
-                <label>
-                  <input type="checkbox" checked={section.visible} onChange={() => toggleSection(index)} />
-                  {SECTION_LABELS[section.id]}
-                </label>
-                <button type="button" onClick={() => moveSection(index, -1)} disabled={index === 0}>
-                  ↑
-                </button>
-                <button type="button" onClick={() => moveSection(index, 1)} disabled={index === resolved.sections.length - 1}>
-                  ↓
-                </button>
-              </li>
-            ))}
-          </ul>
-        </fieldset>
+          <Card>
+            <CardHeader title="Colors" />
+            <CardBody className="grid grid-cols-3 gap-3">
+              <Field label="Primary">
+                <input type="color" value={resolved.colors.primary} onChange={(e) => setColor("primary", e.target.value)} className="h-10 w-full rounded-md border border-border" />
+              </Field>
+              <Field label="Background">
+                <input type="color" value={resolved.colors.background} onChange={(e) => setColor("background", e.target.value)} className="h-10 w-full rounded-md border border-border" />
+              </Field>
+              <Field label="Text">
+                <input type="color" value={resolved.colors.text} onChange={(e) => setColor("text", e.target.value)} className="h-10 w-full rounded-md border border-border" />
+              </Field>
+            </CardBody>
+          </Card>
 
-        <fieldset>
-          <legend>Announcement bar</legend>
-          <label>
-            <input
-              type="checkbox"
-              checked={resolved.announcementBar?.enabled ?? false}
-              onChange={(e) => setAnnouncementBar(e.target.checked, resolved.announcementBar?.message ?? "")}
-            />
-            Enabled
-          </label>
-          <input
-            type="text"
-            placeholder="Message"
-            value={resolved.announcementBar?.message ?? ""}
-            onChange={(e) => setAnnouncementBar(resolved.announcementBar?.enabled ?? false, e.target.value)}
-          />
-        </fieldset>
+          <Card>
+            <CardHeader title="Sections" description="Show/hide and reorder." />
+            <CardBody className="space-y-1">
+              {resolved.sections.map((section, index) => (
+                <div key={section.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-canvas">
+                  <label className="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" checked={section.visible} onChange={() => toggleSection(index)} />
+                    {SECTION_LABELS[section.id]}
+                  </label>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveSection(index, -1)}
+                      disabled={index === 0}
+                      className="rounded px-1.5 py-0.5 text-xs text-ink-muted transition-smooth-fast hover:bg-surface-raised disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSection(index, 1)}
+                      disabled={index === resolved.sections.length - 1}
+                      className="rounded px-1.5 py-0.5 text-xs text-ink-muted transition-smooth-fast hover:bg-surface-raised disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
 
-        <fieldset>
-          <legend>WhatsApp button</legend>
-          <label>
-            <input
-              type="checkbox"
-              checked={resolved.whatsapp?.enabled ?? false}
-              onChange={(e) => setWhatsapp(e.target.checked, resolved.whatsapp?.phoneNumber ?? "")}
-            />
-            Enabled
-          </label>
-          <input
-            type="text"
-            placeholder="+92300..."
-            value={resolved.whatsapp?.phoneNumber ?? ""}
-            onChange={(e) => setWhatsapp(resolved.whatsapp?.enabled ?? false, e.target.value)}
-          />
-        </fieldset>
-
-        <fieldset>
-          <legend>FAQ</legend>
-          {resolved.faqItems.map((item, index) => (
-            <div key={index} style={{ marginBottom: 8 }}>
-              <input
-                type="text"
-                placeholder="Question"
-                value={item.question}
-                onChange={(e) => updateFaqItem(index, "question", e.target.value)}
+          <Card>
+            <CardHeader title="Announcement bar" />
+            <CardBody className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={resolved.announcementBar?.enabled ?? false}
+                  onChange={(e) => setAnnouncementBar(e.target.checked, resolved.announcementBar?.message ?? "")}
+                />
+                Enabled
+              </label>
+              <Input
+                placeholder="Message"
+                value={resolved.announcementBar?.message ?? ""}
+                onChange={(e) => setAnnouncementBar(resolved.announcementBar?.enabled ?? false, e.target.value)}
               />
-              <input
-                type="text"
-                placeholder="Answer"
-                value={item.answer}
-                onChange={(e) => updateFaqItem(index, "answer", e.target.value)}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="WhatsApp button" />
+            <CardBody className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={resolved.whatsapp?.enabled ?? false}
+                  onChange={(e) => setWhatsapp(e.target.checked, resolved.whatsapp?.phoneNumber ?? "")}
+                />
+                Enabled
+              </label>
+              <Input
+                placeholder="+92300..."
+                value={resolved.whatsapp?.phoneNumber ?? ""}
+                onChange={(e) => setWhatsapp(resolved.whatsapp?.enabled ?? false, e.target.value)}
               />
-              <button type="button" onClick={() => removeFaqItem(index)}>
-                Remove
-              </button>
-            </div>
-          ))}
-          <button type="button" onClick={addFaqItem}>
-            Add question
-          </button>
-        </fieldset>
+            </CardBody>
+          </Card>
 
-        <button type="button" onClick={onSave}>
-          Save
-        </button>
-        {status && <p>{status}</p>}
-      </div>
+          <Card>
+            <CardHeader title="FAQ" />
+            <CardBody className="space-y-3">
+              {resolved.faqItems.map((item, index) => (
+                <div key={index} className="space-y-2 rounded-md border border-border p-3">
+                  <Input placeholder="Question" value={item.question} onChange={(e) => updateFaqItem(index, "question", e.target.value)} />
+                  <Input placeholder="Answer" value={item.answer} onChange={(e) => updateFaqItem(index, "answer", e.target.value)} />
+                  <Button variant="ghost" size="sm" onClick={() => removeFaqItem(index)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+              <Button variant="secondary" onClick={addFaqItem}>
+                Add question
+              </Button>
+            </CardBody>
+          </Card>
 
-      <div style={{ border: "1px solid #e5e7eb" }}>
-        {resolved.sections
-          .filter((section) => section.visible)
-          .map((section) => {
-            switch (section.id) {
-              case "hero":
-                return <HeroSection key={section.id} store={previewStore} theme={resolved} />;
-              case "featured_products":
-                return <FeaturedProductsSection key={section.id} products={products} theme={resolved} />;
-              case "about":
-                return <AboutSection key={section.id} store={previewStore} theme={resolved} />;
-              case "newsletter":
-                return <NewsletterSection key={section.id} theme={resolved} />;
-              case "faq":
-                return <FaqSection key={section.id} theme={resolved} items={resolved.faqItems} />;
-              default:
-                return null;
-            }
-          })}
+          <Button loading={saving} onClick={onSave}>
+            Save
+          </Button>
+        </div>
+
+        <div className="rounded-md border border-border">
+          {resolved.sections
+            .filter((section) => section.visible)
+            .map((section) => {
+              switch (section.id) {
+                case "hero":
+                  return <HeroSection key={section.id} store={previewStore} theme={resolved} />;
+                case "featured_products":
+                  return <FeaturedProductsSection key={section.id} products={products} theme={resolved} />;
+                case "about":
+                  return <AboutSection key={section.id} store={previewStore} theme={resolved} />;
+                case "newsletter":
+                  return <NewsletterSection key={section.id} theme={resolved} />;
+                case "faq":
+                  return <FaqSection key={section.id} theme={resolved} items={resolved.faqItems} />;
+                default:
+                  return null;
+              }
+            })}
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

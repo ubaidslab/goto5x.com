@@ -102,6 +102,31 @@
   }
 }
 
+/* Dashboard personalization presets (Module 10, FR-28.4) - cosmetic accent
+   swaps only, applied via a data-attribute on .app-shell-surface so nothing
+   outside a seller's own dashboard is affected. "default" needs no rule -
+   it's exactly the @theme accent above. Plan-gating is not enforced (see
+   docs/database-schema.md's sellers.dashboard_theme note) - every preset is
+   available to every seller in v1.0. */
+.app-shell-surface[data-dashboard-theme="emerald"] {
+  --color-accent: #1f9254;
+  --color-accent-hover: #197a46;
+  --color-accent-active: #14613a;
+  --color-accent-subtle: #e8f6ee;
+}
+.app-shell-surface[data-dashboard-theme="amber"] {
+  --color-accent: #b5750a;
+  --color-accent-hover: #966209;
+  --color-accent-active: #7a5008;
+  --color-accent-subtle: #fdf1de;
+}
+.app-shell-surface[data-dashboard-theme="rose"] {
+  --color-accent: #c23b6b;
+  --color-accent-hover: #a52f59;
+  --color-accent-active: #872548;
+  --color-accent-subtle: #fbe9f0;
+}
+
 /* Motion - horizonx.so-class: confident, physics-leaning easing, never
    linear/robotic. Applied via the .transition-smooth helper below rather
    than Tailwind's default transition utilities, so the curve/duration

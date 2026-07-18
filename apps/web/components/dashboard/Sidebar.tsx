@@ -16,8 +16,17 @@ function Wordmark() {
   );
 }
 
-export function Sidebar({ storeId, storeName }: { storeId: string; storeName?: string }) {
+export function Sidebar({
+  storeId,
+  storeName,
+  showSuppliers = false,
+}: {
+  storeId: string;
+  storeName?: string;
+  showSuppliers?: boolean;
+}) {
   const pathname = usePathname();
+  const visibleItems = navItems.filter((item) => !item.conditional || (item.label === "Suppliers" && showSuppliers));
 
   return (
     <aside className="flex h-screen w-60 flex-shrink-0 flex-col border-r border-border bg-surface px-3 py-5">
@@ -26,7 +35,7 @@ export function Sidebar({ storeId, storeName }: { storeId: string; storeName?: s
       {storeName && <p className="mt-5 truncate px-2 text-xs font-medium uppercase tracking-wide text-ink-faint">{storeName}</p>}
 
       <nav className="mt-2 flex flex-1 flex-col gap-0.5">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const href = item.href(storeId);
           const active = pathname === href || (href !== `/stores/${storeId}` && pathname?.startsWith(href));
           return (

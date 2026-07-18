@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ImagesSection } from "@/components/dashboard/ImagesSection";
 import { ProductForm, ProductFormValues } from "@/components/dashboard/ProductForm";
 import { Variant, VariantsSection } from "@/components/dashboard/VariantsSection";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -17,6 +19,7 @@ interface ProductResponse {
   status: "draft" | "active" | "archived";
   seoTitle: string | null;
   seoDescription: string | null;
+  sourceType: "self" | "supplier";
   variants: Variant[];
 }
 
@@ -71,12 +74,20 @@ export default function EditProductPage({ params }: { params: { storeId: string;
           onSubmit={handleSave}
         />
 
-        <VariantsSection
-          storeId={params.storeId}
-          productId={params.productId}
-          variants={product.variants}
-          onChange={(variants) => setProduct({ ...product, variants })}
-        />
+        <ImagesSection storeId={params.storeId} productId={params.productId} />
+
+        {product.sourceType === "supplier" ? (
+          <Alert tone="info">
+            This product is sourced from a connected supplier. Price and stock are managed by them, not editable here.
+          </Alert>
+        ) : (
+          <VariantsSection
+            storeId={params.storeId}
+            productId={params.productId}
+            variants={product.variants}
+            onChange={(variants) => setProduct({ ...product, variants })}
+          />
+        )}
       </div>
     </div>
   );
