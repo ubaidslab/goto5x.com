@@ -197,6 +197,7 @@ from `admin_audit_logs`, which is scoped to platform-admin control-plane actions
 | risk_tier | enum(`auto_approve`,`manual_review`,`blocked`) nullable | **new, v0.16 (FR-30.5)** — the three-outcome decision derived from `risk_score` against Settings-Registry thresholds |
 | risk_assessed_at | timestamptz nullable | **new, v0.16 (FR-30.5)** | |
 | title_verification_method | enum(`manual`,`raast_1link`) default `'manual'` | **new, v0.16 (FR-30.4)** — which `TitleVerificationAdapter` implementation last evaluated this seller's payment-instrument titles; always `manual` in v1.0, the field exists so the future adapter swap needs no migration |
+| dashboard_theme | text default `'default'` | **new, v0.16, Module 10 rollout (FR-28.4) — implemented.** Cosmetic-only choice of dashboard theme/wallpaper preset; never the storefront theme (`store_theme_settings`, a separate system). **Real plan-gating is not enforced** — no `Seller`-to-`Plan` relation exists yet (Module 11 hasn't given sellers a real plan assignment, same gap noted on `settings.types.ts`'s `SettingsContext.planId`) — every seller currently sees the full preset set regardless of plan |
 | created_at, updated_at | timestamptz | |
 
 Index: `idx_sellers_cnic_hash (cnic_hash) UNIQUE`.
@@ -403,6 +404,8 @@ Index: `idx_variants_product_id (product_id)`.
 | url | text | **self-hosted MinIO** (S3-compatible) URL fronted by the Cloudflare CDN, not a Drive URL (FR-9.2) |
 | source | enum(`upload`,`google_drive_import`) | |
 | type | enum(`image`,`video`) | |
+| sort_order | integer default 0 | **new, v0.16 (Module 10 image management UI)** — display order within a product's image set |
+| is_primary | boolean default false | **new, v0.16 (Module 10 image management UI)** — at most one `true` per `product_id`, enforced at the application layer (set-primary clears any other row's flag in the same transaction), not a database constraint |
 | created_at | timestamptz | |
 
 Index: `idx_media_store_id (store_id)`, `idx_media_product_id (product_id)`.
