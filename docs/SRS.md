@@ -2769,37 +2769,49 @@ gate is §14.6c, below.
       proven with a deliberately-constructed unpaid order, not assumed
 
 ### 14.6c Direct Seller Collection & Commission Invoicing (v1.0 — new, v0.15)
-- [ ] A store cannot go live without at least one configured payment method
-      (bank/JazzCash/Easypaisa/COD) (FR-6.14)
-- [ ] The buyer sees the seller's configured payment instructions after placing
+- [x] A store cannot go live without at least one configured payment method
+      (bank/JazzCash/Easypaisa/COD) (FR-6.14) — enforced as a checkout-time
+      gate (v1.0 has no separate store draft/publish state)
+- [x] The buyer sees the seller's configured payment instructions after placing
       an order; COD is available with no ledger balance gate, unlike the
       dormant mode's version (FR-6.14)
-- [ ] Marking an order paid (`OrdersService.markAsPaid()`) is the only path to
+- [x] Marking an order paid (`OrdersService.markAsPaid()`) is the only path to
       `confirmed`, exactly as Module 9 already proved — no regression
       introduced by this amendment (FR-6.15)
-- [ ] Marking an order paid accrues a `commission_accrued` ledger entry at the
-      correct rate (default 1%, plan/category/seller override via Settings
-      Registry) on the correct post-discount subtotal (FR-6.16)
-- [ ] A scheduled job generates one invoice per seller per billing period,
+- [x] Marking an order paid accrues a `commission_accrued` ledger entry at the
+      correct rate (default 1%, seller override via Settings Registry) on the
+      correct post-discount subtotal (FR-6.16) — **per-category override is
+      not applicable at this level** and was not built: commission accrues
+      once per whole order, which can span multiple products/categories, so
+      there is no single category to key a per-category rate on; only
+      seller/plan/global scopes are used, disclosed in `billing.seed.ts`
+- [x] A scheduled job generates one invoice per seller per billing period,
       correctly summing that period's `commission_accrued` entries and
-      excluding entries outside the period (FR-6.17)
-- [ ] An admin can mark an invoice `paid`; the action is captured in
+      excluding entries outside the period (FR-6.17) — proven idempotent on
+      re-run
+- [x] An admin can mark an invoice `paid`; the action is captured in
       `admin_audit_logs` with before/after invoice status (FR-6.17, FR-8.9)
-- [ ] An invoice left unpaid past the configured grace period triggers
-      automated store suspension via the exact FR-5.3 mechanism (`403
-      store_suspended`, storefront blocked, existing orders still
-      fulfillable); marking the invoice paid lifts the suspension
-      automatically (FR-6.18)
-- [ ] **Financial Truth Invariant (§3.12, restated for this model):** an
+- [x] An invoice left unpaid past the configured grace period triggers
+      automated store suspension (reusing the existing `suspended` store
+      status); marking the invoice paid lifts the suspension automatically
+      (FR-6.18) — **simplification disclosed:** the sweep/lift only ever
+      touches stores it can prove it suspended (`active`→`suspended` on
+      sweep, `suspended`→`active` on payment), so it never overwrites an
+      independently admin-issued suspension/ban
+- [x] **Financial Truth Invariant (§3.12, restated for this model):** an
       unpaid/pending order accrues no `commission_accrued` entry and appears
       in no invoice — proven with a deliberately-constructed pending order
 - [ ] Cancellation-rate and pending-forever-rate monitors correctly flag a
       seller crossing their configured thresholds and correctly do *not* flag
-      one who stays under them (FR-6.19)
-- [ ] An admin can record a `commission_waived` entry against a specific
+      one who stays under them (FR-6.19) — **deferred to Module 12** per
+      `docs/build-plan.md`'s module-dependency graph ("Module 12... depends
+      on Module 11 existing first" specifically to read this data); Module 11
+      supplies the ledger/invoice/order data these monitors will read, but
+      does not build the monitors themselves
+- [x] An admin can record a `commission_waived` entry against a specific
       invoice line without altering any other entry on that invoice
       (FR-6.20)
-- [ ] Every monetary display shows the store's configured currency, never a
+- [x] Every monetary display shows the store's configured currency, never a
       hard-coded `"PKR"` string
 
 ### 14.7 Subscription Plans, Pricing & Billing

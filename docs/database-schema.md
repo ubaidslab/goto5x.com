@@ -708,6 +708,7 @@ no migration required for either model.
 | id | uuid PK | |
 | seller_id | uuid FK → sellers.id | |
 | order_id | uuid FK → orders.id, nullable | |
+| invoice_id | uuid FK → seller_invoices.id, nullable | **implemented, Module 11** — this column was referenced by this doc's own balance-computation formula below but missing from the table def; added here. Null means "accrued but not yet swept into a generated invoice" |
 | type | enum(`sale_credit`,`commission_debit`,`gateway_fee_debit`,`hold_release`,`reserve_hold`,`reserve_release`,`payout_debit`,`refund_adjustment`,`commission_accrued`,`commission_waived`) | the last two are new, v0.15, and the only types v1.0 code ever writes |
 | amount | numeric(12,2) | signed (+/-); a `commission_accrued` entry is positive (seller owes the platform), `commission_waived` is negative (reduces that receivable) |
 | currency | text | denormalized at entry-creation time |
@@ -725,7 +726,7 @@ only**; a v1.0 seller's **outstanding commission balance** is instead
 seller_id = ... AND invoice_id IS NULL` (i.e. not yet attached to a
 generated invoice) — see `seller_invoices` below.
 
-### `seller_invoices` (new, v0.15 — v1.0's commission-invoicing table, not yet built)
+### `seller_invoices` (new, v0.15 — v1.0's commission-invoicing table — implemented, Module 11)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -743,31 +744,38 @@ Index: `idx_seller_invoices_seller_status (seller_id, status)`. Index:
 `idx_seller_invoices_overdue_check (status, due_date)` — the grace-period
 scheduled job's primary query (FR-6.18).
 
-### `store_payment_instructions` (new, v0.15 — Direct Seller Collection, not yet built)
+### `store_payment_instructions` (new, v0.15 — Direct Seller Collection — implemented, Module 11)
 One row per store, auto-created with empty defaults the moment a store is
 created (same "never a missing-row state to handle" discipline as
-`StoreShippingSettings`/`StoreTaxSettings`, Module 7).
+`StoreShippingSettings`/`StoreTaxSettings`, Module 7). **Built with exactly
+the v0.15 field set** — the founder's explicit direction when this
+prerequisite fix was commissioned was "implement the missing
+store_payment_instructions from v0.15," with the v0.16 Trust & Safety
+additions below deliberately left for Module 12's own migration when it
+lands (FR-30.2/30.3's "checks run when Module 12 lands" framing), not
+built preemptively here.
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | store_id | uuid FK → stores.id, unique | |
 | bank_account_title, bank_account_number, bank_name | text nullable | shown to the buyer at order confirmation if configured (FR-6.14) |
-| jazzcash_number, jazzcash_account_title | text nullable | **account title added, v0.16 (FR-30.2)** — a wallet has an account-holder name too, needed for the name-consistency check |
-| easypaisa_number, easypaisa_account_title | text nullable | **account title added, v0.16 (FR-30.2)** |
-| bank_account_fingerprint, jazzcash_fingerprint, easypaisa_fingerprint | text unique nullable (each its own partial unique index, non-null only) | **new, v0.16 (FR-30.3)** — deterministic hash of the normalized account number, same pattern as `sellers.cnic_hash`; the unique index is what enforces "one payment account, one seller" platform-wide. The plaintext account number itself is not encrypted (not sensitive enough to warrant it, unlike a CNIC) but is hashed here purely to make the uniqueness constraint queryable |
-| name_declared_self_owned | boolean default false | **new, v0.16 (FR-30.2)** — the seller's explicit "this account is registered in my own legal name" checkbox; required `true` before the instrument saves |
-| name_consistency_status | enum(`match`,`flagged`,`reviewer_approved`) nullable | **new, v0.16 (FR-30.2)** — result of the string-similarity check against the seller's registered name; `flagged` routes into the same admin review-queue pattern as the Listing Moderation Engine (§5.27), never a hard block on its own |
+| jazzcash_number | text nullable | |
+| easypaisa_number | text nullable | |
 | cod_enabled | boolean default false | unconditionally permissible in v1.0 (no ledger-balance gate, unlike the dormant mode's version, §5.6a) |
 | updated_at | timestamptz | |
 
+**Not yet built — Module 12's own migration, per FR-30.2/FR-30.3:**
+`jazzcash_account_title`/`easypaisa_account_title`, the three fingerprint
+uniqueness columns, `name_declared_self_owned`, and `name_consistency_status`.
+Module 12 `ALTER TABLE`s this same table rather than replacing it.
+
 A store cannot go live (FR-6.14) unless at least one of
 `bank_account_number`/`jazzcash_number`/`easypaisa_number` is set or
-`cod_enabled` is true — enforced at the application layer, not a database
-constraint (the same store-readiness-gate pattern as Module 4's
-`StoreThemeSettings` requiring a theme before launch). **v0.16 (FR-30.3):**
-a `bank_account_number`/`jazzcash_number`/`easypaisa_number` already claimed
-(by fingerprint) by another seller is rejected outright at save time,
-before the store-readiness check ever runs.
+`cod_enabled` is true — enforced at the application layer (checkout-time
+gate, since v1.0 has no separate store draft/publish state — a store is
+`active` the instant it's created), not a database constraint (the same
+store-readiness-gate pattern as Module 4's `StoreThemeSettings` requiring a
+theme before launch).
 
 ### `seller_payout_accounts` (global, seller-scoped) — DORMANT in v1.0, see §5.6d
 | Column | Type | Notes |
