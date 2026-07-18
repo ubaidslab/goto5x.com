@@ -1,8 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
-import { maskCnic, normalizeAndValidateCnic } from "./cnic.util";
+import { InvalidCnicError, maskCnic, normalizeAndValidateCnic } from "./cnic.util";
 import { decryptIdentityValue, encryptIdentityValue, fingerprintValue } from "./identity-crypto.util";
 import { RiskScoreService } from "./risk-score.service";
 
@@ -28,9 +28,14 @@ export class SellerIdentityService {
   }
 
   async setCnic(sellerId: string, rawCnic: string): Promise<{ cnicMasked: string }> {
-    // normalizeAndValidateCnic throws InvalidCnicError (mapped to a 400 by
-    // the controller/global filter) before anything ever touches storage.
-    const normalized = normalizeAndValidateCnic(rawCnic);
+    let normalized: string;
+    try {
+      // Format/checksum-validated before anything ever touches storage (FR-30.1).
+      normalized = normalizeAndValidateCnic(rawCnic);
+    } catch (err) {
+      if (err instanceof InvalidCnicError) throw new BadRequestException(err.message);
+      throw err;
+    }
     const cnicEncrypted = encryptIdentityValue(normalized, this.encryptionKey);
     const cnicHash = fingerprintValue(normalized, this.hmacSecret);
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
+import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { EventsService } from "../events/events.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { similarityScore } from "./string-similarity.util";
@@ -13,13 +13,22 @@ export type ActivationOutcome = "auto_approved" | "pending_review" | "blocked";
  * currently-suspended seller forces `blocked` regardless of the weighted
  * total (a distinct, narrower signal than the general score - see this
  * method's inline comment).
+ *
+ * Uses PrismaAdminService (BYPASSRLS) throughout, not TenantPrismaService -
+ * this computation is a system-level trigger (signup, a scored input
+ * changing), not a request made inside any single seller's own session, so
+ * there is no `app.current_seller_id` to key RLS off of. Reading
+ * store-scoped tables (stores, store_payment_instructions) via the
+ * RLS-enforced runtime client here would silently return zero rows instead
+ * of throwing - caught by an e2e test asserting the resulting score, not
+ * assumed correct from the code alone.
  */
 @Injectable()
 export class RiskScoreService {
   private readonly logger = new Logger(RiskScoreService.name);
 
   constructor(
-    private readonly prisma: PrismaRuntimeService,
+    private readonly prisma: PrismaAdminService,
     private readonly settings: SettingsService,
     private readonly events: EventsService,
   ) {}

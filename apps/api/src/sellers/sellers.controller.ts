@@ -1,15 +1,20 @@
 import { Body, Controller, Get, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
-import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { SkipAgreementCheck } from "../common/decorators/skip-agreement-check.decorator";
 import { AuthenticatedRequest } from "../common/types";
+import { SellerAgreementGuard } from "../trust-safety/seller-agreement.guard";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 import { UpdateDashboardThemeDto } from "./dto/update-dashboard-theme.dto";
 import { SetCnicDto } from "./dto/set-cnic.dto";
 import { SellersService } from "./sellers.service";
 
+// SRS §5.29/FR-29.1 - SellerAgreementGuard subsumes JwtAuthGuard's own
+// verification (it extends AuthGuard("jwt") itself) and additionally
+// blocks a seller who hasn't re-accepted a newly-published agreement
+// version, except the two routes marked @SkipAgreementCheck() below.
 @Controller("sellers/me")
-@UseGuards(JwtAuthGuard)
+@UseGuards(SellerAgreementGuard)
 export class SellersController {
   constructor(
     private readonly sellers: SellersService,
@@ -35,8 +40,11 @@ export class SellersController {
   }
 
   // SRS §5.29/FR-29.1 - lets the dashboard show "current version" + whether
-  // this seller has accepted it, without needing admin access.
+  // this seller has accepted it, without needing admin access. Must stay
+  // reachable even when SellerAgreementGuard would otherwise block this
+  // seller - otherwise they could never see why, or get unstuck.
   @Get("agreement")
+  @SkipAgreementCheck()
   async getAgreementStatus(@CurrentSellerId() sellerId: string) {
     const [current, accepted] = await Promise.all([
       this.agreements.getCurrentVersion(),
@@ -46,6 +54,7 @@ export class SellersController {
   }
 
   @Post("agreement/accept")
+  @SkipAgreementCheck()
   acceptAgreement(@CurrentSellerId() sellerId: string, @Req() req: AuthenticatedRequest) {
     return this.agreements.accept(sellerId, req.ip ?? "unknown");
   }

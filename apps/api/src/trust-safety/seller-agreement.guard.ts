@@ -1,5 +1,7 @@
 import { ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Reflector } from "@nestjs/core";
+import { SKIP_AGREEMENT_CHECK_KEY } from "../common/decorators/skip-agreement-check.decorator";
 import { AuthenticatedRequest } from "../common/types";
 import { SellerAgreementService } from "./seller-agreement.service";
 
@@ -20,13 +22,22 @@ import { SellerAgreementService } from "./seller-agreement.service";
  */
 @Injectable()
 export class SellerAgreementGuard extends AuthGuard("jwt") {
-  constructor(private readonly agreements: SellerAgreementService) {
+  constructor(
+    private readonly agreements: SellerAgreementService,
+    private readonly reflector: Reflector,
+  ) {
     super();
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const parentAllowed = (await super.canActivate(context)) as boolean;
     if (!parentAllowed) return false;
+
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_AGREEMENT_CHECK_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (skip) return true;
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const sellerId = request.user?.sellerId;
