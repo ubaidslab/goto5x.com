@@ -17,6 +17,7 @@ import { HealthModule } from "./health/health.module";
 import { MediaModule } from "./media/media.module";
 import { ModerationModule } from "./moderation/moderation.module";
 import { OrdersModule } from "./orders/orders.module";
+import { PlansModule } from "./plans/plans.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SellersModule } from "./sellers/sellers.module";
 import { SettingsModule } from "./settings-registry/settings.module";
@@ -51,6 +52,7 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     SellersModule,
     BillingModule,
     TrustSafetyModule,
+    PlansModule,
     HealthModule,
   ],
   providers: [

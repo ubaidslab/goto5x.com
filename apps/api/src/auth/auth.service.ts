@@ -10,6 +10,7 @@ import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { RiskScoreService } from "../trust-safety/risk-score.service";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { JwtAccessPayload } from "../common/types";
 import { labelDevice } from "./device-label.util";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
@@ -53,6 +54,7 @@ export class AuthService {
     private readonly events: EventsService,
     private readonly sellerAgreement: SellerAgreementService,
     private readonly riskScore: RiskScoreService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async signup(dto: SignupDto, ip: string): Promise<{ userId: string }> {
@@ -120,6 +122,10 @@ export class AuthService {
       // later whenever a scored input changes (CNIC saved, a payment
       // instrument's name-consistency result).
       await this.riskScore.computeAtSignup(user.seller!.id, ip, dto.deviceFingerprint);
+      // SRS §5.7/FR-7.1/7.3 - every seller starts on the Free (individual,
+      // tier 0) plan; this is the real seller->plan assignment that never
+      // existed before Module 14 (see subscriptions.service.ts's own note).
+      await this.subscriptions.assignFreePlanAtSignup(user.seller!.id);
     }
 
     return { userId: user.id };

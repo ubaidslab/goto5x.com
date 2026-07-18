@@ -7,6 +7,7 @@ import { seedAccountSecuritySettings } from "../../src/auth/account-security.see
 import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
+import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
 import {
   seedModule1Settings,
   seedModule3Settings,
@@ -60,6 +61,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       media_assets, product_variants, products, categories,
       google_drive_connections,
       seller_agreement_versions,
+      platform_promo_code_redemptions, platform_promo_codes,
+      team_members, teams, subscriptions,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans
     RESTART IDENTITY CASCADE
   `);
@@ -76,6 +79,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedBillingSettings(prisma);
   await seedTrustSafetySettings(prisma);
   await seedAccountSecuritySettings(prisma);
+  await seedPlansSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded
@@ -86,6 +90,10 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   // test file so a version published mid-suite by one test never leaks
   // into another file's run.
   await seedSellerAgreementV1(prisma);
+  // Same reasoning again - AuthService.signup() assigns every new seller the
+  // Free (individual, tier 0) plan (FR-7.1/7.3); that row must exist before
+  // any test signs a seller up.
+  await seedPlansData(prisma);
 }
 
 /**

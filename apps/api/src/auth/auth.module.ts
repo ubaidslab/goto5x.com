@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AdminModule } from "../admin/admin.module";
+import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
@@ -15,7 +16,7 @@ import { SessionService } from "./session.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule, TrustSafetyModule],
+  imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule, TrustSafetyModule, PlansModule],
   controllers: [AuthController, AdminAuthController],
   providers: [
     AuthService,
