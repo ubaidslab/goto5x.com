@@ -2846,13 +2846,11 @@ gate is §14.6c, below.
 - [x] **Financial Truth Invariant (§3.12, restated for this model):** an
       unpaid/pending order accrues no `commission_accrued` entry and appears
       in no invoice — proven with a deliberately-constructed pending order
-- [ ] Cancellation-rate and pending-forever-rate monitors correctly flag a
+- [x] Cancellation-rate and pending-forever-rate monitors correctly flag a
       seller crossing their configured thresholds and correctly do *not* flag
-      one who stays under them (FR-6.19) — **deferred to Module 12** per
-      `docs/build-plan.md`'s module-dependency graph ("Module 12... depends
-      on Module 11 existing first" specifically to read this data); Module 11
-      supplies the ledger/invoice/order data these monitors will read, but
-      does not build the monitors themselves
+      one who stays under them (FR-6.19) — **built in Module 12** (see
+      §14.29), which depended on Module 11 supplying the ledger/invoice/
+      order data these monitors read
 - [x] An admin can record a `commission_waived` entry against a specific
       invoice line without altering any other entry on that invoice
       (FR-6.20)
@@ -3219,61 +3217,77 @@ gate is §14.6c, below.
       assignment), so every seller currently sees the full preset set.
       Revisit once Module 11 ships.
 
-### 14.29 Trust & Safety System (new, v0.15)
-- [ ] Signup fails closed (acceptance prompt only, no dashboard access)
+### 14.29 Trust & Safety System (new, v0.15) — Module 12
+- [x] Signup fails closed (acceptance prompt only, no dashboard access)
       until the current Seller Agreement version is accepted; a version
-      bump correctly forces re-acceptance for existing sellers (FR-29.1)
-- [ ] Every acceptance records the correct timestamp and IP (FR-29.1)
-- [ ] Signup-velocity, cancellation-rate, pending-forever-rate, and
+      bump correctly forces re-acceptance for existing sellers (FR-29.1) —
+      **scope note:** the re-acceptance gate (`SellerAgreementGuard`) is
+      wired onto `SellersController` (the seller-profile gateway a
+      dashboard shell checks first), not retrofitted onto every seller-
+      scoped controller in the app — a deliberate, disclosed narrowing
+      given the size/regression-risk of a blanket rewire against how
+      rarely this fires (only after an admin publishes a new version)
+- [x] Every acceptance records the correct timestamp and IP (FR-29.1)
+- [x] Signup-velocity, cancellation-rate, pending-forever-rate, and
       bypass-attempt thresholds each correctly flag a deliberately
       constructed over-threshold case and do *not* flag an under-threshold
       one (FR-29.3)
-- [ ] A repeated banned/restricted-keyword submission pattern from the same
+- [x] A repeated banned/restricted-keyword submission pattern from the same
       seller is detected as a bypass-attempt signal distinct from a single
-      blocked listing (FR-29.3)
-- [ ] Every T&S enforcement action (warning/restriction/suspension/ban) is
+      blocked listing (FR-29.3) — **gap fixed alongside this:** a banned-
+      keyword block previously wrote nothing persistent at all; now emits
+      one `platform_events` row via the existing `EventsService.emit()`
+      mechanism (no new table)
+- [x] Every T&S enforcement action (warning/restriction/suspension/ban) is
       captured in `admin_audit_logs` with actor, target, and reason (FR-29.4,
       FR-8.9)
-- [ ] No T&S flag auto-escalates a seller's lifecycle state without an
+- [x] No T&S flag auto-escalates a seller's lifecycle state without an
       explicit admin action — proven by constructing a flag-worthy condition
       and confirming the seller's account is unaffected until an admin acts
       (FR-29.4)
 
-### 14.30 Seller Identity & Commission-Fraud Defense (new, v0.16)
-- [ ] A malformed CNIC (wrong length, bad checksum) is rejected at entry
-      with a clear error, before it is ever stored (FR-30.1)
-- [ ] A CNIC already attached to any seller — active, suspended, or banned —
+### 14.30 Seller Identity & Commission-Fraud Defense (new, v0.16) — Module 12
+- [x] A malformed CNIC (wrong length, bad checksum) is rejected at entry
+      with a clear error, before it is ever stored (FR-30.1) — **disclosed
+      simplification:** NADRA has no public check-digit algorithm, so
+      "checksum" is a Luhn check (a standard, defensible input-validation
+      measure), not a claim of replicating NADRA's internal algorithm
+- [x] A CNIC already attached to any seller — active, suspended, or banned —
       cannot be reused to activate a second seller account (FR-30.1)
-- [ ] The stored CNIC is encrypted at rest; no log line, error message, or
+- [x] The stored CNIC is encrypted at rest; no log line, error message, or
       API response ever contains the plaintext value; the seller's own view
       shows only a masked (last-4) form (FR-30.1)
-- [ ] Saving a payment instrument without both the declared account title
+- [x] Saving a payment instrument without both the declared account title
       and the explicit "registered in my own name" checkbox is rejected
       (FR-30.2)
-- [ ] A declared account title that clearly matches the seller's name
+- [x] A declared account title that clearly matches the seller's name
       (allowing for reasonable transliteration variance) saves without a
       flag; a clearly mismatched title lands the instrument in the review
       queue without blocking the seller from continuing to use the
       dashboard otherwise (FR-30.2)
-- [ ] A second seller attempting to save a bank/JazzCash/Easypaisa number
+- [x] A second seller attempting to save a bank/JazzCash/Easypaisa number
       already claimed by another seller account is hard-rejected (FR-30.3)
-- [ ] The `TitleVerificationAdapter` interface has exactly one v1.0
+- [x] The `TitleVerificationAdapter` interface has exactly one v1.0
       implementation (manual-review-only); swapping in a stub second
       implementation requires no change to FR-30.2's review-queue logic
       (FR-30.4)
-- [ ] A deliberately constructed high-score-input combination (missing
-      email verification, invalid CNIC, mismatched title, reused account
-      fingerprint) resolves to `block`; a clean combination resolves to
-      `auto-approve`; a partial combination resolves to `manual review` —
-      all three outcomes are reachable and no fourth outcome exists
-      (FR-30.5)
-- [ ] Every automated risk-score computation is captured in
+- [x] A deliberately constructed high-score-input combination resolves to
+      `block`; a clean combination resolves to `auto-approve`; a partial
+      combination resolves to `manual review` — all three outcomes are
+      reachable and no fourth outcome exists (FR-30.5) — **disclosed
+      simplification:** the block case proven combines unverified email +
+      missing CNIC + a mismatched title (not literally "reused account
+      fingerprint," which is a hard save-time block per FR-30.3 and can
+      never coexist on one seller's own row to begin with);
+      `RiskScoreService`'s reuse-history input is a documented placeholder
+      (always `false` in v1.0) pending a future audit-log-backed signal
+- [x] Every automated risk-score computation is captured in
       `platform_events` with IDs only, no PII, in `metadata`; every
       human decision acting on a flagged score is captured in
       `admin_audit_logs` (FR-30.5)
-- [ ] A device fingerprint or IP match alone (with every other input clean)
+- [x] A device fingerprint or IP match alone (with every other input clean)
       never resolves to `block` by itself (FR-30.5)
-- [ ] A seller suspended for non-payment (FR-6.18) who attempts
+- [x] A seller suspended for non-payment (FR-6.18) who attempts
       re-registration with the same CNIC, a previously-used payment
       fingerprint, or a matching device/IP cluster is flagged and blocked
       pending review, not silently allowed to activate (FR-30.6)

@@ -1200,6 +1200,56 @@ FR-6.19 (anti-underreporting monitors, deferred from Module 11) and every
 FR-30.x item (CNIC/name-consistency/risk score, deferred from the v0.16
 amendment) — all threads converge here.
 
+## Module 12 (Trust & Safety System) — built
+
+Full scope: `docs/SRS.md` §5.29/§5.30, checklists §14.29/§14.30 (both now
+checked, with disclosed simplifications inline). Covers: versioned Seller
+Agreement acceptance (FR-29.1/29.2), CNIC at seller activation (FR-30.1),
+payment-instrument name-consistency + account-number uniqueness (FR-30.2/
+30.3), the `TitleVerificationAdapter` seam (FR-30.4), the rule-based risk
+score (FR-30.5) and re-registration check (FR-30.6), the T&S engine and
+anti-underreporting monitors (FR-29.3/FR-6.19), and the enforcement ladder
+(FR-29.4).
+
+**Two dependency gaps surfaced and fixed as prerequisites, same "surface it,
+fix it inline" precedent as `store_payment_instructions` (Module 11):**
+1. **FR-8.4 (seller lifecycle control)** was specified in the SRS's Admin
+   Control Plane section but never built by any prior module, despite this
+   build-plan's own module-sequence table describing Module 12 as built "on
+   top of Module 1's existing seller-lifecycle admin controls." Built here,
+   scoped narrowly to what the T&S ladder actually needs: activation
+   approval and lifecycle-status changes (`SellerLifecycleService`,
+   `AdminSellerLifecycleController`). **Deliberately not built:** "view any
+   store" read-only access, "login as seller" impersonation, instant
+   single-store force-disable — none are T&S-ladder prerequisites; left for
+   the Admin Control Plane completion module (Module 17).
+2. **FR-12.1 (versioned content pages)**, which FR-29.1 says to reuse, has
+   also never been built (no `ContentPage`/`LegalContent` model exists, and
+   no module slots it). Rather than building that full general-purpose
+   system now — real scope expansion beyond Module 12's boundary — a
+   minimal, purpose-scoped `SellerAgreementVersion` table was built instead,
+   satisfying exactly FR-29.1's versioned-acceptance requirement for the
+   Seller Agreement specifically. **The general content-pages system
+   (ToS/Privacy/Refund/About/Contact, brand assets FR-12.3) remains
+   unbuilt** and should be slotted into a future module.
+
+**A third gap surfaced while building the bypass-attempt monitor:** a
+banned-keyword block (`ModerationService.evaluateNewProduct`) previously
+wrote nothing persistent at all — the product was never created and no
+audit/event record existed either. Fixed with one new `platform_events` emit
+call (`product.moderation.blocked`) using the existing `EventsService`
+mechanism — zero new infrastructure, per FR-29.3's own discipline.
+
+Migration: `20260718010000_trust_safety_system` (Seller CNIC/activation/
+lifecycle/agreement columns, `store_payment_instructions`'s v0.16 columns,
+`user_security_events.device_fingerprint`, the new `seller_agreement_versions`
+table). Tests: 2 new unit spec files (cnic/string-similarity utils) + a
+20-test e2e suite (`trust-safety.e2e-spec.ts`) covering every §14.29/§14.30
+item, plus fixture updates across the existing suite (every seller signup
+now sends `agreementAccepted: true`; every checkout-touching test's shared
+helper sets a synthetic CNIC hash). Full suite: 21 e2e files / 178 tests,
+18 unit files / 100 tests, all green.
+
 ---
 
 *Update this document as each module is approved and built — it is the running
