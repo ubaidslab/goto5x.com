@@ -1134,6 +1134,41 @@ directly — before FR-30.2/30.3 can be implemented.
 
 No code was written for this amendment.
 
+## Prerequisite fix approved alongside Module 11 (SRS v0.15's `store_payment_instructions` gap)
+
+The founder confirmed the gap flagged above and directed it be fixed at the
+start of Module 11, before the invoicing engine itself, since Module 11's
+own checkout/order-confirmation flow depends on it. Scope is deliberately
+the **original v0.15 fields only** (`bank_account_title`, `bank_account_number`,
+`bank_name`, `jazzcash_number`, `easypaisa_number`, `cod_enabled`) — the
+v0.16 Trust & Safety additions (account-title fields per instrument, name-
+consistency status, fingerprint uniqueness columns) are Module 12's own
+`ALTER TABLE` when it lands, not built here, per FR-30.2/30.3's "checks run
+when Module 12 lands" framing. Covers: the Prisma model + migration + RLS,
+the seller-dashboard settings screen (Module 10's design system), the
+storefront checkout/order-confirmation surfacing, the buyer order-status
+page's payment-instructions display, and the confirmation email content —
+plus the FR-6.14 store-readiness gate (a store cannot go live without at
+least one payment method or COD enabled).
+
+## Amendment approved alongside Module 11 (SRS v0.17) — Teams & Community Sponsorship
+
+Full spec in `docs/SRS.md` §5.31/FR-7.11–7.16, schema in
+`docs/database-schema.md` (`teams`, `team_members`, `subscriptions.sponsored_by_team_id`).
+Slotted into **Module 14 (Subscription Plans, Pricing & Billing)** — Module
+14 has not started; this is documentation only, staged for that module's
+turn. Reuses the existing plan mechanism (FR-7.1–7.10) and Module 11's
+invoice machinery verbatim: a leader's group sponsorship invoice and their
+own commission invoice are two separate documents using the identical
+manual-verification/grace-period mechanism, and non-payment of either never
+crosses the team boundary (a member's own store, a teammate's store, and
+the leader's own store are each suspended only by their own non-payment).
+The leader's team dashboard is read-only analytics only, gated by a
+binding pre-acceptance consent screen (FR-7.12) — no store access, no
+editing, no customer PII, enforced the same way a supplier's session is
+already scoped to only its own linked stores. No code was written for this
+amendment.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

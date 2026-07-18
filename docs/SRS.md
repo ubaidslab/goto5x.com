@@ -1,7 +1,7 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.16 (Build-phase amendment)
-**Date:** 2026-07-17
+**Version:** 0.17 (Build-phase amendment)
+**Date:** 2026-07-18
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -72,7 +72,21 @@ and device/IP signals (FR-30.5); and a check tying re-registration attempts
 by a commission-suspended seller's identity cluster back into the
 enforcement ladder (FR-30.6). §14.30 added. No code was written for this
 amendment — Module 12 has not started; Module 10's UI rollout continues
-using the design system approved at its checkpoint.
+using the design system approved at its checkpoint. **v0.17 (approved
+alongside Module 10's completion, ahead of Module 11)** adds **Teams &
+Community Sponsorship** (§5.31/FR-7.11–7.16, slotted into Module 14): a
+seller on a qualifying plan tier ("leader") can invite other sellers and
+sponsor their subscriptions; a binding pre-acceptance consent screen
+(FR-7.12) discloses the leader's access is read-only analytics only — no
+store access, no editing, no customer PII; a member can leave at any time
+(FR-7.13, graceful next-cycle downgrade to Free, never account deletion or
+suspension); the leader's own commission invoice and the group sponsorship
+invoice are two separate documents (FR-7.15) using Module 11's invoicing
+mechanism verbatim, with suspension never crossing the team boundary.
+§14.31 added. This same revision also confirmed the `store_payment_instructions`
+gap flagged in v0.16's build-plan note is being fixed now, at the start of
+Module 11, per the founder's direction — see `docs/build-plan.md`. No code
+was written for the Teams amendment itself.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -2188,6 +2202,76 @@ keep operating.
   pending review** rather than silently allowed to activate a fresh store —
   closing the exact evasion path a purely email-based ban could never stop.
 
+### 5.31 Teams & Community Sponsorship (new, v0.17 — slotted into Module 14, Subscription Plans)
+A seller on a qualifying paid plan tier (a "leader" — the trainer/influencer
+case: someone who brings a cohort of other sellers onto the platform) can
+sponsor those sellers' subscriptions directly. This reuses the existing plan
+mechanism (FR-7.1–7.10) and Module 11's invoice machinery verbatim — it is
+a new relationship between existing sellers and existing plans/invoices,
+not a parallel billing system.
+
+- FR-7.11: **Team creation and invitation.** A seller on a qualifying plan
+  tier (founder-set plan data, same "which tier gates what" mechanism as
+  every other plan-gated feature, FR-7.1) can create a team and invite other
+  sellers by email, mirroring the existing invite-by-email pattern
+  (`StoreSupplierLink`'s `InviteSupplierDto`, §5.3) rather than inventing a
+  new invitation flow. A seller can belong to **at most one team as a
+  sponsored member at a time** — joining a second team first requires
+  leaving the current one (FR-7.13).
+- FR-7.12: **Binding consent model.** The invite-acceptance screen must
+  state, in plain language, exactly what the leader will and will not see
+  **before** acceptance is possible — read-only analytics only (a sales/
+  orders/growth summary view per FR-7.14), never store access, never
+  editing rights, never customer PII. An invitee who has not seen and
+  accepted this exact disclosure cannot become an active sponsored member.
+  This is a stricter, member-facing sibling of FR-29.1's versioned-
+  agreement acceptance discipline, not a new legal-content system.
+- FR-7.13: **Leave-team flow (member-initiated, always available).** A
+  sponsored member can leave their team at any time from their own
+  dashboard settings. Leaving ends sponsorship **gracefully**: the member's
+  plan downgrades to the Free Plan at the **current billing period's end**
+  (the same "next-cycle" rule FR-7.5 already uses for ordinary plan
+  changes, not immediate), and the member's account/store is **never**
+  deleted or suspended as a consequence of leaving — leaving is the
+  member's right, not a penalty condition.
+- FR-7.14: **Leader's team dashboard — read-only, and only that.** The
+  leader sees: a member list, each member's sponsorship status (active/
+  left), and a **read-only** per-member analytics summary (sales, order
+  count, growth trend — the same shape of summary Module 10's own
+  dashboard-home screen already computes for a seller's own store, FR-28.1,
+  reused as a read query against a teammate's store rather than a new
+  metric engine). The leader's session has **no** access to a member
+  store's products, orders, customers, or any write capability whatsoever
+  — enforced identically to how a supplier's session is scoped to only its
+  own linked stores (§6.5's existing permission-boundary discipline),
+  applied here to a leader/member relationship instead of a supplier/store
+  one. No leaderboards, chat, or messaging in v1.0 (documented future
+  upgrade, same "defer, don't build a parallel system" discipline as every
+  other Phase 2+ item in this SRS).
+- FR-7.15: **Invoicing (reuses Module 11 verbatim, no parallel mechanism).**
+  A leader receives one consolidated **monthly group invoice** (active
+  sponsored member count × that member's plan price) **alongside** — never
+  merged into — their own separate commission invoice (Module 11, FR-6.16
+  onward). Both invoices use the identical manual-admin-verification and
+  grace-period-suspension mechanism. **Suspension never crosses the team
+  boundary**: non-payment of the leader's own commission invoice suspends
+  only the leader's own store; non-payment of the group sponsorship invoice
+  suspends the *sponsorship* (members downgrade to Free per FR-7.13's
+  graceful-downgrade rule, exactly as if the leader had stopped sponsoring
+  voluntarily) but never a member's store outright, and never the leader's
+  own store either. A member's own separate commission invoice (on
+  whatever plan they're currently on, sponsored or Free) is entirely
+  independent of the leader's billing and can suspend only that member's
+  own store.
+- FR-7.16: **Standard/Pro plan tiers bundle developer perks.** The plan
+  editor (FR-8.2) expresses that qualifying paid tiers include coded-theme
+  mode access (the existing `theme.coded_mode_enabled` Settings Registry
+  key, FR-1.6, already plan-context-capable) as a bundled perk alongside
+  team-leader eligibility — both gates read the same seller's resolved
+  plan, no second gating mechanism. Tier names and exactly which tier
+  unlocks which perk remain founder-set plan data (FR-7.1), same as every
+  other plan-gated feature.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -3133,6 +3217,46 @@ gate is §14.6c, below.
       re-registration with the same CNIC, a previously-used payment
       fingerprint, or a matching device/IP cluster is flagged and blocked
       pending review, not silently allowed to activate (FR-30.6)
+
+### 14.31 Teams & Community Sponsorship (new, v0.17)
+- [ ] The invite-acceptance screen's content is verified against FR-7.12's
+      exact disclosure requirement before build sign-off: it must state,
+      before acceptance is possible, that the leader will see read-only
+      analytics only, never store access, never editing, never customer PII
+      (FR-7.12)
+- [ ] A `team_members` row cannot reach `status = 'active'` while
+      `consent_accepted_at` is null — attempted directly against the API,
+      not just blocked by the UI (FR-7.12)
+- [ ] **Leave-team flow:** a member leaves from their own settings at any
+      time; the sponsored plan downgrades to Free at the current period's
+      end, never immediately and never as an account/store suspension or
+      deletion (FR-7.13)
+- [ ] A seller already actively sponsored by one team cannot be added as an
+      active member of a second team without leaving the first — the
+      partial unique index on `team_members(seller_id) WHERE status =
+      'active'` is exercised directly, not just relied on as a comment
+      (FR-7.11)
+- [ ] **Negative tests — leader sees analytics only:** a leader's session,
+      given a member's storeId, is rejected (same shape of denial as a
+      cross-tenant access attempt, §14.2) when it attempts to read that
+      store's products, orders, or customers, or attempts any write
+      (create/update/delete) against that store — every one of these must
+      fail, not just the ones a reviewer happened to think of (FR-7.14)
+- [ ] The leader's team dashboard's per-member analytics summary matches
+      the same numbers that member's own dashboard-home screen shows for
+      itself, proving it's a read reuse of the same computation, not a
+      second, potentially-inconsistent metric engine (FR-7.14)
+- [ ] **Group invoice math:** a team with N active sponsored members
+      produces a group invoice line-item total of exactly
+      `N × member's plan price`; adding or removing an active member
+      before the billing period closes changes N correctly; the leader's
+      own separate commission invoice amount is completely unaffected by
+      team size (FR-7.15)
+- [ ] Non-payment of the group sponsorship invoice past the grace period
+      downgrades sponsored members to Free (graceful, per FR-7.13) but
+      suspends neither a member's store nor the leader's own store; non-
+      payment of the leader's own commission invoice suspends only the
+      leader's own store (FR-7.15)
 
 ---
 

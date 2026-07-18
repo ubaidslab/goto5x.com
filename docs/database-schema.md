@@ -834,8 +834,33 @@ the supplier's assigned plan, not a new column here.
 | status | enum(`active`,`past_due`,`cancelled`) | `active` with no payment history is valid for the Free Plan (FR-7.3) |
 | current_period_end | timestamptz nullable | null for the Free Plan (no billing cycle) |
 | pending_plan_id | uuid FK → plans.id, nullable | set when a seller requests a change; applied at `current_period_end` per the simple next-cycle rule (FR-7.5) — no proration in v1.0 |
+| sponsored_by_team_id | uuid FK → teams.id, nullable | **new, v0.17 (FR-7.11–7.15)** — set while this seller is an actively-sponsored team member; null for an unsponsored subscription (including a member who has left, per FR-7.13's graceful downgrade) |
 
 Index: `idx_subscriptions_seller (seller_id)`.
+
+### `teams` (global — new, v0.17, FR-7.11)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| leader_seller_id | uuid FK → sellers.id | the sponsoring seller — must hold a plan whose tier is founder-configured as team-leader-eligible at the time of creation (checked at creation only, v1.0 — losing eligibility later doesn't retroactively dissolve an existing team) |
+| name | text | leader-chosen, display-only |
+| created_at | timestamptz | |
+
+Index: `idx_teams_leader (leader_seller_id)`.
+
+### `team_members` (global — new, v0.17, FR-7.11/FR-7.12/FR-7.13)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| team_id | uuid FK → teams.id | |
+| seller_id | uuid FK → sellers.id | the invited/sponsored seller |
+| status | enum(`pending_invite`,`active`,`left`,`declined`) | same invite-then-confirm shape as `store_supplier_links.status`, FR-3.1 |
+| consent_accepted_at | timestamptz nullable | **binding, FR-7.12** — set only when the invitee has viewed and explicitly accepted the read-only-analytics-only disclosure; `status` cannot become `active` while this is null |
+| invited_at | timestamptz | |
+| joined_at | timestamptz nullable | set when `status` becomes `active` |
+| left_at | timestamptz nullable | set when `status` becomes `left` (member-initiated only, FR-7.13 — never admin- or leader-initiated in v1.0) |
+
+Indexes: `idx_team_members_team (team_id)`, `idx_team_members_seller (seller_id)`. **Partial unique index** `idx_team_members_one_active_sponsorship ON team_members (seller_id) WHERE status = 'active'` — enforces FR-7.11's "at most one team as a sponsored member at a time" at the database level, not just the application layer.
 
 ### `platform_promo_codes` (global — new, FR-7.9)
 | Column | Type | Notes |
