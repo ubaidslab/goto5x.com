@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.17 (Build-phase amendment)
+**Version:** 0.18 (Build-phase amendment)
 **Date:** 2026-07-18
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -86,7 +86,28 @@ mechanism verbatim, with suspension never crossing the team boundary.
 §14.31 added. This same revision also confirmed the `store_payment_instructions`
 gap flagged in v0.16's build-plan note is being fixed now, at the start of
 Module 11, per the founder's direction — see `docs/build-plan.md`. No code
-was written for the Teams amendment itself.
+was written for the Teams amendment itself. **v0.18 (approved after Module
+11, ahead of Module 12)** adds two items: **Domain Upsell Referral**
+(§5.11 FR-11.3) — a "get a domain" affiliate link block on the custom-domain
+dashboard screen, with the partner URL/name and an enabled flag all as
+Settings Registry entries so the founder can swap or disable the affiliate
+partner without a deploy; §14.11 gained one checklist line. Built now,
+alongside a pre-existing gap this surfaced: Module 3 (Custom Domain & TLS)
+had only ever shipped its backend (`DomainsController`/`DomainsService`) —
+no seller-facing dashboard screen existed to host the new referral block, so
+one was built to the exact, already-approved shape of FR-11.2 (attach/list/
+verify/remove), not a scope expansion. Also: the **Template Package Spec**
+(architecture decision, `docs/architecture.md`) — every storefront template
+is pinned as a self-contained frontend package (markup/styles/scripts,
+preview assets, a manifest declaring name/version/settings-schema) consuming
+the same storefront data API and theme-settings backend as every other
+template, with a hard isolation rule (one template's code can never affect
+another template or the dashboard). This governs the Template Store hook
+(§5.24a) and every future template from Module 15 onward; the three
+built-in v1.0 themes are unaffected and not rebuilt. No code changes from
+the spec itself. Then proceeds to **Module 12 (Trust & Safety System)**,
+which now also owns FR-6.19 (anti-underreporting monitors) and §5.30's
+FR-30.x (CNIC/name-consistency/risk score) per their existing deferrals.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -1507,6 +1528,17 @@ requires the founder to ask an engineer for a deploy.
 - FR-11.1: Every store gets a free subdomain (`storename.goto5x.com`) by default.
 - FR-11.2: Seller can attach an owned custom domain via CNAME/A-record
   instructions with automated verification and TLS issuance.
+- FR-11.3: **Domain upsell referral (link-out only, new v0.18).** The
+  custom-domain dashboard screen additionally renders a "Get a domain"
+  affiliate block pointing to a domain-registrar partner. The link URL, the
+  partner's display name, and an enabled flag are Settings Registry entries
+  (`domains.referral_enabled`, `domains.referral_url`,
+  `domains.referral_partner_name`), so the founder can change or disable the
+  affiliate partner without a deploy. This is presentation/link-out only,
+  the same spirit as FR-24.2's premium-templates showcase — goto5x.com does
+  not sell, resell, process, or fulfill any domain purchase; clicking
+  through hands the seller off to the partner's own site entirely. The
+  block renders nothing at all when the enabled flag is off.
 
 ### 5.12 Content Pages (legal, about, contact)
 - FR-12.1: Platform content pages — Terms of Service, Privacy Policy, Refund
@@ -1770,6 +1802,19 @@ follow.
   Store's own billing, refund policy, or catalog management — those are that
   product's concern; goto5x.com only honors grant/revoke signals it receives
   through this API.
+- **Template Package Spec (architecture decision, new v0.18 — pinned now,
+  no code):** every storefront template — the three built-in v1.0 themes and
+  every future Template Store import — is a self-contained frontend package
+  (its own markup/styles/scripts, preview assets, and a manifest declaring
+  name/version/settings-schema), consuming the same storefront data API and
+  theme-settings backend as every other template; **the backend never
+  changes per template.** An imported template is validated against the
+  manifest/spec at install time (this API, FR-24.3), and a hard isolation
+  rule applies platform-wide: one template's code can never affect another
+  template or the dashboard. Full manifest field list and the isolation
+  mechanism are documented in `docs/architecture.md` (Template Store Hook
+  section) — this pins the spec for Module 15's build, the three built-in
+  themes are **not** rebuilt now.
 
 #### 5.24b Social Media SaaS Hook
 - FR-24.8: The seller dashboard includes a **"Marketing" section** — a polished
@@ -2911,6 +2956,9 @@ gate is §14.6c, below.
       `domain.attached` row in `platform_events`; a successful verification
       produces a `domain.verified` row — both with no PII in `metadata`
       (§3.11/FR-26.5)
+- [x] The domain-upsell affiliate block renders the current Settings
+      Registry URL/partner name and is completely absent from the page when
+      the enabled flag is off (FR-11.3, new v0.18)
 
 ### 14.12 Security & Compliance (cross-cutting, applies to every module above)
 - [ ] The full automated cross-tenant test suite passes as a release gate (§3.2)

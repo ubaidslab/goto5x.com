@@ -1169,6 +1169,37 @@ editing, no customer PII, enforced the same way a supplier's session is
 already scoped to only its own linked stores. No code was written for this
 amendment.
 
+## Amendments approved alongside Module 12 kickoff (SRS v0.18) — Domain Upsell Referral + Template Package Spec
+
+1. **Domain Upsell Referral** (`docs/SRS.md` §5.11 FR-11.3, §14.11) — a
+   "get a domain" affiliate link block on the custom-domain dashboard
+   screen; URL, partner name, and enabled flag are Settings Registry
+   entries. **Built now** (not deferred) — small addition to already-shipped
+   Module 3, gated by its own §14.11 checklist line.
+   - **Gap surfaced and fixed alongside it:** Module 3 (Custom Domain & TLS)
+     shipped its backend only (`DomainsController`/`DomainsService`) —
+     `apps/web` never got a seller-facing Domains screen, so Module 10's
+     later dashboard rollout never covered it either. Built the minimal
+     screen to FR-11.2's already-approved shape (attach/list/verify/remove)
+     to host the new referral block — not new scope, closing a build gap,
+     same "surface it, fix it inline" precedent as the
+     `store_payment_instructions` gap fixed alongside Module 11.
+2. **Template Package Spec** (`docs/architecture.md`, Template Store Hook
+   section; pointer in `docs/SRS.md` §5.24a) — architecture decision, pinned
+   now: every template is a self-contained frontend package (markup/styles/
+   scripts, preview assets, a manifest declaring name/version/settings-
+   schema), validated at install against the Template Install/License API
+   (FR-24.3), with a structural isolation rule (one template's code can
+   never affect another template or the dashboard). Governs Module 15's
+   Template Store hook and every future template; the three built-in v1.0
+   themes are unaffected and not rebuilt. **Documentation only, no code.**
+
+Then proceeds to **Module 12 (Trust & Safety System)** — full scope in
+`docs/SRS.md` §5.29/§5.30, checklists §14.29/§14.30. Module 12 now also owns
+FR-6.19 (anti-underreporting monitors, deferred from Module 11) and every
+FR-30.x item (CNIC/name-consistency/risk score, deferred from the v0.16
+amendment) — all threads converge here.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

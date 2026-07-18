@@ -255,6 +255,49 @@ handoff/API call (logged to `AdminAuditLog` as a system actor, no new table), an
 check a seller's plan-based discount eligibility — goto5x.com never knows or
 applies that SaaS's own discount terms, only answers the eligibility question.
 
+**Template Package Spec (architecture decision, new v0.18 — pinned now, no
+code, no rebuild of existing themes):** every storefront template, from the
+three built-in v1.0 themes onward through everything the Template Store SaaS
+will ever sell, is a **self-contained frontend package** and nothing more —
+the backend (`ThemeEngineM`'s storefront data API and theme-settings tables)
+never changes per template, and never will. A template package is:
+
+- **Its own markup/styles/scripts** — the actual rendering code, isolated
+  from every other template's code and from the seller/admin dashboard's own
+  code. A template can only read the storefront data API and its own
+  declared theme settings; it has no code path into another template's
+  files, the dashboard's React tree, or any other seller's data. This is the
+  same tenant-isolation discipline the rest of this SRS applies to data
+  (§3.2) applied instead to **template code** — one bad or malicious template
+  can degrade only its own storefront, never anyone else's.
+- **Preview assets** — the screenshot(s)/thumbnail(s) the theme-selection UI
+  (FR-1.1's built-in catalog, FR-24.2's premium showcase) renders in the
+  picker, so a seller can evaluate a template without installing it first.
+- **A manifest** declaring, at minimum:
+  - `name` / `version` — identifies the package and its revision, the unit
+    the Template Install/License API (FR-24.3) grants an entitlement against.
+  - `settingsSchema` — the exact set of theme-settings keys this template
+    reads (colors, fonts, layout toggles, etc.) and their types/defaults,
+    validated against the existing `StoreThemeSettings` mechanism (Module 4)
+    at install time — a template cannot invent settings the backend doesn't
+    already support, and the backend doesn't need to know about any specific
+    template's settings ahead of time.
+  - Compatibility metadata (minimum platform/API version) so an incompatible
+    package fails validation at install rather than at storefront render
+    time.
+
+**Validation and isolation are enforced at install, not at runtime trust:**
+when the Template Install/License API (FR-24.3) registers a new template into
+the `themes` catalog, the incoming package is validated against this manifest
+spec — malformed or incompatible packages are rejected before they ever reach
+a seller's storefront. Once installed, the isolation rule is structural, not a
+policy note: a template's code is loaded and rendered in its own scope against
+the shared storefront data API and its own declared settings only, exactly
+the same integration surface every other template uses — so **the platform
+never special-cases one template's implementation against another's**, and a
+template misbehaving can never reach outside its own render boundary into the
+dashboard or a different template.
+
 **Staging (SRS §3.7):** not pictured above to keep the diagram readable, but staging
 is a second instance of this entire box (`App`, `Worker`, `Redis`, `Postgres`,
 `MinIO` — a separate Docker Compose project with its own containers and volumes)
