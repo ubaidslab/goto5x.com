@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { randomUUID } from "crypto";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { mediaTypeFromMimetype, sanitizeFilename } from "./media.util";
 import { ObjectStorageService } from "./object-storage.service";
 
@@ -25,6 +27,8 @@ export class MediaAssetsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly objectStorage: ObjectStorageService,
     private readonly events: EventsService,
+    private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async uploadDirect(sellerId: string, storeId: string, file: UploadableFile, productId?: string) {
@@ -36,7 +40,18 @@ export class MediaAssetsService {
         const product = await tx.product.findUnique({ where: { id: productId } });
         if (!product || product.storeId !== storeId) throw new NotFoundException("Product not found.");
       }
-      return null; // ownership validated; the actual upload happens outside the DB transaction below
+
+      // SRS §5.23/FR-23.1 - storage quota metered per store, enforced at
+      // upload time, not a soft warning.
+      const context = await this.subscriptions.getPlanContext(sellerId);
+      const quotaBytes = await this.settings.resolve<number>("catalog.storage_quota_bytes", context);
+      const usage = await tx.mediaAsset.aggregate({ where: { storeId }, _sum: { sizeBytes: true } });
+      const usedBytes = usage._sum.sizeBytes ?? 0;
+      if (usedBytes + file.buffer.length > quotaBytes) {
+        throw new BadRequestException("This store's storage quota has been reached.");
+      }
+
+      return null; // ownership/quota validated; the actual upload happens outside the DB transaction below
     }).then(async () => {
       const key = `stores/${storeId}/media/${randomUUID()}-${sanitizeFilename(file.originalname)}`;
       return this.objectStorage.putObject(key, file.buffer, file.mimetype);
@@ -44,7 +59,7 @@ export class MediaAssetsService {
 
     const asset = await this.tenantPrisma.run(sellerId, (tx) =>
       tx.mediaAsset.create({
-        data: { storeId, productId: productId ?? null, url, source: "upload", type },
+        data: { storeId, productId: productId ?? null, url, source: "upload", type, sizeBytes: file.buffer.length },
       }),
     );
     // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).

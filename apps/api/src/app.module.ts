@@ -13,6 +13,7 @@ import { validateEnv } from "./config/env.validation";
 import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
+import { GuardrailsModule } from "./guardrails/guardrails.module";
 import { HealthModule } from "./health/health.module";
 import { MediaModule } from "./media/media.module";
 import { ModerationModule } from "./moderation/moderation.module";
@@ -55,6 +56,7 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     TrustSafetyModule,
     PlansModule,
     TeamsModule,
+    GuardrailsModule,
     HealthModule,
   ],
   providers: [

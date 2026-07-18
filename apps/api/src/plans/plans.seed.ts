@@ -75,6 +75,19 @@ export async function seedPlansSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "lifecycle.dormant_sweep_check_hours" },
+    create: {
+      key: "lifecycle.dormant_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 24,
+      validation: { min: 1, max: 168 },
+      description: "How often the dormant-store lifecycle sweep runs (FR-23.2) - idempotent, safe to run more often than the thresholds themselves require.",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "finance.monthly_infra_cost" },
     create: {
       key: "finance.monthly_infra_cost",

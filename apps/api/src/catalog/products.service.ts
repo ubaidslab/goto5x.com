@@ -1,7 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { ModerationService } from "../moderation/moderation.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
@@ -19,6 +21,8 @@ export class ProductsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly events: EventsService,
     private readonly moderation: ModerationService,
+    private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async create(sellerId: string, storeId: string, dto: CreateProductDto) {
@@ -26,6 +30,15 @@ export class ProductsService {
     const product = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
+
+      // SRS §5.23/FR-23.1 - enforced at creation time, not a soft warning.
+      const context = await this.subscriptions.getPlanContext(sellerId);
+      const productLimit = await this.settings.resolve<number>("catalog.product_limit", context);
+      const existingCount = await tx.product.count({ where: { storeId } });
+      if (existingCount >= productLimit) {
+        throw new BadRequestException(`Your plan's product limit (${productLimit}) has been reached.`);
+      }
+
       if (dto.categoryId) {
         const category = await tx.category.findUnique({ where: { id: dto.categoryId } });
         if (!category) throw new NotFoundException("Category not found.");

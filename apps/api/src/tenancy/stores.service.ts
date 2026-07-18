@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, InternalServerError
 import * as bcrypt from "bcryptjs";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
+import { FreeStoreLimitService } from "../guardrails/free-store-limit.service";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
 
@@ -27,9 +28,14 @@ export class StoresService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly events: EventsService,
+    private readonly freeStoreLimit: FreeStoreLimitService,
   ) {}
 
   async create(sellerId: string, dto: CreateStoreDto) {
+    // SRS §5.23/FR-23.5 - checked before opening the tenant transaction
+    // below (it deliberately reads cross-tenant, via PrismaAdminService).
+    await this.freeStoreLimit.enforce(sellerId);
+
     const store = await this.tenantPrisma.run(sellerId, async (tx) => {
       const existingSlug = await tx.store.findUnique({ where: { slug: dto.slug } });
       if (existingSlug) {

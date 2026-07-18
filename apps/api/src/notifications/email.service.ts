@@ -75,4 +75,13 @@ export class EmailService {
       `Your order status has been updated to "${statusLabel}". Track it here: ${statusUrl}`,
     );
   }
+
+  /** SRS §5.23/FR-23.2 - the dormant-store lifecycle job's warning stage. */
+  async sendDormantStoreWarning(to: string, storeName: string): Promise<void> {
+    await this.send(
+      to,
+      `Your store "${storeName}" has been inactive`,
+      `We haven't seen any activity on "${storeName}" in a while. If it stays inactive, it will be suspended and eventually archived. Log in and make any change to keep it active.`,
+    );
+  }
 }

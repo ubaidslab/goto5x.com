@@ -8,6 +8,8 @@ import { INVOICE_GENERATION_QUEUE_NAME } from "../billing/invoice-generation.que
 import { INVOICE_OVERDUE_QUEUE_NAME } from "../billing/invoice-overdue.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
 import { DOMAIN_VERIFICATION_QUEUE_NAME } from "../domains/domain-verification.queue";
+import { DormantStoreService } from "../guardrails/dormant-store.service";
+import { DORMANT_STORE_QUEUE_NAME } from "../guardrails/dormant-store.queue";
 import { CartService } from "../orders/cart.service";
 import { CART_ABANDONMENT_QUEUE_NAME } from "../orders/cart-abandonment.queue";
 import { SupplierSyncService } from "../suppliers/supplier-sync.service";
@@ -27,6 +29,7 @@ async function main() {
   const supplierSync = appContext.get(SupplierSyncService);
   const cart = appContext.get(CartService);
   const invoices = appContext.get(InvoicesService);
+  const dormantStores = appContext.get(DormantStoreService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -106,9 +109,21 @@ async function main() {
     console.error(`invoice-overdue-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 14 (FR-23.2) - dormant-store lifecycle sweep.
+  const dormantStoreWorker = new Worker(
+    DORMANT_STORE_QUEUE_NAME,
+    async () => dormantStores.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  dormantStoreWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`dormant-store-sweep job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; invoice-generation/invoice-overdue-sweep - Module 11).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; invoice-generation/invoice-overdue-sweep - Module 11; dormant-store-sweep - Module 14).",
   );
 
   const shutdown = async () => {
@@ -117,6 +132,7 @@ async function main() {
     await cartAbandonmentWorker.close();
     await invoiceGenerationWorker.close();
     await invoiceOverdueWorker.close();
+    await dormantStoreWorker.close();
     await appContext.close();
     process.exit(0);
   };
