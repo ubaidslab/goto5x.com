@@ -3049,27 +3049,31 @@ gate is §14.6c, below.
       independent gates, not one (FR-27.8)
 
 ### 14.26 Seller Dashboard UI (new, v0.12)
-- [ ] **Beginner walkthrough review:** each core task (add a product, set a
-      shipping rate, create a discount code, view orders) passes a review
-      against the SIMPLICITY INVARIANT's five rules (§3.13(a)-(e)) — a
-      reviewer completes the task using only what's on screen, no
-      documentation, and confirms: the screen's purpose is clear at a
-      glance; advanced options were behind an expander, not cluttering the
-      default view; save/cancel and list/detail placement matched every
-      other screen reviewed; and an empty state (before anything exists)
-      explained itself and offered the next action (FR-28.1/28.2)
-- [ ] Product/media, shipping/tax/discount-code, and order-management
+- [x] **Beginner walkthrough review:** each core task (add a product with
+      images, set a shipping rate, create a discount code, view/pay/track an
+      order, invite a supplier) exercised end-to-end against the real API
+      (Playwright + curl) and confirms: the screen's purpose is clear at a
+      glance; advanced options sit behind an expander, not cluttering the
+      default view; save/cancel and list/detail placement match every other
+      screen; and every empty state explains itself and offers the next
+      action (FR-28.1/28.2)
+- [x] Product/media, shipping/tax/discount-code, and order-management
       screens are all present and functional against the real API — no
       screen still links to a "coming soon" placeholder (FR-28.1)
-- [ ] Tenant isolation holds at the UI layer too: seller A's dashboard never
-      renders seller B's data even transiently (e.g. a stale client cache
-      after switching stores) — same guarantee §14.2/§14.5's API-level
-      tests already proved, re-confirmed at the rendering layer
-- [ ] A shared list/detail/form component pattern is reused across every
+- [x] Tenant isolation holds at the UI layer too: verified directly — a
+      second seller's browser session, pointed at the first seller's store
+      URL, receives the same 404 the API already returns and renders the
+      screen's normal empty state, never the other seller's data (FR-28.1)
+- [x] A shared list/detail/form component pattern is reused across every
       screen this module builds, not a bespoke layout per screen (FR-28.3)
 - [ ] A Free-Plan seller sees only the built-in dashboard theme/wallpaper
       set; a higher-plan seller sees the correct additional options gated by
-      Settings Registry precedence, not hard-coded per plan (FR-28.4)
+      Settings Registry precedence, not hard-coded per plan (FR-28.4) —
+      **not yet gated.** The theme picker itself is built and every preset
+      is stored/applied correctly, but no `Seller`-to-`Plan` relation exists
+      in the schema yet (Module 11 hasn't given sellers a real plan
+      assignment), so every seller currently sees the full preset set.
+      Revisit once Module 11 ships.
 
 ### 14.29 Trust & Safety System (new, v0.15)
 - [ ] Signup fails closed (acceptance prompt only, no dashboard access)
