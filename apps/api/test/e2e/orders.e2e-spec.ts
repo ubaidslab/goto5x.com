@@ -53,6 +53,13 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     // already established for its own out-of-focus prerequisites.
     const user = await superuser.user.findUniqueOrThrow({ where: { email } });
     await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
+    // Module 11 prerequisite fix (FR-6.14) - checkout now requires at least
+    // one configured payment method; not this file's focus, so enable COD
+    // directly rather than every test wiring its own payment-instructions call.
+    await superuser.storePaymentInstructions.update({
+      where: { storeId: store.body.id },
+      data: { codEnabled: true },
+    });
     return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
   }
 

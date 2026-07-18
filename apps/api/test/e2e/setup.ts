@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
+import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import {
@@ -50,8 +51,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       admin_audit_logs, platform_events, settings_values, settings_definitions,
       domains, store_theme_settings, themes,
       collection_products, collections, store_navigation_menus,
-      store_shipping_settings, store_tax_settings, discount_codes,
+      store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
       listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
+      ledger_entries, seller_invoices,
       payments, tracking_updates, order_timeline_events, order_notes, order_items, orders, carts,
       media_assets, product_variants, products, categories,
       google_drive_connections,
@@ -68,6 +70,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedModerationSettings(prisma);
   await seedSupplierSettings(prisma);
   await seedOrdersSettings(prisma);
+  await seedBillingSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded

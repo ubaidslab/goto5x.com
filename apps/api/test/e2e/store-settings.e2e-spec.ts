@@ -302,4 +302,102 @@ describe("Shipping, Tax & Discounts (e2e) - SRS FR-2.10/FR-2.11/FR-19.3, §14.2"
       await runtime.$disconnect();
     });
   });
+
+  describe("Payment instructions (FR-6.14, Module 11 prerequisite fix)", () => {
+    it("is auto-created with v1.0 defaults the moment a store is created, and can be updated", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("pay-defaults@example.com", "pay-defaults-store");
+
+      const get = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/payment-instructions`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(get.status).toBe(200);
+      expect(get.body.bankAccountNumber).toBeNull();
+      expect(get.body.jazzcashNumber).toBeNull();
+      expect(get.body.easypaisaNumber).toBeNull();
+      expect(get.body.codEnabled).toBe(false);
+
+      const update = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/payment-instructions`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          bankAccountTitle: "Checkpoint Store",
+          bankAccountNumber: "PK00BANK0000000000000000",
+          bankName: "Test Bank",
+          jazzcashNumber: "03001234567",
+          codEnabled: true,
+        });
+      expect(update.status).toBe(200);
+      expect(update.body.bankAccountNumber).toBe("PK00BANK0000000000000000");
+      expect(update.body.jazzcashNumber).toBe("03001234567");
+      expect(update.body.codEnabled).toBe(true);
+    });
+
+    it("seller A cannot read or update seller B's payment instructions via the API (tenant isolation)", async () => {
+      const a = await signupLoginAndCreateStore("pay-tenant-a@example.com", "pay-tenant-a-store");
+      const b = await signupLoginAndCreateStore("pay-tenant-b@example.com", "pay-tenant-b-store");
+
+      const crossRead = await request(app.getHttpServer())
+        .get(`/stores/${a.storeId}/payment-instructions`)
+        .set("Authorization", `Bearer ${b.token}`);
+      expect(crossRead.status).toBe(404);
+
+      const crossUpdate = await request(app.getHttpServer())
+        .patch(`/stores/${a.storeId}/payment-instructions`)
+        .set("Authorization", `Bearer ${b.token}`)
+        .send({ codEnabled: true });
+      expect(crossUpdate.status).toBe(404);
+    });
+
+    it("checkout is rejected until at least one payment method is configured (FR-6.14 store-readiness gate)", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("pay-gate@example.com", "pay-gate-store");
+
+      const category = await superuser.category.create({ data: { name: "Gate Test", slug: "pay-gate-category" } });
+      const product = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Gate Product", categoryId: category.id, status: "active" });
+      await superuser.product.update({ where: { id: product.body.id }, data: { moderationStatus: "approved" } });
+      const variant = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products/${product.body.id}/variants`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ sku: "GATE-1", price: 100, stockQuantity: 10 });
+
+      const manualOrderWithoutPayment = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/orders`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          buyerEmail: "buyer@example.com",
+          shippingAddress: {
+            fullName: "Test Buyer",
+            line1: "1 Test St",
+            city: "Lahore",
+            country: "PK",
+            phone: "03001234567",
+          },
+          items: [{ productId: product.body.id, variantId: variant.body.id, quantity: 1 }],
+        });
+      expect(manualOrderWithoutPayment.status).toBe(400);
+
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/payment-instructions`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ codEnabled: true });
+
+      const manualOrderWithPayment = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/orders`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          buyerEmail: "buyer@example.com",
+          shippingAddress: {
+            fullName: "Test Buyer",
+            line1: "1 Test St",
+            city: "Lahore",
+            country: "PK",
+            phone: "03001234567",
+          },
+          items: [{ productId: product.body.id, variantId: variant.body.id, quantity: 1 }],
+        });
+      expect(manualOrderWithPayment.status).toBe(201);
+    });
+  });
 });
