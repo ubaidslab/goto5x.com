@@ -1284,6 +1284,59 @@ Module 11's group-invoice math before Module 14 begins.
 → `individual`, `team` added) — a one-time backfill migration when Module 14
 builds this, not a parallel column.
 
+## Module 13 (Seller Account Security: 2FA + Devices) — built
+
+Full scope: `docs/SRS.md` §5.25, checklist §14.24 (now checked, with
+disclosed simplifications inline). **Scoping finding from research:**
+FR-25.1-25.4 (password reset) were already built in Module 1 and untouched
+here; FR-25.5 (regional launch gating) belongs to Module 16 (Seller
+Onboarding Wizard) and is untouched here. Module 13's actual new scope is
+just FR-25.6 (seller TOTP 2FA) and FR-25.7 (session/device management).
+
+1. **FR-25.6 (TOTP 2FA)** reuses `User.mfaSecret`/`User.mfaEnabled` —
+   confirmed unused anywhere else in the codebase before this module (only
+   `AdminUser.mfaEnabled` was in use), matching the FR's "shared, not
+   duplicated" instruction. New `auth.seller_mfa_enforcement` Settings
+   Registry key (`optional` | `required_for_payout_actions` |
+   `required_always`, global/plan scope only per the FR's literal text,
+   default `optional`). Login (`AuthService.login()`) now returns either
+   full tokens directly (common case) or a `{preAuthToken, mfaEnrolled}`
+   step, mirroring `AdminAuthService`'s existing pattern exactly.
+2. **Voluntary opt-in gap found and fixed before it reached a test:** the
+   login-time pre-auth flow only ever triggers when 2FA is already required
+   — under the default `optional` mode, an unenrolled seller's login never
+   returns a `preAuthToken`, so there was no way to voluntarily turn 2FA on,
+   contradicting FR-25.6's "seller's own choice" language. Fixed with a
+   second, fully separate authenticated enroll/verify path
+   (`POST /sellers/me/mfa/enroll`, `POST /sellers/me/mfa/verify`, using the
+   seller's own valid JWT) alongside the login-time pre-auth path
+   (`POST /auth/mfa/enroll`, `POST /auth/mfa/verify`).
+3. **FR-25.7 (session/device management)** stays 100% Redis-only — no new
+   Prisma model or migration. `SessionService` now tracks device label
+   (parsed from the User-Agent by a small new regex util,
+   `device-label.util.ts` — no new dependency), IP, first-seen, and
+   last-active (touched on refresh-token use, not on every request, to
+   avoid a write per API call platform-wide). Device identity carries
+   forward across refresh-token rotation (same session continuing, not a
+   new device). New `auth.max_concurrent_devices` key (global/plan/seller
+   scope, default 3 — the seller-scope override represents a purchased
+   extra-device-slot add-on) is checked before a new session is created;
+   over the limit, the login is rejected with a clear reason and no
+   existing session is evicted. New `auth.extra_device_slot_price`
+   (global only) is a stored mechanism only — no billing flow reads it yet.
+4. **Disclosed limitation:** `required_for_payout_actions` has no real
+   gate-point in v1.0 — Direct Seller Collection has no payout-request or
+   payout-account-change endpoint (payouts are dormant), so this
+   enforcement value is accepted/stored but doesn't currently gate
+   anything.
+
+No migration — Module 13 reused existing `User` columns and Redis-only
+session storage entirely. New seller-dashboard "Security" card (2FA
+enroll/verify UI, session list with device/IP/last-active and per-session
+revoke). Tests: new `account-security.e2e-spec.ts`, 8 tests covering every
+§14.24 item. Full suite: 22 e2e files / 186 tests, 18 unit files / 100
+tests, all green, zero regressions.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

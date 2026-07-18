@@ -3209,24 +3209,42 @@ gate is §14.6c, below.
       never on cart/checkout submission; a deliberately-constructed unpaid
       order produces no `order.placed` row at all
 
-### 14.24 Seller Account Security (new, v0.10)
-- [ ] A seller can enroll in TOTP 2FA using the same enroll/verify flow proven
-      on admin accounts (FR-25.6); an invalid code is rejected
-- [ ] `auth.seller_mfa_enforcement` resolves correctly per scope: `optional`
-      never blocks login without 2FA; `required_for_payout_actions` blocks a
-      payout request/payout-account change (not login) for an unenrolled
-      seller; `required_always` blocks login itself without a valid code
-- [ ] A seller's dashboard lists every active session/device with correct
+### 14.24 Seller Account Security (new, v0.10; built Module 13)
+- [x] A seller can enroll in TOTP 2FA using the same enroll/verify flow proven
+      on admin accounts (FR-25.6); an invalid code is rejected. Built as
+      **two** paths: the login-time pre-auth flow (`/auth/mfa/enroll`,
+      `/auth/mfa/verify`, used when enforcement already requires a code) and
+      a voluntary authenticated flow (`/sellers/me/mfa/enroll`,
+      `/sellers/me/mfa/verify`) for a seller opting in under the default
+      `optional` mode — the FR's "seller's own choice" language has no
+      meaning without the second path, since the pre-auth flow alone never
+      triggers when enforcement is `optional` and the seller isn't yet
+      enrolled
+- [x] `auth.seller_mfa_enforcement` resolves correctly per scope (global/plan
+      only, per the FR's literal text — no seller-scope override for this
+      key): `optional` never blocks login without 2FA; `required_always`
+      blocks login itself without a valid code. **Disclosed limitation:**
+      `required_for_payout_actions` has no real gate-point in v1.0 — Direct
+      Seller Collection has no payout-request or payout-account-change
+      endpoint yet (payouts are dormant), so this enforcement value is
+      accepted and stored but does not currently gate anything
+- [x] A seller's dashboard lists every active session/device with correct
       device label/IP/last-active data, and revoking one immediately ends
       that session (its next authenticated request fails) without affecting
       the seller's other active sessions (FR-25.7)
-- [ ] `auth.max_concurrent_devices` resolves with correct scope precedence
+- [x] `auth.max_concurrent_devices` resolves with correct scope precedence
       (`seller` > `plan` > `global`, per §3.8); a login attempt beyond the
       resolved limit is rejected with a clear reason, not silently evicting
       an existing session
-- [ ] A seller-scoped override of `auth.max_concurrent_devices` (simulating a
+- [x] A seller-scoped override of `auth.max_concurrent_devices` (simulating a
       purchased extra-device-slot add-on) raises that one seller's limit
-      without affecting any other seller on the same plan
+      without affecting any other seller on the same plan. The matching
+      `auth.extra_device_slot_price` (global only) is a stored mechanism
+      only — no checkout/billing flow reads it yet; the monetization
+      decision is deferred to launch, per the FR
+- [x] FR-25.1-25.4 (password reset) were already built in Module 1 — not
+      touched this module. FR-25.5 (regional launch gating) belongs to
+      Module 16 (Seller Onboarding Wizard) — not touched this module.
 
 ### 14.25 Listing Moderation Engine (new, v0.10 — launch-blocking legal safety)
 - [ ] A product whose title/description contains a configured banned keyword
