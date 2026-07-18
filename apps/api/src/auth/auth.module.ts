@@ -3,6 +3,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AdminModule } from "../admin/admin.module";
 import { SettingsModule } from "../settings-registry/settings.module";
+import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { EmailService } from "../notifications/email.service";
 import { AdminAuthController } from "./admin-auth.controller";
@@ -14,7 +15,7 @@ import { SessionService } from "./session.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule],
+  imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule, TrustSafetyModule],
   controllers: [AuthController, AdminAuthController],
   providers: [
     AuthService,

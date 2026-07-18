@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { Equals, IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from "class-validator";
 
 export class SignupDto {
   @IsEmail()
@@ -20,4 +20,19 @@ export class SignupDto {
   @IsOptional()
   @IsIn(["seller", "supplier"])
   role?: "seller" | "supplier";
+
+  // Module 12 (SRS §5.29/FR-29.1) - a seller must accept the current Seller
+  // Agreement version at signup. Scoped to sellers only (role defaults to
+  // "seller"), not suppliers - FR-29.1's text is seller-specific.
+  @ValidateIf((o) => (o.role ?? "seller") === "seller")
+  @Equals(true, { message: "You must accept the Seller Agreement to sign up." })
+  agreementAccepted?: boolean;
+
+  // Module 12 (SRS §5.30/FR-30.5) - an optional, coarse client-supplied
+  // fingerprint, a risk-score input only, never security-critical by
+  // itself.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  deviceFingerprint?: string;
 }

@@ -82,6 +82,21 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   CORS_ALLOWED_ORIGINS?: string;
+
+  // Module 12 (FR-30.1) - CNIC encryption at rest, same AES-256-GCM
+  // mechanism/key-management discipline as DRIVE_TOKEN_ENCRYPTION_KEY, kept
+  // as its own key (not reused) so the two secrets can be rotated
+  // independently.
+  @IsString()
+  IDENTITY_ENCRYPTION_KEY!: string;
+
+  // Module 12 (FR-30.1/FR-30.3) - HMAC key for the CNIC/payment-instrument
+  // uniqueness fingerprints. Deliberately a keyed hash, not a plain SHA-256,
+  // so the fingerprint can't be reversed via a dictionary/rainbow-table
+  // attack against the (small, guessable) space of 13-digit CNICs or
+  // 10-11-digit account numbers.
+  @IsString()
+  IDENTITY_FINGERPRINT_HMAC_SECRET!: string;
 }
 
 /**
@@ -106,6 +121,11 @@ export function validateEnv(config: Record<string, unknown>) {
   if (Buffer.from(validated.DRIVE_TOKEN_ENCRYPTION_KEY, "base64").length !== 32) {
     throw new Error(
       "Invalid environment configuration:\nDRIVE_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
+    );
+  }
+  if (Buffer.from(validated.IDENTITY_ENCRYPTION_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nIDENTITY_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { PaymentInstrumentIdentityService } from "../trust-safety/payment-instrument-identity.service";
+import { RiskScoreService } from "../trust-safety/risk-score.service";
 import { UpdatePaymentInstructionsDto } from "./dto/update-payment-instructions.dto";
 
 /**
@@ -10,7 +12,11 @@ import { UpdatePaymentInstructionsDto } from "./dto/update-payment-instructions.
  */
 @Injectable()
 export class PaymentInstructionsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly identity: PaymentInstrumentIdentityService,
+    private readonly riskScore: RiskScoreService,
+  ) {}
 
   async getForStore(sellerId: string, storeId: string) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
@@ -21,11 +27,34 @@ export class PaymentInstructionsService {
   }
 
   async update(sellerId: string, storeId: string, dto: UpdatePaymentInstructionsDto) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    const updated = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.storePaymentInstructions.update({ where: { storeId }, data: dto });
+      const [existing, seller] = await Promise.all([
+        tx.storePaymentInstructions.findUniqueOrThrow({ where: { storeId } }),
+        tx.seller.findUniqueOrThrow({ where: { id: sellerId } }),
+      ]);
+
+      // Module 12 (SRS §5.30, FR-30.2/FR-30.3) - name-consistency status +
+      // fingerprint hashes are derived here, inside the same transaction as
+      // the write itself, so a rejected save never leaves the row half-updated.
+      const identityFields = await this.identity.prepareUpdate(existing, dto, seller.businessName);
+
+      try {
+        return await tx.storePaymentInstructions.update({
+          where: { storeId },
+          data: { ...dto, ...identityFields },
+        });
+      } catch (err) {
+        this.identity.translateFingerprintConflict(err);
+      }
     });
+
+    // Best-effort, after commit - a scored input changed (FR-30.5), same
+    // "a bookkeeping recompute never blocks the seller's own action"
+    // discipline as EventsService.emit().
+    await this.riskScore.recompute(sellerId);
+    return updated;
   }
 }
 

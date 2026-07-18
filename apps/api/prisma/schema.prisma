@@ -184,11 +184,16 @@ model User {
 }
 
 model UserSecurityEvent {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  eventType String   @map("event_type")
-  ipAddress String?  @map("ip_address")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  eventType         String   @map("event_type")
+  ipAddress         String?  @map("ip_address")
+  // Module 12 (FR-30.5) - a coarse client-supplied fingerprint captured on
+  // the "signup" event type only; a score input, never by itself a block
+  // trigger (§5.30). Nullable so every pre-existing event type/row is
+  // unaffected.
+  deviceFingerprint String?  @map("device_fingerprint")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id])
 
@@ -215,12 +220,58 @@ model Seller {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
+  // Module 12 (SRS §5.30, FR-30.1) - CNIC is encrypted at rest (AES-256-GCM,
+  // same discipline as the Google Drive refresh token) for retrieval by an
+  // authorized flow; cnicHash is a separate deterministic (HMAC) fingerprint
+  // used ONLY for the uniqueness constraint below, so uniqueness is
+  // enforceable without ever comparing plaintext. Unique across every
+  // seller regardless of lifecycleStatus (sellers are never hard-deleted,
+  // §3.2) - a banned seller's CNIC can never re-register.
+  cnicEncrypted String? @map("cnic_encrypted")
+  cnicHash      String? @unique @map("cnic_hash")
+
+  // Module 12 (FR-30.5) - the rule-based risk score's outcome at signup;
+  // gates the same FR-6.14-style checkout readiness check, never a
+  // dashboard-wide lock. `riskScore` is the raw weighted total (for admin
+  // review context), `activationStatus` is the derived 3-way decision.
+  riskScore        Int?                   @map("risk_score")
+  activationStatus SellerActivationStatus @default(auto_approved) @map("activation_status")
+
+  // Module 12 (FR-29.4) - the T&S enforcement ladder, built on top of the
+  // seller-lifecycle admin control this SRS's Admin Control Plane section
+  // (FR-8.4) specified but never had a prior module actually build -
+  // surfaced as a direct Module 12 dependency, built here (see build-plan.md).
+  lifecycleStatus SellerLifecycleStatus @default(active) @map("lifecycle_status")
+
+  // Module 12 (FR-29.1) - versioned Seller Agreement acceptance. Reuses
+  // FR-12.1's "versioned content, timestamp+IP acceptance" spirit but is
+  // deliberately its own small table (SellerAgreementVersion) rather than
+  // the full general-purpose content-pages system, which remains unbuilt
+  // (a disclosed, deliberate scope-narrowing - see build-plan.md).
+  agreementAcceptedVersion String?   @map("agreement_accepted_version")
+  agreementAcceptedAt      DateTime? @map("agreement_accepted_at") @db.Timestamptz
+  agreementAcceptedIp      String?   @map("agreement_accepted_ip")
+
   user          User            @relation(fields: [userId], references: [id])
   stores        Store[]
   ledgerEntries LedgerEntry[]
   invoices      SellerInvoice[]
 
   @@map("sellers")
+}
+
+enum SellerActivationStatus {
+  auto_approved
+  pending_review
+  blocked
+}
+
+enum SellerLifecycleStatus {
+  active
+  warned
+  restricted
+  suspended
+  banned
 }
 
 model AdminUser {
@@ -443,23 +494,60 @@ model StoreTaxSettings {
 }
 
 // Module 11 prerequisite fix (SRS §5.6c, FR-6.14) - specified in v0.15,
-// never actually built until now. v0.16's Trust & Safety additions
+// never actually built until Module 11. v0.16's Trust & Safety additions
 // (per-instrument account-title fields, name-consistency status, uniqueness
-// fingerprints) are Module 12's own migration when it lands, not here.
+// fingerprints) are Module 12's own migration - added below.
 model StorePaymentInstructions {
-  id                String   @id @default(uuid()) @db.Uuid
-  storeId           String   @unique @map("store_id") @db.Uuid
-  bankAccountTitle  String?  @map("bank_account_title")
-  bankAccountNumber String?  @map("bank_account_number")
-  bankName          String?  @map("bank_name")
-  jazzcashNumber    String?  @map("jazzcash_number")
-  easypaisaNumber   String?  @map("easypaisa_number")
-  codEnabled        Boolean  @default(false) @map("cod_enabled")
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id                String  @id @default(uuid()) @db.Uuid
+  storeId           String  @unique @map("store_id") @db.Uuid
+  bankAccountTitle  String? @map("bank_account_title")
+  bankAccountNumber String? @map("bank_account_number")
+  bankName          String? @map("bank_name")
+  jazzcashNumber    String? @map("jazzcash_number")
+  easypaisaNumber   String? @map("easypaisa_number")
+  codEnabled        Boolean @default(false) @map("cod_enabled")
+
+  // Module 12 (FR-30.2) - JazzCash/Easypaisa get their own declared account
+  // title (the bank instrument already had one); one shared checkbox
+  // declaration covers whichever instruments are filled in on this single
+  // per-store row, saved atomically with them.
+  jazzcashAccountTitle  String?               @map("jazzcash_account_title")
+  easypaisaAccountTitle String?               @map("easypaisa_account_title")
+  nameDeclaredSelfOwned Boolean               @default(false) @map("name_declared_self_owned")
+  nameConsistencyStatus NameConsistencyStatus @default(not_required) @map("name_consistency_status")
+
+  // Module 12 (FR-30.3) - deterministic (HMAC) fingerprint per instrument,
+  // never the plaintext number; a unique constraint across every store
+  // platform-wide is the actual hard-block enforcement (Postgres allows
+  // multiple NULLs, so an unset instrument never collides).
+  bankAccountNumberHash String? @unique @map("bank_account_number_hash")
+  jazzcashNumberHash    String? @unique @map("jazzcash_number_hash")
+  easypaisaNumberHash   String? @unique @map("easypaisa_number_hash")
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   store Store @relation(fields: [storeId], references: [id])
 
   @@map("store_payment_instructions")
+}
+
+enum NameConsistencyStatus {
+  not_required
+  pending
+  approved
+  rejected
+}
+
+// Module 12 (FR-29.1) - a minimal, purpose-scoped version history for the
+// Seller Agreement specifically (not the general FR-12.1 content-pages
+// system, which remains unbuilt - a disclosed scope-narrowing, see
+// build-plan.md). "Current" is simply the highest publishedAt row.
+model SellerAgreementVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  version     String   @unique
+  publishedAt DateTime @default(now()) @map("published_at") @db.Timestamptz
+
+  @@map("seller_agreement_versions")
 }
 
 // Module 7 (FR-2.11). CRUD + tenant isolation only - validating a code at

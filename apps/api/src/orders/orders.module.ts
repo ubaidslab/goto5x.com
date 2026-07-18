@@ -6,6 +6,7 @@ import { SettingsModule } from "../settings-registry/settings.module";
 import { StorefrontModule } from "../storefront/storefront.module";
 import { StoreSettingsModule } from "../store-settings/store-settings.module";
 import { SuppliersModule } from "../suppliers/suppliers.module";
+import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { CartAbandonmentScheduler } from "./cart-abandonment.scheduler";
 import { CartController } from "./cart.controller";
 import { CartService } from "./cart.service";
@@ -18,7 +19,7 @@ import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
 @Module({
-  imports: [SettingsModule, StorefrontModule, StoreSettingsModule, SuppliersModule, EventsModule, BillingModule],
+  imports: [SettingsModule, StorefrontModule, StoreSettingsModule, SuppliersModule, EventsModule, BillingModule, TrustSafetyModule],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [
     CartService,

@@ -7,6 +7,8 @@ import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
+import { RiskScoreService } from "../trust-safety/risk-score.service";
+import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { JwtAccessPayload } from "../common/types";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -36,6 +38,8 @@ export class AuthService {
     private readonly settings: SettingsService,
     private readonly securityEvents: SecurityEventService,
     private readonly events: EventsService,
+    private readonly sellerAgreement: SellerAgreementService,
+    private readonly riskScore: RiskScoreService,
   ) {}
 
   async signup(dto: SignupDto, ip: string): Promise<{ userId: string }> {
@@ -88,6 +92,22 @@ export class AuthService {
             entityId: user.seller!.id,
           },
     );
+
+    // Module 12 (SRS §5.30/FR-30.5) - the same user_security_events table
+    // FR-25.3 already uses, a new "signup" event type, capturing whatever
+    // device fingerprint the client supplied (a risk-score input only).
+    await this.securityEvents.record(user.id, "signup", ip, dto.deviceFingerprint);
+
+    if (role === "seller") {
+      // SRS §5.29/FR-29.1 - SignupDto.agreementAccepted is already validated
+      // `=== true` before this point; recording acceptance here is what
+      // makes "must accept at signup" real, not merely a client-side check.
+      await this.sellerAgreement.accept(user.seller!.id, ip);
+      // SRS §5.30/FR-30.5 - computed once, at activation; re-evaluated
+      // later whenever a scored input changes (CNIC saved, a payment
+      // instrument's name-consistency result).
+      await this.riskScore.computeAtSignup(user.seller!.id, ip, dto.deviceFingerprint);
+    }
 
     return { userId: user.id };
   }

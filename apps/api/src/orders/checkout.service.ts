@@ -8,6 +8,7 @@ import { DiscountCodesService } from "../store-settings/discount-codes.service";
 import { hasAnyPaymentMethod } from "../store-settings/payment-instructions.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { SupplierListingsService } from "../suppliers/supplier-listings.service";
+import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 import { CheckoutDto } from "./dto/checkout.dto";
 import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
 import { round2 } from "./money.util";
@@ -52,6 +53,7 @@ export class CheckoutService {
     private readonly supplierListings: SupplierListingsService,
     private readonly discountCodes: DiscountCodesService,
     private readonly email: EmailService,
+    private readonly sellerIdentity: SellerIdentityService,
   ) {}
 
   async checkout(dto: CheckoutDto) {
@@ -148,10 +150,11 @@ export class CheckoutService {
         discountCodeId = applied.discountCodeId;
       }
 
-      const [shippingSettings, taxSettings, paymentInstructions] = await Promise.all([
+      const [shippingSettings, taxSettings, paymentInstructions, store] = await Promise.all([
         this.prismaAdmin.storeShippingSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storeTaxSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storePaymentInstructions.findUniqueOrThrow({ where: { storeId: params.storeId } }),
+        this.prismaAdmin.store.findUniqueOrThrow({ where: { id: params.storeId }, select: { sellerId: true } }),
       ]);
 
       // FR-6.14 store-readiness gate. v1.0 has no separate store draft/
@@ -161,6 +164,15 @@ export class CheckoutService {
       if (!hasAnyPaymentMethod(paymentInstructions)) {
         throw new BadRequestException(
           "This store hasn't configured a way to receive payment yet - checkout isn't available.",
+        );
+      }
+
+      // SRS §5.30/FR-30.1 - "same activation gate as FR-6.14's payment-
+      // instruction requirement": a store cannot go live (take an order)
+      // without a valid CNIC on file for the seller behind it.
+      if (!(await this.sellerIdentity.hasCnic(store.sellerId))) {
+        throw new BadRequestException(
+          "This store's seller hasn't completed identity verification yet - checkout isn't available.",
         );
       }
 

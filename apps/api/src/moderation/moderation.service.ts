@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditLogService } from "../admin/audit-log.service";
+import { EventsService } from "../events/events.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { BannedKeywordError, decideModerationStatus, ModerationDecision } from "./moderation-decision.util";
@@ -13,6 +14,7 @@ export class ModerationService {
     private readonly settings: SettingsService,
     private readonly prismaAdmin: PrismaAdminService,
     private readonly auditLog: AuditLogService,
+    private readonly events: EventsService,
   ) {}
 
   /**
@@ -62,6 +64,18 @@ export class ModerationService {
       });
     } catch (err) {
       if (err instanceof BannedKeywordError) {
+        // Module 12 (SRS §5.29/FR-29.3) - "repeated banned/restricted-
+        // keyword submissions from the same seller in a short window is
+        // itself a signal distinct from any single blocked listing." A
+        // banned-keyword block previously left no persistent trace at all
+        // (a real, disclosed gap surfaced while building the bypass-
+        // attempt monitor) - this is the one new write, reusing the exact
+        // existing platform_events mechanism, not a new table.
+        await this.events.emit({
+          eventType: "product.moderation.blocked",
+          actorType: "seller",
+          actorId: sellerId,
+        });
         throw new BadRequestException(
           `This listing cannot be submitted - it contains a banned term ("${err.keyword}").`,
         );

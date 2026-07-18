@@ -10,9 +10,9 @@ import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 export class SecurityEventService {
   constructor(private readonly prisma: PrismaRuntimeService) {}
 
-  async record(userId: string, eventType: string, ipAddress?: string) {
+  async record(userId: string, eventType: string, ipAddress?: string, deviceFingerprint?: string) {
     return this.prisma.userSecurityEvent.create({
-      data: { userId, eventType, ipAddress: ipAddress ?? null },
+      data: { userId, eventType, ipAddress: ipAddress ?? null, deviceFingerprint: deviceFingerprint ?? null },
     });
   }
 }

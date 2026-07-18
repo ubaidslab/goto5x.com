@@ -25,6 +25,7 @@ import { StoreSettingsModule } from "./store-settings/store-settings.module";
 import { SuppliersModule } from "./suppliers/suppliers.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
+import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
     OrdersModule,
     SellersModule,
     BillingModule,
+    TrustSafetyModule,
     HealthModule,
   ],
   providers: [
