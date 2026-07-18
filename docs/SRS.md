@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.18 (Build-phase amendment)
+**Version:** 0.19 (Build-phase amendment)
 **Date:** 2026-07-18
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -108,6 +108,21 @@ built-in v1.0 themes are unaffected and not rebuilt. No code changes from
 the spec itself. Then proceeds to **Module 12 (Trust & Safety System)**,
 which now also owns FR-6.19 (anti-underreporting monitors) and §5.30's
 FR-30.x (CNIC/name-consistency/risk score) per their existing deferrals.
+**v0.19 (approved after Module 12, ahead of Module 14)** adds the **Plan
+Architecture** amendment (§5.7 FR-7.17/7.18) — plans are organized into
+named **plan groups** (Individual, Team, Supplier), each with an ordered
+list of founder-editable **tiers** (a Cursor-style structure: mechanism
+only, every price/name/limit stays founder-set plan-editor data). FR-7.18
+revises FR-7.15's Team-plan group-invoice math: a sponsored member's seat
+is billed at the **leader's team tier's seat price**, uniform across every
+seat on that team, not "that member's own individually-chosen plan price"
+as v0.17 originally specified — while sponsored, a member's individual plan
+becomes whatever their team tier grants (reverting to Free on leave,
+FR-7.13 unchanged). §14.7 gained plan-groups/tiers-as-data checklist items;
+§14.31's group-invoice-math line updated to the seat-price formula. No code
+was written — Module 14 has not started; this stages the architecture for
+that module's own build, per the founder's explicit request to confirm/
+amend the mechanism before Module 14 begins.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -1436,6 +1451,44 @@ no longer scales. None of these are expected at v1.0 launch.
   a seller with five linked suppliers already sees all five suppliers'
   listings/orders in one place with zero additional FRs. FR-7.10 above is
   specifically the **supplier's own** cross-store view, a distinct concern.
+- FR-7.17: **Plan groups and tiers (architecture, new v0.19 — Cursor-style
+  structure, mechanism only).** Plans are organized into named **plan
+  groups** — v1.0 ships three: **Individual** (self-fulfilled/normal seller
+  plans, e.g. Free → Starter → Standard → Pro), **Team** (leader-facing,
+  itself tiered — three sub-tiers, §5.31), and **Supplier** (Free → Premium,
+  FR-7.10) — each containing an **ordered list of tiers**. The plan editor
+  (FR-8.2) supports creating, reordering, and retiring both groups and
+  tiers as data; adding a new tier or re-ordering existing ones never
+  requires a deploy. Every existing plan-gating mechanism (Settings
+  Registry precedence, FR-7.1's feature gates, FR-7.4's inverse commission
+  laddering, FR-7.16's developer perks, FR-28.4's dashboard-personalization
+  gating) keys off a seller's resolved **(group, tier)** pair — the
+  addressable unit every gate checks against, replacing the flat, single
+  plan-id assumption FR-7.1–7.9 were originally written against (no
+  behavior change to any of those FRs, only the underlying addressing
+  scheme). **Tier comparison / upgrade UI** (the public pricing page and
+  in-dashboard upgrade prompts) renders entirely from plan-editor data —
+  tier names, prices, per-tier feature lists, and which tier is
+  "recommended"/"current" are all read from the plan/tier records, never
+  hard-coded in the frontend; adding or changing a tier is a data
+  operation, identical in spirit to FR-12.1's "publishing is a data
+  operation, never a deploy" discipline applied here to pricing UI.
+- FR-7.18: **Team plan per-seat pricing (new v0.19 — revises FR-7.15's
+  group-invoice math).** A Team plan tier defines a **seat price** and
+  team-level limits/perks (e.g., max sponsored members, analytics-depth
+  level) as founder-set plan data — **not** each sponsored member's own
+  individually-chosen plan price. While sponsored, a member's individual
+  plan **becomes whatever the leader's chosen Team tier grants** (a
+  uniform per-seat plan-equivalent, the same way Cursor's Business plan
+  gives every seat the same feature set regardless of what an invitee
+  might otherwise have picked) — FR-7.13's "downgrades to Free on leave"
+  rule is unchanged, since Free is simply what a member's plan reverts to
+  once no longer occupying a sponsored seat. A leader's monthly group
+  invoice (FR-7.15, Module 11 invoicing verbatim) is therefore computed as
+  **(active sponsored member count) × (the leader's Team tier's seat
+  price)** — every seat on one team bills at the same price, never a
+  per-member-chosen amount. FR-7.15's text is amended accordingly (see
+  §5.31); §14.31's group-invoice-math checklist line is updated to match.
 
 ### 5.8 Platform Admin Terminal — the Control Plane
 The admin terminal is not "a management screen" — it is the platform's control
@@ -2294,9 +2347,12 @@ not a parallel billing system.
   upgrade, same "defer, don't build a parallel system" discipline as every
   other Phase 2+ item in this SRS).
 - FR-7.15: **Invoicing (reuses Module 11 verbatim, no parallel mechanism).**
-  A leader receives one consolidated **monthly group invoice** (active
-  sponsored member count × that member's plan price) **alongside** — never
-  merged into — their own separate commission invoice (Module 11, FR-6.16
+  A leader receives one consolidated **monthly group invoice** —
+  **(active sponsored member count) × the leader's Team tier's seat price**
+  (revised v0.19, FR-7.18: every seat on one team bills at the same,
+  tier-determined price, never "that member's own individually-chosen plan
+  price" as originally specified here) — **alongside** — never merged
+  into — their own separate commission invoice (Module 11, FR-6.16
   onward). Both invoices use the identical manual-admin-verification and
   grace-period-suspension mechanism. **Suspension never crosses the team
   boundary**: non-payment of the leader's own commission invoice suspends
@@ -2305,9 +2361,9 @@ not a parallel billing system.
   graceful-downgrade rule, exactly as if the leader had stopped sponsoring
   voluntarily) but never a member's store outright, and never the leader's
   own store either. A member's own separate commission invoice (on
-  whatever plan they're currently on, sponsored or Free) is entirely
-  independent of the leader's billing and can suspend only that member's
-  own store.
+  whatever plan they're currently on — Free, or whatever their team tier
+  currently grants them while sponsored, FR-7.18) is entirely independent
+  of the leader's billing and can suspend only that member's own store.
 - FR-7.16: **Standard/Pro plan tiers bundle developer perks.** The plan
   editor (FR-8.2) expresses that qualifying paid tiers include coded-theme
   mode access (the existing `theme.coded_mode_enabled` Settings Registry
@@ -2884,6 +2940,22 @@ gate is §14.6c, below.
       store but cannot reach the aggregated multi-store dashboard; upgrading
       to the paid supplier plan unlocks it with no other behavior change
       (FR-7.10)
+- [ ] **Plan groups/tiers as data (new v0.19):** an admin can create a new
+      plan group, add/reorder/retire tiers within a group, and every
+      existing plan-gating mechanism (feature flags, commission laddering,
+      developer perks, dashboard-personalization gating) correctly resolves
+      against the new (group, tier) with no code change (FR-7.17)
+- [ ] The public pricing page and in-dashboard upgrade prompts render tier
+      names/prices/feature lists entirely from plan-editor data — adding or
+      reordering a tier changes what's displayed with no deploy (FR-7.17)
+- [ ] **Cross-checks (confirm no gap, or amend if one is found):**
+      developer perks (`theme.coded_mode_enabled`, FR-7.16) bind to the
+      correct tier in the new group/tier addressing scheme; dashboard-
+      personalization plan-gating (FR-28.4, an open item carried from
+      Module 10 — no real seller→plan assignment existed until Module 14)
+      is finally enforced, not just documented; the next-cycle upgrade/
+      downgrade rule (FR-7.5) and launch-campaign pricing (FR-7.7) both
+      apply correctly per-tier under the new structure
 
 ### 14.8 Platform Admin Terminal — Control Plane
 - [ ] Every FR-8.x item has a passing test: feature flags, plan editor,
@@ -3320,12 +3392,14 @@ gate is §14.6c, below.
       the same numbers that member's own dashboard-home screen shows for
       itself, proving it's a read reuse of the same computation, not a
       second, potentially-inconsistent metric engine (FR-7.14)
-- [ ] **Group invoice math:** a team with N active sponsored members
-      produces a group invoice line-item total of exactly
-      `N × member's plan price`; adding or removing an active member
-      before the billing period closes changes N correctly; the leader's
-      own separate commission invoice amount is completely unaffected by
-      team size (FR-7.15)
+- [ ] **Group invoice math (revised v0.19, FR-7.18):** a team with N active
+      sponsored members produces a group invoice line-item total of exactly
+      `N × the leader's Team tier's seat price` — every seat bills at the
+      same, tier-determined price regardless of what plan a member might
+      otherwise have chosen individually; adding or removing an active
+      member before the billing period closes changes N correctly; the
+      leader's own separate commission invoice amount is completely
+      unaffected by team size (FR-7.15/FR-7.18)
 - [ ] Non-payment of the group sponsorship invoice past the grace period
       downgrades sponsored members to Free (graceful, per FR-7.13) but
       suspends neither a member's store nor the leader's own store; non-

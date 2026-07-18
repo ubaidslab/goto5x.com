@@ -813,25 +813,32 @@ Index: `idx_payouts_seller_status (seller_id, status)`. Index:
 `idx_payouts_approval_queue (status, requested_at)` — the admin approval queue's
 primary query.
 
-### `plans` (global)
+### `plans` (global) — **groups/tiers architecture, v0.19, not yet built (Module 14)**
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| name | text | Free / Starter / Growth / Premium |
-| plan_type | enum(`seller`,`supplier`) default `'seller'` | **new, v0.15** — `supplier` is the new Supplier Premium Plan tier (FR-7.10); every plan before this amendment is implicitly `seller`, which is exactly this column's default, so no backfill/migration ambiguity |
-| price | numeric(12,2) | 0 for the Free Plan (FR-7.3) |
+| name | text | Free / Starter / Growth / Premium — founder-set display name |
+| plan_group | enum(`individual`,`team`,`supplier`) default `'individual'` | **v0.19, supersedes the v0.15 `plan_type` column of the same shape** — `individual` is the normal self-fulfilled seller plan group (was `plan_type = 'seller'`), `team` is new (leader-facing, §5.31), `supplier` is unchanged (FR-7.10). Renamed rather than adding a fourth column because this **is** the same "which plan family" concept `plan_type` already expressed — `team` is simply a third value, not a parallel axis. Migrating existing `plan_type = 'seller'` rows to `plan_group = 'individual'` is a one-time backfill when Module 14 builds this. |
+| tier_order | integer | **new, v0.19** — this plan's ordered position **within its plan_group** (FR-7.17) — e.g. Individual's Free=0/Starter=1/Standard=2/Pro=3, Team's three sub-tiers 0/1/2, Supplier's Free=0/Premium=1. Replaces the old flat `sort_order` below for within-group ordering; `sort_order` still governs cross-group display order on the pricing page. |
+| seat_price | numeric(12,2) nullable | **new, v0.19, FR-7.18** — only meaningful when `plan_group = 'team'`: the per-sponsored-seat monthly price this Team tier bills a leader at (Module 11's group-invoice math, FR-7.15, reads this column, not any individual member's own plan price). Null for `individual`/`supplier` plans. |
+| price | numeric(12,2) | 0 for the Free Plan (FR-7.3); for a `team`-group plan, this is the **leader's own** subscription price (if any) for holding that Team tier — separate from `seat_price`, which bills per sponsored member |
 | currency | text default `'PKR'` | plans aren't store-scoped, so they need their own explicit currency column |
 | billing_interval | enum(`monthly`,`yearly`,`none`) | `none` for the Free Plan, which has no billing cycle (FR-7.3) |
 | yearly_discount_percent | numeric(5,2) nullable | admin-configured discount for the yearly price relative to twelve months at the monthly rate (FR-7.6) |
 | is_active | boolean | retiring a plan doesn't delete it — existing subscribers stay on it |
-| sort_order | integer | display order in the pricing/admin UI |
+| sort_order | integer | cross-group display order in the pricing/admin UI (see `tier_order` above for within-group order) |
 
 Commission-rate overrides and feature limits for a plan are **not** columns on
 this table — they are `settings_values` rows scoped to `('plan', plans.id)`,
 including the Free Plan's higher default commission (FR-7.3/FR-7.4). The
 Supplier Premium Plan's flagship gate — access to the multi-store aggregated
 dashboard (FR-3.3) — is the same mechanism: a `settings_values` row scoped to
-the supplier's assigned plan, not a new column here.
+the supplier's assigned plan, not a new column here. Every existing
+plan-scoped gate (feature flags, developer perks FR-7.16, dashboard-
+personalization FR-28.4) now resolves against the `(plan_group, tier_order)`
+pair rather than assuming a single flat plan list (FR-7.17) — no change to
+the settings-scoping mechanism itself, only to which plan row a seller's
+resolved gate reads from.
 
 ### `subscriptions`
 | Column | Type | Notes |

@@ -1250,6 +1250,40 @@ now sends `agreementAccepted: true`; every checkout-touching test's shared
 helper sets a synthetic CNIC hash). Full suite: 21 e2e files / 178 tests,
 18 unit files / 100 tests, all green.
 
+## Amendment approved after Module 12, ahead of Module 14 (SRS v0.19) — Plan Architecture
+
+Full spec: `docs/SRS.md` §5.7 FR-7.17/FR-7.18 (new), FR-7.15 revised (§5.31),
+schema in `docs/database-schema.md`'s `plans` table note. **Documentation
+only, no code** — Module 14 has not started; this pins the architecture for
+that module's own build, per the founder's explicit request to confirm/amend
+Module 11's group-invoice math before Module 14 begins.
+
+1. **Plan groups and tiers (FR-7.17)** — a Cursor-style structure: named
+   plan groups (Individual, Team, Supplier), each an ordered list of
+   founder-editable tiers. Every plan-gating mechanism (feature flags,
+   inverse commission laddering, developer perks, dashboard-personalization
+   gating) now resolves against a `(plan_group, tier_order)` pair instead of
+   a flat plan id — no behavior change to those FRs, only the addressing
+   scheme. The pricing page and in-dashboard upgrade prompts render
+   entirely from this data.
+2. **Team per-seat pricing (FR-7.18, revises FR-7.15)** — a Team tier
+   carries a `seat_price`; a leader's group invoice is
+   `N sponsored members × seat_price`, uniform across every seat on that
+   team — **not** "that member's own individually-chosen plan price" as
+   the v0.17 Teams amendment originally specified. While sponsored, a
+   member's individual plan becomes whatever their team tier grants;
+   FR-7.13's downgrade-to-Free-on-leave rule is unchanged.
+3. **Cross-checks flagged for Module 14's own report** (not resolved here):
+   confirm developer perks (FR-7.16) and dashboard-personalization gating
+   (FR-28.4, an open item since Module 10 — no real seller→plan assignment
+   has existed until now) bind correctly to the new tier structure; confirm
+   the next-cycle upgrade/downgrade rule (FR-7.5) and launch-campaign
+   pricing (FR-7.7) apply correctly per-tier.
+
+`plans.plan_type` (v0.15) is superseded by `plan_group` (a rename, `seller`
+→ `individual`, `team` added) — a one-time backfill migration when Module 14
+builds this, not a parallel column.
+
 ---
 
 *Update this document as each module is approved and built — it is the running
