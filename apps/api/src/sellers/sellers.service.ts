@@ -18,13 +18,21 @@ export class SellersService {
     const [seller, cnicMasked] = await Promise.all([
       this.prisma.seller.findUniqueOrThrow({
         where: { id: sellerId },
-        select: { dashboardTheme: true, activationStatus: true, lifecycleStatus: true },
+        select: {
+          dashboardTheme: true,
+          activationStatus: true,
+          lifecycleStatus: true,
+          user: { select: { mfaEnabled: true } },
+        },
       }),
       this.identity.getMaskedCnic(sellerId),
     ]);
     // SRS §5.30/FR-30.1 - the plaintext CNIC is never returned from any API;
     // this masked (last-4) form is the only view the seller ever sees.
-    return { ...seller, cnicMasked };
+    // SRS §5.25/FR-25.6 - mfaEnabled flattened from the User relation so the
+    // dashboard can show 2FA status without a second request.
+    const { user, ...rest } = seller;
+    return { ...rest, cnicMasked, mfaEnabled: user.mfaEnabled };
   }
 
   async updateDashboardTheme(sellerId: string, dashboardTheme: string) {

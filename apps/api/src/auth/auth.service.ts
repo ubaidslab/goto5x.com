@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
+import { authenticator } from "otplib";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
@@ -10,6 +11,7 @@ import { SettingsService } from "../settings-registry/settings.service";
 import { RiskScoreService } from "../trust-safety/risk-score.service";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { JwtAccessPayload } from "../common/types";
+import { labelDevice } from "./device-label.util";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
 import { LoginDto } from "./dto/login.dto";
 import { SignupDto } from "./dto/signup.dto";
@@ -19,11 +21,22 @@ import { generateToken, hashToken } from "./token.util";
 
 const BCRYPT_ROUNDS = 12;
 const EMAIL_VERIFICATION_TTL_MINUTES = 60 * 24; // 24h, not settings-tunable (fixed, unlike password reset which SRS calls out explicitly)
+const MFA_PRE_AUTH_TTL_MINUTES = 5; // same window as the admin flow (AdminAuthService)
 
 export interface TokenPair {
   accessToken: string;
   sessionId: string;
   refreshToken: string;
+}
+
+export interface MfaStepRequired {
+  preAuthToken: string;
+  mfaEnrolled: boolean;
+}
+
+interface SellerPreAuthPayload {
+  sub: string;
+  type: "seller_pre_auth";
 }
 
 @Injectable()
@@ -134,7 +147,7 @@ export class AuthService {
     await this.securityEvents.record(user.id, "email_verified");
   }
 
-  async login(dto: LoginDto): Promise<TokenPair> {
+  async login(dto: LoginDto, ip: string, userAgent: string | undefined): Promise<TokenPair | MfaStepRequired> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       include: { seller: true, supplier: true },
@@ -144,7 +157,93 @@ export class AuthService {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
-    return this.issueTokens(user.id, { sellerId: user.seller?.id, supplierId: user.supplier?.id });
+    // SRS §5.25/FR-25.6 - already-enrolled always steps through the code
+    // (regardless of enforcement mode); an unenrolled seller only steps
+    // through it when the mode is `required_always`. Scoped to sellers
+    // only, per FR-25.6's text - suppliers/admins are unaffected.
+    const needsMfaStep = user.mfaSecret
+      ? true
+      : user.seller
+        ? (await this.settings.resolve<string>("auth.seller_mfa_enforcement", { sellerId: user.seller.id })) ===
+          "required_always"
+        : false;
+
+    if (needsMfaStep) {
+      return {
+        preAuthToken: this.signSellerPreAuthToken(user.id),
+        mfaEnrolled: !!user.mfaSecret,
+      };
+    }
+
+    return this.issueTokens(user.id, { sellerId: user.seller?.id, supplierId: user.supplier?.id }, ip, userAgent);
+  }
+
+  /** SRS §5.25/FR-25.6 - reached mid-login (via the pre-auth token), when login() itself already determined 2FA is required. */
+  async beginMfaEnrollment(preAuthToken: string): Promise<{ secret: string; otpauthUrl: string }> {
+    const payload = this.verifySellerPreAuthToken(preAuthToken);
+    return this.generateMfaSecret(payload.sub);
+  }
+
+  /** SRS §5.25/FR-25.6 - the *voluntary* enrollment path: a seller who is already fully logged in (enforcement is `optional`, nothing forced them into it) can still choose to turn 2FA on from their dashboard. Same underlying mechanism, no separate preAuthToken needed since they're already authenticated. */
+  async enrollMfaForAuthenticatedUser(userId: string): Promise<{ secret: string; otpauthUrl: string }> {
+    return this.generateMfaSecret(userId);
+  }
+
+  /** Confirms a voluntary enrollment (see enrollMfaForAuthenticatedUser) - the seller stays logged in on their current session; no new tokens are issued. */
+  async confirmMfaEnrollmentForAuthenticatedUser(userId: string, code: string): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mfaSecret) {
+      throw new BadRequestException("Start enrollment first before verifying a code.");
+    }
+    if (!authenticator.check(code, user.mfaSecret)) {
+      throw new UnauthorizedException("Invalid MFA code.");
+    }
+    if (!user.mfaEnabled) {
+      await this.prisma.user.update({ where: { id: userId }, data: { mfaEnabled: true } });
+    }
+  }
+
+  private async generateMfaSecret(userId: string): Promise<{ secret: string; otpauthUrl: string }> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    const secret = authenticator.generateSecret();
+    await this.prisma.user.update({ where: { id: user.id }, data: { mfaSecret: secret } });
+
+    // Reuses the admin issuer name - it's the platform's own name shown in
+    // an authenticator app, the same regardless of which role enrolled.
+    const otpauthUrl = authenticator.keyuri(user.email, this.config.getOrThrow<string>("ADMIN_MFA_ISSUER_NAME"), secret);
+    return { secret, otpauthUrl };
+  }
+
+  /** SRS §5.25/FR-25.6 - verifies the TOTP code and completes login, same shape as AdminAuthService.verifyMfaAndIssueSession(). */
+  async verifyMfaAndIssueSession(
+    preAuthToken: string,
+    code: string,
+    ip: string,
+    userAgent: string | undefined,
+  ): Promise<TokenPair> {
+    const payload = this.verifySellerPreAuthToken(preAuthToken);
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: payload.sub },
+      include: { seller: true, supplier: true },
+    });
+
+    if (!user.mfaSecret) {
+      throw new BadRequestException("MFA has not been enrolled for this account yet.");
+    }
+    if (!authenticator.check(code, user.mfaSecret)) {
+      throw new UnauthorizedException("Invalid MFA code.");
+    }
+    if (!user.mfaEnabled) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: true } });
+    }
+
+    return this.issueTokens(
+      user.id,
+      { sellerId: user.seller?.id, supplierId: user.supplier?.id, mfaVerified: true },
+      ip,
+      userAgent,
+    );
   }
 
   async refresh(sessionId: string, refreshToken: string): Promise<TokenPair> {
@@ -152,6 +251,10 @@ export class AuthService {
     if (!userId) {
       throw new UnauthorizedException("Invalid or expired refresh token.");
     }
+    // Carries the same device identity forward across rotation - this is
+    // the SAME session continuing, not a new device (SRS FR-25.7).
+    const deviceInfo = await this.sessions.getDeviceInfo(sessionId);
+    await this.sessions.touchSession(sessionId);
     // Destroy the old session and issue a new one (refresh-token rotation).
     await this.sessions.destroySession(sessionId);
 
@@ -159,7 +262,13 @@ export class AuthService {
       this.prisma.seller.findUnique({ where: { userId } }),
       this.prisma.supplier.findUnique({ where: { userId } }),
     ]);
-    return this.issueTokens(userId, { sellerId: seller?.id, supplierId: supplier?.id });
+    return this.issueTokens(
+      userId,
+      { sellerId: seller?.id, supplierId: supplier?.id },
+      deviceInfo?.ipAddress,
+      undefined,
+      deviceInfo?.deviceLabel,
+    );
   }
 
   async logout(sessionId: string): Promise<void> {
@@ -225,8 +334,30 @@ export class AuthService {
     await this.securityEvents.record(user.id, "password_reset_completed", ip);
   }
 
-  private async issueTokens(userId: string, extra: Partial<JwtAccessPayload>): Promise<TokenPair> {
-    const { sessionId, refreshToken } = await this.sessions.createSession(userId);
+  private async issueTokens(
+    userId: string,
+    extra: Partial<JwtAccessPayload>,
+    ip?: string,
+    userAgent?: string,
+    deviceLabelOverride?: string,
+  ): Promise<TokenPair> {
+    // SRS §5.25/FR-25.7 - scoped to sellers only (the FR's literal text);
+    // a seller-scope override represents a purchased extra-device-slot
+    // add-on, resolved with the usual seller > plan > global precedence.
+    if (extra.sellerId) {
+      const maxDevices = await this.settings.resolve<number>("auth.max_concurrent_devices", {
+        sellerId: extra.sellerId,
+      });
+      const activeCount = await this.sessions.countActiveSessions(userId);
+      if (activeCount >= maxDevices) {
+        throw new ForbiddenException(
+          `Device limit reached (${maxDevices}) - revoke a session from your dashboard first.`,
+        );
+      }
+    }
+
+    const deviceLabel = deviceLabelOverride ?? labelDevice(userAgent);
+    const { sessionId, refreshToken } = await this.sessions.createSession(userId, deviceLabel, ip ?? "unknown");
     const accessToken = this.jwt.sign(
       { sub: userId, ...extra } satisfies JwtAccessPayload,
       {
@@ -235,5 +366,27 @@ export class AuthService {
       },
     );
     return { accessToken, sessionId, refreshToken };
+  }
+
+  private signSellerPreAuthToken(userId: string): string {
+    return this.jwt.sign(
+      { sub: userId, type: "seller_pre_auth" } satisfies SellerPreAuthPayload,
+      {
+        secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
+        expiresIn: `${MFA_PRE_AUTH_TTL_MINUTES}m`,
+      },
+    );
+  }
+
+  private verifySellerPreAuthToken(token: string): SellerPreAuthPayload {
+    try {
+      const payload = this.jwt.verify<SellerPreAuthPayload>(token, {
+        secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
+      });
+      if (payload.type !== "seller_pre_auth") throw new Error("wrong token type");
+      return payload;
+    } catch {
+      throw new UnauthorizedException("Invalid or expired pre-auth token.");
+    }
   }
 }

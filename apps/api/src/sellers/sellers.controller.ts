@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { SkipAgreementCheck } from "../common/decorators/skip-agreement-check.decorator";
-import { AuthenticatedRequest } from "../common/types";
+import { AuthenticatedRequest, JwtAccessPayload } from "../common/types";
+import { AuthService } from "../auth/auth.service";
+import { SessionService } from "../auth/session.service";
 import { SellerAgreementGuard } from "../trust-safety/seller-agreement.guard";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
+import { MfaVerifyCodeDto } from "./dto/mfa-verify-code.dto";
 import { UpdateDashboardThemeDto } from "./dto/update-dashboard-theme.dto";
 import { SetCnicDto } from "./dto/set-cnic.dto";
 import { SellersService } from "./sellers.service";
@@ -20,6 +24,8 @@ export class SellersController {
     private readonly sellers: SellersService,
     private readonly identity: SellerIdentityService,
     private readonly agreements: SellerAgreementService,
+    private readonly sessions: SessionService,
+    private readonly auth: AuthService,
   ) {}
 
   @Get()
@@ -57,5 +63,39 @@ export class SellersController {
   @SkipAgreementCheck()
   acceptAgreement(@CurrentSellerId() sellerId: string, @Req() req: AuthenticatedRequest) {
     return this.agreements.accept(sellerId, req.ip ?? "unknown");
+  }
+
+  // SRS §5.25/FR-25.7 - the seller's own session/device list. @CurrentSellerId()
+  // enforces this is a seller session (FR-25.7's literal scope); sessions
+  // themselves are keyed by userId (user.sub), not sellerId.
+  @Get("sessions")
+  listSessions(@CurrentSellerId() _sellerId: string, @CurrentUser() user: JwtAccessPayload) {
+    return this.sessions.listSessions(user.sub);
+  }
+
+  @Delete("sessions/:sessionId")
+  async revokeSession(
+    @CurrentSellerId() _sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("sessionId") sessionId: string,
+  ) {
+    const revoked = await this.sessions.revokeOwnSession(user.sub, sessionId);
+    if (!revoked) {
+      throw new ForbiddenException("This session doesn't exist or doesn't belong to you.");
+    }
+    return { revoked: true };
+  }
+
+  // SRS §5.25/FR-25.6 - voluntary 2FA opt-in for an already-logged-in
+  // seller (relevant under the default `optional` enforcement mode, where
+  // nothing forces this at login time).
+  @Post("mfa/enroll")
+  enrollMfa(@CurrentSellerId() _sellerId: string, @CurrentUser() user: JwtAccessPayload) {
+    return this.auth.enrollMfaForAuthenticatedUser(user.sub);
+  }
+
+  @Post("mfa/verify")
+  verifyMfaEnrollment(@CurrentSellerId() _sellerId: string, @CurrentUser() user: JwtAccessPayload, @Body() dto: MfaVerifyCodeDto) {
+    return this.auth.confirmMfaEnrollmentForAuthenticatedUser(user.sub, dto.code);
   }
 }

@@ -3,6 +3,8 @@ import { Request } from "express";
 import { AuthService } from "./auth.service";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
 import { LoginDto } from "./dto/login.dto";
+import { MfaEnrollDto } from "./dto/mfa-enroll.dto";
+import { MfaVerifyDto } from "./dto/mfa-verify.dto";
 import { SignupDto } from "./dto/signup.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 
@@ -23,8 +25,22 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.auth.login(dto, req.ip ?? "unknown", req.headers["user-agent"]);
+  }
+
+  // SRS §5.25/FR-25.6 - reached only when login() returned a pre-auth step
+  // (an unenrolled seller under required_always enforcement).
+  @Post("mfa/enroll")
+  @HttpCode(HttpStatus.OK)
+  enrollMfa(@Body() dto: MfaEnrollDto) {
+    return this.auth.beginMfaEnrollment(dto.preAuthToken);
+  }
+
+  @Post("mfa/verify")
+  @HttpCode(HttpStatus.OK)
+  verifyMfa(@Body() dto: MfaVerifyDto, @Req() req: Request) {
+    return this.auth.verifyMfaAndIssueSession(dto.preAuthToken, dto.code, req.ip ?? "unknown", req.headers["user-agent"]);
   }
 
   @Post("refresh")
