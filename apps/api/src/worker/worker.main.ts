@@ -3,6 +3,9 @@ import { NestFactory } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { Worker } from "bullmq";
 import { AppModule } from "../app.module";
+import { InvoicesService } from "../billing/invoices.service";
+import { INVOICE_GENERATION_QUEUE_NAME } from "../billing/invoice-generation.queue";
+import { INVOICE_OVERDUE_QUEUE_NAME } from "../billing/invoice-overdue.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
 import { DOMAIN_VERIFICATION_QUEUE_NAME } from "../domains/domain-verification.queue";
 import { CartService } from "../orders/cart.service";
@@ -23,6 +26,7 @@ async function main() {
   const domainVerification = appContext.get(DomainVerificationService);
   const supplierSync = appContext.get(SupplierSyncService);
   const cart = appContext.get(CartService);
+  const invoices = appContext.get(InvoicesService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -70,15 +74,43 @@ async function main() {
     console.error(`cart-abandonment job ${job?.id} failed:`, err);
   });
 
+  // Module 11 (FR-6.17) - idempotent (checks for an already-generated
+  // invoice per seller/period before creating one), so running this more
+  // often than strictly monthly is safe.
+  const invoiceGenerationWorker = new Worker(
+    INVOICE_GENERATION_QUEUE_NAME,
+    async () => invoices.generateMonthlyInvoices(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  invoiceGenerationWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`invoice-generation job ${job?.id} failed:`, err);
+  });
+
+  // Module 11 (FR-6.18) - grace-period-overdue sweep.
+  const invoiceOverdueWorker = new Worker(
+    INVOICE_OVERDUE_QUEUE_NAME,
+    async () => invoices.sweepOverdueInvoicesAndSuspend(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  invoiceOverdueWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`invoice-overdue-sweep job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; invoice-generation/invoice-overdue-sweep - Module 11).",
   );
 
   const shutdown = async () => {
     await domainWorker.close();
     await supplierSyncWorker.close();
     await cartAbandonmentWorker.close();
+    await invoiceGenerationWorker.close();
+    await invoiceOverdueWorker.close();
     await appContext.close();
     process.exit(0);
   };

@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
+import { BillingModule } from "./billing/billing.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
@@ -47,6 +48,7 @@ import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
     StorefrontModule,
     OrdersModule,
     SellersModule,
+    BillingModule,
     HealthModule,
   ],
   providers: [

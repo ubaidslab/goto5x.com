@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { BillingModule } from "../billing/billing.module";
 import { EventsModule } from "../events/events.module";
 import { EmailService } from "../notifications/email.service";
 import { SettingsModule } from "../settings-registry/settings.module";
@@ -17,7 +18,7 @@ import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
 @Module({
-  imports: [SettingsModule, StorefrontModule, StoreSettingsModule, SuppliersModule, EventsModule],
+  imports: [SettingsModule, StorefrontModule, StoreSettingsModule, SuppliersModule, EventsModule, BillingModule],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [
     CartService,

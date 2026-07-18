@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { OrderStatus } from "@prisma/client";
+import { LedgerService } from "../billing/ledger.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
@@ -31,6 +32,7 @@ export class OrdersService {
     private readonly email: EmailService,
     private readonly storefront: StorefrontService,
     private readonly printifyAdapter: PrintifyAdapter,
+    private readonly ledger: LedgerService,
   ) {}
 
   async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; tag?: string }) {
@@ -92,6 +94,11 @@ export class OrdersService {
       });
       const updated = await tx.order.update({ where: { id: orderId }, data: { status: "confirmed" } });
       await tx.orderItem.updateMany({ where: { orderId }, data: { fulfillmentStatus: "confirmed" } });
+      // Module 11 (FR-6.16) - accrued in the same transaction as the
+      // confirmation itself: a commission_accrued entry must never exist
+      // without the order that produced it actually being confirmed, and
+      // vice versa (Financial Truth Invariant, §3.12).
+      await this.ledger.accrueCommission(tx, sellerId, updated, before.currency);
       await tx.orderTimelineEvent.create({
         data: {
           storeId,
