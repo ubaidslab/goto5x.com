@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { round2 } from "../orders/money.util";
@@ -27,6 +28,7 @@ export class InvoicesService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly settings: SettingsService,
     private readonly auditLog: AuditLogService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   /** Seller's own invoice list/detail (own dashboard, not admin). */
@@ -102,6 +104,12 @@ export class InvoicesService {
    * currently-active stores. Only touches stores this mechanism itself
    * could have suspended (status = 'active') - never overwrites an
    * independently admin-issued suspension/ban.
+   *
+   * FR-7.15/FR-7.18 (revised v0.19) - a `group_sponsorship` invoice is a
+   * different kind of debt: non-payment never suspends the leader's store
+   * (or a member's) - it gracefully downgrades every currently-sponsored
+   * member to Free at their own next cycle, the identical mechanism FR-7.13
+   * already uses for a voluntary leave.
    */
   async sweepOverdueInvoicesAndSuspend(now = new Date()): Promise<{ suspended: number }> {
     const overdue = await this.prismaAdmin.sellerInvoice.findMany({
@@ -111,6 +119,17 @@ export class InvoicesService {
     let suspended = 0;
     for (const invoice of overdue) {
       await this.prismaAdmin.sellerInvoice.update({ where: { id: invoice.id }, data: { status: "overdue" } });
+
+      if (invoice.invoiceType === "group_sponsorship") {
+        const activeMembers = await this.prismaAdmin.teamMember.findMany({
+          where: { teamId: invoice.teamId!, status: "active" },
+        });
+        for (const member of activeMembers) {
+          await this.subscriptions.scheduleDowngradeToFreeAtPeriodEnd(member.sellerId);
+        }
+        continue;
+      }
+
       const result = await this.prismaAdmin.store.updateMany({
         where: { sellerId: invoice.sellerId, status: "active" },
         data: { status: "suspended" },
@@ -120,7 +139,7 @@ export class InvoicesService {
     return { suspended };
   }
 
-  /** FR-6.17 - manual admin verification; lifts any grace-period suspension this invoice caused. */
+  /** FR-6.17 - manual admin verification; lifts any grace-period suspension this invoice caused (commission invoices only - see sweep note above). */
   async markPaid(invoiceId: string, adminUserId: string) {
     const before = await this.prismaAdmin.sellerInvoice.findUnique({ where: { id: invoiceId } });
     if (!before) throw new NotFoundException("Invoice not found.");
@@ -130,10 +149,12 @@ export class InvoicesService {
       where: { id: invoiceId },
       data: { status: "paid", paidAt: new Date(), paidBy: adminUserId },
     });
-    await this.prismaAdmin.store.updateMany({
-      where: { sellerId: before.sellerId, status: "suspended" },
-      data: { status: "active" },
-    });
+    if (before.invoiceType === "commission") {
+      await this.prismaAdmin.store.updateMany({
+        where: { sellerId: before.sellerId, status: "suspended" },
+        data: { status: "active" },
+      });
+    }
 
     await this.auditLog.record({
       adminUserId,
@@ -145,6 +166,50 @@ export class InvoicesService {
     });
 
     return after;
+  }
+
+  /**
+   * FR-7.15/FR-7.18 - one consolidated monthly group invoice per team,
+   * alongside (never merged into) the leader's own separate commission
+   * invoice above. total = (active sponsored member count) x the leader's
+   * Team tier's seat price - every seat bills at the same, tier-determined
+   * price, never a per-member-chosen amount.
+   */
+  async generateMonthlyGroupInvoices(now = new Date()): Promise<{ generated: number }> {
+    const { periodStart, periodEnd } = previousCalendarMonth(now);
+    const graceDays = await this.settings.resolve<number>("billing.invoice_grace_period_days");
+
+    const teams = await this.prismaAdmin.team.findMany({ include: { plan: true } });
+    let generated = 0;
+    for (const team of teams) {
+      const alreadyInvoiced = await this.prismaAdmin.sellerInvoice.findFirst({
+        where: { teamId: team.id, invoiceType: "group_sponsorship", periodStart },
+      });
+      if (alreadyInvoiced) continue; // idempotent re-run safety
+
+      const activeMemberCount = await this.prismaAdmin.teamMember.count({
+        where: { teamId: team.id, status: "active" },
+      });
+      if (activeMemberCount === 0) continue; // no invoice for an empty team
+
+      const totalAmount = round2(activeMemberCount * Number(team.plan.seatPrice ?? 0));
+      const dueDate = new Date(periodEnd.getTime() + graceDays * 24 * 60 * 60 * 1000);
+
+      await this.prismaAdmin.sellerInvoice.create({
+        data: {
+          sellerId: team.leaderSellerId,
+          invoiceType: "group_sponsorship",
+          teamId: team.id,
+          periodStart,
+          periodEnd,
+          totalAmount,
+          currency: team.plan.currency,
+          dueDate,
+        },
+      });
+      generated += 1;
+    }
+    return { generated };
   }
 
   /** FR-6.20 - a specific accrued-commission line, never a blanket balance rewrite. */

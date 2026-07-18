@@ -855,6 +855,7 @@ model Plan {
 
   subscriptions        Subscription[] @relation("CurrentPlan")
   pendingSubscriptions Subscription[] @relation("PendingPlan")
+  Team                 Team[]
 
   // Also doubles as PlansService/the seed's natural idempotency key - no
   // two tiers occupy the same position within a group.
@@ -902,10 +903,17 @@ model Subscription {
 model Team {
   id             String   @id @default(uuid()) @db.Uuid
   leaderSellerId String   @map("leader_seller_id") @db.Uuid
+  // FR-7.18 - which of the 3 Team tiers this team bills at (seatPrice) -
+  // distinct from the leader's own INDIVIDUAL plan tier, which only gates
+  // *eligibility* to create a team at all (teams.leader_eligible, bundled
+  // onto Standard/Pro per FR-7.16). Chosen at creation; changing it later
+  // is a future upgrade (v1.0: fixed for the team's lifetime).
+  planId         String   @map("plan_id") @db.Uuid
   name           String
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   leader        Seller          @relation(fields: [leaderSellerId], references: [id])
+  plan          Plan            @relation(fields: [planId], references: [id])
   members       TeamMember[]
   subscriptions Subscription[]
   groupInvoices SellerInvoice[]

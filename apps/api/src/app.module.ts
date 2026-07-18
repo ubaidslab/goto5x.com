@@ -24,6 +24,7 @@ import { SettingsModule } from "./settings-registry/settings.module";
 import { StorefrontModule } from "./storefront/storefront.module";
 import { StoreSettingsModule } from "./store-settings/store-settings.module";
 import { SuppliersModule } from "./suppliers/suppliers.module";
+import { TeamsModule } from "./teams/teams.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
 import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
@@ -53,6 +54,7 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     BillingModule,
     TrustSafetyModule,
     PlansModule,
+    TeamsModule,
     HealthModule,
   ],
   providers: [

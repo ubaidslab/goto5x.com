@@ -76,10 +76,16 @@ async function main() {
 
   // Module 11 (FR-6.17) - idempotent (checks for an already-generated
   // invoice per seller/period before creating one), so running this more
-  // often than strictly monthly is safe.
+  // often than strictly monthly is safe. Module 14 (FR-7.15/7.18) - the
+  // same job also generates each team's monthly group-sponsorship invoice,
+  // an equally idempotent, equally monthly job; no reason for a second
+  // scheduler/queue.
   const invoiceGenerationWorker = new Worker(
     INVOICE_GENERATION_QUEUE_NAME,
-    async () => invoices.generateMonthlyInvoices(),
+    async () => {
+      await invoices.generateMonthlyInvoices();
+      await invoices.generateMonthlyGroupInvoices();
+    },
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 
