@@ -66,6 +66,9 @@ export class StoresService {
       // checkout never has to special-case "no settings configured yet".
       await tx.storeShippingSettings.create({ data: { storeId: created.id } });
       await tx.storeTaxSettings.create({ data: { storeId: created.id } });
+      // Module 11 prerequisite fix (FR-6.14) - same auto-create discipline;
+      // CheckoutService.placeOrder() assumes this row always exists.
+      await tx.storePaymentInstructions.create({ data: { storeId: created.id } });
       return created;
     });
     // SRS §3.11/FR-26.5 - after commit, non-blocking (FR-26.3).

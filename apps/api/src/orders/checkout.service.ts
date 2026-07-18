@@ -5,6 +5,7 @@ import { EmailService } from "../notifications/email.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { DiscountCodesService } from "../store-settings/discount-codes.service";
+import { hasAnyPaymentMethod } from "../store-settings/payment-instructions.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { SupplierListingsService } from "../suppliers/supplier-listings.service";
 import { CheckoutDto } from "./dto/checkout.dto";
@@ -62,7 +63,7 @@ export class CheckoutService {
     const items = cart.items as { productId: string; variantId: string; quantity: number }[];
     if (items.length === 0) throw new BadRequestException("This cart is empty.");
 
-    const order = await this.placeOrder({
+    const { order, paymentInstructions } = await this.placeOrder({
       storeId: store.id,
       currency: store.currency,
       buyerEmail: cart.buyerEmail,
@@ -82,6 +83,7 @@ export class CheckoutService {
       order.buyerEmail,
       store.name,
       `https://${canonicalHostname}/order-status/${order.statusLookupToken}`,
+      paymentInstructions,
     );
 
     return order;
@@ -98,7 +100,7 @@ export class CheckoutService {
       include: { domains: true },
     });
 
-    const order = await this.placeOrder({
+    const { order, paymentInstructions } = await this.placeOrder({
       storeId: store.id,
       currency: store.currency,
       buyerEmail: dto.buyerEmail,
@@ -113,6 +115,7 @@ export class CheckoutService {
       order.buyerEmail,
       store.name,
       `https://${canonicalHostname}/order-status/${order.statusLookupToken}`,
+      paymentInstructions,
     );
 
     return order;
@@ -145,10 +148,21 @@ export class CheckoutService {
         discountCodeId = applied.discountCodeId;
       }
 
-      const [shippingSettings, taxSettings] = await Promise.all([
+      const [shippingSettings, taxSettings, paymentInstructions] = await Promise.all([
         this.prismaAdmin.storeShippingSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storeTaxSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
+        this.prismaAdmin.storePaymentInstructions.findUniqueOrThrow({ where: { storeId: params.storeId } }),
       ]);
+
+      // FR-6.14 store-readiness gate. v1.0 has no separate store draft/
+      // publish state (a store is `active` the instant it's created), so
+      // this is enforced at the point that actually matters instead: a
+      // buyer can't complete an order the seller has no way to be paid for.
+      if (!hasAnyPaymentMethod(paymentInstructions)) {
+        throw new BadRequestException(
+          "This store hasn't configured a way to receive payment yet - checkout isn't available.",
+        );
+      }
 
       const { shippingAmount, taxAmount, totalAmount } = computeOrderTotals({
         items: priced.map((i) => ({
@@ -165,7 +179,7 @@ export class CheckoutService {
         taxInclusive: taxSettings.taxInclusive,
       });
 
-      return await this.prismaAdmin.$transaction(async (tx) => {
+      const order = await this.prismaAdmin.$transaction(async (tx) => {
         const created = await tx.order.create({
           data: {
             storeId: params.storeId,
@@ -206,6 +220,8 @@ export class CheckoutService {
 
         return created;
       });
+
+      return { order, paymentInstructions };
     } catch (err) {
       // A rejected order (invalid/expired discount, DB error) must never
       // leave supplier stock decremented for an order that was never created.

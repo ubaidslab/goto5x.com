@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { formatPaymentInstructions, PaymentInstructionsLike } from "../store-settings/payment-instructions.service";
 
 /**
  * Minimal email sending for Module 1's auth flows only (verification,
@@ -45,12 +46,24 @@ export class EmailService {
     );
   }
 
-  /** FR-5.4 - the order confirmation email is what actually delivers the buyer's unguessable status-lookup link (Module 9, CheckoutService). */
-  async sendOrderConfirmationEmail(to: string, storeName: string, statusUrl: string): Promise<void> {
+  /**
+   * FR-5.4 - the order confirmation email is what actually delivers the
+   * buyer's unguessable status-lookup link (Module 9, CheckoutService).
+   * FR-6.14 (Module 11) - also carries the seller's payment instructions,
+   * framed as "pay the seller directly, then they confirm" since the
+   * platform never touches the money in any v1.0 flow.
+   */
+  async sendOrderConfirmationEmail(
+    to: string,
+    storeName: string,
+    statusUrl: string,
+    paymentInstructions: PaymentInstructionsLike,
+  ): Promise<void> {
+    const howToPay = formatPaymentInstructions(paymentInstructions);
     await this.send(
       to,
       `Your order from ${storeName}`,
-      `Thanks for your order! Track its status any time here: ${statusUrl}`,
+      `Thanks for your order! Pay ${storeName} directly using one of the methods below - once they confirm receipt, your order moves to confirmed.\n\n${howToPay}\n\nTrack its status any time here: ${statusUrl}`,
     );
   }
 

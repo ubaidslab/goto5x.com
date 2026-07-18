@@ -23,6 +23,14 @@ export class OrderStatusLookupService {
     });
     if (!order) throw new NotFoundException("Order not found.");
 
+    // FR-6.14 (Module 11) - the buyer's persistent post-checkout reference
+    // for how to actually pay the seller, shown only while the order is
+    // still pending (once paid/confirmed there's nothing left to pay).
+    const paymentInstructions =
+      order.status === "pending"
+        ? await this.prismaAdmin.storePaymentInstructions.findUnique({ where: { storeId: order.storeId } })
+        : null;
+
     // Buyer-safe projection only - no notes, no tags, no internal ids
     // beyond what the buyer already knows from their own order.
     return {
@@ -34,6 +42,16 @@ export class OrderStatusLookupService {
       taxAmount: order.taxAmount,
       discountAmount: order.discountAmount,
       shippingAddress: order.shippingAddress,
+      paymentInstructions: paymentInstructions
+        ? {
+            bankAccountTitle: paymentInstructions.bankAccountTitle,
+            bankAccountNumber: paymentInstructions.bankAccountNumber,
+            bankName: paymentInstructions.bankName,
+            jazzcashNumber: paymentInstructions.jazzcashNumber,
+            easypaisaNumber: paymentInstructions.easypaisaNumber,
+            codEnabled: paymentInstructions.codEnabled,
+          }
+        : null,
       items: order.items.map((item) => ({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
