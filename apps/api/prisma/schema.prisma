@@ -206,6 +206,12 @@ model Seller {
   // threshold. Bypasses both new-seller probation and the keyword/category
   // moderation queue entirely.
   isTrusted      Boolean    @default(false) @map("is_trusted")
+  // Module 10 (FR-28.4) - cosmetic-only dashboard personalization, never the
+  // storefront theme (StoreThemeSettings, a separate system). Real plan-gating
+  // (higher plans = more options) is documented but not enforced in v1.0 - no
+  // Seller-Plan relation exists yet (Module 11 hasn't given sellers a real
+  // plan assignment), so every seller currently sees the full preset set.
+  dashboardTheme String    @default("default") @map("dashboard_theme")
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -601,6 +607,8 @@ model MediaAsset {
   url       String
   source    MediaSource @default(upload)
   type      MediaType
+  sortOrder Int         @default(0) @map("sort_order") // Module 10 (FR-28.1) - display order within a product's image set
+  isPrimary Boolean     @default(false) @map("is_primary") // Module 10 (FR-28.1) - at most one true per productId, enforced in MediaAssetsService, not the DB
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
 
   product Product? @relation(fields: [productId], references: [id])

@@ -15,6 +15,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AttachMediaDto } from "./dto/attach-media.dto";
+import { ReorderMediaDto } from "./dto/reorder-media.dto";
 import { MediaAssetsService } from "./media-assets.service";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB - generous for product photos/short clips, bounded so one upload can't exhaust a request
@@ -44,6 +45,27 @@ export class MediaUploadController {
   @Get()
   list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.media.list(sellerId, storeId);
+  }
+
+  // Registered before the generic ":mediaId" route below - Nest matches
+  // overlapping patterns in registration order, and "reorder"/"primary"
+  // would otherwise be swallowed as a literal :mediaId value.
+  @Patch("reorder")
+  reorder(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Body() dto: ReorderMediaDto,
+  ) {
+    return this.media.reorder(sellerId, storeId, dto.productId, dto.mediaIds);
+  }
+
+  @Patch(":mediaId/primary")
+  setPrimary(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Param("mediaId") mediaId: string,
+  ) {
+    return this.media.setPrimary(sellerId, storeId, mediaId);
   }
 
   @Patch(":mediaId")

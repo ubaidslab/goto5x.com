@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
@@ -97,6 +97,34 @@ export class MediaAssetsService {
         if (!product || product.storeId !== storeId) throw new NotFoundException("Product not found.");
       }
       return tx.mediaAsset.update({ where: { id: mediaId }, data: { productId } });
+    });
+  }
+
+  /** `mediaIds` is the full, desired order for one product's image set - each id's index becomes its sortOrder. */
+  async reorder(sellerId: string, storeId: string, productId: string, mediaIds: string[]) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.mediaAsset.findMany({ where: { storeId, productId } });
+      const existingIds = new Set(existing.map((asset) => asset.id));
+      if (mediaIds.length !== existing.length || !mediaIds.every((id) => existingIds.has(id))) {
+        throw new BadRequestException("mediaIds must be exactly this product's current image set.");
+      }
+      await Promise.all(
+        mediaIds.map((id, index) => tx.mediaAsset.update({ where: { id }, data: { sortOrder: index } })),
+      );
+      return tx.mediaAsset.findMany({ where: { storeId, productId }, orderBy: { sortOrder: "asc" } });
+    });
+  }
+
+  async setPrimary(sellerId: string, storeId: string, mediaId: string) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.mediaAsset.findUnique({ where: { id: mediaId } });
+      if (!existing || existing.storeId !== storeId) throw new NotFoundException("Media asset not found.");
+      if (!existing.productId) throw new BadRequestException("Only a product-attached image can be set primary.");
+      await tx.mediaAsset.updateMany({
+        where: { storeId, productId: existing.productId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+      return tx.mediaAsset.update({ where: { id: mediaId }, data: { isPrimary: true } });
     });
   }
 }
