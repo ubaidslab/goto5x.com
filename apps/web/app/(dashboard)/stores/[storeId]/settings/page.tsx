@@ -16,8 +16,18 @@ interface PaymentInstructions {
   bankAccountNumber: string | null;
   bankName: string | null;
   jazzcashNumber: string | null;
+  jazzcashAccountTitle: string | null;
   easypaisaNumber: string | null;
+  easypaisaAccountTitle: string | null;
+  nameDeclaredSelfOwned: boolean;
+  nameConsistencyStatus: "not_required" | "pending" | "approved" | "rejected";
   codEnabled: boolean;
+}
+
+interface SellerProfile {
+  dashboardTheme: string;
+  cnicMasked: string | null;
+  activationStatus: "auto_approved" | "pending_review" | "blocked";
 }
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
@@ -42,14 +52,24 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentSaved, setPaymentSaved] = useState(false);
 
+  const [cnicMasked, setCnicMasked] = useState<string | null>(null);
+  const [activationStatus, setActivationStatus] = useState<SellerProfile["activationStatus"]>("auto_approved");
+  const [cnicInput, setCnicInput] = useState("");
+  const [savingCnic, setSavingCnic] = useState(false);
+  const [cnicSaved, setCnicSaved] = useState(false);
+
   useEffect(() => {
     api
       .get<{ accessMode: AccessMode }>(`/stores/${params.storeId}`)
       .then((s) => setAccessMode(s.accessMode))
       .finally(() => setLoaded(true));
     api
-      .get<{ dashboardTheme: string }>("/sellers/me")
-      .then((profile) => setDashboardTheme(profile.dashboardTheme))
+      .get<SellerProfile>("/sellers/me")
+      .then((profile) => {
+        setDashboardTheme(profile.dashboardTheme);
+        setCnicMasked(profile.cnicMasked);
+        setActivationStatus(profile.activationStatus);
+      })
       .catch(() => {});
     api
       .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
@@ -90,7 +110,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         bankAccountNumber: (form.get("bankAccountNumber") as string) || undefined,
         bankName: (form.get("bankName") as string) || undefined,
         jazzcashNumber: (form.get("jazzcashNumber") as string) || undefined,
+        jazzcashAccountTitle: (form.get("jazzcashAccountTitle") as string) || undefined,
         easypaisaNumber: (form.get("easypaisaNumber") as string) || undefined,
+        easypaisaAccountTitle: (form.get("easypaisaAccountTitle") as string) || undefined,
+        nameDeclaredSelfOwned: form.get("nameDeclaredSelfOwned") === "on",
         codEnabled: form.get("codEnabled") === "on",
       });
       setPayment(updated);
@@ -99,6 +122,23 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't save payment instructions.");
     } finally {
       setSavingPayment(false);
+    }
+  }
+
+  async function saveCnic(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setCnicSaved(false);
+    setSavingCnic(true);
+    try {
+      const result = await api.patch<{ cnicMasked: string }>("/sellers/me/cnic", { cnic: cnicInput });
+      setCnicMasked(result.cnicMasked);
+      setCnicInput("");
+      setCnicSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save CNIC.");
+    } finally {
+      setSavingCnic(false);
     }
   }
 
@@ -171,10 +211,28 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                   <Field label="JazzCash number">
                     <Input name="jazzcashNumber" defaultValue={payment.jazzcashNumber ?? ""} />
                   </Field>
+                  <Field label="JazzCash account title">
+                    <Input name="jazzcashAccountTitle" defaultValue={payment.jazzcashAccountTitle ?? ""} />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <Field label="Easypaisa number">
                     <Input name="easypaisaNumber" defaultValue={payment.easypaisaNumber ?? ""} />
                   </Field>
+                  <Field label="Easypaisa account title">
+                    <Input name="easypaisaAccountTitle" defaultValue={payment.easypaisaAccountTitle ?? ""} />
+                  </Field>
                 </div>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" name="nameDeclaredSelfOwned" defaultChecked={payment.nameDeclaredSelfOwned} />
+                  Each account above is registered in my own legal name
+                </label>
+                {payment.nameConsistencyStatus === "pending" && (
+                  <Alert tone="info">
+                    One of your declared account titles doesn&apos;t clearly match your business name - an admin will
+                    review it. You can keep using your dashboard normally in the meantime.
+                  </Alert>
+                )}
                 <label className="flex items-center gap-2 text-sm text-ink">
                   <input type="checkbox" name="codEnabled" defaultChecked={payment.codEnabled} />
                   Accept Cash on Delivery
@@ -187,6 +245,44 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             </CardBody>
           </Card>
         )}
+
+        <Card>
+          <CardHeader
+            title="Identity verification"
+            description="Required before checkout works - a way for the platform to confirm the seller behind an account is a real, accountable person."
+          />
+          <CardBody>
+            {activationStatus !== "auto_approved" && (
+              <Alert tone="info">
+                Your account is under review ({activationStatus === "blocked" ? "blocked pending review" : "pending review"}).
+                You can keep using your dashboard while an admin looks at it.
+              </Alert>
+            )}
+            {cnicMasked ? (
+              <p className="mb-4 text-sm text-ink">
+                CNIC on file: <span className="font-medium">{cnicMasked}</span>
+              </p>
+            ) : (
+              <p className="mb-4 text-sm text-ink-muted">No CNIC on file yet - required before checkout works.</p>
+            )}
+            <form onSubmit={saveCnic} className="flex items-end gap-2">
+              <div className="flex-1">
+                <Field label={cnicMasked ? "Update CNIC" : "CNIC"}>
+                  <Input
+                    placeholder="XXXXX-XXXXXXX-X"
+                    value={cnicInput}
+                    onChange={(e) => setCnicInput(e.target.value)}
+                    required
+                  />
+                </Field>
+              </div>
+              <Button type="submit" loading={savingCnic}>
+                Save
+              </Button>
+            </form>
+            {cnicSaved && <Alert tone="success">Saved.</Alert>}
+          </CardBody>
+        </Card>
 
         <Card>
           <CardHeader title="Dashboard appearance" description="Purely cosmetic - only changes how your own dashboard looks, never your storefront." />
