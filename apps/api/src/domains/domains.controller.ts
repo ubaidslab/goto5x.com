@@ -23,6 +23,14 @@ export class DomainsController {
     return this.domains.list(sellerId, storeId);
   }
 
+  // DNS instructions + the FR-11.3 referral block - not store-scoped data,
+  // but kept under this same store-scoped prefix so the dashboard screen
+  // only talks to one resource.
+  @Get("config")
+  config() {
+    return this.domains.getDashboardConfig();
+  }
+
   @Delete(":domainId")
   remove(
     @CurrentSellerId() sellerId: string,

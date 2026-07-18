@@ -103,6 +103,45 @@ export async function seedModule3Settings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  // v0.18 addition (FR-11.3) - the domain-upsell affiliate block on the
+  // custom-domain dashboard screen. Link-out only; the founder can swap or
+  // disable the affiliate partner without a deploy.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "domains.referral_enabled" },
+    create: {
+      key: "domains.referral_enabled",
+      valueType: "boolean",
+      allowedScopes: ["global"],
+      defaultValue: false,
+      description: "Shows/hides the 'Get a domain' affiliate link block (SRS FR-11.3).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "domains.referral_url" },
+    create: {
+      key: "domains.referral_url",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "",
+      description: "Affiliate link URL for the domain-upsell partner (SRS FR-11.3).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "domains.referral_partner_name" },
+    create: {
+      key: "domains.referral_partner_name",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "",
+      description: "Display name of the domain-upsell affiliate partner (SRS FR-11.3).",
+    },
+    update: {},
+  });
 }
 
 /**

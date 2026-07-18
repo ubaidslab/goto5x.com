@@ -262,4 +262,38 @@ describe("Custom domains & TLS (e2e) - SRS FR-11.1/FR-11.2, §14.11", () => {
     await expect(domainsService.resolveStoreIdByHostname("Resolvable.Example.com")).resolves.toBe(a.storeId);
     await expect(domainsService.resolveStoreIdByHostname("nobody-owns-this.example.com")).resolves.toBeNull();
   });
+
+  describe("Domain upsell referral (FR-11.3, §14.11, v0.18)", () => {
+    it("hides the referral block entirely when the enabled flag is off (default)", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("domain-referral-off@example.com", "domain-referral-off-store");
+
+      const config = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/domains/config`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(config.status).toBe(200);
+      expect(config.body.referral).toBeNull();
+    });
+
+    it("renders the current Settings Registry URL/partner name once the enabled flag is turned on", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("domain-referral-on@example.com", "domain-referral-on-store");
+
+      await superuser.settingsValue.create({
+        data: { definitionKey: "domains.referral_enabled", scopeType: "global", scopeId: null, value: true },
+      });
+      await superuser.settingsValue.create({
+        data: { definitionKey: "domains.referral_url", scopeType: "global", scopeId: null, value: "https://partner.example.com/buy" },
+      });
+      await superuser.settingsValue.create({
+        data: { definitionKey: "domains.referral_partner_name", scopeType: "global", scopeId: null, value: "PartnerRegistrar" },
+      });
+
+      const config = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/domains/config`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(config.body.referral).toEqual({
+        url: "https://partner.example.com/buy",
+        partnerName: "PartnerRegistrar",
+      });
+    });
+  });
 });

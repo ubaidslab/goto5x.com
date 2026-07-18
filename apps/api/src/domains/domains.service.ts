@@ -79,6 +79,26 @@ export class DomainsService {
     });
   }
 
+  /**
+   * DNS instructions and the FR-11.3 referral block are both plain
+   * Settings Registry reads, not store-scoped data - bundled into one call
+   * so the dashboard screen only needs one request to render itself.
+   */
+  async getDashboardConfig() {
+    const [cnameTarget, aRecordIp, referralEnabled, referralUrl, referralPartnerName] = await Promise.all([
+      this.settings.resolve<string>("domains.cname_target"),
+      this.settings.resolve<string>("domains.a_record_ip"),
+      this.settings.resolve<boolean>("domains.referral_enabled"),
+      this.settings.resolve<string>("domains.referral_url"),
+      this.settings.resolve<string>("domains.referral_partner_name"),
+    ]);
+    return {
+      cnameTarget,
+      aRecordIp,
+      referral: referralEnabled ? { url: referralUrl, partnerName: referralPartnerName } : null,
+    };
+  }
+
   async remove(sellerId: string, storeId: string, domainId: string) {
     const domain = await this.tenantPrisma.run(sellerId, async (tx) => {
       const existing = await tx.domain.findUnique({ where: { id: domainId } });
