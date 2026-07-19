@@ -15,6 +15,7 @@ import { DataPortabilityModule } from "./data-portability/data-portability.modul
 import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
+import { ExternalApiModule } from "./external-api/external-api.module";
 import { GuardrailsModule } from "./guardrails/guardrails.module";
 import { HealthModule } from "./health/health.module";
 import { MediaModule } from "./media/media.module";
@@ -63,6 +64,7 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     PlansModule,
     TeamsModule,
     GuardrailsModule,
+    ExternalApiModule,
     HealthModule,
   ],
   providers: [

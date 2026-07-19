@@ -15,6 +15,8 @@ import { ApiError, api } from "@/lib/dashboard-api";
 interface Theme {
   id: string;
   name: string;
+  tier: "free" | "premium" | "marketplace";
+  entitled: boolean;
 }
 
 const SECTION_LABELS: Record<SectionId, string> = {
@@ -47,9 +49,13 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [showcaseUrl, setShowcaseUrl] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<Theme[]>("/themes").then(setThemes).catch(() => {});
+    // FR-24.1/24.2 - null (v1.0 default, no Template Store yet) hides this
+    // panel entirely - the built-in theme catalog above has no dependency on it.
+    api.get<{ url: string | null }>("/themes/template-store-showcase-url").then((r) => setShowcaseUrl(r.url)).catch(() => {});
 
     api
       .get<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"] }>(`/stores/${params.storeId}`)
@@ -176,14 +182,29 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
               <Field label="Theme">
                 <Select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
                   {themes.map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <option key={t.id} value={t.id} disabled={!t.entitled}>
                       {t.name}
+                      {t.tier === "marketplace" ? (t.entitled ? " (licensed)" : " (locked - purchase required)") : ""}
                     </option>
                   ))}
                 </Select>
               </Field>
             </CardBody>
           </Card>
+
+          {showcaseUrl && (
+            <Card>
+              <CardHeader title="Premium templates" />
+              <CardBody>
+                <p className="text-sm text-muted-foreground">
+                  Browse professionally designed premium templates in the Template Store.
+                </p>
+                <a href={showcaseUrl} target="_blank" rel="noreferrer">
+                  <Button variant="secondary">Browse Template Store &rarr;</Button>
+                </a>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader title="Colors" />

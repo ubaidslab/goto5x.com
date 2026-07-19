@@ -33,6 +33,7 @@ export const navItems: NavItem[] = [
   { label: "Domains", href: (id) => `/stores/${id}/domains`, builtInModule10: true },
   { label: "Import & export", href: (id) => `/stores/${id}/data`, builtInModule10: true },
   { label: "Plans & Billing", href: (id) => `/stores/${id}/billing`, builtInModule10: true },
+  { label: "Marketing", href: (id) => `/stores/${id}/marketing`, builtInModule10: true },
   { label: "Theme", href: (id) => `/stores/${id}/customizer`, builtInModule10: false },
   { label: "Settings", href: (id) => `/stores/${id}/settings`, builtInModule10: false },
 ];

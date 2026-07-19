@@ -335,6 +335,7 @@ visitor out, which is the same intended blast radius as a session.
 | `TRAEFIK_DYNAMIC_CONFIG_DIR` | Any writable directory the API can write to and (in production) Traefik can read from - a shared Docker volume in `docker-compose.yml` |
 | `ACME_EMAIL` | A real email address - Let's Encrypt requires one for expiry/problem notices. Read only by the `traefik` service, not the app |
 | `PLATFORM_HOSTNAMES` (`apps/web`) | Comma-separated hostnames (with port, if non-default) that serve the platform's own site rather than a tenant storefront (Module 4). Not a secret - no default outside local dev needed since production always sets it to the platform's real domain(s) |
+| `EXTERNAL_API_SECRET_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts each `external_api_clients` row's HMAC signing secret at rest (SRS §5.24/§6.5), same mechanism/key-management discipline as `DRIVE_TOKEN_ENCRYPTION_KEY`, kept as its own key |
 
 ---
 

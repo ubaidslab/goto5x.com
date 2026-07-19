@@ -88,6 +88,17 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
 
   it("the customizer persists theme/settings changes, and they're read back exactly (FR-1.2/FR-1.3)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("themes-persist@example.com", "themes-persist-store");
+    // Module 18 (FR-24.5) - "Modern" is `premium` tier, now actually gated by
+    // theme.premium_tier_enabled (previously unenforced, per this file's own
+    // "v1.0 default" tests below) - enable it globally so this test still
+    // exercises what it's actually testing (settings persistence), not the
+    // new gate itself.
+    const adminToken = await fullyVerifiedAdminToken("themes-persist-admin@example.com");
+    await request(app.getHttpServer())
+      .put("/admin/settings/values")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ key: "theme.premium_tier_enabled", scopeType: "global", value: true });
+
     const themes = await request(app.getHttpServer()).get("/themes").set("Authorization", `Bearer ${token}`);
     const modernTheme = themes.body.find((t: any) => t.name === "Modern");
 

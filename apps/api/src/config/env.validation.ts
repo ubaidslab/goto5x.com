@@ -97,6 +97,13 @@ class EnvironmentVariables {
   // 10-11-digit account numbers.
   @IsString()
   IDENTITY_FINGERPRINT_HMAC_SECRET!: string;
+
+  // Module 18 (SRS §5.24/§6.5) - encrypts each ExternalApiClient's HMAC
+  // signing secret at rest, same AES-256-GCM mechanism/key-management
+  // discipline as DRIVE_TOKEN_ENCRYPTION_KEY/IDENTITY_ENCRYPTION_KEY, kept
+  // as its own key so all three secrets rotate independently.
+  @IsString()
+  EXTERNAL_API_SECRET_ENCRYPTION_KEY!: string;
 }
 
 /**
@@ -126,6 +133,11 @@ export function validateEnv(config: Record<string, unknown>) {
   if (Buffer.from(validated.IDENTITY_ENCRYPTION_KEY, "base64").length !== 32) {
     throw new Error(
       "Invalid environment configuration:\nIDENTITY_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
+    );
+  }
+  if (Buffer.from(validated.EXTERNAL_API_SECRET_ENCRYPTION_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nEXTERNAL_API_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

@@ -309,6 +309,8 @@ model Seller {
   teamsLed         Team[]
   teamMemberships  TeamMember[]
   promoRedemptions PlatformPromoCodeRedemption[]
+  templateEntitlements TemplateEntitlement[]
+  apiTokens            SellerApiToken[]
 
   @@map("sellers")
 }
@@ -828,8 +830,87 @@ model Theme {
   isActive        Boolean   @default(true) @map("is_active")
 
   storeThemeSettings StoreThemeSettings[]
+  entitlements       TemplateEntitlement[]
 
   @@map("themes")
+}
+
+// Module 18 (SRS §5.24a/§3.10, FR-8.14) - global registry gating the two
+// external-SaaS hooks, mirroring `SupplierAdapter` exactly (same "admin can
+// enable/disable an integration without a deploy" pattern, §3.5). No RLS -
+// every admin-terminal read goes through AdminAuthGuard, same as
+// `supplier_adapters`/`themes`. `signingSecretEncrypted` is the AES-256-GCM
+// ciphertext of the HMAC signing secret (same encryptDriveToken/
+// decryptDriveToken mechanism as the Google Drive refresh token, SRS §6.5) -
+// the plaintext is shown to the admin exactly once, at creation, and never
+// again; only the ciphertext is ever persisted.
+model ExternalApiClient {
+  id                      String               @id @default(uuid()) @db.Uuid
+  clientType              ExternalApiClientType @unique @map("client_type")
+  displayName             String               @map("display_name")
+  isEnabled               Boolean              @default(true) @map("is_enabled")
+  signingSecretEncrypted  String               @map("signing_secret_ref")
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+
+  sellerApiTokens SellerApiToken[]
+
+  @@map("external_api_clients")
+}
+
+enum ExternalApiClientType {
+  template_store
+  social_media_saas
+}
+
+// Module 18 (SRS §5.24a, FR-24.3-24.7) - a seller's access to one specific
+// marketplace-purchased theme, layered on top of (never instead of) the
+// existing plan-based `themes.tier` gating (FR-24.5: both checks must pass
+// independently). Seller-scoped directly (not store-scoped) - same RLS
+// shape as `google_drive_connections` (a direct `seller_id = ...` policy,
+// not the `stores` subquery every store-scoped table uses).
+model TemplateEntitlement {
+  id                  String                        @id @default(uuid()) @db.Uuid
+  sellerId            String                        @map("seller_id") @db.Uuid
+  themeId             String                        @map("theme_id") @db.Uuid
+  source              TemplateEntitlementSource
+  externalPurchaseRef String?                        @map("external_purchase_ref")
+  grantedAt           DateTime                       @default(now()) @map("granted_at") @db.Timestamptz
+  revokedAt           DateTime?                      @map("revoked_at") @db.Timestamptz
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+  theme  Theme  @relation(fields: [themeId], references: [id])
+
+  @@unique([sellerId, themeId])
+  @@index([sellerId], name: "idx_entitlements_seller")
+  @@map("template_entitlements")
+}
+
+enum TemplateEntitlementSource {
+  built_in
+  marketplace_purchase
+}
+
+// Module 18 (SRS §5.24b, FR-24.9-24.11) - the Product Feed API's own
+// bearer-token auth: presented once at creation (never stored in plaintext,
+// only its hash - identical discipline to nothing else needing reversal, so
+// a hash rather than encryption is correct here), scoped to exactly one
+// seller and one external client, individually revocable. Seller-scoped
+// directly, same RLS shape as TemplateEntitlement/google_drive_connections.
+model SellerApiToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  sellerId   String    @map("seller_id") @db.Uuid
+  clientId   String    @map("client_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  scopes     String[]
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+
+  seller Seller            @relation(fields: [sellerId], references: [id])
+  client ExternalApiClient @relation(fields: [clientId], references: [id])
+
+  @@index([sellerId], name: "idx_seller_tokens_seller")
+  @@map("seller_api_tokens")
 }
 
 // Module 4. Tenant, 1:1 with store - auto-created (with a default theme)

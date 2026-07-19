@@ -59,6 +59,25 @@ export class StoreThemeSettingsService {
       if (dto.themeId) {
         const theme = await tx.theme.findFirst({ where: { id: dto.themeId, isActive: true } });
         if (!theme) throw new NotFoundException("Theme not found or not active.");
+
+        // Module 18 (FR-24.5) - two independent gates, both must pass:
+        // `marketplace` requires a live TemplateEntitlement (never gated by
+        // plan); `premium` requires the plan-tier gate. Neither check
+        // substitutes for the other.
+        if (theme.tier === "marketplace") {
+          const entitlement = await tx.templateEntitlement.findUnique({
+            where: { sellerId_themeId: { sellerId, themeId: theme.id } },
+          });
+          if (!entitlement || entitlement.revokedAt) {
+            throw new ForbiddenException("You don't have a license for this template.");
+          }
+        } else if (theme.tier === "premium") {
+          const context = await this.subscriptions.getPlanContext(sellerId);
+          const premiumTierEnabled = await this.settings.resolve<boolean>("theme.premium_tier_enabled", context);
+          if (!premiumTierEnabled) {
+            throw new ForbiddenException("This template isn't included in your current plan.");
+          }
+        }
       }
 
       return tx.storeThemeSettings.update({

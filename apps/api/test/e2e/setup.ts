@@ -6,6 +6,7 @@ import { AppModule } from "../../src/app.module";
 import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
 import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
+import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
 import {
@@ -25,7 +26,7 @@ import { seedSellerAgreementV1, seedTrustSafetySettings } from "../../src/trust-
  */
 export async function buildTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   return app;
@@ -52,7 +53,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       admin_audit_logs, platform_events, settings_values, settings_definitions,
-      domains, store_theme_settings, themes,
+      domains, store_theme_settings,
+      seller_api_tokens, template_entitlements, external_api_clients, themes,
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
       listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
@@ -81,6 +83,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedTrustSafetySettings(prisma);
   await seedAccountSecuritySettings(prisma);
   await seedPlansSettings(prisma);
+  await seedExternalApiSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded

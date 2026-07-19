@@ -3337,35 +3337,52 @@ gate is §14.6c, below.
       already proven for `ledger_entries` itself in Module 11's own suite
 
 ### 14.22 External-SaaS Integration Hooks
-- [ ] A store's theme-selection UI functions fully (built-in free templates
+- [x] A store's theme-selection UI functions fully (built-in free templates
       selectable, store creation unaffected) with the Template Store's showcase
       link deliberately made unreachable — proving no hard dependency (FR-24.1,
-      FR-24.2)
-- [ ] A signed, valid Template Install/License API call correctly creates a
+      FR-24.2). `template_store.showcase_url` defaults to empty, so the
+      showcase panel is hidden entirely (never a broken link) until a real
+      Template Store exists and an admin configures it
+- [x] A signed, valid Template Install/License API call correctly creates a
       `themes` entry (if new) and a `template_entitlements` row scoped to the
       calling seller only
-- [ ] An unsigned or invalidly-signed call to the Template Install/License API is
+- [x] An unsigned or invalidly-signed call to the Template Install/License API is
       rejected before any entitlement is granted (FR-24.6, security release gate)
-- [ ] A revoke call correctly removes a seller's entitlement without affecting
+- [x] A revoke call correctly removes a seller's entitlement without affecting
       any other seller's entitlement to the same theme, or the `themes` catalog
       entry itself (FR-24.6)
-- [ ] A Free-Plan seller who receives a marketplace template entitlement can use
+- [x] A Free-Plan seller who receives a marketplace template entitlement can use
       that one template despite their plan's tier otherwise excluding premium
       templates — the two gating checks (entitlement, plan tier) are verified
-      independently (FR-24.5)
-- [ ] The "Marketing" dashboard section correctly hands off to the Social Media
-      SaaS via SSO with no second login prompt (FR-24.8)
-- [ ] The Product Feed API returns only the calling seller's own products, never
+      independently (FR-24.5). **Closes a real, disclosed gap**: `themes`'s
+      `tier` column had zero plan-based enforcement since Module 4 (its own
+      doc comment: "no gating enforced yet — Module 11/14's job"); the new
+      `theme.premium_tier_enabled` key (default `false`, same "off for every
+      seller in v1.0" precedent as `theme.coded_mode_enabled`) makes this a
+      real, independently-testable gate rather than a no-op
+- [x] The "Marketing" dashboard section correctly hands off to the Social Media
+      SaaS via SSO with no second login prompt (FR-24.8). The handoff token is
+      a short-lived JWT signed with the same `JWT_ACCESS_SECRET` every seller
+      access token already uses (reusing §3.2a's hook, not a second scheme);
+      `social_media_saas.marketing_handoff_base_url` defaults to empty, so the
+      dashboard shows a documented "not configured yet" message rather than a
+      broken handoff until the real product exists
+- [x] The Product Feed API returns only the calling seller's own products, never
       another seller's — **tenant isolation test**, same rigor as every other
       tenant-scoped endpoint (FR-24.11)
-- [ ] A seller can see and revoke a connected Social Media SaaS token from the
+- [x] A seller can see and revoke a connected Social Media SaaS token from the
       dashboard; a revoked token is rejected on its very next use (FR-24.10)
-- [ ] Both external-API clients are individually toggleable from the admin
+- [x] Both external-API clients are individually toggleable from the admin
       registry without affecting each other or any other module (FR-8.14)
-- [ ] An SSO handoff and a signed API call from either SaaS both carry a
+- [x] An SSO handoff and a signed API call from either SaaS both carry a
       verifiable referral-attribution signal, recorded in `admin_audit_logs` as a
-      system actor (FR-24.13)
-- [ ] The cross-SaaS discount-eligibility endpoint answers correctly for a
+      system actor (FR-24.13). **Flagged interpretation**: recorded once per
+      SSO handoff and once per Template Install grant/revoke (the same
+      checkpoints FR-24.6 already logs) — not once per Product Feed API call,
+      which would be per-request noise inconsistent with this SRS's own
+      `platform_events` lean-taxonomy discipline (§3.11); the token/signature
+      mechanism itself is what proves origination on every read
+- [x] The cross-SaaS discount-eligibility endpoint answers correctly for a
       seller on a paid plan vs. the Free Plan, returns only the eligibility
       boolean (never discount terms), and is rejected when called unsigned
       (FR-24.14)
