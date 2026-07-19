@@ -1,8 +1,21 @@
-import { Equals, IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from "class-validator";
+import { Equals, IsEmail, IsIn, IsOptional, IsString, Length, MaxLength, MinLength, ValidateIf } from "class-validator";
 
 export class SignupDto {
   @IsEmail()
   email!: string;
+
+  // Module 16 (SRS §5.25/FR-25.5) - ISO-3166 alpha-2 code of the applicant's
+  // own country, checked against the Settings Registry allowed-countries
+  // list for a seller signup only (suppliers are never regionally gated -
+  // FR-25.5's text is seller-specific, same scoping as FR-25.6/25.7).
+  // Optional, defaulting to "PK" (see AuthService.signup()) - same
+  // "optional with a sensible default" shape as `role` above, so every
+  // caller that predates this module (and every test not exercising
+  // regional gating specifically) is unaffected.
+  @IsOptional()
+  @IsString()
+  @Length(2, 2)
+  country?: string;
 
   @IsString()
   @MinLength(10)

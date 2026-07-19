@@ -2825,15 +2825,18 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Repeated reset requests for the same account/IP are rate-limited (FR-25.2)
 - [ ] Every reset request and completion produces a `UserSecurityEvent` row
       (FR-25.3)
-- [ ] A seller-signup attempt from a country **not** on the Settings-Registry
+- [x] A seller-signup attempt from a country **not** on the Settings-Registry
       allowed-countries list shows the "launching in your region soon" message
       (not an error) and creates a `seller_signup_waitlist` row with the
-      submitted email + country (FR-25.5)
-- [ ] Adding a country to the allowed-countries list via the Settings Registry
+      submitted email + country (FR-25.5) — built Module 16
+- [x] Adding a country to the allowed-countries list via the Settings Registry
       (no deploy) immediately allows seller signup from that country on the very
-      next request (FR-25.5)
-- [ ] A **buyer** can shop any storefront regardless of country — regional
-      gating never applies to buyer-side access (FR-25.5)
+      next request (FR-25.5) — built Module 16
+- [x] A **buyer** can shop any storefront regardless of country — regional
+      gating never applies to buyer-side access (FR-25.5). Holds by
+      construction: the gate lives only in `AuthService.signup()`'s
+      seller-role branch — there is no buyer account/signup flow to gate
+      (guest checkout is v1.0's only buyer path, FR-22.1) — built Module 16
 - [ ] **Events emitted (backfilled, v0.8):** a successful signup produces a
       `seller.signup` row in `platform_events`; creating a store produces a
       `store.created` row — both with the correct `actor_id`/`store_id`, no
@@ -3300,10 +3303,20 @@ gate is §14.6c, below.
 - [x] Tax is computed correctly for both tax-inclusive and tax-exclusive store
       settings and itemized correctly on the invoice (FR-19.3)
 
-### 14.20 Seller Onboarding Wizard
-- [ ] Progress state persists correctly across sessions (FR-20.1)
-- [ ] Completing all four steps marks onboarding complete and the wizard no
-      longer interrupts the dashboard
+### 14.20 Seller Onboarding Wizard (built Module 16)
+- [x] Progress state persists correctly across sessions (FR-20.1) - backed by
+      `stores.onboarding_theme_ack_at`/`onboarding_domain_ack_at`/
+      `onboarding_completed_at`, not client-side state
+- [x] Completing all four steps marks onboarding complete and the wizard no
+      longer interrupts the dashboard. **Sticky by design:** once
+      `onboardingCompletedAt` is set it is never recomputed or cleared - a
+      later change (e.g. deleting the only product) can never resurrect the
+      wizard for a seller who already finished it
+- [x] The theme and domain steps each have both a derived path (a real
+      customizer save; an attached custom domain) and an explicit-
+      acknowledgment path ("keep this theme" / "use the free subdomain") -
+      keeping the default is a valid, deliberate choice with no other
+      action to detect it by
 
 ### 14.21 Business Guard-Rails & Platform Economics (built Module 14)
 - [x] A Free-Plan store's product creation is rejected once its plan's

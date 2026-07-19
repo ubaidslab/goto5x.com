@@ -80,7 +80,7 @@ export class StoreThemeSettingsService {
         }
       }
 
-      return tx.storeThemeSettings.update({
+      const updated = await tx.storeThemeSettings.update({
         where: { storeId },
         data: {
           themeId: dto.themeId,
@@ -89,6 +89,15 @@ export class StoreThemeSettingsService {
         },
         include: { theme: true },
       });
+
+      // Module 16 (FR-20.1) - any real customizer save also satisfies the
+      // onboarding wizard's theme step; a seller who actively picks a theme
+      // never needs the wizard's separate "keep this theme" ack too.
+      if (!store.onboardingThemeAckAt) {
+        await tx.store.update({ where: { id: storeId }, data: { onboardingThemeAckAt: new Date() } });
+      }
+
+      return updated;
     });
   }
 }

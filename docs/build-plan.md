@@ -53,7 +53,7 @@ See "Amendment approved after Module 14, ahead of Module 15" below for why.
 | 14 | Plans, Pricing & Business Guard-Rails (scope extended v0.15) | 1, 11 | 14.7, 14.21 — plus **Supplier Premium Plan (FR-7.10, new v0.15)** |
 | 15 | Customers, Reviews & Data Portability — **built** | 9 | 14.13, 14.14, 14.18, 14.19 (invoice; FR-19.2's founder sign-off still outstanding) |
 | 15.5 | **Storefront Buyer Purchase Flow & Store Branding** (new, v0.22) | 2, 9, 15 | 14.32 — launch-blocking (nothing sells without buyer-facing cart/checkout), built immediately after 15, before the SaaS-bridges module |
-| 16 | Seller Onboarding Wizard | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
+| 16 | Seller Onboarding Wizard — **built** | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
 | 17 | Admin Control Plane completion | 1, 6, 11, 12, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11), commission-invoice verification screen (Module 11) and T&S enforcement/risk-view screens (Module 12) |
 | 18 | External-SaaS Bridges — **built** | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 19 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |

@@ -49,4 +49,20 @@ export class StoresController {
   removeLogo(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
     return this.stores.removeLogo(sellerId, id);
   }
+
+  /** Module 16 (FR-20.1) - the onboarding wizard's progress read. */
+  @Get(":id/onboarding")
+  getOnboarding(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
+    return this.stores.getOnboardingProgress(sellerId, id);
+  }
+
+  @Post(":id/onboarding/theme-ack")
+  ackOnboardingTheme(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
+    return this.stores.ackOnboardingTheme(sellerId, id);
+  }
+
+  @Post(":id/onboarding/domain-ack")
+  ackOnboardingDomain(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
+    return this.stores.ackOnboardingDomain(sellerId, id);
+  }
 }

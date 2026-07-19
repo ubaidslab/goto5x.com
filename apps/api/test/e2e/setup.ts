@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
 import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
+import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
 import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
@@ -66,7 +67,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       seller_agreement_versions,
       platform_promo_code_redemptions, platform_promo_codes,
       team_members, teams, subscriptions,
-      stores, admin_users, sellers, suppliers, user_security_events, users, plans
+      stores, admin_users, sellers, suppliers, user_security_events, users, plans,
+      seller_signup_waitlist
     RESTART IDENTITY CASCADE
   `);
 }
@@ -82,6 +84,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedBillingSettings(prisma);
   await seedTrustSafetySettings(prisma);
   await seedAccountSecuritySettings(prisma);
+  await seedOnboardingSettings(prisma);
   await seedPlansSettings(prisma);
   await seedExternalApiSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test

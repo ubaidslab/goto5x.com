@@ -217,9 +217,18 @@ Index: `idx_sellers_cnic_hash (cnic_hash) UNIQUE`.
 | currency | text default `'PKR'` | single source of truth for this store's currency |
 | seo_title | text nullable | **added in Module 4** — FR-1.5. Storefront homepage default/fallback; null renders the store's own `name` |
 | seo_description | text nullable | **added in Module 4** — FR-1.5. Null derives from... there is no store-level description field to derive from, so a null `seo_description` here has no further fallback — it simply renders empty. (Products and collections below fall back to their own `description` field first, then this store-level default only if the entity has neither.) |
+| logo_media_id | uuid nullable, FK → media_assets.id | **added in Module 15.5** — FR-32.5. Null falls back to the store's typographic mark everywhere (storefront header, invoices, order emails) |
+| onboarding_theme_ack_at | timestamptz nullable | **added in Module 16** — FR-20.1. Set by either a real customizer save (`StoreThemeSettingsService.update()`) or the wizard's explicit "keep this theme" action — whichever happens first |
+| onboarding_domain_ack_at | timestamptz nullable | **added in Module 16** — FR-20.1. Set by the wizard's explicit "use the free subdomain" action; the domain step is otherwise satisfied by a real `domains` row existing for this store |
+| onboarding_completed_at | timestamptz nullable | **added in Module 16** — FR-20.1. Set once, the first time all four wizard steps are simultaneously true; **sticky by design (§14.20)** — never recomputed or cleared afterward, so a later change (e.g. deleting the only product) can never resurrect the wizard |
 | created_at, updated_at | timestamptz | |
 
 Index: `idx_stores_seller_id (seller_id)`.
+
+**Module 16's onboarding-progress design deliberately supersedes the
+`seller_onboarding_progress` sketch** documented below in this file (a
+pre-implementation placeholder from an earlier SRS revision, never built) —
+see that entry for why the actual shape differs.
 
 ### `domains` (tenant, Module 3)
 | Column | Type | Notes |
@@ -1091,17 +1100,38 @@ admin_users), created_at`. Unique: `(brand_asset_id, version)`.
 
 Index: `idx_import_jobs_store_status (store_id, status)`.
 
-### `seller_onboarding_progress` (global, seller-scoped — FR-20.1)
+### `seller_onboarding_progress` — **not built as its own table; superseded, see `stores` above (Module 16)**
+This was a pre-implementation sketch, written before Module 16 was actually
+built. Two changes from this original shape, both deliberate: (1) progress is
+**per-store, not per-seller** — a seller with multiple stores completes the
+wizard separately for each one, since each store has its own theme/logo/
+products/domain; a single seller-scoped row couldn't represent that. (2) most
+steps are **derived from real state** rather than stored as their own
+booleans — `logo_uploaded` is just "is `stores.logo_media_id` set", and
+`first_product_added` is just "does this store have ≥1 product" — so a
+seller who does the real thing never also has to click a separate
+`app confirms X` action to make the wizard agree. Only the two steps with no
+other natural completion signal (keeping the default theme; keeping the free
+subdomain) get their own persisted timestamp
+(`onboarding_theme_ack_at`/`onboarding_domain_ack_at`), and
+`onboarding_completed_at` is the only column stored purely as a boolean-like
+flag (a timestamp, sticky once set — see `stores` above). See
+`seller_signup_waitlist` below for FR-25.5's own new table, also built in
+Module 16.
+
+### `seller_signup_waitlist` (global, new in Module 16 — FR-25.5)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| seller_id | uuid FK → sellers.id, unique | |
-| template_selected | boolean default false | |
-| logo_uploaded | boolean default false | |
-| first_product_added | boolean default false | |
-| domain_configured | boolean default false | |
-| completed_at | timestamptz nullable | |
-| updated_at | timestamptz | |
+| email | text | not unique — the same applicant may retry from a different (still-blocked) country, or the platform may simply want every attempt for outreach purposes |
+| country | text | ISO-3166 alpha-2, as submitted at signup |
+| created_at | timestamptz | |
+
+No RLS — same "global, unauthenticated-write" category as `users`/`sellers`
+themselves; nothing scopes this table to a seller or store, and only the
+admin terminal will ever read it (not built yet — the table exists so no
+signup attempt is ever silently dropped, per FR-25.5's text, ahead of the
+admin-side outreach view).
 
 ### `platform_metrics_snapshots` (global — Phase 1.1+ optimization, not required for v1.0)
 | Column | Type | Notes |

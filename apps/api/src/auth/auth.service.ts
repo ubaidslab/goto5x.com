@@ -57,9 +57,25 @@ export class AuthService {
     private readonly subscriptions: SubscriptionsService,
   ) {}
 
-  async signup(dto: SignupDto, ip: string): Promise<{ userId: string }> {
+  async signup(dto: SignupDto, ip: string): Promise<{ userId: string } | { waitlisted: true }> {
     const limit = await this.settings.resolve<number>("auth.signup_rate_limit_per_hour");
     await this.rateLimit.enforcePerHour(`signup:${ip}`, limit);
+
+    const role = dto.role ?? "seller";
+
+    // SRS §5.25/FR-25.5 - checked before anything else touches the `users`
+    // table: a blocked country never learns whether dto.email already has
+    // an account, and no User/Seller row is ever created for it. Scoped to
+    // sellers only, same as FR-25.6/25.7 - buyer-side access (no accounts
+    // exist yet, FR-22.1) and supplier signup are never regionally gated.
+    if (role === "seller") {
+      const country = dto.country ?? "PK";
+      const allowedCountries = await this.settings.resolve<string[]>("auth.seller_signup_allowed_countries");
+      if (!allowedCountries.includes(country)) {
+        await this.prisma.sellerSignupWaitlist.create({ data: { email: dto.email, country } });
+        return { waitlisted: true };
+      }
+    }
 
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) {
@@ -68,7 +84,6 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const { token, tokenHash } = generateToken();
-    const role = dto.role ?? "seller";
 
     const user = await this.prisma.user.create({
       data: {

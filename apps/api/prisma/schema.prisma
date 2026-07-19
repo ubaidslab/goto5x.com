@@ -315,6 +315,20 @@ model Seller {
   @@map("sellers")
 }
 
+// Module 16 (FR-25.5) - a seller-signup attempt from a country not on the
+// Settings Registry allowed-list never creates a User/Seller row; the
+// applicant's email + country lands here instead, for future launch-
+// campaign outreach. Not tenant data (no storeId/sellerId) - same "global,
+// no RLS needed" category as `users`/`sellers` themselves.
+model SellerSignupWaitlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  country   String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("seller_signup_waitlist")
+}
+
 enum SellerActivationStatus {
   auto_approved
   pending_review
@@ -376,6 +390,16 @@ model Store {
   // Module 2) rather than a second upload path; nullable, typographic-mark
   // fallback stays wherever this is unset.
   logoMediaId          String?         @map("logo_media_id") @db.Uuid
+  // Module 16 (FR-20.1) - the onboarding wizard's 4th step ("configure a
+  // domain or accept the free subdomain") and theme step both have an
+  // explicit-acknowledgment path alongside their derived-from-real-action
+  // path (see OnboardingService). onboardingCompletedAt is sticky by
+  // design (§14.20) - once set, it is never cleared or recomputed, so a
+  // later change (e.g. deleting the only product) can never resurrect the
+  // wizard for a seller who already finished it.
+  onboardingThemeAckAt  DateTime? @map("onboarding_theme_ack_at") @db.Timestamptz
+  onboardingDomainAckAt DateTime? @map("onboarding_domain_ack_at") @db.Timestamptz
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
 
   seller              Seller                    @relation(fields: [sellerId], references: [id])
   domains             Domain[]

@@ -174,4 +174,79 @@ export class StoresService {
     }
     return { removed: true };
   }
+
+  /**
+   * Module 16 (SRS §5.20/FR-20.1) - the onboarding wizard's 4-step progress.
+   * Theme and logo are read straight off `stores` (theme's ack timestamp is
+   * set here or by StoreThemeSettingsService.update(); logo is `logoMediaId`
+   * itself); product is a live count (any status - draft counts, this is
+   * "has the seller touched product creation at all", not a publish check);
+   * domain is a live domain-row count OR its own explicit ack. Once
+   * `onboardingCompletedAt` is set it is returned as-is and never
+   * recomputed - sticky by design (§14.20), so deleting the only product
+   * afterward can never resurrect the wizard.
+   */
+  async getOnboardingProgress(sellerId: string, storeId: string) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+
+      if (store.onboardingCompletedAt) {
+        return {
+          theme: true,
+          logo: true,
+          product: true,
+          domain: true,
+          completedAt: store.onboardingCompletedAt,
+        };
+      }
+
+      const [productCount, domainCount] = await Promise.all([
+        tx.product.count({ where: { storeId } }),
+        tx.domain.count({ where: { storeId } }),
+      ]);
+
+      const steps = {
+        theme: !!store.onboardingThemeAckAt,
+        logo: !!store.logoMediaId,
+        product: productCount > 0,
+        domain: !!store.onboardingDomainAckAt || domainCount > 0,
+      };
+
+      let completedAt: Date | null = null;
+      if (steps.theme && steps.logo && steps.product && steps.domain) {
+        const updated = await tx.store.update({
+          where: { id: storeId },
+          data: { onboardingCompletedAt: new Date() },
+        });
+        completedAt = updated.onboardingCompletedAt;
+      }
+
+      return { ...steps, completedAt };
+    });
+  }
+
+  /** The theme step's explicit "keep this theme" path - a seller who never opens the customizer at all still has a valid, deliberate choice to make once. Idempotent; never overwrites an already-set ack (first-write-wins, matching the "any theme-settings save also sets this" path in StoreThemeSettingsService). */
+  async ackOnboardingTheme(sellerId: string, storeId: string) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+      if (!store.onboardingThemeAckAt) {
+        await tx.store.update({ where: { id: storeId }, data: { onboardingThemeAckAt: new Date() } });
+      }
+      return { acknowledged: true };
+    });
+  }
+
+  /** The domain step's explicit "use the free subdomain" path. Idempotent, same shape as ackOnboardingTheme. */
+  async ackOnboardingDomain(sellerId: string, storeId: string) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+      if (!store.onboardingDomainAckAt) {
+        await tx.store.update({ where: { id: storeId }, data: { onboardingDomainAckAt: new Date() } });
+      }
+      return { acknowledged: true };
+    });
+  }
 }
