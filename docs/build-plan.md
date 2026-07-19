@@ -1572,7 +1572,7 @@ invoice generated and downloadable → review submitted via the real form →
 visible in the seller's moderation queue; CSV uploaded → job processed →
 product/variant/media created and visible in the Products list).
 
-## Module 15.5 approved (SRS v0.22) — Storefront Buyer Purchase Flow & Store Branding
+## Module 15.5 (Storefront Buyer Purchase Flow & Store Branding) — built
 
 Founder approved Module 15's checklist and, in the same approval, slotted
 the flagged buyer-storefront-UI gap as a new **Module 15.5**, built
@@ -1580,9 +1580,73 @@ immediately — before Module 18 (External-SaaS Bridges) — since it's
 launch-blocking (nothing sells without it). Store logo upload bundled
 into the same module's scope (a second small gap Module 15's invoice
 template surfaced). Full spec: `docs/SRS.md` §5.32/FR-32.1-32.5, checklist
-§14.32. FR-19.2's invoice-template founder sign-off stays a separate,
-explicit item — added to `README.md`'s founder pre-launch verification
-list per the founder's own instruction, not folded into this module.
+§14.32 (all checked). FR-19.2's invoice-template founder sign-off stays a
+separate, explicit item — added to `README.md`'s founder pre-launch
+verification list per the founder's own instruction, not folded into this
+module. New Prisma migration `20260719140000_store_logo` (adds
+`stores.logo_media_id`, FK to `media_assets`, no new RLS policy needed —
+it's a column on an already-RLS-protected table).
+
+1. **Store logo upload (FR-32.5).** `StoresService.setLogo()`/`.removeLogo()`
+   reuse the existing `MediaAssetsService.uploadDirect()`/`.remove()`
+   pipeline (Module 2's quota-metered upload) rather than a new upload
+   path; replacing a logo best-effort cleans up the previous object.
+   Consumed by `GET /stores/:id` (dashboard), the public
+   `GET /storefront/store` endpoint, and `InvoiceData.logoUrl` (the invoice
+   header renders the logo image in place of the typographic store-name
+   mark). **Flagged decision:** not wired into transactional emails —
+   `EmailService` (Module 1) is a deliberately plain-text-only placeholder
+   with no HTML template surface to place an image into; FR-32.5's own
+   wording ("wherever each surface can practically render an image")
+   anticipates exactly this boundary. Real HTML email wiring is deferred to
+   when a real email provider is integrated. `SiteHeader`'s pre-existing
+   latent gap (it rendered nothing at all when a store had no header
+   navigation configured, meaning no brand identity ever showed) was fixed
+   as a prerequisite for the typographic fallback to have anywhere to
+   render.
+2. **Buyer purchase flow (FR-32.1/32.2/32.3).** FR-15.1's email-first lock
+   (`POST /storefront/cart` hard-requires `buyerEmail`) means a cart can
+   only be persisted server-side once email is captured — so "add to cart"
+   on the product page is purely client-side (`lib/local-cart.ts`, a
+   `localStorage` cart namespaced per storefront hostname) until checkout's
+   email step. Built: product-page add-to-cart, `/cart` (view/edit/remove,
+   reactive to local-cart changes), `/checkout` (two-step: email only, then
+   shipping address + optional discount code — no shipping/payment field is
+   ever shown before email), and `/order-confirmation/[token]`. The
+   confirmation page reuses the existing `fetchStorefrontOrderStatus()`
+   fetch (keyed by the order's `statusLookupToken`) rather than a second
+   totals calculation — zero new backend surface, and no risk of the UI's
+   numbers drifting from `computeOrderTotals`'s. Payment framed as "pay the
+   seller directly... once they confirm receipt, your order moves to
+   confirmed" (direct-collection framing, never implying the platform holds
+   payment); the confirmation page shows a `pending` order as "awaiting
+   payment", never "paid"/"confirmed" (Financial Truth Invariant, §3.12).
+   All buyer-facing API calls route through Next.js Server Actions
+   (`app/storefront/checkout/actions.ts`), never a direct client-side fetch
+   — same CORS reasoning as Module 15's review-submission form (a tenant's
+   dynamic subdomain/custom domain can never be pre-listed in the API's
+   static CORS allowlist). A small cart-count link (`CartLink`, reads
+   `window.location.host` client-side) was added to `SiteHeader` for buyer
+   discoverability.
+3. **Tenant isolation.** Unchanged from Module 9's own cart/checkout
+   tenant-isolation guarantees (`hostname` resolves to exactly one store;
+   `PrismaAdminService` reads are always scoped by that store's id) — this
+   module's UI calls into those endpoints as-is, adding no new
+   cross-tenant surface.
+
+Tests: 3 new unit tests (`invoice-template.spec.ts`, the logo/fallback
+rendering) + 3 new e2e tests (`module15.5-storefront-branding.e2e-spec.ts`:
+logo upload/replace/remove round-trip through both the dashboard and public
+storefront endpoints, cross-tenant logo isolation, and logo-plus-checkout
+integration). Full suite (111 unit + 227 e2e across all 27 e2e files)
+passes. Frontend verified live against a real running API + a standalone
+s3rver stand-in for MinIO + headless Chromium: full buyer journey exercised
+end-to-end in an actual browser — logo uploaded via store settings and
+confirmed rendered, add-to-cart on the product page, cart page showing the
+item, checkout's email-first step verified to show no shipping field before
+email, shipping step, order placed, confirmation page showing the honest
+"awaiting payment" status and linking correctly to the order-status page,
+and the storefront header showing the uploaded logo.
 
 ---
 
