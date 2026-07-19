@@ -28,6 +28,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
       <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24, maxWidth: 720 }}>
         <h1>Order status</h1>
+        <p style={{ color: "#6b7280" }}>Check your order's payment status, items, and shipping progress any time using this link.</p>
         <p>
           Status: <strong>{order.status === "pending" ? "Awaiting payment" : order.status}</strong>
         </p>

@@ -64,6 +64,7 @@ export default function AdminSellersPage() {
   return (
     <main>
       <h1>Sellers - lifecycle control (bare view - no design pass yet)</h1>
+      <p>Review sellers by trust-and-safety status, approve held activations, and move a seller along the enforcement ladder.</p>
 
       <label>
         Filter by lifecycle status:{" "}

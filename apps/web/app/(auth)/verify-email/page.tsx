@@ -30,6 +30,7 @@ export default function VerifyEmailPage() {
   return (
     <main>
       <h1>Email verification</h1>
+      <p>Confirming the email address you signed up with.</p>
       <p>{status}</p>
       <a href="/login">Go to login</a>
     </main>

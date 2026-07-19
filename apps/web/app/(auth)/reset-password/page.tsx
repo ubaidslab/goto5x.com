@@ -38,6 +38,7 @@ export default function ResetPasswordPage() {
     return (
       <main>
         <h1>Set a new password</h1>
+        <p>Choose a new password using the reset link from your email.</p>
         <form onSubmit={completeReset}>
           <label>
             New password
@@ -53,6 +54,7 @@ export default function ResetPasswordPage() {
   return (
     <main>
       <h1>Forgot password</h1>
+      <p>Get a link by email to reset your password.</p>
       <form onSubmit={requestReset}>
         <label>
           Email

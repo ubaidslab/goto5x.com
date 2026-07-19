@@ -73,6 +73,7 @@ export default function LoginPage() {
     return (
       <main>
         <h1>Two-factor authentication</h1>
+        <p>Confirm your identity with a one-time code to finish logging in.</p>
         {otpauthUrl && (
           <div>
             <p>Scan this into an authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code below:</p>
@@ -94,6 +95,7 @@ export default function LoginPage() {
   return (
     <main>
       <h1>Log in</h1>
+      <p>Sign in to manage your store.</p>
       <form onSubmit={onSubmit}>
         <div>
           <label>

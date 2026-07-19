@@ -27,6 +27,7 @@ export default function AdminSettingsPage() {
   return (
     <main>
       <h1>Settings Registry (bare view - no design pass yet)</h1>
+      <p>Read-only list of every platform setting: its type, allowed scopes, and default value.</p>
       <table border={1} cellPadding={4}>
         <thead>
           <tr>

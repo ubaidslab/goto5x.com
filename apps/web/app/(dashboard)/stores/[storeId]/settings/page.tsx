@@ -258,7 +258,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
 
   return (
     <div>
-      <PageHeader title="Store settings" />
+      <PageHeader
+        title="Store settings"
+        description="Branding, checkout, and other store-wide preferences."
+      />
 
       {error && <Alert tone="danger">{error}</Alert>}
       {saved && <Alert tone="success">Saved.</Alert>}

@@ -31,6 +31,7 @@ export default function SignupPage() {
   return (
     <main>
       <h1>Sign up</h1>
+      <p>Create a seller account to start selling on goto5x.com.</p>
       <form onSubmit={onSubmit}>
         <div>
           <label>

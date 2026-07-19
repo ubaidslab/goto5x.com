@@ -58,6 +58,7 @@ export default function AdminLoginPage() {
     return (
       <main>
         <h1>Admin MFA</h1>
+        <p>Confirm your identity with a one-time code to finish signing in.</p>
         {!mfaEnrolled && otpauthUrl && (
           <p>
             First-time setup: scan this URI in an authenticator app, then enter a
@@ -79,6 +80,7 @@ export default function AdminLoginPage() {
   return (
     <main>
       <h1>Admin login</h1>
+      <p>Sign in with your platform admin credentials.</p>
       <form onSubmit={submitLogin}>
         <label>
           Email

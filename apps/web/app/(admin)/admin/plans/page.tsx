@@ -74,6 +74,7 @@ export default function AdminPlansPage() {
   return (
     <main>
       <h1>Plans - groups &amp; tiers (bare view - no design pass yet)</h1>
+      <p>Define the pricing tiers sellers, teams, and suppliers can subscribe to, and retire old ones.</p>
 
       {GROUPS.map((group) => (
         <div key={group}>

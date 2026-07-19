@@ -98,6 +98,7 @@ export default function AdminTrustSafetyPage() {
   return (
     <main>
       <h1>Trust &amp; Safety (bare view - no design pass yet)</h1>
+      <p>Review flagged sellers, decide on held payment instruments, and publish new Seller Agreement versions.</p>
 
       <h2>Payment-instrument review queue (FR-30.2)</h2>
       <table border={1} cellPadding={4}>

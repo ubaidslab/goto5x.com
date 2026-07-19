@@ -83,7 +83,10 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
 
   return (
     <div>
-      <PageHeader title="Marketing" />
+      <PageHeader
+        title="Marketing"
+        description="Connect your store to marketing tools like the Social Media SaaS to promote your catalog."
+      />
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Card>

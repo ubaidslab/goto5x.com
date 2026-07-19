@@ -53,6 +53,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
     <div>
       <PageHeader
         title={product.title || "Edit product"}
+        description="Edit this product's details, pricing, and visibility on your storefront."
         action={
           <Link href={`/stores/${params.storeId}/products`}>
             <Button variant="ghost">Back to products</Button>

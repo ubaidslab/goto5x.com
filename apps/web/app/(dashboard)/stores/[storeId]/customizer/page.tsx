@@ -170,7 +170,10 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
 
   return (
     <div>
-      <PageHeader title={`Customize ${store.name}`} />
+      <PageHeader
+        title={`Customize ${store.name}`}
+        description="Pick a theme, adjust colors and sections, and preview changes before saving."
+      />
 
       {error && <Alert tone="danger">{error}</Alert>}
       {saved && <Alert tone="success">Saved.</Alert>}

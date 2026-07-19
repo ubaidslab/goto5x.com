@@ -81,6 +81,7 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
     <div>
       <PageHeader
         title={title || "Collection"}
+        description="A curated group of products, shown together on your storefront."
         action={
           <Link href={`/stores/${params.storeId}/collections`}>
             <Button variant="ghost">Back to collections</Button>
