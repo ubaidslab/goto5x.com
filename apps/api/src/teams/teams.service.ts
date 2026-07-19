@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { EventsService } from "../events/events.service";
@@ -53,6 +54,15 @@ export class TeamsService {
     return this.prisma.team.findMany({ where: { leaderSellerId }, include: { plan: true } });
   }
 
+  /** The invitee's own view - how a seller discovers a pending invite exists at all, to then accept/decline it. */
+  async listMyMembership(sellerId: string) {
+    return this.prisma.teamMember.findMany({
+      where: { sellerId },
+      include: { team: { include: { plan: true, leader: { select: { businessName: true } } } } },
+      orderBy: { invitedAt: "desc" },
+    });
+  }
+
   /** FR-7.11 - mirrors StoreSupplierLink's invite-by-email pattern: the invitee must already have an account. */
   async inviteMember(leaderSellerId: string, teamId: string, dto: InviteTeamMemberDto) {
     const team = await this.requireOwnedTeam(leaderSellerId, teamId);
@@ -92,10 +102,22 @@ export class TeamsService {
     if (invite.status !== "pending_invite") throw new BadRequestException("This invite is no longer pending.");
 
     const team = await this.prisma.team.findUniqueOrThrow({ where: { id: invite.teamId } });
-    const member = await this.prisma.teamMember.update({
-      where: { id: teamMemberId },
-      data: { status: "active", consentAcceptedAt: new Date(), joinedAt: new Date() },
-    });
+    let member;
+    try {
+      member = await this.prisma.teamMember.update({
+        where: { id: teamMemberId },
+        data: { status: "active", consentAcceptedAt: new Date(), joinedAt: new Date() },
+      });
+    } catch (err) {
+      // FR-7.11 - the partial unique index (idx_team_members_one_active_sponsorship,
+      // raw SQL in the migration, not declared in schema.prisma) is the real
+      // enforcement; this only turns its violation into a clean 409 instead
+      // of a raw 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("You are already an active member of another team - leave it first.");
+      }
+      throw err;
+    }
     // FR-7.18 - the member's individual plan becomes whatever the leader's
     // Team tier grants, from the moment of acceptance.
     await this.subscriptions.sponsorMember(sellerId, team.id, team.planId);

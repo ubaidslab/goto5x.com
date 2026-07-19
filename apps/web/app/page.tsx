@@ -16,6 +16,9 @@ export default function Home() {
         <li>
           <a href="/admin/login">Admin login</a>
         </li>
+        <li>
+          <a href="/pricing">Pricing</a>
+        </li>
       </ul>
     </main>
   );

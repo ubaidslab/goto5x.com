@@ -1,14 +1,19 @@
-import { Body, Controller, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { SellerAgreementGuard } from "../trust-safety/seller-agreement.guard";
 import { AcceptTeamInviteDto } from "./dto/accept-team-invite.dto";
 import { TeamsService } from "./teams.service";
 
-/** SRS §5.31 (FR-7.11-7.13) - the sponsored-member-facing half: accept/decline/leave. */
+/** SRS §5.31 (FR-7.11-7.13) - the sponsored-member-facing half: view/accept/decline/leave. */
 @Controller("sellers/me/team-membership")
 @UseGuards(SellerAgreementGuard)
 export class TeamMembershipController {
   constructor(private readonly teams: TeamsService) {}
+
+  @Get()
+  listMine(@CurrentSellerId() sellerId: string) {
+    return this.teams.listMyMembership(sellerId);
+  }
 
   @Post(":teamMemberId/accept")
   accept(@CurrentSellerId() sellerId: string, @Param("teamMemberId") teamMemberId: string, @Body() dto: AcceptTeamInviteDto) {

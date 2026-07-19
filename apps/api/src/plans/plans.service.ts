@@ -3,6 +3,7 @@ import { $Enums } from "@prisma/client";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { CreatePlanDto } from "./dto/create-plan.dto";
+import { computeYearlyPrice } from "./plan-pricing.util";
 import { UpdatePlanDto } from "./dto/update-plan.dto";
 
 /**
@@ -25,8 +26,9 @@ export class PlansService {
       where: includeInactive ? {} : { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { tierOrder: "asc" }],
     });
-    const groups: Record<string, typeof plans> = { individual: [], team: [], supplier: [] };
-    for (const plan of plans) {
+    const withYearly = plans.map(this.withYearlyPrice);
+    const groups: Record<string, typeof withYearly> = { individual: [], team: [], supplier: [] };
+    for (const plan of withYearly) {
       groups[plan.planGroup].push(plan);
     }
     return groups;
@@ -35,7 +37,15 @@ export class PlansService {
   async findById(planId: string) {
     const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
     if (!plan) throw new NotFoundException("Plan not found.");
-    return plan;
+    return this.withYearlyPrice(plan);
+  }
+
+  /** FR-7.6 - a monthly-priced tier's discounted annual price, derived data (never a second stored price). */
+  private withYearlyPrice<T extends { price: unknown; yearlyDiscountPercent: unknown; billingInterval: string }>(
+    plan: T,
+  ): T & { yearlyPrice: number | null } {
+    if (plan.billingInterval !== "monthly") return { ...plan, yearlyPrice: null };
+    return { ...plan, yearlyPrice: computeYearlyPrice(Number(plan.price), plan.yearlyDiscountPercent as number | null) };
   }
 
   /** FR-7.17 - creates a new tier within a group at the given (or next-available) tierOrder. */
