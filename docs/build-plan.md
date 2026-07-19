@@ -1337,6 +1337,112 @@ revoke). Tests: new `account-security.e2e-spec.ts`, 8 tests covering every
 §14.24 item. Full suite: 22 e2e files / 186 tests, 18 unit files / 100
 tests, all green, zero regressions.
 
+## Module 14 (Plans, Pricing & Guard-Rails) — built
+
+Full scope: `docs/SRS.md` §5.7 (FR-7.1-7.10, FR-7.17-7.18), §5.23
+(FR-23.1-23.5, Business Guard-Rails), §5.31 (FR-7.11-7.16, Teams &
+Community Sponsorship — slotted in here per its own section header),
+checklists §14.7/§14.21/§14.31 (all now checked, disclosed simplifications
+inline). Larger than any prior module — three FR blocks converge here.
+
+**Foundational piece: a real seller→plan assignment finally exists.**
+`settings.types.ts`'s `SettingsContext.planId` existed since Module 1 with
+nothing ever populating it — every plan-scoped Settings Registry key
+silently fell through to its global default for every seller until now.
+New `Subscription` model (`SubscriptionsService`) assigns every seller the
+Free plan at signup and is the one place every other module's plan-gated
+check now resolves against.
+
+1. **Plan groups/tiers as data (FR-7.17).** `plans` gains `plan_group`
+   (individual/team/supplier)/`tier_order`/`seat_price`, superseding the
+   never-shipped v0.15 `plan_type` column. Admin CRUD (`PlansService`,
+   scoped to what this module needs — the rest of FR-8.2's terminal is
+   Module 17's), a public `/plans` endpoint, and both the pricing page and
+   the seller-dashboard "Plans & Billing" screen render entirely from it.
+2. **Founder-flagged cross-checks, all four closed:**
+   - Developer perks (FR-7.16) and dashboard-personalization (FR-28.4, an
+     open item carried since Module 10) now resolve against the seller's
+     real plan — previously always fell through to the global default.
+   - Next-cycle upgrade/downgrade (FR-7.5) and launch-campaign pricing
+     (FR-7.7) both apply correctly per-tier (`SubscriptionsService`/
+     `LedgerService`).
+   - Group-invoice math (FR-7.15/7.18) — see Teams below.
+3. **Teams & Community Sponsorship (FR-7.11-7.16).** New `Team`/
+   `TeamMember` models. A leader's eligibility to create a team is gated
+   by their own individual-plan tier (`teams.leader_eligible`, bundled
+   alongside developer perks on qualifying tiers per FR-7.16) — separate
+   from which of the 3 Team tiers the team itself bills at (`teams.plan_id`,
+   a small schema gap found and fixed while building this: the original
+   v0.17 design never gave `teams` its own plan reference). Invite mirrors
+   `StoreSupplierLink`'s pattern; binding consent (FR-7.12) is enforced at
+   the API layer via the partial unique index
+   `idx_team_members_one_active_sponsorship`, whose violation is caught
+   and returned as a clean 409. Leaving (FR-7.13) is always available and
+   never a penalty — a sponsored member's subscription has no
+   `current_period_end` (billing flows through the group invoice only), so
+   the graceful downgrade applies at the same "no cycle to wait for"
+   moment FR-7.5's own edge case establishes.
+   - **Gap surfaced and fixed as a prerequisite** (same "surface it, fix
+     it inline" precedent as `store_payment_instructions`, Module 11):
+     FR-7.14's leader team-dashboard text assumes "the same sales/order-
+     count/growth-trend summary Module 10's own dashboard-home screen
+     already computes" — no such computation ever existed. Built once,
+     inside `TeamsService`, reused identically for every member.
+4. **Group invoicing (FR-7.15/7.18).** `seller_invoices` gains an
+   `invoice_type` discriminator (`commission`/`plan_subscription`/
+   `group_sponsorship`) so a team's monthly group invoice
+   (`InvoicesService.generateMonthlyGroupInvoices`) reuses the identical
+   table and manual-verification mechanism as commission invoicing — total
+   = active sponsored member count × the leader's Team tier seat price.
+   Overdue handling is branched: a group invoice never suspends any store;
+   it gracefully downgrades sponsored members instead, exactly like a
+   voluntary leave. `plan_subscription` is schema-only in v1.0, same
+   "dormant, not deleted" precedent as the Payouts fields — no live
+   seller-side plan-fee billing flow exists yet to generate one against.
+5. **Business Guard-Rails (FR-23.1-23.5).** Product-count limit (FR-23.1)
+   enforced at creation; storage-quota metering added
+   (`media_assets.size_bytes`). Dormant-store lifecycle job (FR-23.2)
+   progresses warn→suspend→archive, each stage measured from the
+   *previous* stage's own trigger (`dormant_warning_sent_at` anchors
+   suspend; `updated_at`, bumped automatically the moment the job
+   suspends a store, anchors archive — no third timestamp column needed
+   beyond the two already reserved on `stores`). Per-identity Free-store
+   limit (FR-23.5) via `FreeStoreLimitService`, checked before
+   `StoresService.create()`'s tenant transaction opens (cross-tenant by
+   design, same pattern as Module 12's `cnic_hash` uniqueness check).
+   Unit-economics (FR-23.4) built as **data only** — `UnitEconomicsService`/
+   `GET /admin/unit-economics` — no dashboard UI, since FR-8.10 (the
+   real-time analytics dashboard this extends) isn't built until Module 17.
+6. **Promo codes (FR-7.9) and admin-granted plans (FR-7.8)** — both fully
+   real. Promo-code redemption mechanics (limits/expiry/targeting/one-per-
+   seller) are tested and correct; applying the discount to an actual
+   invoice amount is deferred alongside the `plan_subscription` invoicing
+   gap above, for the same reason.
+7. **Supplier Premium Plan (FR-7.10) — data only, disclosed.** Free/Premium
+   Supplier tiers exist as plan rows, satisfying FR-7.17's "three groups"
+   requirement. The feature this would gate (the supplier's own
+   aggregated multi-store dashboard) has never been built by any module
+   through v0.19 — no supplier-facing portal exists at all — and
+   `SettingsContext` has no `supplierId` field yet. `Subscription` is
+   seller-only (`seller_id`) for the same reason. A real supplier plan
+   assignment is deferred to whichever future module builds that portal.
+
+**Fixture fix in an existing suite:** `trust-safety.e2e-spec.ts`'s
+name-consistency test created a second store for the same (CNIC-less)
+seller purely to test payment-instrument matching across two stores —
+FR-23.5's newly-enforced one-Free-store-per-identity default (1) now
+rejects that, so the test explicitly raises the limit for itself via
+`SettingsService.setValue` (not a raw DB write, so the cache the first
+store's creation already populated is actually invalidated).
+
+Migrations: `20260718124301_plans_pricing_guardrails` (the bulk of the
+schema above), `20260718130000_teams_plan_id` (the `teams.plan_id`
+follow-up found while building Teams). Tests: three new e2e files —
+`plans-pricing.e2e-spec.ts` (13 tests, §14.7 + all four cross-checks),
+`guardrails.e2e-spec.ts` (6 tests, §14.21), `teams.e2e-spec.ts` (9 tests,
+§14.31) — plus a unit spec for the yearly-price calculation. Full suite:
+25 e2e files / 214 tests, 19 unit files / 103 tests, all green.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

@@ -813,7 +813,7 @@ Index: `idx_payouts_seller_status (seller_id, status)`. Index:
 `idx_payouts_approval_queue (status, requested_at)` — the admin approval queue's
 primary query.
 
-### `plans` (global) — **groups/tiers architecture, v0.19, not yet built (Module 14)**
+### `plans` (global) — **groups/tiers architecture, v0.19, built Module 14**
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -828,6 +828,8 @@ primary query.
 | is_active | boolean | retiring a plan doesn't delete it — existing subscribers stay on it |
 | sort_order | integer | cross-group display order in the pricing/admin UI (see `tier_order` above for within-group order) |
 
+Unique constraint: `(plan_group, tier_order)` — no two tiers occupy the same position within a group; also the seed/admin-editor's natural idempotency key.
+
 Commission-rate overrides and feature limits for a plan are **not** columns on
 this table — they are `settings_values` rows scoped to `('plan', plans.id)`,
 including the Free Plan's higher default commission (FR-7.3/FR-7.4). The
@@ -840,30 +842,31 @@ pair rather than assuming a single flat plan list (FR-7.17) — no change to
 the settings-scoping mechanism itself, only to which plan row a seller's
 resolved gate reads from.
 
-### `subscriptions`
+### `subscriptions` (global — built Module 14)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| seller_id | uuid FK → sellers.id | |
+| seller_id | uuid unique FK → sellers.id | one row per seller (built Module 14: only sellers get a real plan assignment yet — suppliers don't have a `subscriptions` row, see FR-7.10's disclosed §14.7 note) |
 | plan_id | uuid FK → plans.id | |
-| status | enum(`active`,`past_due`,`cancelled`) | `active` with no payment history is valid for the Free Plan (FR-7.3) |
-| current_period_end | timestamptz nullable | null for the Free Plan (no billing cycle) |
-| pending_plan_id | uuid FK → plans.id, nullable | set when a seller requests a change; applied at `current_period_end` per the simple next-cycle rule (FR-7.5) — no proration in v1.0 |
-| sponsored_by_team_id | uuid FK → teams.id, nullable | **new, v0.17 (FR-7.11–7.15)** — set while this seller is an actively-sponsored team member; null for an unsponsored subscription (including a member who has left, per FR-7.13's graceful downgrade) |
+| status | enum(`active`,`cancelled`) | **built as `active`/`cancelled` only — no `past_due` value.** Non-payment is handled entirely through `seller_invoices`' own status/grace-period mechanism (FR-6.18/FR-7.15); a parallel "past_due" subscription status would be a second, potentially-inconsistent source of truth for the same fact |
+| current_period_end | timestamptz nullable | null for the Free Plan (no billing cycle) and for a sponsored team member (billing flows through the leader's group invoice instead, FR-7.18) |
+| pending_plan_id | uuid FK → plans.id, nullable | set when a seller requests a change while already on an active cycle; applied at `current_period_end` per the simple next-cycle rule (FR-7.5) — no proration in v1.0. When there is no cycle to defer to (Free Plan, or a sponsored member), the change applies immediately instead — a disclosed reading of FR-7.5 for the edge case the SRS text doesn't pin down explicitly |
+| sponsored_by_team_id | uuid FK → teams.id, nullable | **new, v0.17 (FR-7.11–7.15)** — set while this seller is an actively-sponsored team member; null for an unsponsored subscription (including a member who has left, per FR-7.13's graceful downgrade). While set, `plan_id` points directly at the leader's chosen Team tier's own `plans` row — every existing plan-gated check resolves correctly with no special-casing, per FR-7.17 |
 
 Index: `idx_subscriptions_seller (seller_id)`.
 
-### `teams` (global — new, v0.17, FR-7.11)
+### `teams` (global — new, v0.17, FR-7.11; built Module 14)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| leader_seller_id | uuid FK → sellers.id | the sponsoring seller — must hold a plan whose tier is founder-configured as team-leader-eligible at the time of creation (checked at creation only, v1.0 — losing eligibility later doesn't retroactively dissolve an existing team) |
+| leader_seller_id | uuid FK → sellers.id | the sponsoring seller — must hold a plan whose tier is founder-configured as team-leader-eligible (`teams.leader_eligible`, bundled onto qualifying tiers alongside developer perks per FR-7.16) at the time of creation (checked at creation only, v1.0 — losing eligibility later doesn't retroactively dissolve an existing team) |
+| plan_id | uuid FK → plans.id | **added alongside the rest of this table (not in the original v0.17 design) — which of the 3 Team tiers this team bills at (`seat_price`, FR-7.18). Distinct from `leader_eligible`, which only gates the leader's own individual-plan eligibility to create a team at all — a small, load-bearing schema gap found and fixed while building Module 14, not present in the original documented design** |
 | name | text | leader-chosen, display-only |
 | created_at | timestamptz | |
 
 Index: `idx_teams_leader (leader_seller_id)`.
 
-### `team_members` (global — new, v0.17, FR-7.11/FR-7.12/FR-7.13)
+### `team_members` (global — new, v0.17, FR-7.11/FR-7.12/FR-7.13; built Module 14)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -877,7 +880,7 @@ Index: `idx_teams_leader (leader_seller_id)`.
 
 Indexes: `idx_team_members_team (team_id)`, `idx_team_members_seller (seller_id)`. **Partial unique index** `idx_team_members_one_active_sponsorship ON team_members (seller_id) WHERE status = 'active'` — enforces FR-7.11's "at most one team as a sponsored member at a time" at the database level, not just the application layer.
 
-### `platform_promo_codes` (global — new, FR-7.9)
+### `platform_promo_codes` (global — new, FR-7.9; built Module 14)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -890,6 +893,8 @@ Indexes: `idx_team_members_team (team_id)`, `idx_team_members_seller (seller_id)
 | expires_at | timestamptz nullable | |
 | created_by | uuid FK → admin_users.id | |
 | created_at | timestamptz | |
+
+A companion `platform_promo_code_redemptions(id, promo_code_id, seller_id, redeemed_at)` table records one row per successful redemption (unique on `(promo_code_id, seller_id)`) — prevents the same seller redeeming the same code twice regardless of `max_redemptions`. **Disclosed limitation:** redemption itself (limits/expiry/targeting/one-per-seller) is fully real; v1.0 has no live seller-side plan-subscription-fee invoice yet for the discount to actually reduce (Direct Seller Collection only mechanizes commission owed, FR-6.16) — see §14.7's own note.
 
 Deliberately a **separate table from `discount_codes`** (tenant, store-level,
 product checkout discounts, FR-2.11/FR-5.5): a platform promo code discounts a

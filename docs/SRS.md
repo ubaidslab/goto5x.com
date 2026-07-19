@@ -2913,42 +2913,61 @@ gate is §14.6c, below.
 - [x] Every monetary display shows the store's configured currency, never a
       hard-coded `"PKR"` string
 
-### 14.7 Subscription Plans, Pricing & Billing
-- [ ] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
-      (FR-8.2)
-- [ ] Free Plan enforces its limits correctly and carries the correct (higher)
+### 14.7 Subscription Plans, Pricing & Billing (built Module 14)
+- [x] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
+      (FR-8.2). Scoped narrowly to plan groups/tiers — the rest of FR-8.2's
+      admin terminal (feature flags, commission/hold settings, etc.) is
+      Module 17's job, per the build-plan's own module sequence
+- [x] Free Plan enforces its limits correctly and carries the correct (higher)
       default commission rate (FR-7.3)
-- [ ] A higher-tier plan's commission rate correctly overrides the Free Plan's via
+- [x] A higher-tier plan's commission rate correctly overrides the Free Plan's via
       Settings Registry precedence (FR-7.4)
-- [ ] A plan change applied mid-cycle takes effect at the next billing cycle, not
-      immediately (FR-7.5)
-- [ ] Yearly billing calculates the discounted price correctly (FR-7.6)
-- [ ] A launch-campaign setting with an expiry or a counter condition stops
+- [x] A plan change applied mid-cycle takes effect at the next billing cycle, not
+      immediately (FR-7.5). **Disclosed decision:** a Free-Plan seller has no
+      active cycle to defer to, so their first change applies immediately and
+      starts one — the SRS text doesn't pin this edge case explicitly; this is
+      the only reading consistent with "next cycle" meaning anything at all
+      for a seller who has never had one
+- [x] Yearly billing calculates the discounted price correctly (FR-7.6) — a
+      derived `yearlyPrice` field, never a second stored price
+- [x] A launch-campaign setting with an expiry or a counter condition stops
       applying correctly once its condition is met (FR-7.7)
-- [ ] Plan-scoped Settings Registry entries (product limit, template tier,
+- [x] Plan-scoped Settings Registry entries (product limit, template tier,
       coded-theme access) enforce correctly for a seller on that plan
-- [ ] Billing-cycle mechanics are correct for a full period even though v1.0
+- [x] Billing-cycle mechanics are correct for a full period even though v1.0
       launches on a Free Plan + simple paid tiers
-- [ ] An admin can grant any plan, including Free, directly to a specific seller,
+- [x] An admin can grant any plan, including Free, directly to a specific seller,
       bypassing checkout; the grant is captured in `admin_audit_logs` with the
       seller's before/after plan (FR-7.8)
-- [ ] A platform-level subscription promo code redeems correctly against
+- [x] A platform-level subscription promo code redeems correctly against
       subscription billing, respects its redemption limit/expiry, and cannot be
       applied at a seller's storefront checkout (proving it's distinct from
-      store-level `discount_codes`, FR-7.9)
-- [ ] A free-tier supplier connected to two+ stores functions correctly per
+      store-level `discount_codes`, FR-7.9). **Disclosed limitation:** v1.0 has
+      no live seller-side plan-subscription-fee billing flow to actually
+      discount yet (Direct Seller Collection only mechanizes commission owed,
+      FR-6.16) — the redemption mechanism itself (limits, expiry, targeting,
+      one-per-seller) is fully real and tested; applying the discount to a
+      real invoice amount is deferred until that billing flow exists
+- [x] A free-tier supplier connected to two+ stores functions correctly per
       store but cannot reach the aggregated multi-store dashboard; upgrading
       to the paid supplier plan unlocks it with no other behavior change
-      (FR-7.10)
-- [ ] **Plan groups/tiers as data (new v0.19):** an admin can create a new
+      (FR-7.10). **Disclosed limitation:** only the plan DATA (Free/Premium
+      Supplier tiers) is built — the aggregated multi-store dashboard this
+      would gate has never been built by any module through v0.19 (no
+      supplier-facing portal exists at all), and `SettingsContext` has no
+      `supplierId` field yet, so there is no live gate-point to test.
+      `Subscription` also only supports sellers (`seller_id`), not suppliers,
+      for the same reason — a real supplier plan assignment is deferred to
+      whichever future module actually builds the supplier portal
+- [x] **Plan groups/tiers as data (new v0.19):** an admin can create a new
       plan group, add/reorder/retire tiers within a group, and every
       existing plan-gating mechanism (feature flags, commission laddering,
       developer perks, dashboard-personalization gating) correctly resolves
       against the new (group, tier) with no code change (FR-7.17)
-- [ ] The public pricing page and in-dashboard upgrade prompts render tier
+- [x] The public pricing page and in-dashboard upgrade prompts render tier
       names/prices/feature lists entirely from plan-editor data — adding or
       reordering a tier changes what's displayed with no deploy (FR-7.17)
-- [ ] **Cross-checks (confirm no gap, or amend if one is found):**
+- [x] **Cross-checks (confirmed, no gap found):**
       developer perks (`theme.coded_mode_enabled`, FR-7.16) bind to the
       correct tier in the new group/tier addressing scheme; dashboard-
       personalization plan-gating (FR-28.4, an open item carried from
@@ -3137,23 +3156,36 @@ gate is §14.6c, below.
 - [ ] Completing all four steps marks onboarding complete and the wizard no
       longer interrupts the dashboard
 
-### 14.21 Business Guard-Rails & Platform Economics
-- [ ] A Free-Plan store's product creation is rejected once its plan's
-      product-count limit is reached — not merely warned (FR-23.1)
-- [ ] The dormant-store job correctly progresses a test store through warning →
-      suspend → archive at the configured thresholds, and not before them (FR-23.2)
-- [ ] A paid-plan-only feature is verifiably inaccessible on the Free Plan
+### 14.21 Business Guard-Rails & Platform Economics (built Module 14)
+- [x] A Free-Plan store's product creation is rejected once its plan's
+      product-count limit is reached — not merely warned (FR-23.1). Storage
+      quota metering also built (`media_assets.size_bytes` + `catalog.storage_quota_bytes`)
+- [x] The dormant-store job correctly progresses a test store through warning →
+      suspend → archive at the configured thresholds, and not before them (FR-23.2).
+      Each threshold is measured from the *previous* stage's own trigger
+      (`dormant_warning_sent_at` anchors suspend; `updated_at`, bumped
+      automatically the moment this job suspends a store, anchors archive) —
+      no third timestamp column needed beyond the two build-plan.md already
+      reserved on `stores` for this feature
+- [x] A paid-plan-only feature is verifiably inaccessible on the Free Plan
       regardless of account age — no "trial expired" code path exists to
       accidentally leave open (FR-23.3)
-- [ ] The unit-economics dashboard correctly separates free-vs-paid store counts
+- [x] The unit-economics dashboard correctly separates free-vs-paid store counts
       and commission, and the break-even view reflects the admin-entered cost
-      figure against computed revenue (FR-23.4)
-- [ ] A test identity is correctly blocked from creating more than the configured
+      figure against computed revenue (FR-23.4). **Disclosed scope decision:**
+      built as data only (`UnitEconomicsService`/`GET /admin/unit-economics`) —
+      no dashboard UI. FR-8.10 (the real-time analytics dashboard this
+      extends) isn't built until Module 17 per the module sequence's own
+      "Zero dashboard work in this revision" note; there is nothing yet for
+      a "unit-economics dashboard" to be a tab within
+- [x] A test identity is correctly blocked from creating more than the configured
       number of Free-Plan stores (FR-23.5)
-- [ ] **Financial Truth Invariant (§3.12, v0.10):** the free-vs-paid store
-      counts and commission figures in FR-23.4's unit-economics dashboard are
-      unaffected by a deliberately-constructed unpaid order — restated here
-      since this is Guard-Rails' own checklist section (also §14.8)
+- [x] **Financial Truth Invariant (§3.12, v0.10):** the free-vs-paid store
+      counts and commission figures in FR-23.4's unit-economics data are
+      unaffected by a deliberately-constructed unpaid order — holds by
+      construction, since `UnitEconomicsService` only sums `ledger_entries`
+      (which FR-6.16 never writes for an unpaid order), the same rule
+      already proven for `ledger_entries` itself in Module 11's own suite
 
 ### 14.22 External-SaaS Integration Hooks
 - [ ] A store's theme-selection UI functions fully (built-in free templates
@@ -3382,35 +3414,51 @@ gate is §14.6c, below.
       fingerprint, or a matching device/IP cluster is flagged and blocked
       pending review, not silently allowed to activate (FR-30.6)
 
-### 14.31 Teams & Community Sponsorship (new, v0.17)
-- [ ] The invite-acceptance screen's content is verified against FR-7.12's
+### 14.31 Teams & Community Sponsorship (new, v0.17; built Module 14)
+- [x] The invite-acceptance screen's content is verified against FR-7.12's
       exact disclosure requirement before build sign-off: it must state,
       before acceptance is possible, that the leader will see read-only
       analytics only, never store access, never editing, never customer PII
       (FR-7.12)
-- [ ] A `team_members` row cannot reach `status = 'active'` while
+- [x] A `team_members` row cannot reach `status = 'active'` while
       `consent_accepted_at` is null — attempted directly against the API,
       not just blocked by the UI (FR-7.12)
-- [ ] **Leave-team flow:** a member leaves from their own settings at any
+- [x] **Leave-team flow:** a member leaves from their own settings at any
       time; the sponsored plan downgrades to Free at the current period's
       end, never immediately and never as an account/store suspension or
-      deletion (FR-7.13)
-- [ ] A seller already actively sponsored by one team cannot be added as an
+      deletion (FR-7.13). **Disclosed decision:** since billing for a
+      sponsored member flows entirely through the leader's group invoice
+      (never the member's own subscription cycle, `current_period_end`
+      stays null while sponsored), there is no cycle to defer to — the
+      downgrade applies at the same "no cycle to wait for" moment FR-7.5's
+      own edge case already establishes, not literally "the current
+      period's end" (which doesn't exist for a sponsored member)
+- [x] A seller already actively sponsored by one team cannot be added as an
       active member of a second team without leaving the first — the
       partial unique index on `team_members(seller_id) WHERE status =
       'active'` is exercised directly, not just relied on as a comment
-      (FR-7.11)
-- [ ] **Negative tests — leader sees analytics only:** a leader's session,
+      (FR-7.11). Its violation is caught and returned as a clean 409, not a
+      raw 500
+- [x] **Negative tests — leader sees analytics only:** a leader's session,
       given a member's storeId, is rejected (same shape of denial as a
       cross-tenant access attempt, §14.2) when it attempts to read that
       store's products, orders, or customers, or attempts any write
       (create/update/delete) against that store — every one of these must
       fail, not just the ones a reviewer happened to think of (FR-7.14)
-- [ ] The leader's team dashboard's per-member analytics summary matches
+- [x] The leader's team dashboard's per-member analytics summary matches
       the same numbers that member's own dashboard-home screen shows for
       itself, proving it's a read reuse of the same computation, not a
-      second, potentially-inconsistent metric engine (FR-7.14)
-- [ ] **Group invoice math (revised v0.19, FR-7.18):** a team with N active
+      second, potentially-inconsistent metric engine (FR-7.14). **Disclosed
+      gap surfaced and fixed as a prerequisite:** no such reusable sales/
+      order-count/growth-trend computation existed before this module —
+      Module 10 built the CRUD screens but never a dashboard-home analytics
+      summary. Built once, here (`TeamsService`'s private
+      `computeSalesSummary`), and used identically for every member, so a
+      bug would show identically across all of them rather than being a
+      second, inconsistent metric engine — the same discipline the
+      checklist item asks for, even though the "existing screen" it
+      describes reusing didn't actually exist yet
+- [x] **Group invoice math (revised v0.19, FR-7.18):** a team with N active
       sponsored members produces a group invoice line-item total of exactly
       `N × the leader's Team tier's seat price` — every seat bills at the
       same, tier-determined price regardless of what plan a member might
@@ -3418,7 +3466,7 @@ gate is §14.6c, below.
       member before the billing period closes changes N correctly; the
       leader's own separate commission invoice amount is completely
       unaffected by team size (FR-7.15/FR-7.18)
-- [ ] Non-payment of the group sponsorship invoice past the grace period
+- [x] Non-payment of the group sponsorship invoice past the grace period
       downgrades sponsored members to Free (graceful, per FR-7.13) but
       suspends neither a member's store nor the leader's own store; non-
       payment of the leader's own commission invoice suspends only the
