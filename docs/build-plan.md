@@ -30,6 +30,11 @@ verification report or prior build-plan section citing "Module 11/12/13"
 from before this amendment is describing the **old** numbering — cross-check
 against this table, not memory.
 
+**v0.20 renumbering note:** a new **Module 20 (Supplier Portal Completion &
+Plan-Fee Collection)** is inserted ahead of the former Module 20 (Hardening &
+Launch Readiness), which becomes **Module 21** — the only shift this causes.
+See "Amendment approved after Module 14, ahead of Module 15" below for why.
+
 | # | Module | Depends on | SRS §14 checklist(s) it primarily targets |
 |---|---|---|---|
 | 1 | **Foundation** (this plan) | — | Partial 14.0, 14.8, 14.12 |
@@ -51,7 +56,8 @@ against this table, not memory.
 | 17 | Admin Control Plane completion | 1, 6, 11, 12, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11), commission-invoice verification screen (Module 11) and T&S enforcement/risk-view screens (Module 12) |
 | 18 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 19 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
-| 20 | Hardening & Launch Readiness | all above | 14.12 (remainder), full cross-tenant sweep |
+| 20 | **Supplier Portal Completion & Plan-Fee Collection** (new, v0.20) | 8, 9, 11, 14 | Remainder of 14.3 (FR-3.3's supplier-facing dashboard UI — the aggregation API/data already exists, built in Module 9), the Supplier Premium Plan's actual gate (FR-7.10 — `Subscription`/`SettingsContext` gain supplier support), and 14.7's plan-fee collection line (FR-7.2 revised v0.20 — `plan_subscription` invoice generation, extending Module 11/14's `InvoicesService`) |
+| 21 | Hardening & Launch Readiness (renumbered v0.20 from 20) | all above | 14.12 (remainder), full cross-tenant sweep |
 
 **Two modules inserted in v0.10** (see the SRS's own v0.9→v0.10 changelog for
 the full reasoning, this is just the sequencing consequence): **Listing
@@ -1442,6 +1448,40 @@ follow-up found while building Teams). Tests: three new e2e files —
 `guardrails.e2e-spec.ts` (6 tests, §14.21), `teams.e2e-spec.ts` (9 tests,
 §14.31) — plus a unit spec for the yearly-price calculation. Full suite:
 25 e2e files / 214 tests, 19 unit files / 103 tests, all green.
+
+## Amendment approved after Module 14, ahead of Module 15 (SRS v0.20)
+
+Full spec: `docs/SRS.md`'s v0.20 changelog note, FR-7.2 (revised), FR-7.10
+(supplemented), §14.3/§14.7's updated checklist lines. **Documentation
+only, no code** — closes two dangling threads the founder flagged on
+Module 14's approval, both given explicit homes rather than built now.
+
+1. **Plan-fee collection at launch (FR-7.2, revised).** Module 14 left
+   `seller_invoices.invoice_type = 'plan_subscription'` schema-ready but
+   never built the invoice-generation job — until now, a paid plan was
+   reachable only via an admin grant (FR-7.8). Pinned: a seller on a paid
+   plan gets a monthly `plan_subscription` invoice via the identical
+   manual-verification/grace-period mechanism as commission invoicing
+   (FR-6.16–18) and the Teams group invoice (FR-7.15/7.18) — a third type
+   on the same engine. Non-payment past grace **downgrades to Free**
+   (FR-7.13's mechanism), **never suspends the store** — an unpaid plan
+   fee is the seller declining to afford the tier, not a debt tied to
+   store operations the way commission is.
+2. **Supplier Premium Plan's full stack (FR-7.10, supplemented).** Three
+   pieces, two already exist: the plan DATA (Free/Premium supplier tiers,
+   Module 14) and the aggregation API/data (FR-3.3, `SupplierOrdersService`/
+   `SupplierPortalController`, Module 9). Missing: the actual gate between
+   them (`Subscription`/`SettingsContext` support a seller, not a
+   supplier, today) and the supplier-facing dashboard UI itself — no
+   supplier login/dashboard surface has ever existed in `apps/web`.
+
+Both slot into a **new Module 20 (Supplier Portal Completion & Plan-Fee
+Collection)**, depending on 8/9/11/14 — not folded into Module 17 (Admin
+Control Plane completion), since a supplier-facing login/dashboard build
+is a different surface than that module's admin-terminal identity, and
+folding it in would blur what Module 17 actually is. The former Module 20
+(Hardening & Launch Readiness) is renumbered to **Module 21** — the only
+renumbering this causes.
 
 ---
 

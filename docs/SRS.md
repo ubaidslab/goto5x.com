@@ -1,7 +1,7 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.19 (Build-phase amendment)
-**Date:** 2026-07-18
+**Version:** 0.20 (Build-phase amendment)
+**Date:** 2026-07-19
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -123,6 +123,29 @@ FR-7.13 unchanged). §14.7 gained plan-groups/tiers-as-data checklist items;
 was written — Module 14 has not started; this stages the architecture for
 that module's own build, per the founder's explicit request to confirm/
 amend the mechanism before Module 14 begins.
+
+**v0.20 (approved after Module 14, ahead of Module 15)** closes two gaps
+the founder flagged on Module 14's own approval — both slotted into
+homes, not built now. **FR-7.2 is revised** to pin the v1.0 plan-fee
+collection mechanism explicitly: a seller on a paid plan is billed via a
+`plan_subscription`-typed `seller_invoices` row, the identical manual-
+verification/grace-period mechanism as commission invoicing (FR-6.16–18)
+— the schema (`invoice_type`) was already built ready for this in Module
+14, but the invoice-generation job itself was not. Non-payment past grace
+downgrades the seller to Free (graceful, the same mechanism FR-7.13
+already uses), **never store suspension** — a plan fee going unpaid is
+the seller choosing not to afford the tier, not a debt tied to store
+operations the way commission is. **A new Module 20 (Supplier Portal
+Completion & Plan-Fee Collection)** is inserted to build this alongside
+FR-3.3's supplier-facing dashboard UI (the aggregation API/data already
+exists, built in Module 9 — no UI was ever built, and no supplier login/
+dashboard surface exists in `apps/web` at all) and the Supplier Premium
+Plan's actual gate (Subscription/SettingsContext supplier support, absent
+since Module 14 scoped `Subscription` to sellers only). The former Module
+20 (Hardening & Launch Readiness) is renumbered to **Module 21** — the
+only renumbering this causes; every other module keeps its number. No
+code written for either gap — see `docs/build-plan.md`'s own amendment
+note for the full module-sequence table change.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -1401,8 +1424,23 @@ no longer scales. None of these are expected at v1.0 launch.
   platform's configured currency (PKR at launch), gating features (product count,
   storage, template tiers, custom domain, coded-theme mode, analytics depth) via
   the Settings Registry.
-- FR-7.2: Recurring billing cycle with invoicing and dunning (failed-payment
-  retry) for paid plans.
+- FR-7.2: **Recurring billing cycle with invoicing and dunning for paid plans
+  (revised v0.20 — the mechanism pinned explicitly, not left implicit).** A
+  seller on a paid plan is billed via a monthly `plan_subscription`-typed
+  `seller_invoices` row (the same table, same manual-admin-verification and
+  grace-period mechanism already proven for commission invoicing, FR-6.16–18,
+  and for the Teams group invoice, FR-7.15/7.18 — a third invoice type on
+  the same engine, never a parallel one). **Dunning here means graceful
+  downgrade, not suspension:** non-payment past the grace period downgrades
+  the seller to the Free Plan (the identical mechanism FR-7.13 already uses
+  for a voluntary team-leave) — never a store suspension, since an unpaid
+  plan fee is the seller choosing not to afford that tier, not a debt tied
+  to store operations the way commission is. Built in Module 20 (Supplier
+  Portal Completion & Plan-Fee Collection, new v0.20) — the schema
+  (`invoice_type = 'plan_subscription'`) was already built ready for this in
+  Module 14, but the invoice-generation job itself was not; until Module 20
+  ships, a paid plan can only be reached via an admin grant (FR-7.8) or a
+  promo-code-adjacent flow, never real self-service billing.
 - FR-7.3: **Free Plan (first-class)** — a plan tier with **no billing cycle**,
   bounded by tight Settings-Registry-tunable limits: product count, storage quota,
   access to the base template tier only, no custom domain, and one store per
@@ -1442,6 +1480,12 @@ no longer scales. None of these are expected at v1.0 launch.
   only on a paid plan; a free-tier supplier connected to multiple stores still
   functions correctly per-store, just without the aggregated view. Pricing is
   founder-set data via the same plan editor, same as every other plan.
+  **Full completion in Module 20 (new v0.20):** the plan DATA (Free/Premium
+  supplier tiers) and the aggregation API/data (FR-3.3, `SupplierOrdersService`)
+  both already exist (Module 14 and Module 9 respectively) — what's missing
+  is the actual gate between them (`Subscription`/`SettingsContext` support a
+  seller, not a supplier, today) and the supplier-facing dashboard UI itself,
+  since no supplier login/dashboard surface has ever been built in `apps/web`.
 - **Confirmation (no gap found):** a **seller's own** multi-supplier management
   — one seller, many linked local suppliers, one seller-side dashboard — is
   already fully covered by existing FRs and requires no new work: FR-2.6/
@@ -2784,8 +2828,12 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Supplier registration/verification workflow completes end-to-end (FR-3.1)
 - [ ] **Permission boundary:** a supplier's session returns zero results for a
       store they do not hold an active `store_supplier_links` row for
-- [ ] Multi-store dashboard aggregates `order_items` across all linked stores
-      correctly (FR-3.3) - proven in Module 9's test suite, once orders exist
+- [x] Multi-store dashboard aggregates `order_items` across all linked stores
+      correctly (FR-3.3) - proven in Module 9's test suite, once orders exist.
+      **The API/data half only** — the supplier-facing UI that actually
+      renders this view, gated by the Supplier Premium Plan (FR-7.10), is
+      built in Module 20 (new v0.20); no supplier login/dashboard surface
+      exists in `apps/web` yet
 - [ ] Fulfillment checklist updates correctly and reflects live in the seller's
       dashboard (FR-3.4) - proven in Module 9's test suite
 - [ ] Tracking ID upload triggers the buyer notification (FR-5.2) - proven in
@@ -2936,6 +2984,14 @@ gate is §14.6c, below.
       coded-theme access) enforce correctly for a seller on that plan
 - [x] Billing-cycle mechanics are correct for a full period even though v1.0
       launches on a Free Plan + simple paid tiers
+- [ ] **Plan-fee collection (FR-7.2, revised v0.20 — moved to Module 20):** a
+      monthly `plan_subscription` invoice is generated for a seller on a
+      paid plan, using the identical `seller_invoices` manual-verification/
+      grace-period mechanism as commission invoicing; non-payment past grace
+      downgrades to Free (never suspends the store). **Not yet built** — the
+      schema (`invoice_type = 'plan_subscription'`) exists from Module 14,
+      the generation job does not; until Module 20 ships, a paid plan is
+      reachable only via an admin grant (FR-7.8)
 - [x] An admin can grant any plan, including Free, directly to a specific seller,
       bypassing checkout; the grant is captured in `admin_audit_logs` with the
       seller's before/after plan (FR-7.8)
