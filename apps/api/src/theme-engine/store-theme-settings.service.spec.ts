@@ -15,7 +15,10 @@ describe("StoreThemeSettingsService", () => {
   function buildHarness(codedModeEnabled: boolean) {
     const existingRow = { storeId: STORE_ID, themeId: THEME_ID, settings: {}, customCode: null };
     const tx = {
-      store: { findUnique: jest.fn().mockResolvedValue({ id: STORE_ID }) },
+      store: {
+        findUnique: jest.fn().mockResolvedValue({ id: STORE_ID, onboardingThemeAckAt: null }),
+        update: jest.fn().mockResolvedValue({ id: STORE_ID, onboardingThemeAckAt: new Date() }),
+      },
       storeThemeSettings: {
         findUnique: jest.fn().mockResolvedValue(existingRow),
         update: jest.fn().mockImplementation(async ({ data }: { data: any }) => ({ ...existingRow, ...data })),
