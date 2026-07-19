@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { BillingModule } from "../billing/billing.module";
+import { CustomersModule } from "../customers/customers.module";
 import { EventsModule } from "../events/events.module";
+import { InvoicesModule } from "../invoices/invoices.module";
 import { EmailService } from "../notifications/email.service";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { StorefrontModule } from "../storefront/storefront.module";
@@ -19,7 +21,17 @@ import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
 @Module({
-  imports: [SettingsModule, StorefrontModule, StoreSettingsModule, SuppliersModule, EventsModule, BillingModule, TrustSafetyModule],
+  imports: [
+    SettingsModule,
+    StorefrontModule,
+    StoreSettingsModule,
+    SuppliersModule,
+    EventsModule,
+    BillingModule,
+    TrustSafetyModule,
+    CustomersModule,
+    InvoicesModule,
+  ],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [
     CartService,

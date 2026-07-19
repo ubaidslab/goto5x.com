@@ -122,6 +122,12 @@ enum ModerationStatus {
 enum MediaSource {
   upload
   google_drive_import
+  // Module 15 (FR-18.1) - the CSV's Image Src is stored as-is (hotlinked),
+  // never fetched server-side: fetching an arbitrary seller-supplied URL
+  // from the backend is an SSRF vector this importer deliberately avoids.
+  // Re-hosting into MinIO is a seller's own choice via the existing upload
+  // path, not something this import does on their behalf.
+  csv_import
 }
 
 enum MediaType {
@@ -378,6 +384,8 @@ model Store {
   listingReviews      ListingReview[]
   carts               Cart[]
   orders              Order[]
+  customers           Customer[]
+  importJobs          ImportJob[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -446,6 +454,7 @@ model Product {
   media              MediaAsset[]
   collectionProducts CollectionProduct[]
   orderItems         OrderItem[]
+  reviews            ProductReview[]
 
   @@index([storeId, status], name: "idx_products_store_status")
   @@index([moderationStatus], name: "idx_products_moderation_status")
@@ -1138,6 +1147,7 @@ model Cart {
 model Order {
   id                String      @id @default(uuid()) @db.Uuid
   storeId           String      @map("store_id") @db.Uuid
+  customerId        String?     @map("customer_id") @db.Uuid
   buyerId           String?     @map("buyer_id") @db.Uuid
   buyerEmail        String      @map("buyer_email")
   statusLookupToken String      @unique @map("status_lookup_token")
@@ -1151,19 +1161,116 @@ model Order {
   taxAmount         Decimal     @default(0) @map("tax_amount") @db.Decimal(12, 2)
   totalAmount       Decimal     @map("total_amount") @db.Decimal(12, 2)
   currency          String
+  // Module 15 (FR-19.1) - MinIO URL of the generated PDF invoice/receipt,
+  // rendered once at order-placement time (the same moment the order-
+  // confirmation email already sends) and reused on every subsequent view.
+  invoicePdfUrl     String?     @map("invoice_pdf_url")
   placedAt          DateTime    @default(now()) @map("placed_at") @db.Timestamptz
 
   store          Store                @relation(fields: [storeId], references: [id])
+  customer       Customer?            @relation(fields: [customerId], references: [id])
   discountCode   DiscountCode?        @relation(fields: [discountCodeId], references: [id])
   items          OrderItem[]
   notes          OrderNote[]
   timelineEvents OrderTimelineEvent[]
   payments       Payment[]
   ledgerEntries  LedgerEntry[]
+  reviews        ProductReview[]
 
   @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
   @@index([discountCodeId], name: "idx_orders_discount_code")
+  @@index([customerId], name: "idx_orders_customer")
   @@map("orders")
+}
+
+// Module 15 (FR-13.1-13.3) - a per-store CRM record, auto-created/matched by
+// email at checkout (both storefront and manual orders, FR-17.1) - never a
+// buyer account (that's the separate, v1.1 FR-22.1 concept).
+model Customer {
+  id           String    @id @default(uuid()) @db.Uuid
+  storeId      String    @map("store_id") @db.Uuid
+  email        String
+  name         String?
+  phone        String?
+  ordersCount  Int       @default(0) @map("orders_count")
+  totalSpent   Decimal   @default(0) @map("total_spent") @db.Decimal(12, 2)
+  firstOrderAt DateTime? @map("first_order_at") @db.Timestamptz
+  lastOrderAt  DateTime? @map("last_order_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  store  Store   @relation(fields: [storeId], references: [id])
+  orders Order[]
+
+  @@unique([storeId, email], name: "uniq_customer_store_email")
+  @@index([storeId, totalSpent], name: "idx_customers_store_spent")
+  @@map("customers")
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  hidden
+}
+
+// Module 15 (FR-14.1-14.4) - submitted via the order-status link (FR-5.4),
+// never an account. `productId`/`orderId` denormalize `storeId` for RLS,
+// same pattern as every other tenant table.
+model ProductReview {
+  id                 String       @id @default(uuid()) @db.Uuid
+  storeId            String       @map("store_id") @db.Uuid
+  productId          String       @map("product_id") @db.Uuid
+  orderId            String?      @map("order_id") @db.Uuid
+  buyerName          String       @map("buyer_name")
+  buyerEmail         String       @map("buyer_email")
+  rating             Int
+  body               String
+  isVerifiedPurchase Boolean      @default(false) @map("is_verified_purchase")
+  status             ReviewStatus @default(pending)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id])
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  @@index([productId, status], name: "idx_reviews_product_status")
+  @@index([storeId, status], name: "idx_reviews_store_status")
+  @@map("product_reviews")
+}
+
+enum ImportJobType {
+  product_import
+  product_export
+  order_export
+}
+
+enum ImportJobStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+// Module 15 (FR-18.1-18.3) - a single tracked-job table for all three CSV
+// operations, per docs/database-schema.md's pre-documented spec.
+model ImportJob {
+  id             String          @id @default(uuid()) @db.Uuid
+  storeId        String          @map("store_id") @db.Uuid
+  type           ImportJobType
+  status         ImportJobStatus @default(pending)
+  // Source CSV (import) or generated output (export), stored in MinIO.
+  fileUrl        String          @map("file_url")
+  // FR-18.1 - the CSV columns present in the uploaded file that were not
+  // mapped to a core field, surfaced to the seller explicitly per upload.
+  unmappedFields String[]        @default([]) @map("unmapped_fields")
+  // FR-18.2 - per-row errors for `product_import`; a bad row never fails
+  // the whole import.
+  errorLog       Json?           @map("error_log")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  completedAt    DateTime?       @map("completed_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, status], name: "idx_import_jobs_store_status")
+  @@map("import_jobs")
 }
 
 // Module 9 clarification: `created_at` is a genuine addition to the

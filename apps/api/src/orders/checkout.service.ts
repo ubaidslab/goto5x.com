@@ -1,6 +1,8 @@
 import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { OrderSource } from "@prisma/client";
+import { CustomersService } from "../customers/customers.service";
+import { InvoicePdfService } from "../invoices/invoice-pdf.service";
 import { EmailService } from "../notifications/email.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
@@ -54,6 +56,8 @@ export class CheckoutService {
     private readonly discountCodes: DiscountCodesService,
     private readonly email: EmailService,
     private readonly sellerIdentity: SellerIdentityService,
+    private readonly customers: CustomersService,
+    private readonly invoicePdf: InvoicePdfService,
   ) {}
 
   async checkout(dto: CheckoutDto) {
@@ -86,6 +90,7 @@ export class CheckoutService {
       store.name,
       `https://${canonicalHostname}/order-status/${order.statusLookupToken}`,
       paymentInstructions,
+      order.invoicePdfUrl,
     );
 
     return order;
@@ -118,6 +123,7 @@ export class CheckoutService {
       store.name,
       `https://${canonicalHostname}/order-status/${order.statusLookupToken}`,
       paymentInstructions,
+      order.invoicePdfUrl,
     );
 
     return order;
@@ -154,7 +160,7 @@ export class CheckoutService {
         this.prismaAdmin.storeShippingSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storeTaxSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storePaymentInstructions.findUniqueOrThrow({ where: { storeId: params.storeId } }),
-        this.prismaAdmin.store.findUniqueOrThrow({ where: { id: params.storeId }, select: { sellerId: true } }),
+        this.prismaAdmin.store.findUniqueOrThrow({ where: { id: params.storeId }, select: { sellerId: true, name: true } }),
       ]);
 
       // FR-6.14 store-readiness gate. v1.0 has no separate store draft/
@@ -192,9 +198,21 @@ export class CheckoutService {
       });
 
       const order = await this.prismaAdmin.$transaction(async (tx) => {
+        // FR-13.1 - applies uniformly regardless of order source (storefront
+        // or manual/FR-17.1): the same customer record is created/matched
+        // before the order it belongs to even exists.
+        const customer = await this.customers.findOrCreateForOrder(
+          tx,
+          params.storeId,
+          params.buyerEmail,
+          params.shippingAddress.fullName,
+          params.shippingAddress.phone,
+        );
+
         const created = await tx.order.create({
           data: {
             storeId: params.storeId,
+            customerId: customer.id,
             buyerEmail: params.buyerEmail,
             statusLookupToken: randomBytes(24).toString("hex"),
             shippingAddress: params.shippingAddress as unknown as object,
@@ -233,7 +251,32 @@ export class CheckoutService {
         return created;
       });
 
-      return { order, paymentInstructions };
+      // FR-19.1 - rendered once, right after the order that owns it exists,
+      // the same moment the order-confirmation email already sends. Never
+      // inside the transaction above: PDF rendering is slow I/O, not a
+      // bookkeeping write that belongs inside the atomic order-creation step.
+      const invoicePdfUrl = await this.invoicePdf.generate({
+        orderId: order.id,
+        storeId: params.storeId,
+        storeName: store.name,
+        currency: params.currency,
+        placedAt: order.placedAt,
+        buyerName: params.shippingAddress.fullName,
+        buyerEmail: params.buyerEmail,
+        items: priced.map((item) => ({ title: item.title, quantity: item.quantity, unitPrice: item.unitPrice })),
+        subtotal: subtotalBeforeDiscount,
+        discountAmount,
+        shippingAmount,
+        taxAmount,
+        taxLabel: taxSettings.taxLabel,
+        taxInclusive: taxSettings.taxInclusive,
+        totalAmount,
+      });
+      if (invoicePdfUrl) {
+        await this.prismaAdmin.order.update({ where: { id: order.id }, data: { invoicePdfUrl } });
+      }
+
+      return { order: { ...order, invoicePdfUrl }, paymentInstructions };
     } catch (err) {
       // A rejected order (invalid/expired discount, DB error) must never
       // leave supplier stock decremented for an order that was never created.

@@ -10,6 +10,8 @@ import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
+import { CustomersModule } from "./customers/customers.module";
+import { DataPortabilityModule } from "./data-portability/data-portability.module";
 import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
@@ -20,6 +22,7 @@ import { ModerationModule } from "./moderation/moderation.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PlansModule } from "./plans/plans.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { ReviewsModule } from "./reviews/reviews.module";
 import { SellersModule } from "./sellers/sellers.module";
 import { SettingsModule } from "./settings-registry/settings.module";
 import { StorefrontModule } from "./storefront/storefront.module";
@@ -51,6 +54,9 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     DiscoveryModule,
     StorefrontModule,
     OrdersModule,
+    CustomersModule,
+    ReviewsModule,
+    DataPortabilityModule,
     SellersModule,
     BillingModule,
     TrustSafetyModule,

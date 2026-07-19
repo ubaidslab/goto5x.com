@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.20 (Build-phase amendment)
+**Version:** 0.21 (Build-phase amendment)
 **Date:** 2026-07-19
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -146,6 +146,27 @@ since Module 14 scoped `Subscription` to sellers only). The former Module
 only renumbering this causes; every other module keeps its number. No
 code written for either gap — see `docs/build-plan.md`'s own amendment
 note for the full module-sequence table change.
+
+**v0.21 (Module 15 built)** — Customers, Reviews & Data Portability
+shipped (§5.13/§5.14/§5.18/§5.19). One flagged decision and one flagged
+gap-fill, both disclosed rather than silently absorbed: **FR-19.1's
+"seller logo"** — no store-logo-upload capability exists anywhere in the
+platform (no prior module ever built one), so the one v1.0 invoice
+template's "branded" header is the store name in a designed typographic
+mark, not an uploaded image; a literal logo is a small, separable
+follow-up if the founder wants one once §14.19's founder sign-off happens.
+**The buyer order-status page (FR-5.4) never actually existed in
+`apps/web`** despite being scoped into Module 11's own prerequisite fix
+(`docs/build-plan.md`) — discovered only because FR-19.1 hard-depends on
+it (the invoice link and the review-submission form both have to live
+somewhere). Built the minimal page now (status, items, totals, payment
+instructions, invoice download link, review form) since Module 15 cannot
+honestly claim FR-19.1/FR-14.1 without it; the platform's storefront
+**cart and checkout pages are a separate, larger, still-open gap** —
+Module 9's checkout/cart APIs are fully built and tested, but no
+`apps/web` buyer-facing cart/checkout UI was ever built either. That gap
+is *not* fixed here (out of Module 15's scope) and needs its own founder
+decision on which module absorbs it.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -3118,24 +3139,24 @@ gate is §14.6c, below.
       deliberately-introduced known-vulnerable dependency
 
 ### 14.13 Customers (CRM)
-- [ ] A checkout — storefront or manual (FR-17.1) — auto-creates or matches a
+- [x] A checkout — storefront or manual (FR-17.1) — auto-creates or matches a
       `customers` row by email, updating order count and total spent correctly
       (FR-13.1)
-- [ ] Customer list/detail view in the seller dashboard shows correct order
+- [x] Customer list/detail view in the seller dashboard shows correct order
       history
-- [ ] **Tenant isolation:** the same buyer email at two different stores produces
+- [x] **Tenant isolation:** the same buyer email at two different stores produces
       two separate `customers` rows; seller A's customer list never includes
       seller B's customers, even for an identical email (FR-13.3)
 
 ### 14.14 Product Reviews & Ratings
-- [ ] A buyer can submit a review via the order-status link without an account
-- [ ] A review linked to a real order for that product/store is flagged
+- [x] A buyer can submit a review via the order-status link without an account
+- [x] A review linked to a real order for that product/store is flagged
       `verified_purchase`; one submitted without an order reference is not
-- [ ] A review does not affect the product's displayed average rating until a
+- [x] A review does not affect the product's displayed average rating until a
       seller approves it (FR-14.3)
-- [ ] Average rating/review count update correctly when a review's status
+- [x] Average rating/review count update correctly when a review's status
       changes approved ↔ hidden
-- [ ] **Tenant isolation:** a seller cannot moderate another store's reviews
+- [x] **Tenant isolation:** a seller cannot moderate another store's reviews
 
 ### 14.15 Cart Persistence & Abandoned Carts
 - [ ] Checkout captures email as the first field/step, before payment details
@@ -3184,27 +3205,30 @@ gate is §14.6c, below.
       `product_variants.stock_quantity` in both directions (FR-17.5)
 
 ### 14.18 Data Portability (CSV Import/Export)
-- [ ] A Shopify-format product-export CSV imports successfully for the core-field
+- [x] A Shopify-format product-export CSV imports successfully for the core-field
       mapping (title, description, price, variants/options, images, inventory —
       FR-18.1); the import screen explicitly lists fields it did **not** map for
       that upload
-- [ ] A CSV containing metafields or complex nested option combinations imports
+- [x] A CSV containing metafields or complex nested option combinations imports
       its mapped fields correctly and does not silently drop or corrupt the
       unmapped ones — they are visibly listed as unmapped, not lost without a trace
-- [ ] Import runs as a background job and does not block the dashboard; a bad row
+- [x] Import runs as a background job and does not block the dashboard; a bad row
       is logged with a clear error and does not fail the entire import (FR-18.2)
-- [ ] Product and order CSV export produce files a seller can re-import elsewhere
+- [x] Product and order CSV export produce files a seller can re-import elsewhere
       (round-trip tested) (FR-18.3)
-- [ ] **Tenant isolation:** an export for store A never includes store B's data
+- [x] **Tenant isolation:** an export for store A never includes store B's data
 
 ### 14.19 Receipts, Invoices & Tax
-- [ ] A PDF invoice generates correctly (seller logo, correct currency, correct
-      tax line) and attaches to the order-confirmation email and the order-status
-      page (FR-19.1)
-- [ ] **Exactly one invoice template exists in v1.0**, and it receives a single,
-      explicit founder sign-off against the "clean and professional" bar (FR-19.2)
-      — no open-ended design-iteration loop is treated as a launch blocker
-- [ ] Tax is computed correctly for both tax-inclusive and tax-exclusive store
+- [x] A PDF invoice generates correctly (currency, tax line correct) and attaches
+      to the order-confirmation email and the order-status page (FR-19.1). **Note
+      (v0.21):** no store-logo-upload capability exists anywhere in the platform as
+      of Module 15, so the "branded" header is the store name in a designed
+      typographic mark, not an uploaded image — see FR-19.1's revised text.
+- [ ] **Exactly one invoice template exists in v1.0** (true — built, tenant- and
+      tax-mode-tested), but it **still needs the single, explicit founder sign-off**
+      against the "clean and professional" bar (FR-19.2) before this line can be
+      checked — not something the build itself can self-certify.
+- [x] Tax is computed correctly for both tax-inclusive and tax-exclusive store
       settings and itemized correctly on the invoice (FR-19.3)
 
 ### 14.20 Seller Onboarding Wizard

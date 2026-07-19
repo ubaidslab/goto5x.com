@@ -51,7 +51,7 @@ See "Amendment approved after Module 14, ahead of Module 15" below for why.
 | 12 | **Trust & Safety System** (new, v0.15 — replaces the former Payouts & Disbursement module in this numeric slot) | 1, 6, 9, 11 | 14.29 — versioned Seller Agreement (FR-29.1/29.2), the rule-based T&S engine extending Module 6 moderation + FR-23.5 signup-velocity + Module 11's cancellation-rate/pending-forever-rate monitors (FR-6.19/29.3), and the enforcement ladder on top of Module 1's existing seller-lifecycle admin controls (FR-29.4) |
 | 13 | **Seller Account Security: 2FA + Devices** (new, v0.10; renumbered v0.15 from 12) | 1 | 14.24 — **sequencing rationale changed:** no longer gated by a Payouts module (dormant), stands on its own as general account-security hardening |
 | 14 | Plans, Pricing & Business Guard-Rails (scope extended v0.15) | 1, 11 | 14.7, 14.21 — plus **Supplier Premium Plan (FR-7.10, new v0.15)** |
-| 15 | Customers, Reviews & Data Portability | 9 | 14.13, 14.14, 14.18, 14.19 (invoice) |
+| 15 | Customers, Reviews & Data Portability — **built** | 9 | 14.13, 14.14, 14.18, 14.19 (invoice; FR-19.2's founder sign-off still outstanding) |
 | 16 | Seller Onboarding Wizard | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
 | 17 | Admin Control Plane completion | 1, 6, 11, 12, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11), commission-invoice verification screen (Module 11) and T&S enforcement/risk-view screens (Module 12) |
 | 18 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
@@ -1482,6 +1482,94 @@ is a different surface than that module's admin-terminal identity, and
 folding it in would blur what Module 17 actually is. The former Module 20
 (Hardening & Launch Readiness) is renumbered to **Module 21** — the only
 renumbering this causes.
+
+## Module 15 (Customers, Reviews & Data Portability) — built
+
+Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18
+(FR-18.1-18.3), §5.19 (FR-19.1-19.3), checklists §14.13/§14.14/§14.18/§14.19
+(all checked except FR-19.2's founder sign-off, which cannot be self-
+certified). New Prisma migrations `20260719070000_customers_reviews_data_portability`
+and `20260719120000_import_jobs` — both RLS-enabled (`..._seller_isolation`
+policies, same store_id-through-stores-subquery pattern since Module 2).
+
+1. **Customers CRM (FR-13.1-13.3).** `CustomersService.findOrCreateForOrder()`
+   runs inside `CheckoutService.placeOrder()`'s existing transaction — one
+   insertion point covers both storefront and manual (FR-17.1) order
+   sources. Per the Financial Truth Invariant (§3.12), the customer row is
+   created/matched at order *placement*, but `orders_count`/`total_spent`
+   only increment at payment *confirmation* (`OrdersService.markAsPaid()`),
+   the same split every other financial write in this codebase already
+   uses. Dashboard list (search/sort by spend/order count) + detail (order
+   history) screens built.
+2. **Product Reviews & Ratings (FR-14.1-14.4).** New `ProductReview` model.
+   Public submission endpoint keyed by the order-status token (FR-5.4),
+   no account; `is_verified_purchase` requires both a real order reference
+   *and* `order.status === 'confirmed'` (Financial Truth Invariant again —
+   a still-pending order is not yet a real purchase). Seller moderation
+   (approve/hide) recomputes `Product.averageRating`/`reviewCount` (fields
+   pre-scaffolded since Module 2, never written to until now) immediately
+   after every status change.
+3. **PDF invoices (FR-19.1-19.3).** `InvoicePdfService` renders the one v1.0
+   template (HTML/CSS via `invoice-template.ts`) to PDF with a headless
+   Chromium worker (Playwright, per `docs/tech-stack.md`'s pinned choice),
+   generated once at order-placement time (same moment the confirmation
+   email already sends) and cached on `Order.invoicePdfUrl` — never
+   regenerated. Tax itemized correctly for both inclusive/exclusive store
+   settings. Best-effort: a rendering failure never blocks the order itself
+   (same discipline as `EventsService`, FR-26.3). **Flagged decision:** no
+   store-logo-upload capability exists anywhere in the platform, so the
+   "branded" header is the store name in a designed typographic mark, not
+   an uploaded image — see `docs/SRS.md`'s v0.21 changelog note.
+4. **CSV import/export (FR-18.1-18.3).** New `ImportJob` model (schema
+   already fully pre-specified in `docs/database-schema.md`, unused until
+   now) tracks all three job types. Import: an uploaded Shopify-format CSV
+   is parsed (`csv-parse`, per `docs/tech-stack.md`) by a pure, unit-tested
+   grouping function (`parseProductImportCsv` — Shopify repeats a
+   product's `Handle` across one row per variant/image), then processed as
+   a BullMQ background job (`ProductImportService`, new `product-import`
+   queue/worker) that reuses `ProductsService`/`ProductVariantsService`
+   directly so an imported product passes through the exact same
+   moderation/plan-limit gates a manually-created one does — CSV import is
+   never a way around them. A bad row is logged to `error_log` and skipped,
+   never failing the whole import. Unmapped CSV columns are surfaced
+   explicitly, never silently dropped. **Flagged decision:** the CSV's
+   `Image Src` is stored as-is (hotlinked via a new `MediaSource.csv_import`
+   enum value), never fetched server-side and re-hosted into MinIO —
+   fetching an arbitrary seller-supplied URL from the backend would be an
+   SSRF vector this importer deliberately avoids. Export (products, orders)
+   runs synchronously (FR-18.2's "background job" requirement is scoped to
+   import specifically) and produces the same core-field CSV shape the
+   importer reads, so a self-export round-trips through this platform's
+   own importer.
+5. **Gap discovered and closed: the buyer order-status page.** FR-19.1
+   (invoice download link) and FR-14.1 (review submission) both hard-depend
+   on the buyer order-status page (FR-5.4) existing — it turned out **no
+   such page was ever built in `apps/web`**, despite being scoped into
+   Module 11's own prerequisite fix. Built the minimal page now
+   (`app/storefront/order-status/[token]/page.tsx`): status, items,
+   totals, payment instructions, invoice download link, and the review
+   form. The review form submits through a Next.js Server Action
+   (`app/storefront/order-status/actions.ts`), not a direct client-side
+   fetch to the API — a tenant storefront's dynamic subdomain/custom domain
+   can never be pre-listed in the API's static `CORS_ALLOWED_ORIGINS`
+   allowlist, so the submission has to be a server-to-server call, same
+   reasoning as every other storefront data fetch in this app already
+   being server-side. **Not fixed here (separate, larger, still-open
+   gap):** the storefront **cart and checkout pages** — Module 9's
+   cart/checkout APIs are fully built and tested, but no `apps/web`
+   buyer-facing cart/checkout UI was ever built either. Needs its own
+   founder decision on which module absorbs it.
+
+Tests: 5 unit tests (`product-import.util.spec.ts`, the CSV-grouping pure
+function) + 10 e2e tests (`module15-customers-reviews-data-portability.e2e-spec.ts`)
+covering all four FR blocks plus tenant isolation. Full suite (108 unit +
+224 e2e across all 26 e2e files) passes. Frontend verified live against a
+real running API + MinIO stand-in + headless-Chromium: seller dashboard
+screens (Customers, Reviews, Import & export) and the buyer order-status
+page were all exercised end-to-end in an actual browser (checkout → PDF
+invoice generated and downloadable → review submitted via the real form →
+visible in the seller's moderation queue; CSV uploaded → job processed →
+product/variant/media created and visible in the Products list).
 
 ---
 

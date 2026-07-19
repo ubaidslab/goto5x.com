@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { OrderStatus } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
+import { CustomersService } from "../customers/customers.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
@@ -33,6 +34,7 @@ export class OrdersService {
     private readonly storefront: StorefrontService,
     private readonly printifyAdapter: PrintifyAdapter,
     private readonly ledger: LedgerService,
+    private readonly customers: CustomersService,
   ) {}
 
   async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; tag?: string }) {
@@ -99,6 +101,13 @@ export class OrdersService {
       // without the order that produced it actually being confirmed, and
       // vice versa (Financial Truth Invariant, §3.12).
       await this.ledger.accrueCommission(tx, sellerId, updated, before.currency);
+      // FR-13.1 - order_count/total_spent must never count an order that
+      // was never actually paid (Financial Truth Invariant, §3.12); this is
+      // the sole place that transition happens. `customerId` is only ever
+      // null for orders placed before Module 15 shipped.
+      if (before.customerId) {
+        await this.customers.recordCompletedOrder(tx, before.customerId, updated.totalAmount, updated.placedAt);
+      }
       await tx.orderTimelineEvent.create({
         data: {
           storeId,

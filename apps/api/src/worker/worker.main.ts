@@ -6,6 +6,8 @@ import { AppModule } from "../app.module";
 import { InvoicesService } from "../billing/invoices.service";
 import { INVOICE_GENERATION_QUEUE_NAME } from "../billing/invoice-generation.queue";
 import { INVOICE_OVERDUE_QUEUE_NAME } from "../billing/invoice-overdue.queue";
+import { ProductImportService } from "../data-portability/product-import.service";
+import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
 import { DOMAIN_VERIFICATION_QUEUE_NAME } from "../domains/domain-verification.queue";
 import { DormantStoreService } from "../guardrails/dormant-store.service";
@@ -30,6 +32,7 @@ async function main() {
   const cart = appContext.get(CartService);
   const invoices = appContext.get(InvoicesService);
   const dormantStores = appContext.get(DormantStoreService);
+  const productImport = appContext.get(ProductImportService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -121,9 +124,25 @@ async function main() {
     console.error(`dormant-store-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 15 (FR-18.1/18.2) - per-upload job, unlike the sweeps above.
+  // ProductImportService itself never throws for a single bad row (a
+  // per-row error is logged onto the job's own error_log instead); this
+  // processor only needs to catch a whole-job failure (unparseable CSV,
+  // storage/DB outage).
+  const productImportWorker = new Worker(
+    PRODUCT_IMPORT_QUEUE_NAME,
+    async (job) => productImport.process(job.data.importJobId as string),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  productImportWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`product-import job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; invoice-generation/invoice-overdue-sweep - Module 11; dormant-store-sweep - Module 14).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; invoice-generation/invoice-overdue-sweep - Module 11; dormant-store-sweep - Module 14; product-import - Module 15).",
   );
 
   const shutdown = async () => {
@@ -133,6 +152,7 @@ async function main() {
     await invoiceGenerationWorker.close();
     await invoiceOverdueWorker.close();
     await dormantStoreWorker.close();
+    await productImportWorker.close();
     await appContext.close();
     process.exit(0);
   };

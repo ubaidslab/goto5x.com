@@ -19,7 +19,7 @@ export class OrderStatusLookupService {
   async lookup(token: string) {
     const order = await this.prismaAdmin.order.findUnique({
       where: { statusLookupToken: token },
-      include: { items: { include: { trackingUpdates: true } } },
+      include: { items: { include: { trackingUpdates: true, product: { select: { title: true } } } } },
     });
     if (!order) throw new NotFoundException("Order not found.");
 
@@ -37,6 +37,9 @@ export class OrderStatusLookupService {
       status: order.status,
       placedAt: order.placedAt,
       currency: order.currency,
+      // FR-19.1 - available from the buyer order-status page; null if
+      // rendering failed at placement time (best-effort, never blocks the order).
+      invoicePdfUrl: order.invoicePdfUrl,
       totalAmount: order.totalAmount,
       shippingAmount: order.shippingAmount,
       taxAmount: order.taxAmount,
@@ -53,6 +56,8 @@ export class OrderStatusLookupService {
           }
         : null,
       items: order.items.map((item) => ({
+        productId: item.productId,
+        productTitle: item.product.title,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         fulfillmentStatus: item.fulfillmentStatus,

@@ -160,6 +160,49 @@ export async function fetchStorefrontSearch(
   return res.json();
 }
 
+export interface PublicOrderTrackingUpdate {
+  trackingId: string;
+  carrier: string | null;
+  uploadedAt: string;
+}
+
+export interface PublicOrderItem {
+  productId: string;
+  productTitle: string;
+  quantity: number;
+  unitPrice: string;
+  fulfillmentStatus: string;
+  trackingUpdates: PublicOrderTrackingUpdate[];
+}
+
+export interface PublicOrderStatus {
+  status: "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
+  placedAt: string;
+  currency: string;
+  invoicePdfUrl: string | null;
+  totalAmount: string;
+  shippingAmount: string;
+  taxAmount: string;
+  discountAmount: string;
+  shippingAddress: { fullName: string; line1: string; line2?: string; city: string; country: string; postalCode?: string; phone: string };
+  paymentInstructions: {
+    bankAccountTitle: string | null;
+    bankAccountNumber: string | null;
+    bankName: string | null;
+    jazzcashNumber: string | null;
+    easypaisaNumber: string | null;
+    codEnabled: boolean;
+  } | null;
+  items: PublicOrderItem[];
+}
+
+/** FR-5.4 - the buyer's only post-checkout reference; public, keyed purely by the unguessable token. */
+export async function fetchStorefrontOrderStatus(token: string): Promise<PublicOrderStatus | null> {
+  const res = await fetch(`${API_BASE}/storefront/order-status/${encodeURIComponent(token)}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function unlockStorefront(hostname: string, password: string): Promise<string | null> {
   const res = await fetch(`${API_BASE}/storefront/unlock`, {
     method: "POST",

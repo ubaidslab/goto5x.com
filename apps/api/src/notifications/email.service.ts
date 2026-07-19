@@ -14,13 +14,14 @@ export class EmailService {
 
   constructor(private readonly config: ConfigService) {}
 
-  async send(to: string, subject: string, body: string): Promise<void> {
+  async send(to: string, subject: string, body: string, attachmentUrl?: string | null): Promise<void> {
     const provider = this.config.get<string>("EMAIL_PROVIDER", "console");
 
     if (provider === "console") {
       // Local dev / test default: no real email provider required to run
       // the app or its test suite.
-      this.logger.log(`[console email] to=${to} subject="${subject}"\n${body}`);
+      const attachmentLine = attachmentUrl ? `\n[attachment] ${attachmentUrl}` : "";
+      this.logger.log(`[console email] to=${to} subject="${subject}"\n${body}${attachmentLine}`);
       return;
     }
 
@@ -51,19 +52,24 @@ export class EmailService {
    * buyer's unguessable status-lookup link (Module 9, CheckoutService).
    * FR-6.14 (Module 11) - also carries the seller's payment instructions,
    * framed as "pay the seller directly, then they confirm" since the
-   * platform never touches the money in any v1.0 flow.
+   * platform never touches the money in any v1.0 flow. FR-19.1 (Module 15)
+   * - carries the generated PDF invoice as an attachment when rendering
+   * succeeded; `invoicePdfUrl` is null if it failed (best-effort, never
+   * blocks the order itself).
    */
   async sendOrderConfirmationEmail(
     to: string,
     storeName: string,
     statusUrl: string,
     paymentInstructions: PaymentInstructionsLike,
+    invoicePdfUrl?: string | null,
   ): Promise<void> {
     const howToPay = formatPaymentInstructions(paymentInstructions);
     await this.send(
       to,
       `Your order from ${storeName}`,
       `Thanks for your order! Pay ${storeName} directly using one of the methods below - once they confirm receipt, your order moves to confirmed.\n\n${howToPay}\n\nTrack its status any time here: ${statusUrl}`,
+      invoicePdfUrl,
     );
   }
 

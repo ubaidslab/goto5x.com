@@ -401,8 +401,8 @@ Index: `idx_variants_product_id (product_id)`.
 | id | uuid PK | |
 | store_id | uuid FK → stores.id | |
 | product_id | uuid FK → products.id, nullable | |
-| url | text | **self-hosted MinIO** (S3-compatible) URL fronted by the Cloudflare CDN, not a Drive URL (FR-9.2) |
-| source | enum(`upload`,`google_drive_import`) | |
+| url | text | **self-hosted MinIO** (S3-compatible) URL fronted by the Cloudflare CDN, not a Drive URL (FR-9.2); for `source = csv_import`, this is the CSV's own `Image Src` URL, hotlinked as-is, never a MinIO URL - see the `csv_import` note below |
+| source | enum(`upload`,`google_drive_import`,`csv_import`) | **new value, Module 15 (FR-18.1):** a CSV-imported image's URL is stored exactly as the CSV's `Image Src` column gave it - never fetched server-side and re-hosted into MinIO. Fetching an arbitrary seller-supplied URL from the backend would be an SSRF vector; re-hosting is a seller's own choice via the existing upload path, not something the importer does on their behalf |
 | type | enum(`image`,`video`) | |
 | sort_order | integer default 0 | **new, v0.16 (Module 10 image management UI)** — display order within a product's image set |
 | is_primary | boolean default false | **new, v0.16 (Module 10 image management UI)** — at most one `true` per `product_id`, enforced at the application layer (set-primary clears any other row's flag in the same transaction), not a database constraint |
@@ -607,12 +607,15 @@ genuinely new migration, not resurrected dead schema.
 
 **Note (Module 9 build, no schema-doc regression — same discipline as the note
 above):** `customer_id` (FR-13.1, Customers/Reviews/Data Portability) and
-`invoice_pdf_url` (FR-19.1, self-hosted PDF invoicing) are **not present** in
-Module 9's actual `orders` table - both FRs belong to later modules whose
-own tables (`customers`) and file-generation pipeline (invoice PDFs) don't
-exist yet. Each is added back as a genuine follow-up migration by the module
-that actually needs it, not resurrected dead schema; nothing in Module 9's
-own scope (FR-5.x/15.x/17.x) reads or writes either column.
+`invoice_pdf_url` (FR-19.1, self-hosted PDF invoicing) were **not present** in
+Module 9's actual `orders` table - both FRs belonged to later modules whose
+own tables (`customers`) and file-generation pipeline (invoice PDFs) didn't
+exist yet. **Both landed exactly as disclosed, in Module 15's migration
+`20260719070000_customers_reviews_data_portability`** — `customer_id` is set
+inside `CheckoutService.placeOrder()`'s existing transaction (both storefront
+and manual/FR-17.1 order sources), `invoice_pdf_url` is set right after, once
+the PDF renders. Nothing in Module 9's own scope ever read or wrote either
+column, as promised.
 
 ### `order_items` (tenant, child of orders)
 | Column | Type | Notes |
