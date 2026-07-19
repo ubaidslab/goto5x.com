@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.21 (Build-phase amendment)
+**Version:** 0.22 (Build-phase amendment)
 **Date:** 2026-07-19
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -167,6 +167,16 @@ Module 9's checkout/cart APIs are fully built and tested, but no
 `apps/web` buyer-facing cart/checkout UI was ever built either. That gap
 is *not* fixed here (out of Module 15's scope) and needs its own founder
 decision on which module absorbs it.
+
+**v0.22 (approved after Module 15, new Module 15.5)** — the founder's
+answer to that flagged gap: a new **§5.32 (Storefront Buyer Purchase Flow
+& Store Branding)**, checklist §14.32, slotted as **Module 15.5**, built
+immediately (before the SaaS-bridges module), launch-blocking since
+nothing sells without it. Bundles in store logo upload (FR-32.5), the
+other small-but-real gap Module 15's invoice template surfaced. FR-19.2's
+founder sign-off on the one invoice template stays a separate, explicit
+line item — added to `README.md`'s founder pre-launch verification list
+so it isn't lost.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -2438,6 +2448,65 @@ not a parallel billing system.
   unlocks which perk remain founder-set plan data (FR-7.1), same as every
   other plan-gated feature.
 
+### 5.32 Storefront Buyer Purchase Flow & Store Branding (new, v0.22 — Module 15.5, closes a gap identified during Module 15)
+
+Module 9 (Orders, Cart & Checkout) shipped the full cart/checkout/order-
+status **API** — FR-4.x/5.x/15.x are all implemented and e2e-tested — but
+by the same "backend-only, no owning module" gap the Seller Dashboard UI
+module (§5.28) already found and fixed once for the *seller* side, no
+module ever built the **buyer-facing** cart/checkout UI in `apps/web`.
+This surfaced only while building Module 15's order-status page (FR-19.1/
+FR-14.1 both hard-depend on a buyer-reachable page existing) — a launch-
+blocking gap, since nothing sells without it. Bundled into the same module:
+store logo upload, a small but real gap across three buyer-visible surfaces
+(invoice header, storefront header, transactional emails) discovered
+while building Module 15's invoice template, which had nothing to render
+but a typographic mark because no logo-upload capability existed anywhere
+in the platform.
+
+- FR-32.1: **Storefront purchase flow — the buyer-facing UI for FR-4.x/
+  5.x/15.x's already-built API, not new backend behavior.** Product page
+  add-to-cart (variant selection, quantity, live stock/price per FR-4.8),
+  a cart page (view/edit line items and quantities, calls the existing
+  `PATCH /storefront/cart`), and an email-first checkout flow — email
+  captured **before** any payment/shipping detail, per FR-15.1's locked UX
+  decision, which is what actually persists the cart server-side in the
+  first place. Checkout displays the shipping/tax/discount breakdown
+  (`computeOrderTotals`'s existing math, never a second calculation) and,
+  in the same step, the seller's payment instructions framed exactly as
+  the existing confirmation email already frames them — **"pay the seller
+  directly; once they confirm receipt, your order moves to confirmed"**
+  (Direct Seller Collection, §3.12) — never implying the platform holds or
+  processes the payment itself.
+- FR-32.2: **Order confirmation page.** Shown immediately after a
+  successful `POST /storefront/checkout`, summarizing the placed order and
+  linking to that order's own order-status page (FR-5.4, Module 15) as the
+  buyer's durable reference — the confirmation page itself is not
+  bookmarked or reachable again independently.
+- FR-32.3: **Financial Truth Invariant applies to every buyer-visible
+  surface this FR builds (§3.12), with no exception.** An order is
+  `pending` (awaiting payment) from the instant checkout completes; this
+  UI must never imply otherwise — no "order confirmed," no "payment
+  received," no success-styled messaging until the seller actually marks
+  it paid. The confirmation page and the order-status page both display
+  `pending` using the same honest, awaiting-payment framing already
+  established for the seller dashboard and the confirmation email.
+- FR-32.4: **Storefront design bar applies in full (§5.0, §13, the
+  "Buyer-facing polish" NFR).** Premium, mobile-first, the same visual bar
+  the marketing site and PDF invoices are held to — this is not a bare
+  functional pass like Modules 2/5/7 originally shipped, precisely because
+  it is the surface where a buyer decides whether to trust the store
+  enough to pay.
+- FR-32.5: **Store logo upload.** A seller uploads a single logo image in
+  store settings, reusing the existing media-upload pipeline
+  (`MediaAssetsService`/`ObjectStorageService`, Module 2) rather than a new
+  upload path. The logo is consumed by three buyer-visible surfaces: the
+  storefront header, the PDF invoice template's header (FR-19.1), and
+  transactional emails, wherever each surface can practically render an
+  image. **When no logo is set, each surface's existing typographic-mark
+  fallback stays exactly as built in Module 15** — this FR adds an image
+  option, it does not remove the fallback or make a logo mandatory.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -3551,6 +3620,36 @@ gate is §14.6c, below.
       suspends neither a member's store nor the leader's own store; non-
       payment of the leader's own commission invoice suspends only the
       leader's own store (FR-7.15)
+
+### 14.32 Storefront Buyer Purchase Flow & Store Branding (new, v0.22) — Module 15.5
+- [ ] A buyer can add a product/variant to their cart from the product page,
+      view/edit the cart, and complete checkout entirely from the storefront
+      UI — no step requires the seller dashboard or a direct API call (FR-32.1)
+- [ ] Checkout is genuinely email-first: no shipping/payment field is shown
+      or accepted before email is captured, and the cart row is not created
+      server-side until that point (FR-15.1, re-verified at the UI layer)
+- [ ] The checkout page's shipping/tax/discount totals match
+      `computeOrderTotals`'s own numbers exactly — the UI never recomputes
+      or approximates (FR-32.1)
+- [ ] The payment-instructions step frames payment as "pay the seller
+      directly, they confirm receipt" — never wording that implies the
+      platform holds, processes, or guarantees the payment (FR-32.1, §3.12)
+- [ ] The order-confirmation page links to the correct order's own
+      order-status page (FR-32.2)
+- [ ] **Financial Truth Invariant, buyer-visible surfaces:** the
+      confirmation page and every other buyer-facing screen this module
+      touches shows a `pending` order as awaiting payment — never "paid,"
+      "confirmed," or any success-styled treatment before the seller
+      actually marks it paid (FR-32.3, §3.12)
+- [ ] **Tenant isolation:** the storefront purchase flow for store A's
+      hostname never reads or writes store B's cart/product/pricing data
+- [ ] A seller can upload, replace, and remove a store logo from store
+      settings; it appears on the storefront header, the PDF invoice
+      header, and transactional emails wherever each can render an image
+      (FR-32.5)
+- [ ] With no logo set, all three surfaces show the exact typographic-mark
+      fallback built in Module 15 — never a broken image, a blank space, or
+      a build-time error (FR-32.5)
 
 ---
 

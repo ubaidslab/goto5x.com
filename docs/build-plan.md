@@ -52,6 +52,7 @@ See "Amendment approved after Module 14, ahead of Module 15" below for why.
 | 13 | **Seller Account Security: 2FA + Devices** (new, v0.10; renumbered v0.15 from 12) | 1 | 14.24 — **sequencing rationale changed:** no longer gated by a Payouts module (dormant), stands on its own as general account-security hardening |
 | 14 | Plans, Pricing & Business Guard-Rails (scope extended v0.15) | 1, 11 | 14.7, 14.21 — plus **Supplier Premium Plan (FR-7.10, new v0.15)** |
 | 15 | Customers, Reviews & Data Portability — **built** | 9 | 14.13, 14.14, 14.18, 14.19 (invoice; FR-19.2's founder sign-off still outstanding) |
+| 15.5 | **Storefront Buyer Purchase Flow & Store Branding** (new, v0.22) | 2, 9, 15 | 14.32 — launch-blocking (nothing sells without buyer-facing cart/checkout), built immediately after 15, before the SaaS-bridges module |
 | 16 | Seller Onboarding Wizard | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
 | 17 | Admin Control Plane completion | 1, 6, 11, 12, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11), commission-invoice verification screen (Module 11) and T&S enforcement/risk-view screens (Module 12) |
 | 18 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
@@ -1570,6 +1571,18 @@ page were all exercised end-to-end in an actual browser (checkout → PDF
 invoice generated and downloadable → review submitted via the real form →
 visible in the seller's moderation queue; CSV uploaded → job processed →
 product/variant/media created and visible in the Products list).
+
+## Module 15.5 approved (SRS v0.22) — Storefront Buyer Purchase Flow & Store Branding
+
+Founder approved Module 15's checklist and, in the same approval, slotted
+the flagged buyer-storefront-UI gap as a new **Module 15.5**, built
+immediately — before Module 18 (External-SaaS Bridges) — since it's
+launch-blocking (nothing sells without it). Store logo upload bundled
+into the same module's scope (a second small gap Module 15's invoice
+template surfaced). Full spec: `docs/SRS.md` §5.32/FR-32.1-32.5, checklist
+§14.32. FR-19.2's invoice-template founder sign-off stays a separate,
+explicit item — added to `README.md`'s founder pre-launch verification
+list per the founder's own instruction, not folded into this module.
 
 ---
 

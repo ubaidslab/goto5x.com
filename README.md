@@ -338,6 +338,18 @@ visitor out, which is the same intended blast radius as a session.
 
 ---
 
+## Founder pre-launch verification
+
+Items that only the founder can actually verify — not something a test
+suite can self-certify — collected here so none gets lost across modules.
+
+- [ ] **Invoice template sign-off (SRS FR-19.2, §14.19).** Exactly one PDF
+  invoice template exists in v1.0; it needs a single, explicit founder
+  sign-off against the "clean and professional, not generic" bar before
+  §14.19's checklist can be marked complete. Review it during your
+  pre-launch smoke test — any store's order-status page has a working
+  "Download invoice (PDF)" link once an order exists (Module 15).
+
 ## Companion docs
 
 `docs/SRS.md` (requirements), `docs/database-schema.md` (full schema),
