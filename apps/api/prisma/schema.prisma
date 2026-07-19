@@ -370,6 +370,10 @@ model Store {
   dormantWarningSentAt DateTime?       @map("dormant_warning_sent_at") @db.Timestamptz
   createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  // Module 15.5 (FR-32.5) - reuses the existing media pipeline (MediaAsset,
+  // Module 2) rather than a second upload path; nullable, typographic-mark
+  // fallback stays wherever this is unset.
+  logoMediaId          String?         @map("logo_media_id") @db.Uuid
 
   seller              Seller                    @relation(fields: [sellerId], references: [id])
   domains             Domain[]
@@ -386,6 +390,7 @@ model Store {
   orders              Order[]
   customers           Customer[]
   importJobs          ImportJob[]
+  logoMedia           MediaAsset?               @relation("StoreLogo", fields: [logoMediaId], references: [id])
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -786,7 +791,8 @@ model MediaAsset {
   sizeBytes Int         @default(0) @map("size_bytes") // Module 14 (FR-23.1) - storage-quota metering; set at upload time, never recomputed from MinIO
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
 
-  product Product? @relation(fields: [productId], references: [id])
+  product       Product? @relation(fields: [productId], references: [id])
+  logoForStores Store[]  @relation("StoreLogo")
 
   @@index([storeId], name: "idx_media_store_id")
   @@index([productId], name: "idx_media_product_id")

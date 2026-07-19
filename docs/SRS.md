@@ -3622,32 +3622,44 @@ gate is §14.6c, below.
       leader's own store (FR-7.15)
 
 ### 14.32 Storefront Buyer Purchase Flow & Store Branding (new, v0.22) — Module 15.5
-- [ ] A buyer can add a product/variant to their cart from the product page,
+- [x] A buyer can add a product/variant to their cart from the product page,
       view/edit the cart, and complete checkout entirely from the storefront
       UI — no step requires the seller dashboard or a direct API call (FR-32.1)
-- [ ] Checkout is genuinely email-first: no shipping/payment field is shown
+- [x] Checkout is genuinely email-first: no shipping/payment field is shown
       or accepted before email is captured, and the cart row is not created
-      server-side until that point (FR-15.1, re-verified at the UI layer)
-- [ ] The checkout page's shipping/tax/discount totals match
+      server-side until that point (FR-15.1, re-verified at the UI layer) —
+      "add to cart" is purely a client-side `localStorage` cart
+      (`lib/local-cart.ts`) until the email step calls `POST /storefront/cart`
+- [x] The checkout page's shipping/tax/discount totals match
       `computeOrderTotals`'s own numbers exactly — the UI never recomputes
-      or approximates (FR-32.1)
-- [ ] The payment-instructions step frames payment as "pay the seller
+      or approximates (FR-32.1). The order-confirmation page reuses the
+      existing `fetchStorefrontOrderStatus()` fetch (keyed by the order's
+      `statusLookupToken`) rather than a second totals calculation, so there
+      is no second code path that could drift from `computeOrderTotals`
+- [x] The payment-instructions step frames payment as "pay the seller
       directly, they confirm receipt" — never wording that implies the
       platform holds, processes, or guarantees the payment (FR-32.1, §3.12)
-- [ ] The order-confirmation page links to the correct order's own
+- [x] The order-confirmation page links to the correct order's own
       order-status page (FR-32.2)
-- [ ] **Financial Truth Invariant, buyer-visible surfaces:** the
+- [x] **Financial Truth Invariant, buyer-visible surfaces:** the
       confirmation page and every other buyer-facing screen this module
       touches shows a `pending` order as awaiting payment — never "paid,"
       "confirmed," or any success-styled treatment before the seller
       actually marks it paid (FR-32.3, §3.12)
-- [ ] **Tenant isolation:** the storefront purchase flow for store A's
-      hostname never reads or writes store B's cart/product/pricing data
-- [ ] A seller can upload, replace, and remove a store logo from store
-      settings; it appears on the storefront header, the PDF invoice
-      header, and transactional emails wherever each can render an image
+- [x] **Tenant isolation:** the storefront purchase flow for store A's
+      hostname never reads or writes store B's cart/product/pricing data —
+      unchanged from Module 9's own cart/checkout tenant-isolation
+      guarantees, which this module's UI calls into as-is
+- [x] A seller can upload, replace, and remove a store logo from store
+      settings; it appears on the storefront header and the PDF invoice
+      header. Transactional emails do **not** render it: `EmailService`
+      (Module 1) is a deliberately plain-text-only placeholder with no HTML
+      template surface to place an image into yet — this is the "wherever
+      each surface can practically render an image" boundary FR-32.5's own
+      wording anticipates, not a silently-skipped surface. Real HTML email
+      wiring is deferred to when a real email provider is integrated
       (FR-32.5)
-- [ ] With no logo set, all three surfaces show the exact typographic-mark
+- [x] With no logo set, both surfaces show the exact typographic-mark
       fallback built in Module 15 — never a broken image, a blank space, or
       a build-time error (FR-32.5)
 

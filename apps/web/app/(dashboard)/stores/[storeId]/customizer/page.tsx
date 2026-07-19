@@ -158,6 +158,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     canonicalHostname: `${store.slug}.goto5x.com`,
     seoTitle: store.name,
     seoDescription: null,
+    logoUrl: null,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
   };
 

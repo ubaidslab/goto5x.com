@@ -89,7 +89,7 @@ export class StorefrontService {
     if (!storeId) throw new NotFoundException("No store found for this hostname.");
     const store = await this.prismaAdmin.store.findUnique({
       where: { id: storeId },
-      include: { themeSettings: { include: { theme: true } }, domains: true },
+      include: { themeSettings: { include: { theme: true } }, domains: true, logoMedia: true },
     });
     if (!store) throw new NotFoundException("Store not found.");
     if (store.status === "suspended") {
@@ -171,6 +171,9 @@ export class StorefrontService {
       canonicalHostname,
       seoTitle: seo.title,
       seoDescription: seo.description,
+      // FR-32.5 - null when no logo is set; every consuming surface falls
+      // back to its typographic mark rather than treating this as an error.
+      logoUrl: store.logoMedia?.url ?? null,
       theme: store.themeSettings
         ? {
             name: store.themeSettings.theme.name,

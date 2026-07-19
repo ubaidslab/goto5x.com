@@ -3,6 +3,7 @@ import * as bcrypt from "bcryptjs";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { FreeStoreLimitService } from "../guardrails/free-store-limit.service";
+import { MediaAssetsService, UploadableFile } from "../media/media-assets.service";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
 
@@ -29,6 +30,7 @@ export class StoresService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly events: EventsService,
     private readonly freeStoreLimit: FreeStoreLimitService,
+    private readonly mediaAssets: MediaAssetsService,
   ) {}
 
   async create(sellerId: string, dto: CreateStoreDto) {
@@ -96,13 +98,18 @@ export class StoresService {
 
   async getOwn(sellerId: string, storeId: string) {
     const store = await this.tenantPrisma.run(sellerId, async (tx) => {
-      const found = await tx.store.findUnique({ where: { id: storeId } });
+      const found = await tx.store.findUnique({
+        where: { id: storeId },
+        include: { logoMedia: { select: { url: true } } },
+      });
       // RLS already guarantees this can never be another seller's store, but
       // findUnique-by-id-alone still needs a null check for "doesn't exist at all".
       if (!found) throw new NotFoundException("Store not found.");
       return found;
     });
-    return stripPasswordHash(store);
+    // FR-32.5 - flattened alongside the raw FK for dashboard convenience.
+    const { logoMedia, ...rest } = store;
+    return { ...stripPasswordHash(rest), logoUrl: logoMedia?.url ?? null };
   }
 
   async updateOwn(sellerId: string, storeId: string, dto: UpdateStoreDto) {
@@ -131,5 +138,40 @@ export class StoresService {
       return tx.store.update({ where: { id: storeId }, data });
     });
     return stripPasswordHash(store);
+  }
+
+  /**
+   * FR-32.5 - reuses the existing media-upload pipeline (quota metering,
+   * storage) rather than a second upload path; only this store's own
+   * previous logo (if any) is cleaned up, never any other media asset.
+   */
+  async setLogo(sellerId: string, storeId: string, file: UploadableFile) {
+    const asset = await this.mediaAssets.uploadDirect(sellerId, storeId, file);
+    const previousLogoMediaId = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.store.findUnique({ where: { id: storeId } });
+      if (!existing) throw new NotFoundException("Store not found.");
+      await tx.store.update({ where: { id: storeId }, data: { logoMediaId: asset.id } });
+      return existing.logoMediaId;
+    });
+    if (previousLogoMediaId) {
+      // Best-effort - an orphaned old logo asset is a cheap cleanup problem,
+      // not worth failing the (already-succeeded) new upload over.
+      await this.mediaAssets.remove(sellerId, storeId, previousLogoMediaId).catch(() => undefined);
+    }
+    return { logoUrl: asset.url };
+  }
+
+  /** FR-32.5 - clears the logo; every surface falls back to its typographic mark. */
+  async removeLogo(sellerId: string, storeId: string) {
+    const previousLogoMediaId = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.store.findUnique({ where: { id: storeId } });
+      if (!existing) throw new NotFoundException("Store not found.");
+      await tx.store.update({ where: { id: storeId }, data: { logoMediaId: null } });
+      return existing.logoMediaId;
+    });
+    if (previousLogoMediaId) {
+      await this.mediaAssets.remove(sellerId, storeId, previousLogoMediaId).catch(() => undefined);
+    }
+    return { removed: true };
   }
 }

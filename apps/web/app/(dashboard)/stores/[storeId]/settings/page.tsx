@@ -54,6 +54,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [removingLogo, setRemovingLogo] = useState(false);
+
   const [dashboardTheme, setDashboardTheme] = useState("default");
   const [savingTheme, setSavingTheme] = useState(false);
 
@@ -84,8 +88,11 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
 
   useEffect(() => {
     api
-      .get<{ accessMode: AccessMode }>(`/stores/${params.storeId}`)
-      .then((s) => setAccessMode(s.accessMode))
+      .get<{ accessMode: AccessMode; logoUrl: string | null }>(`/stores/${params.storeId}`)
+      .then((s) => {
+        setAccessMode(s.accessMode);
+        setLogoUrl(s.logoUrl);
+      })
       .finally(() => setLoaded(true));
     api
       .get<SellerProfile>("/sellers/me")
@@ -207,6 +214,37 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     }
   }
 
+  async function uploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await api.upload<{ logoUrl: string }>(`/stores/${params.storeId}/logo`, formData);
+      setLogoUrl(result.logoUrl);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't upload that logo.");
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = "";
+    }
+  }
+
+  async function removeLogo() {
+    setError(null);
+    setRemovingLogo(true);
+    try {
+      await api.delete(`/stores/${params.storeId}/logo`);
+      setLogoUrl(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't remove the logo.");
+    } finally {
+      setRemovingLogo(false);
+    }
+  }
+
   async function chooseTheme(themeId: string) {
     setSavingTheme(true);
     try {
@@ -226,6 +264,34 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       {saved && <Alert tone="success">Saved.</Alert>}
 
       <div className="max-w-2xl space-y-6">
+        <Card>
+          <CardHeader
+            title="Store branding"
+            description="Shown on your storefront header, PDF invoices, and transactional emails. Without a logo, your store name is shown instead."
+          />
+          <CardBody className="flex items-center gap-4">
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt="Store logo" className="h-14 max-w-[200px] rounded-md border border-border object-contain p-1" />
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-border text-xs text-ink-faint">
+                No logo
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input type="file" accept="image/*" onChange={uploadLogo} className="hidden" id="store-logo-input" />
+              <Button variant="secondary" loading={uploadingLogo} onClick={() => document.getElementById("store-logo-input")?.click()}>
+                {logoUrl ? "Replace logo" : "Upload logo"}
+              </Button>
+              {logoUrl && (
+                <Button variant="ghost" loading={removingLogo} onClick={removeLogo}>
+                  Remove
+                </Button>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+
         <Card>
           <CardHeader title="Storefront access" description="Who can view your storefront right now." />
           <CardBody>

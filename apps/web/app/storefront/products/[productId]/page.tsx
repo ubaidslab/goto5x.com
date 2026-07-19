@@ -5,6 +5,7 @@ import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-prese
 import { ComingSoonPage, PasswordGate } from "../../access-gates";
 import { resolveAccess } from "../../access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { AddToCartForm } from "./add-to-cart-form";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
       {/* eslint-disable-next-line react/no-danger */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <AnnouncementBar theme={theme} />
-      <SiteHeader navigation={navigation} theme={theme} />
+      <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24 }}>
         <a href="/">&larr; Back to store</a>
         <h1>{product.title}</h1>
@@ -91,14 +92,16 @@ export default async function StorefrontProductPage({ params }: { params: { prod
           ))}
         </div>
         {product.description && <p>{product.description}</p>}
-        <h2>Options</h2>
-        <ul>
-          {product.variants.map((variant) => (
-            <li key={variant.id}>
-              {variant.sku} — {variant.price} ({variant.stockQuantity} in stock)
-            </li>
-          ))}
-        </ul>
+        <div style={{ marginTop: 16 }}>
+          <AddToCartForm
+            hostname={host}
+            productId={product.id}
+            productTitle={product.title}
+            variants={product.variants}
+            currency={store.currency}
+            theme={theme}
+          />
+        </div>
         <p>
           Rating: {product.averageRating} ({product.reviewCount} reviews)
         </p>

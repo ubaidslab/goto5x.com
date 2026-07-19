@@ -7,6 +7,8 @@ export interface PublicStore {
   canonicalHostname: string;
   seoTitle: string;
   seoDescription: string | null;
+  /** FR-32.5 - null when no logo is set; consuming surfaces fall back to a typographic mark. */
+  logoUrl: string | null;
   theme: { name: string; settings: Record<string, unknown> } | null;
 }
 

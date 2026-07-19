@@ -45,7 +45,7 @@ export default async function StorefrontSearchPage({ searchParams }: SearchPageP
   return (
     <>
       <AnnouncementBar theme={theme} />
-      <SiteHeader navigation={navigation} theme={theme} />
+      <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24 }}>
         <a href="/">&larr; Back to store</a>
         <h1 style={{ color: theme.colors.primary }}>Search</h1>

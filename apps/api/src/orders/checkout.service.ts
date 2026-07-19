@@ -160,7 +160,10 @@ export class CheckoutService {
         this.prismaAdmin.storeShippingSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storeTaxSettings.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.storePaymentInstructions.findUniqueOrThrow({ where: { storeId: params.storeId } }),
-        this.prismaAdmin.store.findUniqueOrThrow({ where: { id: params.storeId }, select: { sellerId: true, name: true } }),
+        this.prismaAdmin.store.findUniqueOrThrow({
+          where: { id: params.storeId },
+          select: { sellerId: true, name: true, logoMedia: { select: { url: true } } },
+        }),
       ]);
 
       // FR-6.14 store-readiness gate. v1.0 has no separate store draft/
@@ -259,6 +262,7 @@ export class CheckoutService {
         orderId: order.id,
         storeId: params.storeId,
         storeName: store.name,
+        logoUrl: store.logoMedia?.url ?? null,
         currency: params.currency,
         placedAt: order.placedAt,
         buyerName: params.shippingAddress.fullName,

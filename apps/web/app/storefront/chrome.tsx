@@ -1,5 +1,6 @@
 import { NavigationItem, PublicNavigation } from "../../lib/storefront-api";
 import { ResolvedThemeSettings } from "../../lib/theme-presets";
+import { CartLink } from "./cart-link";
 
 // FR-16.3 - header/footer navigation, rendered from live data with no
 // deploy needed for a seller's edit to take effect. `text_block`/
@@ -53,11 +54,47 @@ function NavItems({ items, theme }: { items: NavigationItem[]; theme: ResolvedTh
   );
 }
 
-export function SiteHeader({ navigation, theme }: { navigation: PublicNavigation; theme: ResolvedThemeSettings }) {
-  if (navigation.header.length === 0) return null;
+/**
+ * FR-32.5 - the storefront's brand mark: the seller's uploaded logo when
+ * set, otherwise the store name as a typographic mark. Never absent -
+ * unlike the nav row below it (which can legitimately be empty), a buyer
+ * must always be able to tell which store they're on.
+ */
+export function SiteHeader({
+  navigation,
+  theme,
+  store,
+}: {
+  navigation: PublicNavigation;
+  theme: ResolvedThemeSettings;
+  store: { name: string; logoUrl: string | null };
+}) {
   return (
-    <header style={{ padding: "16px 24px", borderBottom: "1px solid #e5e7eb", background: theme.colors.background }}>
-      <NavItems items={navigation.header} theme={theme} />
+    <header
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+        padding: "16px 24px",
+        borderBottom: "1px solid #e5e7eb",
+        background: theme.colors.background,
+      }}
+    >
+      <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+        {store.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={store.logoUrl} alt={store.name} style={{ height: 40, maxWidth: 200, objectFit: "contain" }} />
+        ) : (
+          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "0.02em", color: theme.colors.text }}>
+            {store.name}
+          </span>
+        )}
+      </a>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {navigation.header.length > 0 && <NavItems items={navigation.header} theme={theme} />}
+        <CartLink theme={theme} />
+      </div>
     </header>
   );
 }

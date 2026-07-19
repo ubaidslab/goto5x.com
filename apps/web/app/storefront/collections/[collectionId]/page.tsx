@@ -41,7 +41,7 @@ export default async function StorefrontCollectionPage({ params }: { params: { c
   return (
     <>
       <AnnouncementBar theme={theme} />
-      <SiteHeader navigation={navigation} theme={theme} />
+      <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main>
         <div style={{ padding: "24px 24px 0" }}>
           <a href="/">&larr; Back to store</a>

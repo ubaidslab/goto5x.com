@@ -40,7 +40,7 @@ export default async function StorefrontHomePage() {
   return (
     <>
       <AnnouncementBar theme={theme} />
-      <SiteHeader navigation={navigation} theme={theme} />
+      <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main>
         {theme.sections
           .filter((section) => section.visible)
