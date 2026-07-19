@@ -55,7 +55,7 @@ See "Amendment approved after Module 14, ahead of Module 15" below for why.
 | 15.5 | **Storefront Buyer Purchase Flow & Store Branding** (new, v0.22) | 2, 9, 15 | 14.32 — launch-blocking (nothing sells without buyer-facing cart/checkout), built immediately after 15, before the SaaS-bridges module |
 | 16 | Seller Onboarding Wizard | 4, 9, 10 | 14.20, plus 14.0 regional-gating items (FR-25.5, new in v0.7) — depends on 10 now, since the wizard links a new seller into real dashboard screens rather than placeholders |
 | 17 | Admin Control Plane completion | 1, 6, 11, 12, 14 | Remainder of 14.8, incl. in-app messaging (FR-8.15) and brand assets (FR-12.3, both new in v0.7), the Listing Moderation Engine's bare functional queue admin page (FR-27.6, new in v0.11), commission-invoice verification screen (Module 11) and T&S enforcement/risk-view screens (Module 12) |
-| 18 | External-SaaS Bridges | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
+| 18 | External-SaaS Bridges — **built** | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 19 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
 | 20 | **Supplier Portal Completion & Plan-Fee Collection** (new, v0.20) | 8, 9, 11, 14 | Remainder of 14.3 (FR-3.3's supplier-facing dashboard UI — the aggregation API/data already exists, built in Module 9), the Supplier Premium Plan's actual gate (FR-7.10 — `Subscription`/`SettingsContext` gain supplier support), and 14.7's plan-fee collection line (FR-7.2 revised v0.20 — `plan_subscription` invoice generation, extending Module 11/14's `InvoicesService`) |
 | 21 | Hardening & Launch Readiness (renumbered v0.20 from 20) | all above | 14.12 (remainder), full cross-tenant sweep |
@@ -1647,6 +1647,101 @@ item, checkout's email-first step verified to show no shipping field before
 email, shipping step, order placed, confirmation page showing the honest
 "awaiting payment" status and linking correctly to the order-status page,
 and the storefront header showing the uploaded logo.
+
+## Module 18 (External-SaaS Integration Hooks) — built
+
+Full scope: `docs/SRS.md` §5.24/FR-24.1-24.14 + FR-8.14, checklist §14.22
+(all checked). Both hooks are goto5x.com's own side only, per the founder's
+own binding instruction — the Template Store and Social Media SaaS
+themselves are never built, mocked, or assumed beyond what §5.24 specifies.
+New Prisma migration `20260719160000_external_saas_hooks`
+(`external_api_clients` — global registry, mirrors `supplier_adapters`;
+`template_entitlements`/`seller_api_tokens` — seller-scoped directly, RLS
+with a direct `seller_id = ...` predicate, same shape as
+`google_drive_connections`).
+
+1. **Template Install/License API (FR-24.3-24.7).** `POST
+   /external/template-store/install` and `.../revoke`, both verified via an
+   HMAC-SHA256 signature (`external-api/signature.util.ts`) over the exact
+   raw request bytes (`app.rawBody`, enabled in `main.ts`) plus a 5-minute
+   replay-tolerance timestamp — never a re-serialized/re-parsed body, which
+   could silently differ from what was actually signed. A `themes` row is
+   matched by `(name, version)` — the Template Package Spec's own manifest
+   identity — reused if it already exists, created as `tier: marketplace`
+   otherwise; `template_entitlements` grant/revoke is an upsert (idempotent
+   re-install, correct re-grant after a prior revoke). Every grant/revoke is
+   audit-logged as a system actor (`adminUserId: null`), with a
+   `referralAttributed: true` marker folded into the same write (FR-24.13 -
+   no second log entry). Import-only (FR-24.4): no code path ever returns a
+   downloadable template file.
+2. **Product Feed API (FR-24.9-24.11).** `GET
+   /external/social-media/product-feed`, authenticated by a seller-scoped
+   bearer token (`seller_api_tokens.token_hash`, SHA-256, reusing
+   `auth/token.util.ts`'s existing "shown once" discipline) - not a second
+   HMAC layer on top, since the token itself already proves origination for
+   one specific, already-onboarded seller (disclosed design decision:
+   layering client-level signing on top would be redundant complexity, not
+   additional security). Tenant isolation comes from the same
+   `TenantPrismaService.run(sellerId, ...)`/RLS mechanism every other
+   tenant read uses — no hand-written `storeId` filter exists to get wrong.
+   A revoked token, or a token whose owning `external_api_clients` row an
+   admin has disabled (FR-8.14), is rejected on its very next use.
+3. **Cross-SaaS discount eligibility (FR-24.14).** `GET
+   /external/eligibility?sellerId=...`, client-level HMAC-signed (a GET has
+   no body, so the canonical query string is the signed payload instead).
+   Returns only `{ eligible: boolean }` — "is this seller on a paid plan"
+   (`subscription.plan.tierOrder > 0`) — never discount terms.
+4. **Marketing SSO handoff (FR-24.8).** `POST /sellers/me/marketing-handoff`
+   mints a short-lived (5 min) JWT signed with the same `JWT_ACCESS_SECRET`
+   every seller access token already uses — reusing §3.2a's existing SSO
+   hook, not a second scheme — and records one referral-attribution audit
+   entry per handoff (a seller navigating to Marketing is low-frequency,
+   not per-request noise). `social_media_saas.marketing_handoff_base_url`
+   defaults to empty, so the handoff is a documented 400 until the founder's
+   Social Media SaaS actually exists and an admin configures it.
+5. **External API client registry (FR-8.14).** Admin can register, enable,
+   disable, and rotate the signing secret for either client
+   (`admin/external-api-clients`), mirroring `SupplierAdapterRegistryService`
+   exactly. The secret is AES-256-GCM encrypted at rest (new
+   `EXTERNAL_API_SECRET_ENCRYPTION_KEY`, same mechanism/key-management
+   discipline as the Drive refresh token and CNIC), shown to the admin in
+   plaintext exactly once, at creation/regeneration.
+6. **Closes a real, disclosed Module 4 gap (FR-24.5).** `themes.tier`'s
+   plan-based gating had zero enforcement since Module 4 — the model's own
+   doc comment: "no gating enforced yet — Module 11/14's job." Two premium
+   themes ("Modern", "Minimal") already exist in the seed data, so this
+   wasn't a hypothetical gap. New `theme.premium_tier_enabled` setting
+   (default `false`, same "off for every seller in v1.0" precedent as
+   `theme.coded_mode_enabled`) makes the premium-tier gate real;
+   `StoreThemeSettingsService.update()` now checks it for `premium` themes
+   and checks a live `TemplateEntitlement` for `marketplace` themes — the
+   two gates are independent, exactly as FR-24.5 requires. The pre-existing
+   Module 4 e2e test that selects "Modern" was updated to explicitly enable
+   the setting first, since its own intent (settings persistence) isn't
+   what it now needs to prove.
+7. **Frontend.** Customizer: a "Premium templates" showcase card (FR-24.1/
+   24.2, hidden entirely when `template_store.showcase_url` is unset — no
+   hard dependency on the Template Store existing) and the theme dropdown
+   marks a non-entitled marketplace theme "(locked - purchase required)".
+   New "Marketing" dashboard section (FR-24.8/24.10): connect/list/revoke
+   Social Media SaaS tokens, trigger the SSO handoff. New bare-functional
+   admin "External API Clients" page (FR-8.14), same "no design pass yet"
+   precedent as `/admin/plans`/`/admin/sellers`.
+
+Tests: 9 new unit tests (`signature.util.spec.ts` — HMAC compute/verify,
+tamper detection, replay-window edges) + 13 new e2e tests
+(`module18-external-saas-hooks.e2e-spec.ts` — signed/unsigned/wrong-secret
+install, disabled-client rejection, revoke isolation, the FR-24.5
+independent-gates test, Product Feed tenant isolation + revoked/disabled
+token rejection, seller token list/revoke, eligibility paid-vs-free +
+unsigned rejection, SSO handoff configured/unconfigured + audit entry,
+admin registry list/toggle). Full suite (122 unit + 240 e2e across all 28
+e2e files) passes. Frontend verified live against a real running API + a
+standalone s3rver stand-in for MinIO + headless Chromium: the customizer's
+showcase panel and locked-theme state, the Marketing page's connect → token
+shown once → list → revoke flow and the SSO handoff opening a correctly
+signed URL in a new tab, and the admin registry's list/toggle, all
+exercised end-to-end in an actual browser.
 
 ---
 
