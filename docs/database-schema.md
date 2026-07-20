@@ -30,12 +30,20 @@ founder before any Module 2 code was written, not improvised silently.
   (v1.1-ahead) `return_requests, store_content_pages, newsletter_subscribers`.
 - Global (platform-level, not tenant-owned) tables: `users`, `suppliers`,
   `supplier_listings`, `supplier_adapters`, `themes`, `plans`, `categories`,
-  `admin_users`, `admin_audit_logs`, `admin_impersonation_sessions`,
-  `settings_definitions`, `settings_values`, `announcements`, `content_pages`,
-  `content_page_revisions`, `seller_payout_accounts`, `seller_onboarding_progress`,
+  `admin_users`, `admin_audit_logs`, `impersonation_sessions` (built Module 17
+  — named without the `admin_` prefix actually used; see that table's own
+  entry below), `settings_definitions`, `settings_values`,
+  `platform_messages` (built Module 17 — supersedes the `announcements`
+  placeholder this list originally sketched, per FR-8.15's note that it
+  replaces the single-banner concept), `content_pages`,
+  `content_page_revisions`, `platform_brand_assets`,
+  `platform_brand_asset_revisions` (both new, built Module 17),
+  `seller_payout_accounts`, `seller_onboarding_progress` (superseded, see its
+  own entry — the real Module 16 design lives on `stores` instead),
   `template_entitlements`, `external_api_clients`, `seller_api_tokens` (new in
-  v0.6), and (v1.1-ahead) `support_tickets`, `support_ticket_messages`,
-  `referral_links`, `referral_conversions`.
+  v0.6), `seller_signup_waitlist` (new, built Module 16), and (v1.1-ahead)
+  `support_tickets`, `support_ticket_messages`, `referral_links`,
+  `referral_conversions`.
 - `ledger_entries`, `payouts`, `seller_payout_accounts`, `seller_invoices` (new,
   v0.15), `seller_onboarding_progress`, and `template_entitlements`/
   `seller_api_tokens` are scoped by `seller_id`, not `store_id`, using the same
@@ -945,7 +953,7 @@ consistent with every session ever having lived there.
 |---|---|---|
 | id | uuid PK | |
 | admin_user_id | uuid FK → admin_users.id, nullable | **nullable, new clarification in v0.6:** null when the actor is a system/automated process (e.g. a Template Install API grant, FR-24.6) rather than a human admin — `action` distinguishes these (`template.entitlement.granted` vs. `seller.suspend`) |
-| impersonation_session_id | uuid FK → admin_impersonation_sessions.id, nullable | set when the action happened while impersonating a seller/supplier (FR-8.4) |
+| impersonation_session_id | uuid FK → impersonation_sessions.id, nullable | set when the action happened while impersonating a seller (FR-8.4) - see that table's own entry for why the actual name/shape differs from this doc's original sketch |
 | action | text | e.g. `seller.suspend`, `settings.update`, `payout.approve`, `template.entitlement.granted`, `content_page.update` |
 | target_type | text | e.g. `store`, `seller`, `plan`, `settings_value`, `order`, `payout`, `template_entitlement` |
 | target_id | uuid | |
@@ -981,19 +989,33 @@ fail or roll back the action it's describing. New Settings Registry key:
 yet; the tunable exists so adding one later is a worker job, not a schema
 change.
 
-### `admin_impersonation_sessions` (global)
+### `impersonation_sessions` (global — built Module 17, FR-8.4 + v0.23 amendment)
+Built as `impersonation_sessions` (no `admin_` prefix) with a shape that
+differs from this doc's original pre-implementation sketch in three ways:
+(1) scoped to `seller_id` directly, not a generic `target_type`/`target_id`
+pair — FR-8.4's text is "login as seller" specifically, no supplier-
+impersonation mechanism exists to generalize for; (2) no `ip_address`
+column — not part of what the founder's v0.23 transparency amendment asked
+for, a disclosed gap for a future pass rather than silently added; (3) a
+new `expires_at` column, which is what makes "time-boxed" real - the
+impersonation JWT itself is signed with this exact expiry
+(`AdminImpersonationService.start()`), not merely a UI countdown.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | admin_user_id | uuid FK → admin_users.id | |
-| target_type | enum(`seller`,`supplier`) | |
-| target_id | uuid | |
+| seller_id | uuid FK → sellers.id | |
 | reason | text, required | admin must state why before the session opens |
-| ip_address | inet | |
 | started_at | timestamptz | |
-| ended_at | timestamptz nullable | null while the impersonation session is live |
+| expires_at | timestamptz | the session's hard time-box |
+| ended_at | timestamptz nullable | null until the admin explicitly ends it (§14.8) or it expires |
 
-Index: `idx_impersonation_admin (admin_user_id, started_at)`, `idx_impersonation_target (target_type, target_id)`.
+Index: `idx_impersonation_seller_started (seller_id, started_at)` - the
+seller-facing support-access-history read (their own Security card) queries
+by this and deliberately never selects `admin_user_id` into that response.
+No RLS - global, admin-gated at the application layer, same category as
+`admin_audit_logs` itself.
 
 ### `settings_definitions` (global — the Settings Registry catalog)
 | Column | Type | Notes |
@@ -1034,57 +1056,87 @@ matching `admin_audit_logs` row.
 
 Index: `idx_order_flags_status (status, created_at)`.
 
-### `announcements` (global, FR-8.7, extended in v0.7 for FR-8.15)
+### `platform_messages` (global — built Module 17, FR-8.15, extends FR-8.7)
+Built as `platform_messages`, replacing this doc's original `announcements`
+sketch below with a smaller, disclosed shape: no `level` severity enum and
+no manual `is_active` kill-switch — a message is simply deleted
+(`DELETE /admin/messages/:id`) rather than soft-disabled, and `title`+`body`
+carry the content without a separate severity classification. Targeting
+uses two nullable FKs (`target_plan_id`, `target_seller_id`) instead of one
+generic `target_id`, so the column itself documents which kind of target a
+row can have.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| message | text | |
-| level | enum(`info`,`warning`,`critical`) | |
-| channel | enum(`banner`,`popup`,`in_app_notification`) default `'banner'` | new — FR-8.15; `banner` preserves the original v0.6 behavior exactly |
-| target_type | enum(`all`,`plan`,`seller`) default `'all'` | new — FR-8.15 |
-| target_id | uuid nullable | new — FR-8.15; `plans.id` or `sellers.id` depending on `target_type`; null when `target_type = 'all'` |
-| starts_at, ends_at | timestamptz | scheduling window (unchanged — FR-8.7 already specified scheduling) |
-| is_active | boolean | manual kill-switch independent of the schedule |
-| created_by | uuid FK → admin_users.id | |
+| channel | enum(`banner`,`popup`,`in_app_notification`) | |
+| target_type | enum(`all`,`plan`,`seller`) default `'all'` | |
+| target_plan_id | uuid FK → plans.id, nullable | set only when `target_type = 'plan'` |
+| target_seller_id | uuid FK → sellers.id, nullable | set only when `target_type = 'seller'` |
+| title | text nullable | |
+| body | text | |
+| starts_at, ends_at | timestamptz nullable | scheduling window; null means no bound on that side |
+| created_by_admin_user_id | uuid FK → admin_users.id, nullable | |
 | created_at | timestamptz | |
 
-Index: `idx_announcements_target (target_type, target_id)` for the resolver that
-picks which messages apply to the current seller/plan. Note: platform-wide
-**maintenance mode** is a `settings_values` row (`platform.maintenance_mode`,
-scope `global`), not a row here, and is unaffected by `target_type` — FR-8.7's
-maintenance toggle stays the one global, non-targetable kill-switch.
+Index: `idx_messages_targeting (target_type, target_plan_id, target_seller_id)`.
+No RLS - global, admin-gated at the application layer. Platform-wide
+**maintenance mode** is a `settings_values` row
+(`platform.maintenance_mode_enabled` + `platform.maintenance_admin_ip_allowlist`,
+both scope `global`), not a row here, and is unaffected by `target_type` -
+FR-8.7's maintenance toggle stays the one global, non-targetable kill-switch,
+enforced by `MaintenanceModeMiddleware` in front of every route (`/health`
+excluded - an infra liveness probe, not a buyer/seller/admin surface).
 
-### `content_pages` (global — FR-12.1)
+### `content_pages` / `content_page_revisions` (global — built Module 17, FR-12.1)
+Built with the slugs `terms`, `privacy`, `refund`, `about`, `contact` (short
+form) rather than this doc's original hyphenated sketch
+(`terms-of-service`, etc.) - a naming choice Module 19 (the platform's own
+site, still blocked on branding assets) will need to match when it becomes
+the real consumer of these pages. `content_pages.updated_by` from the
+original sketch isn't tracked on the parent row itself (only on each
+revision, via `edited_by_admin_user_id`) - which admin made the *current*
+version is always recoverable by joining to the revision at
+`current_version`, so a second copy of the same fact on the parent row
+would be redundant, not additional information.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| slug | text unique | e.g. `terms-of-service`, `privacy-policy`, `refund-policy`, `about`, `contact` |
+| slug | text unique | `terms`, `privacy`, `refund`, `about`, `contact` |
 | title | text | |
+| body_html | text | rich-text/HTML content |
 | current_version | integer | points at the live version in `content_page_revisions` |
-| updated_by | uuid FK → admin_users.id | |
-| updated_at | timestamptz | |
+| created_at, updated_at | timestamptz | |
 
-### `content_page_revisions` (global, append-only — FR-12.1)
+`content_page_revisions`: `id, content_page_id (FK content_pages.id),
+version, title, body_html, edited_by_admin_user_id (FK admin_users,
+nullable), created_at` (never updated). Unique: `(content_page_id,
+version)`. No RLS on either table - global, admin-gated at the application
+layer; reads are public (no auth) for the eventual platform-site consumer.
+
+### `platform_brand_assets` / `platform_brand_asset_revisions` (global — built Module 17, FR-12.3)
+Mirrors `content_pages`/`content_page_revisions` exactly, applied to a URL
+pointer rather than rich text, so a brand refresh is a data operation like
+any content edit. Built with a free-form `kind` string (`logo`, `favicon`,
+`hero`) rather than the original sketch's `asset_key` enum (which also
+included a separate `og_image`, folded here into `hero`) - matching
+`SettingsDefinition.value_type`'s own precedent of not enum-ing every small
+fixed set. No new upload pipeline: `url` is set by the admin directly
+(e.g. to an already-uploaded MinIO object's URL), not through a new
+file-upload endpoint.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| content_page_id | uuid FK → content_pages.id | |
-| version | integer | |
-| body | text | rich-text/HTML content |
-| updated_by | uuid FK → admin_users.id | |
-| created_at | timestamptz | never updated |
+| kind | text unique | `logo`, `favicon`, `hero` |
+| url | text | |
+| current_version | integer | points at the live version in `platform_brand_asset_revisions` |
+| created_at, updated_at | timestamptz | |
 
-Unique: `(content_page_id, version)`.
-
-### `platform_brand_assets` (global — new, FR-12.3) and `platform_brand_asset_revisions` (global, append-only)
-Mirrors the `content_pages`/`content_page_revisions` pattern exactly, so a brand
-refresh is a data operation like any content edit:
-
-`platform_brand_assets`: `id, asset_key unique (enum: logo, favicon, og_image,
-marketing_hero), current_version, updated_by (FK admin_users), updated_at`.
 `platform_brand_asset_revisions`: `id, brand_asset_id (FK
-platform_brand_assets.id), version, file_url (MinIO, §3.3), updated_by (FK
-admin_users), created_at`. Unique: `(brand_asset_id, version)`.
+platform_brand_assets.id), version, url, edited_by_admin_user_id (FK
+admin_users, nullable), created_at`. Unique: `(brand_asset_id, version)`.
 
 ### `import_jobs` (tenant — FR-18.1–18.2)
 | Column | Type | Notes |

@@ -3,6 +3,7 @@ import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { SkipAgreementCheck } from "../common/decorators/skip-agreement-check.decorator";
 import { AuthenticatedRequest, JwtAccessPayload } from "../common/types";
+import { AdminImpersonationService } from "../impersonation/impersonation.service";
 import { AuthService } from "../auth/auth.service";
 import { SessionService } from "../auth/session.service";
 import { SellerAgreementGuard } from "../trust-safety/seller-agreement.guard";
@@ -26,6 +27,7 @@ export class SellersController {
     private readonly agreements: SellerAgreementService,
     private readonly sessions: SessionService,
     private readonly auth: AuthService,
+    private readonly impersonation: AdminImpersonationService,
   ) {}
 
   @Get()
@@ -97,5 +99,12 @@ export class SellersController {
   @Post("mfa/verify")
   verifyMfaEnrollment(@CurrentSellerId() _sellerId: string, @CurrentUser() user: JwtAccessPayload, @Body() dto: MfaVerifyCodeDto) {
     return this.auth.confirmMfaEnrollmentForAuthenticatedUser(user.sub, dto.code);
+  }
+
+  // v0.23 impersonation-transparency amendment (FR-8.4) - when it happened
+  // and for how long, never which admin.
+  @Get("support-access-history")
+  getSupportAccessHistory(@CurrentSellerId() sellerId: string) {
+    return this.impersonation.historyForSeller(sellerId);
   }
 }

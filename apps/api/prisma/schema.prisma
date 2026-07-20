@@ -311,6 +311,7 @@ model Seller {
   promoRedemptions PlatformPromoCodeRedemption[]
   templateEntitlements TemplateEntitlement[]
   apiTokens            SellerApiToken[]
+  impersonationSessions ImpersonationSession[]
 
   @@map("sellers")
 }
@@ -351,9 +352,10 @@ model AdminUser {
 
   user User @relation(fields: [userId], references: [id])
 
-  auditLogs         AdminAuditLog[]
-  verifiedInvoices  SellerInvoice[]
-  promoCodesCreated PlatformPromoCode[]
+  auditLogs             AdminAuditLog[]
+  verifiedInvoices      SellerInvoice[]
+  promoCodesCreated     PlatformPromoCode[]
+  impersonationSessions ImpersonationSession[]
 
   @@map("admin_users")
 }
@@ -1140,13 +1142,141 @@ model AdminAuditLog {
   targetId    String?  @map("target_id") @db.Uuid
   beforeValue Json?    @map("before_value")
   afterValue  Json?    @map("after_value")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  // Module 17 (FR-8.4) - set on every action taken during an impersonation
+  // session; null for an ordinary admin action. Tags the audit trail without
+  // needing a second table join to know which rows happened under
+  // impersonation.
+  impersonationSessionId String?  @map("impersonation_session_id") @db.Uuid
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   adminUser AdminUser? @relation(fields: [adminUserId], references: [id])
 
   @@index([adminUserId, createdAt], name: "idx_audit_admin_created")
   @@index([targetType, targetId], name: "idx_audit_target")
   @@map("admin_audit_logs")
+}
+
+// Module 17 (FR-8.4 + v0.23 impersonation-transparency amendment). Global,
+// no RLS - the same "already gated by AdminAuthGuard / inherently precedes
+// tenant context" category PrismaAdminService's own doc comment describes.
+// `expiresAt` is what makes this "time-boxed" real - the impersonation JWT
+// itself is signed with this exact expiry (AdminImpersonationService), not
+// merely a UI countdown.
+model ImpersonationSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  adminUserId String    @map("admin_user_id") @db.Uuid
+  sellerId    String    @map("seller_id") @db.Uuid
+  reason      String
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id])
+  seller    Seller    @relation(fields: [sellerId], references: [id])
+
+  // Seller-facing history read (the seller's Security card) queries by
+  // sellerId only, and deliberately never selects adminUserId into that
+  // response - see AdminImpersonationService.historyForSeller().
+  @@index([sellerId, startedAt], name: "idx_impersonation_seller_started")
+  @@map("impersonation_sessions")
+}
+
+// Module 17 (FR-12.1). Versioned rich-text platform content (Terms of
+// Service, Privacy Policy, Refund Policy, About, Contact) - publishing a
+// text change is a data write, never a deploy. Global, no RLS (platform-
+// owned, not tenant data); admin-only writes, public reads.
+model ContentPage {
+  id             String   @id @default(uuid()) @db.Uuid
+  slug           String   @unique
+  title          String
+  bodyHtml       String   @map("body_html")
+  currentVersion Int      @default(1) @map("current_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  revisions ContentPageRevision[]
+
+  @@map("content_pages")
+}
+
+model ContentPageRevision {
+  id                  String   @id @default(uuid()) @db.Uuid
+  contentPageId       String   @map("content_page_id") @db.Uuid
+  version             Int
+  title               String
+  bodyHtml            String   @map("body_html")
+  editedByAdminUserId String?  @map("edited_by_admin_user_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  contentPage ContentPage @relation(fields: [contentPageId], references: [id])
+
+  @@unique([contentPageId, version])
+  @@map("content_page_revisions")
+}
+
+// Module 17 (FR-12.3). Same versioned-pointer mechanism as ContentPage
+// above, applied to the platform's own visual assets rather than text -
+// `kind` is "logo" | "favicon" | "hero"; `url` is the asset location
+// (uploaded out-of-band, e.g. via the existing MinIO bucket - this table
+// only tracks which URL is current and its history, not a new upload
+// pipeline).
+model PlatformBrandAsset {
+  id             String   @id @default(uuid()) @db.Uuid
+  kind           String   @unique
+  url            String
+  currentVersion Int      @default(1) @map("current_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  revisions PlatformBrandAssetRevision[]
+
+  @@map("platform_brand_assets")
+}
+
+model PlatformBrandAssetRevision {
+  id                  String   @id @default(uuid()) @db.Uuid
+  brandAssetId        String   @map("brand_asset_id") @db.Uuid
+  version             Int
+  url                 String
+  editedByAdminUserId String?  @map("edited_by_admin_user_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  brandAsset PlatformBrandAsset @relation(fields: [brandAssetId], references: [id])
+
+  @@unique([brandAssetId, version])
+  @@map("platform_brand_asset_revisions")
+}
+
+// Module 17 (FR-8.15, extends FR-8.7). Global, no RLS - targeting is
+// resolved at the application layer (PlatformMessagesService), same as
+// Settings Registry scope resolution, not via row-level security.
+model PlatformMessage {
+  id             String              @id @default(uuid()) @db.Uuid
+  channel        PlatformMessageChannel
+  targetType     PlatformMessageTargetType @default(all) @map("target_type")
+  targetPlanId   String?             @map("target_plan_id") @db.Uuid
+  targetSellerId String?             @map("target_seller_id") @db.Uuid
+  title          String?
+  body           String
+  startsAt       DateTime?           @map("starts_at") @db.Timestamptz
+  endsAt         DateTime?           @map("ends_at") @db.Timestamptz
+  createdByAdminUserId String?       @map("created_by_admin_user_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([targetType, targetPlanId, targetSellerId], name: "idx_messages_targeting")
+  @@map("platform_messages")
+}
+
+enum PlatformMessageChannel {
+  banner
+  popup
+  in_app_notification
+}
+
+enum PlatformMessageTargetType {
+  all
+  plan
+  seller
 }
 
 // Module 3.5/v0.8 amendment: Platform Event Log (SRS §3.11, FR-26.x). Global,

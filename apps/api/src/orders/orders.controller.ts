@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { OrderStatus } from "@prisma/client";
+import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { JwtAccessPayload } from "../common/types";
 import { CheckoutService } from "./checkout.service";
@@ -45,8 +47,14 @@ export class OrdersController {
     return this.checkout.createManualOrder(sellerId, storeId, dto);
   }
 
-  /** FR-17.1 - the only v1.0 payment path for any order, storefront or manual. */
+  /**
+   * FR-17.1 - the only v1.0 payment path for any order, storefront or
+   * manual. Blocked during impersonation (v0.23) - support can view an
+   * order, never confirm its payment on the seller's behalf.
+   */
   @Post(":orderId/mark-as-paid")
+  @UseGuards(ImpersonationWriteGuard)
+  @BlockDuringImpersonation()
   markAsPaid(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Param("orderId") orderId: string) {
     return this.orders.markAsPaid(sellerId, storeId, orderId);
   }

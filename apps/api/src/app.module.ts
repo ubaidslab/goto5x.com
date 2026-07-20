@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
@@ -6,6 +6,7 @@ import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { CatalogModule } from "./catalog/catalog.module";
+import { ContentPagesModule } from "./content-pages/content-pages.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
@@ -18,7 +19,10 @@ import { EventsModule } from "./events/events.module";
 import { ExternalApiModule } from "./external-api/external-api.module";
 import { GuardrailsModule } from "./guardrails/guardrails.module";
 import { HealthModule } from "./health/health.module";
+import { ImpersonationModule } from "./impersonation/impersonation.module";
+import { MaintenanceModeMiddleware } from "./messaging/maintenance-mode.middleware";
 import { MediaModule } from "./media/media.module";
+import { MessagingModule } from "./messaging/messaging.module";
 import { ModerationModule } from "./moderation/moderation.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PlansModule } from "./plans/plans.module";
@@ -66,6 +70,9 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     GuardrailsModule,
     ExternalApiModule,
     HealthModule,
+    ContentPagesModule,
+    MessagingModule,
+    ImpersonationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
@@ -73,4 +80,8 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     { provide: APP_INTERCEPTOR, useClass: PiiRedactionInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(MaintenanceModeMiddleware).forRoutes("*");
+  }
+}

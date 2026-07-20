@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PlatformMessages } from "@/components/dashboard/PlatformMessages";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { SupportModeBanner } from "@/components/dashboard/SupportModeBanner";
 import { api } from "@/lib/dashboard-api";
 
 interface Store {
@@ -42,11 +44,17 @@ export default function StoreDashboardLayout({
   }, [params.storeId]);
 
   return (
-    <div className="app-shell-surface flex" data-dashboard-theme={dashboardTheme}>
-      <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} />
-      <main className="flex-1 overflow-y-auto px-10 py-8">
-        <div className="mx-auto max-w-5xl">{children}</div>
-      </main>
+    <div className="flex h-full flex-col" data-dashboard-theme={dashboardTheme}>
+      <SupportModeBanner />
+      <div className="app-shell-surface flex flex-1">
+        <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} />
+        <main className="flex-1 overflow-y-auto px-10 py-8">
+          <div className="mx-auto max-w-5xl">
+            <PlatformMessages />
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

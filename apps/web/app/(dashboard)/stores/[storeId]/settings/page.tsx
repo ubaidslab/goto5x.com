@@ -39,6 +39,12 @@ interface SessionInfo {
   lastActiveAt: string;
 }
 
+interface SupportAccessEntry {
+  startedAt: string;
+  endedAt: string;
+  durationMinutes: number;
+}
+
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
   { id: "default", label: "Indigo (default)", swatch: "#5b5fef" },
   { id: "emerald", label: "Emerald", swatch: "#1f9254" },
@@ -77,6 +83,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [enrollingMfa, setEnrollingMfa] = useState(false);
   const [verifyingMfa, setVerifyingMfa] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [supportAccessHistory, setSupportAccessHistory] = useState<SupportAccessEntry[] | null>(null);
   const currentSessionId = typeof window !== "undefined" ? localStorage.getItem("sessionId") : null;
 
   function loadSessions() {
@@ -106,6 +113,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     api
       .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
       .then(setPayment)
+      .catch(() => {});
+    api
+      .get<SupportAccessEntry[]>("/sellers/me/support-access-history")
+      .then(setSupportAccessHistory)
       .catch(() => {});
     loadSessions();
   }, [params.storeId]);
@@ -490,6 +501,23 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                           Revoke
                         </Button>
                       )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-ink">Support access</h3>
+              {supportAccessHistory === null ? (
+                <p className="text-sm text-ink-muted">Loading...</p>
+              ) : supportAccessHistory.length === 0 ? (
+                <p className="text-sm text-ink-muted">goto5x.com support has never accessed your account.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {supportAccessHistory.map((entry, i) => (
+                    <li key={i} className="rounded-md border border-border p-3 text-sm text-ink-muted">
+                      {new Date(entry.startedAt).toLocaleString()} - {entry.durationMinutes} min
                     </li>
                   ))}
                 </ul>

@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.22 (Build-phase amendment)
+**Version:** 0.23 (Build-phase amendment)
 **Date:** 2026-07-19
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -177,6 +177,23 @@ other small-but-real gap Module 15's invoice template surfaced. FR-19.2's
 founder sign-off on the one invoice template stays a separate, explicit
 line item — added to `README.md`'s founder pre-launch verification list
 so it isn't lost.
+
+**v0.23 (approved before Module 17)** — impersonation transparency,
+added to FR-8.4 (§5.8) as a founder-required condition on the
+impersonation mode Module 17 is about to build, not a new mechanism:
+(a) a persistent, unmissable "support mode" banner is shown for the
+entire duration of an impersonation session; (b) starting a session emits
+a `platform_event` (§3.11); (c) the impersonated seller's own Security
+card (Module 13's screen) shows a plain support-access history line —
+when it happened and for how long, **never which admin** did it, since
+that's an internal control-plane detail, not something the seller needs
+or should see; (d) impersonation is read-write for ordinary settings/
+support work, but a specific list of **high-risk write actions —
+mark-as-paid, payment-instruction changes, payout/invoice actions** — is
+blocked outright while impersonating, so support can fix a seller's
+configuration but can never move money or money-adjacent state on their
+behalf. §14.8 gains four checklist lines for this (banner presence, event
+emission, seller-visible history, blocked-write negative test).
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -1589,6 +1606,15 @@ requires the founder to ask an engineer for a deploy.
   restriction are lighter-weight states this same lifecycle control already
   needs to express (a "limited" seller), suspension and ban are the existing
   actions verbatim.
+  - **Impersonation transparency (new, v0.23):** a persistent "support mode"
+    banner is visible for the entire duration of an impersonation session;
+    starting one emits a `platform_event` (§3.11); the impersonated seller's
+    own Security card (§5.25/FR-25.7's screen) shows a support-access history
+    line — when it happened and for how long, never the admin's identity.
+    Impersonation is otherwise read-write, but **mark-as-paid, payment-
+    instruction changes, and payout/invoice actions are blocked outright**
+    while impersonating — support can fix a seller's settings, never move
+    money or money-adjacent state on their behalf.
 - FR-8.5: **Supplier lifecycle control** — the same approve/suspend/ban controls as
   FR-8.4, plus platform-level listing approve/reject for policy violations.
 - FR-8.6: **Template management** — publish/unpublish a template, mark it free or
@@ -3135,43 +3161,70 @@ gate is §14.6c, below.
       `settings_definitions` validation before reaching the database
 - [ ] Admin MFA is mandatory — creating or using an admin account without MFA
       enrollment fails (FR-8.12)
-- [ ] Impersonation requires a reason before a session opens; every action during
+- [x] Impersonation requires a reason before a session opens; every action during
       the session is tagged with `impersonation_session_id` in the audit log;
-      ending the session is itself logged (FR-8.4)
+      ending the session is itself logged (FR-8.4) — built Module 17
+- [x] **Impersonation transparency (new, v0.23):** a persistent "support mode"
+      banner is present for the entire duration of an impersonation session
+      (FR-8.4) — built Module 17
+- [x] **Impersonation transparency:** starting a session emits a `platform_event`
+      (FR-8.4/§3.11) — built Module 17
+- [x] **Impersonation transparency:** the impersonated seller's own Security
+      card shows a support-access history line (when, duration) — never the
+      admin's identity (FR-8.4) — built Module 17
+- [x] **Impersonation transparency:** a high-risk write attempted during an
+      impersonation session — mark-as-paid, a payment-instruction change, or
+      a payout/invoice action — is rejected, while an ordinary settings write
+      still succeeds (FR-8.4) — built Module 17. **Disclosed scope note:**
+      "payout/invoice action" is future-proofed via the same
+      `@BlockDuringImpersonation()` decorator, ready to apply the moment such
+      a seller-facing endpoint exists — none does yet (invoice actions are
+      admin-only today, and payouts are dormant per §5.6d)
 - [ ] **Audit log immutability:** an attempt to `UPDATE` or `DELETE` an
       `admin_audit_logs` row fails at the database grant level (FR-8.9)
-- [ ] Enabling maintenance mode shows the maintenance page to buyers/sellers while
-      an allowlisted admin IP still reaches the admin terminal (FR-8.7)
-- [ ] Content pages are editable from the admin terminal and versioned (FR-12.1)
-- [ ] Platform brand assets (logo, favicon, hero images) are editable from the
-      admin terminal and versioned the same way as content pages (FR-12.3)
-- [ ] A Free-Plan seller with a marketplace template entitlement still sees only
+- [x] Enabling maintenance mode shows the maintenance page to buyers/sellers while
+      an allowlisted admin IP still reaches the admin terminal (FR-8.7) — built
+      Module 17. `/health` is excluded from the gate (infra liveness probe,
+      not a buyer/seller/admin surface)
+- [x] Content pages are editable from the admin terminal and versioned (FR-12.1)
+      — built Module 17
+- [x] Platform brand assets (logo, favicon, hero images) are editable from the
+      admin terminal and versioned the same way as content pages (FR-12.3) —
+      built Module 17
+- [x] A Free-Plan seller with a marketplace template entitlement still sees only
       the base template tier otherwise — confirming FR-7.1/FR-8.6 plan-tier
       gating and FR-24.5 entitlement gating remain independently correct after
-      FR-12.3 (no regression introduced by brand-asset management)
-- [ ] A banner/popup/in-app-notification message targeted at "plan X" is visible
+      FR-12.3 (no regression introduced by brand-asset management). Holds by
+      construction: `ContentPagesModule`/`BrandAssetsService` touch no theme-
+      tier or entitlement code path at all
+- [x] A banner/popup/in-app-notification message targeted at "plan X" is visible
       only to sellers on plan X, one targeted at a specific seller is visible
       only to that seller, and one targeted "all" is visible platform-wide
-      (FR-8.15)
-- [ ] A scheduled message (banner/popup/in-app notification) becomes visible at
+      (FR-8.15) — built Module 17
+- [x] A scheduled message (banner/popup/in-app notification) becomes visible at
       its start time and stops at its end time without a deploy (FR-8.15,
-      extends FR-8.7's existing scheduling)
-- [ ] Enabling maintenance mode still applies globally regardless of any
+      extends FR-8.7's existing scheduling) — built Module 17
+- [x] Enabling maintenance mode still applies globally regardless of any
       per-plan/per-seller message targeting in flight (FR-8.7 vs FR-8.15
-      precedence)
-- [ ] The external-API client registry lists the Template Store and Social Media
+      precedence). Holds by construction: `MaintenanceModeMiddleware` runs in
+      front of every route, including the messaging endpoints themselves
+- [x] The external-API client registry lists the Template Store and Social Media
       SaaS clients; disabling one immediately rejects further calls from it
-      without affecting the other (FR-8.14)
-- [ ] **Financial Truth Invariant (§3.12, v0.10):** the real-time analytics
+      without affecting the other (FR-8.14) — built + tested Module 18
+- [x] **Financial Truth Invariant (§3.12, v0.10):** the real-time analytics
       dashboard (FR-8.10) and unit-economics dashboard (FR-23.4) both exclude
       a deliberately-constructed unpaid order from every count/total they
-      display
-- [ ] **Listing Moderation Engine admin page (FR-27.6, v0.11):** a bare
+      display — FR-8.10 built + tested Module 17; FR-23.4 already proven
+      Module 14
+- [x] **Listing Moderation Engine admin page (FR-27.6, v0.11):** a bare
       functional page lists the moderation queue (Module 6), lets an admin/
       REVIEWER open a queued product's details, and approve/reject it with
       notes — a REVIEWER account sees only this page in the admin terminal,
       confirming §14.25's negative-access guarantee holds at the UI layer
-      too, not only at the API layer
+      too, not only at the API layer — built Module 17, calling Module 6's
+      already `@AllowReviewer()`-guarded endpoints verbatim, so the negative-
+      access guarantee holds by construction (no separate auth path exists
+      for the new page to bypass)
 
 ### 14.9 Media Management
 - [ ] Google Drive import copies files into MinIO; the storefront still serves

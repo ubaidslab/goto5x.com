@@ -25,6 +25,11 @@ export default function AdminSellersPage() {
   const [filter, setFilter] = useState<LifecycleStatus>("active");
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [reason, setReason] = useState("");
+  // v0.23 impersonation-transparency amendment (FR-8.4) - tracked here (the
+  // admin's own tab) so "End session" can call the admin-guarded end
+  // endpoint with the admin's own token; the impersonation token itself
+  // never authenticates as an admin.
+  const [activeSessions, setActiveSessions] = useState<Record<string, string>>({});
 
   function authHeaders(): Record<string, string> {
     const token = localStorage.getItem("adminAccessToken");
@@ -59,6 +64,32 @@ export default function AdminSellersPage() {
       body: JSON.stringify({ status, reason }),
     });
     load();
+  }
+
+  /** FR-8.4 - reason-required, time-boxed "login as seller" mode. */
+  async function impersonate(sellerId: string) {
+    const impersonationReason = window.prompt("Reason for this support session:");
+    if (!impersonationReason) return;
+    const res = await fetch(`${apiBase}/admin/sellers/${sellerId}/impersonate`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: impersonationReason }),
+    });
+    if (!res.ok) {
+      alert("Couldn't start a support session for this seller.");
+      return;
+    }
+    const body = await res.json();
+    setActiveSessions({ ...activeSessions, [sellerId]: body.impersonationSessionId });
+    window.open(`/impersonate?token=${encodeURIComponent(body.accessToken)}&sessionId=${body.impersonationSessionId}`, "_blank");
+  }
+
+  async function endImpersonation(sellerId: string) {
+    const sessionId = activeSessions[sellerId];
+    if (!sessionId) return;
+    await fetch(`${apiBase}/admin/impersonation/${sessionId}/end`, { method: "POST", headers: authHeaders() });
+    const { [sellerId]: _removed, ...rest } = activeSessions;
+    setActiveSessions(rest);
   }
 
   return (
@@ -108,7 +139,12 @@ export default function AdminSellersPage() {
                   <button key={s} onClick={() => setLifecycleStatus(seller.id, s)}>
                     Set {s}
                   </button>
-                ))}
+                ))}{" "}
+                {activeSessions[seller.id] ? (
+                  <button onClick={() => endImpersonation(seller.id)}>End support session</button>
+                ) : (
+                  <button onClick={() => impersonate(seller.id)}>Impersonate</button>
+                )}
               </td>
             </tr>
           ))}

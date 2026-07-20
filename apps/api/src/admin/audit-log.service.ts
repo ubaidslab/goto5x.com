@@ -8,6 +8,8 @@ export interface AuditLogEntry {
   targetId?: string | null;
   beforeValue?: unknown;
   afterValue?: unknown;
+  // Module 17 (FR-8.4) - set on every action taken during an impersonation session.
+  impersonationSessionId?: string | null;
 }
 
 /**
@@ -30,6 +32,7 @@ export class AuditLogService {
         targetId: entry.targetId ?? null,
         beforeValue: (entry.beforeValue as any) ?? undefined,
         afterValue: (entry.afterValue as any) ?? undefined,
+        impersonationSessionId: entry.impersonationSessionId ?? null,
       },
     });
   }

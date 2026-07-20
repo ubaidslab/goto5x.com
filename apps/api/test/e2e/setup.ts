@@ -8,6 +8,8 @@ import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
 import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
+import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
+import { seedMessagingSettings } from "../../src/messaging/messaging.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
 import {
@@ -68,7 +70,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       platform_promo_code_redemptions, platform_promo_codes,
       team_members, teams, subscriptions,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans,
-      seller_signup_waitlist
+      seller_signup_waitlist,
+      impersonation_sessions, content_page_revisions, content_pages,
+      platform_brand_asset_revisions, platform_brand_assets, platform_messages
     RESTART IDENTITY CASCADE
   `);
 }
@@ -87,6 +91,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedOnboardingSettings(prisma);
   await seedPlansSettings(prisma);
   await seedExternalApiSettings(prisma);
+  await seedMessagingSettings(prisma);
+  await seedImpersonationSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded
