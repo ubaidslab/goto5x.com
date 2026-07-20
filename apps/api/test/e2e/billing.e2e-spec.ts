@@ -55,6 +55,10 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
       where: { storeId: store.body.id },
       data: { codEnabled: true },
     });
+    // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the store
+    // to be published; not this file's focus, so set it directly rather
+    // than every test going through the real publish flow (top-up + verify).
+    await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
     return { token, storeId: store.body.id as string, sellerId: seller.id as string };
   }

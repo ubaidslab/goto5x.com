@@ -6,6 +6,7 @@ import { AppModule } from "../../src/app.module";
 import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
 import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
 import { seedBillingSettings } from "../../src/billing/billing.seed";
+import { seedWalletSettings } from "../../src/billing/wallet.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
 import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
@@ -61,7 +62,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
       listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
-      ledger_entries, seller_invoices,
+      ledger_entries, seller_invoices, wallet_topup_requests, supplier_wallet_entries,
       payments, tracking_updates, order_timeline_events, order_notes, order_items, orders, carts,
       product_reviews, customers, import_jobs,
       media_assets, product_variants, products, categories,
@@ -86,6 +87,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedSupplierSettings(prisma);
   await seedOrdersSettings(prisma);
   await seedBillingSettings(prisma);
+  await seedWalletSettings(prisma);
   await seedTrustSafetySettings(prisma);
   await seedAccountSecuritySettings(prisma);
   await seedOnboardingSettings(prisma);

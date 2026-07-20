@@ -3,9 +3,10 @@ import { NestFactory } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { Worker } from "bullmq";
 import { AppModule } from "../app.module";
-import { InvoicesService } from "../billing/invoices.service";
-import { INVOICE_GENERATION_QUEUE_NAME } from "../billing/invoice-generation.queue";
-import { INVOICE_OVERDUE_QUEUE_NAME } from "../billing/invoice-overdue.queue";
+import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
+import { WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME } from "../billing/wallet-low-balance-sweep.queue";
+import { PlanFeeDebitService } from "../billing/plan-fee-debit.service";
+import { PLAN_FEE_DEBIT_QUEUE_NAME } from "../billing/plan-fee-debit.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
@@ -30,7 +31,8 @@ async function main() {
   const domainVerification = appContext.get(DomainVerificationService);
   const supplierSync = appContext.get(SupplierSyncService);
   const cart = appContext.get(CartService);
-  const invoices = appContext.get(InvoicesService);
+  const walletGraceLadder = appContext.get(WalletGraceLadderService);
+  const planFeeDebit = appContext.get(PlanFeeDebitService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
 
@@ -80,36 +82,35 @@ async function main() {
     console.error(`cart-abandonment job ${job?.id} failed:`, err);
   });
 
-  // Module 11 (FR-6.17) - idempotent (checks for an already-generated
-  // invoice per seller/period before creating one), so running this more
-  // often than strictly monthly is safe. Module 14 (FR-7.15/7.18) - the
-  // same job also generates each team's monthly group-sponsorship invoice,
-  // an equally idempotent, equally monthly job; no reason for a second
-  // scheduler/queue.
-  const invoiceGenerationWorker = new Worker(
-    INVOICE_GENERATION_QUEUE_NAME,
-    async () => {
-      await invoices.generateMonthlyInvoices();
-      await invoices.generateMonthlyGroupInvoices();
-    },
+  // Module 20 (SRS §5.6e, FR-6.24, revised FR-7.2) - replaces Module 11's
+  // invoice-generation job (FR-6.28: that job's code is unchanged and
+  // still callable, just no longer scheduled/consumed here). Debits plan
+  // fees, Team seat totals, and device-slot add-ons from the seller
+  // wallet instead of generating an invoice.
+  const planFeeDebitWorker = new Worker(
+    PLAN_FEE_DEBIT_QUEUE_NAME,
+    async () => planFeeDebit.runMonthlyDebitSweep(),
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 
-  invoiceGenerationWorker.on("failed", (job, err) => {
+  planFeeDebitWorker.on("failed", (job, err) => {
     // eslint-disable-next-line no-console
-    console.error(`invoice-generation job ${job?.id} failed:`, err);
+    console.error(`plan-fee-debit job ${job?.id} failed:`, err);
   });
 
-  // Module 11 (FR-6.18) - grace-period-overdue sweep.
-  const invoiceOverdueWorker = new Worker(
-    INVOICE_OVERDUE_QUEUE_NAME,
-    async () => invoices.sweepOverdueInvoicesAndSuspend(),
+  // Module 20 (FR-6.25) - replaces Module 11's overdue-invoice-suspend
+  // sweep for the commission side of the wallet: warning -> grace days ->
+  // orders_paused, with instant restore handled separately at top-up
+  // verification time (AdminWalletController).
+  const walletLowBalanceSweepWorker = new Worker(
+    WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME,
+    async () => walletGraceLadder.runSweep(),
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 
-  invoiceOverdueWorker.on("failed", (job, err) => {
+  walletLowBalanceSweepWorker.on("failed", (job, err) => {
     // eslint-disable-next-line no-console
-    console.error(`invoice-overdue-sweep job ${job?.id} failed:`, err);
+    console.error(`wallet-low-balance-sweep job ${job?.id} failed:`, err);
   });
 
   // Module 14 (FR-23.2) - dormant-store lifecycle sweep.
@@ -142,15 +143,15 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; invoice-generation/invoice-overdue-sweep - Module 11; dormant-store-sweep - Module 14; product-import - Module 15).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep).",
   );
 
   const shutdown = async () => {
     await domainWorker.close();
     await supplierSyncWorker.close();
     await cartAbandonmentWorker.close();
-    await invoiceGenerationWorker.close();
-    await invoiceOverdueWorker.close();
+    await planFeeDebitWorker.close();
+    await walletLowBalanceSweepWorker.close();
     await dormantStoreWorker.close();
     await productImportWorker.close();
     await appContext.close();

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ModerationModule } from "../moderation/moderation.module";
 import { EmailService } from "../notifications/email.service";
+import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { StorefrontModule } from "../storefront/storefront.module";
 import { ListingReviewsController } from "./listing-reviews.controller";
@@ -20,7 +21,7 @@ import { SupplierSyncScheduler } from "./supplier-sync.scheduler";
 import { SupplierSyncService } from "./supplier-sync.service";
 
 @Module({
-  imports: [SettingsModule, ModerationModule, StorefrontModule],
+  imports: [SettingsModule, ModerationModule, StorefrontModule, PlansModule],
   controllers: [
     SupplierLinksController,
     ListingReviewsController,

@@ -95,7 +95,11 @@ export class StorefrontService {
     if (store.status === "suspended") {
       throw new ForbiddenException({ code: "store_suspended", message: "This store is temporarily unavailable." });
     }
-    if (store.status !== "active") {
+    // Module 20 (SRS §5.6e, FR-6.25) - orders_paused behaves like active for
+    // browsing (catalog/product pages/cart) - only CheckoutService blocks
+    // it, at the point checkout would otherwise complete. `banned`/
+    // `archived` fall through to the plain 404 below, same as before.
+    if (store.status !== "active" && store.status !== "orders_paused") {
       throw new NotFoundException("Store not found.");
     }
     return store;

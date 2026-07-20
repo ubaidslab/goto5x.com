@@ -42,7 +42,7 @@ export async function seedAccountSecuritySettings(prisma: PrismaClient) {
       defaultValue: 0,
       validation: { min: 0 },
       description:
-        "Price for a future extra-device-slot add-on (mechanism now, monetization/checkout decision at launch, FR-25.7) - no billing flow reads this yet.",
+        "Price for the extra-device-slot add-on, debited monthly from the seller's wallet for as long as a seller-scoped auth.max_concurrent_devices override exists (Module 20, FR-25.7/FR-6.24).",
     },
     update: {},
   });

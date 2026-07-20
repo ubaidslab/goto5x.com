@@ -162,14 +162,16 @@ export class CheckoutService {
         this.prismaAdmin.storePaymentInstructions.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.store.findUniqueOrThrow({
           where: { id: params.storeId },
-          select: { sellerId: true, name: true, logoMedia: { select: { url: true } } },
+          select: { sellerId: true, name: true, status: true, publishedAt: true, logoMedia: { select: { url: true } } },
         }),
       ]);
 
-      // FR-6.14 store-readiness gate. v1.0 has no separate store draft/
-      // publish state (a store is `active` the instant it's created), so
-      // this is enforced at the point that actually matters instead: a
-      // buyer can't complete an order the seller has no way to be paid for.
+      // Module 20 (SRS §5.6e, FR-6.21) - v1.0 now HAS a real publish gate
+      // (StorePublishController.publish(), a seller-clicked action checking
+      // payment method + CNIC + minimum wallet top-up together). The two
+      // checks below are kept anyway as defense-in-depth: payment
+      // instructions/CNIC can both be edited after publishing, so a
+      // published store could theoretically drift out of readiness later.
       if (!hasAnyPaymentMethod(paymentInstructions)) {
         throw new BadRequestException(
           "This store hasn't configured a way to receive payment yet - checkout isn't available.",
@@ -182,6 +184,21 @@ export class CheckoutService {
       if (!(await this.sellerIdentity.hasCnic(store.sellerId))) {
         throw new BadRequestException(
           "This store's seller hasn't completed identity verification yet - checkout isn't available.",
+        );
+      }
+
+      // FR-6.21 - the actual publish gate: no order can complete before a
+      // seller has explicitly published this store.
+      if (!store.publishedAt) {
+        throw new BadRequestException("This store hasn't been published yet - checkout isn't available.");
+      }
+
+      // FR-6.25 - the low-balance grace ladder's enforcement point:
+      // storefront browsing stayed open (StorefrontService), only checkout
+      // itself is blocked, with a respectful message rather than a hard error page.
+      if (store.status === "orders_paused") {
+        throw new BadRequestException(
+          "This store is temporarily not accepting orders. Please check back soon.",
         );
       }
 

@@ -19,6 +19,7 @@ const COUNTRIES = [
 ];
 
 export default function SignupPage() {
+  const [role, setRole] = useState<"seller" | "supplier">("seller");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -31,11 +32,20 @@ export default function SignupPage() {
     setStatus(null);
     // SRS §5.29/FR-29.1 - a seller must accept the current Seller Agreement
     // at signup; the checkbox below is required before submission is even
-    // possible.
+    // possible. Module 20 (FR-7.10) - a supplier signup skips country/
+    // agreement entirely, matching AuthService.signup()'s existing
+    // role branching (supplier signup is never regionally gated or
+    // agreement-bound).
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, businessName, country, agreementAccepted }),
+      body: JSON.stringify({
+        email,
+        password,
+        businessName,
+        role,
+        ...(role === "seller" ? { country, agreementAccepted } : {}),
+      }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -52,8 +62,16 @@ export default function SignupPage() {
   return (
     <main>
       <h1>Sign up</h1>
-      <p>Create a seller account to start selling on goto5x.com.</p>
+      <p>Create an account to start selling, or to fulfill orders for sellers, on goto5x.com.</p>
       <form onSubmit={onSubmit}>
+        <div>
+          <label>
+            <input type="radio" name="role" checked={role === "seller"} onChange={() => setRole("seller")} /> Seller
+          </label>{" "}
+          <label>
+            <input type="radio" name="role" checked={role === "supplier"} onChange={() => setRole("supplier")} /> Supplier
+          </label>
+        </div>
         <div>
           <label>
             Business name
@@ -72,30 +90,34 @@ export default function SignupPage() {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} />
           </label>
         </div>
-        <div>
-          <label>
-            Country
-            <select value={country} onChange={(e) => setCountry(e.target.value)} required>
-              {COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div>
-          <label>
-            <input
-              type="checkbox"
-              checked={agreementAccepted}
-              onChange={(e) => setAgreementAccepted(e.target.checked)}
-              required
-            />
-            I accept the Seller Agreement (facilitation-workspace terms - goto5x.com is not a party to your sales or
-            fulfillment, and you're responsible for your own listings and compliance).
-          </label>
-        </div>
+        {role === "seller" && (
+          <>
+            <div>
+              <label>
+                Country
+                <select value={country} onChange={(e) => setCountry(e.target.value)} required>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={agreementAccepted}
+                  onChange={(e) => setAgreementAccepted(e.target.checked)}
+                  required
+                />
+                I accept the Seller Agreement (facilitation-workspace terms - goto5x.com is not a party to your sales
+                or fulfillment, and you're responsible for your own listings and compliance).
+              </label>
+            </div>
+          </>
+        )}
         <button type="submit">Create account</button>
       </form>
       {status && <p>{status}</p>}

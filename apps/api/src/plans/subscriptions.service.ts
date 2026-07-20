@@ -3,8 +3,12 @@ import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import type { SettingsContext } from "../settings-registry/settings.types";
 
-/** A billing-cycle-length step for FR-7.5's next-cycle math. v1.0 has only monthly/yearly paid intervals. */
-function addInterval(from: Date, interval: "monthly" | "yearly"): Date {
+/**
+ * A billing-cycle-length step for FR-7.5's next-cycle math. v1.0 has only
+ * monthly/yearly paid intervals. Exported - Module 20's PlanFeeDebitService
+ * reuses this for the exact same cadence math rather than duplicating it.
+ */
+export function addInterval(from: Date, interval: "monthly" | "yearly"): Date {
   const next = new Date(from);
   if (interval === "yearly") next.setUTCFullYear(next.getUTCFullYear() + 1);
   else next.setUTCMonth(next.getUTCMonth() + 1);
@@ -46,6 +50,54 @@ export class SubscriptionsService {
   async getPlanContext(sellerId: string): Promise<SettingsContext> {
     const subscription = await this.prisma.subscription.findUnique({ where: { sellerId } });
     return { sellerId, planId: subscription?.planId };
+  }
+
+  /**
+   * Module 20 (SRS FR-7.10 supplement) - the supplier-side equivalent,
+   * closing the gap build-plan.md flagged since Module 14 ("Subscription
+   * is seller-only... for the same reason [no supplier portal]").
+   */
+  async assignFreeSupplierPlanAtSignup(supplierId: string): Promise<void> {
+    const freePlan = await this.prisma.plan.findFirst({ where: { planGroup: "supplier", tierOrder: 0 } });
+    if (!freePlan) {
+      throw new Error("No Free (supplier, tier 0) plan exists - plans.seed.ts must run before signup.");
+    }
+    await this.prisma.subscription.create({ data: { supplierId, planId: freePlan.id } });
+  }
+
+  async getSupplierSubscription(supplierId: string) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { supplierId },
+      include: { plan: true },
+    });
+    if (!subscription) throw new NotFoundException("No subscription found for this supplier.");
+    return subscription;
+  }
+
+  async getSupplierPlanContext(supplierId: string): Promise<SettingsContext> {
+    const subscription = await this.prisma.subscription.findUnique({ where: { supplierId } });
+    return { supplierId, planId: subscription?.planId };
+  }
+
+  /**
+   * A supplier only ever has two tiers (Free/Premium, FR-7.10) with no
+   * yearly option or mid-cycle-deferral rule to honor - unlike a seller's
+   * requestPlanChange(), a supplier's change takes effect immediately.
+   */
+  async requestSupplierPlanChange(supplierId: string, newPlanId: string) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { supplierId } });
+    if (!subscription) throw new NotFoundException("No subscription found for this supplier.");
+    const newPlan = await this.prisma.plan.findUnique({ where: { id: newPlanId } });
+    if (!newPlan || !newPlan.isActive || newPlan.planGroup !== "supplier") {
+      throw new BadRequestException("That plan is not available to suppliers.");
+    }
+    return this.prisma.subscription.update({
+      where: { supplierId },
+      data: {
+        planId: newPlanId,
+        currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(new Date(), newPlan.billingInterval),
+      },
+    });
   }
 
   async getSubscription(sellerId: string) {

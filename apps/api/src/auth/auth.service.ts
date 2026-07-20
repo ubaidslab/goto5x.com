@@ -141,6 +141,11 @@ export class AuthService {
       // tier 0) plan; this is the real seller->plan assignment that never
       // existed before Module 14 (see subscriptions.service.ts's own note).
       await this.subscriptions.assignFreePlanAtSignup(user.seller!.id);
+    } else if (role === "supplier") {
+      // Module 20 (SRS FR-7.10 supplement) - a supplier now gets a real
+      // plan assignment too, closing the gap Module 14 documented as
+      // deferred ("Subscription is seller-only... for the same reason").
+      await this.subscriptions.assignFreeSupplierPlanAtSignup(user.supplier!.id);
     }
 
     return { userId: user.id };

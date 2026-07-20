@@ -65,6 +65,10 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     // synthetic hash directly rather than every test going through the
     // real CNIC-set endpoint.
     await superuser.seller.update({ where: { userId: user.id }, data: { cnicHash: `test-cnic-hash-${user.id}` } });
+    // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the store
+    // to be published; set directly rather than every test going through
+    // the real publish flow (top-up + verify).
+    await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
   }
 

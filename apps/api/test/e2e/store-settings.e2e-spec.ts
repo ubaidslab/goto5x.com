@@ -410,6 +410,11 @@ describe("Shipping, Tax & Discounts (e2e) - SRS FR-2.10/FR-2.11/FR-19.3, §14.2"
         .set("Authorization", `Bearer ${token}`)
         .send({ cnic: "3541234567899" });
 
+      // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the
+      // store to be published; set directly rather than going through the
+      // real publish flow (top-up + verify) - not this test's focus.
+      await superuser.store.update({ where: { id: storeId }, data: { publishedAt: new Date() } });
+
       const manualOrderWithPayment = await request(app.getHttpServer())
         .post(`/stores/${storeId}/orders`)
         .set("Authorization", `Bearer ${token}`)

@@ -90,4 +90,13 @@ export class EmailService {
       `We haven't seen any activity on "${storeName}" in a while. If it stays inactive, it will be suspended and eventually archived. Log in and make any change to keep it active.`,
     );
   }
+
+  /** Module 20 (SRS §5.6e, FR-6.25) - the wallet grace ladder's warning stage. */
+  async sendWalletLowBalanceWarning(to: string, graceDays: number): Promise<void> {
+    await this.send(
+      to,
+      "Your wallet balance is running low",
+      `Your goto5x.com wallet balance has dropped below the recommended minimum. Top up within ${graceDays} day(s) to avoid your store(s) pausing new orders - your storefront stays visible, but checkout will be temporarily unavailable until you top up.`,
+    );
+  }
 }

@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { PlatformMessages } from "@/components/dashboard/PlatformMessages";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { SupportModeBanner } from "@/components/dashboard/SupportModeBanner";
+import { Alert } from "@/components/ui/Alert";
 import { api } from "@/lib/dashboard-api";
 
 interface Store {
   id: string;
   name: string;
+  status: string;
 }
 
 export default function StoreDashboardLayout({
@@ -46,6 +48,17 @@ export default function StoreDashboardLayout({
   return (
     <div className="flex h-full flex-col" data-dashboard-theme={dashboardTheme}>
       <SupportModeBanner />
+      {store?.status === "orders_paused" && (
+        <div className="px-6 pt-3">
+          <Alert tone="warning">
+            This store isn&apos;t accepting new orders right now - your wallet balance is too low.{" "}
+            <a href={`/stores/${params.storeId}/wallet`} className="font-semibold underline">
+              Top up your wallet
+            </a>{" "}
+            to resume instantly.
+          </Alert>
+        </div>
+      )}
       <div className="app-shell-surface flex flex-1">
         <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} />
         <main className="flex-1 overflow-y-auto px-10 py-8">

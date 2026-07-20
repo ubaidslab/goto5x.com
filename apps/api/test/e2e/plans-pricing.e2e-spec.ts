@@ -128,6 +128,10 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ name: "Ladder Store", slug: "ladder-store" });
       await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
+      // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the
+      // store to be published; set directly rather than going through the
+      // real publish flow (top-up + verify) in every test.
+      await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
 
       const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
       await app.get(SettingsService).setValue(
@@ -239,6 +243,10 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
           .set("Authorization", `Bearer ${token}`)
           .send({ name: storeSlug, slug: storeSlug });
         await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
+      // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the
+      // store to be published; set directly rather than going through the
+      // real publish flow (top-up + verify) in every test.
+      await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
         const category = await superuser.category.create({ data: { name: "Campaign", slug: `campaign-${Date.now()}-${Math.random()}` } });
         const product = await request(app.getHttpServer())
           .post(`/stores/${store.body.id}/products`)

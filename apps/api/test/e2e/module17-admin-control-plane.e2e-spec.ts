@@ -67,6 +67,10 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       where: { storeId: store.body.id },
       data: { codEnabled: true },
     });
+    // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the store
+    // to be published; set directly rather than every test going through
+    // the real publish flow (top-up + verify).
+    await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     return { token, storeId: store.body.id as string, userId: user.id, sellerId: seller.id };
   }
 

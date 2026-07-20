@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
-import { api } from "@/lib/dashboard-api";
+import { ApiError, api } from "@/lib/dashboard-api";
 
 interface Product {
   id: string;
@@ -15,6 +16,10 @@ interface Product {
 interface Order {
   id: string;
   status: string;
+}
+interface StoreSummary {
+  id: string;
+  publishedAt: string | null;
 }
 interface OnboardingProgress {
   theme: boolean;
@@ -158,6 +163,9 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   const [products, setProducts] = useState<Product[] | null>(null);
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
+  const [store, setStore] = useState<StoreSummary | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   function refreshOnboarding() {
     api
@@ -166,14 +174,32 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
       .catch(() => setOnboarding({ theme: true, logo: true, product: true, domain: true, completedAt: new Date().toISOString() }));
   }
 
+  function refreshStore() {
+    api.get<StoreSummary>(`/stores/${params.storeId}`).then(setStore).catch(() => {});
+  }
+
   useEffect(() => {
     api.get<Product[]>(`/stores/${params.storeId}/products`).then(setProducts).catch(() => setProducts([]));
     api.get<Order[]>(`/stores/${params.storeId}/orders`).then(setOrders).catch(() => setOrders([]));
     refreshOnboarding();
+    refreshStore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.storeId]);
 
-  if (products === null || orders === null || onboarding === null) return <PageSpinner />;
+  async function publish() {
+    setPublishError(null);
+    setPublishing(true);
+    try {
+      await api.post(`/stores/${params.storeId}/publish`, {});
+      refreshStore();
+    } catch (err) {
+      setPublishError(err instanceof ApiError ? err.message : "Could not publish this store.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  if (products === null || orders === null || onboarding === null || store === null) return <PageSpinner />;
 
   // Module 16 (FR-20.1) - while onboarding is incomplete, the wizard takes
   // over the dashboard home's main content (the rest of the dashboard stays
@@ -201,6 +227,38 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
             <Link href={`/stores/${params.storeId}/products/new`}>
               <Button>Add a product</Button>
             </Link>
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
+
+  // Module 20 (SRS §5.6e, FR-6.21) - the explicit "go live" moment: a
+  // seller with products still needs to publish before real orders can
+  // complete. publish() itself checks payment method + CNIC + minimum
+  // wallet top-up and returns a clear message if any is missing.
+  if (!store.publishedAt) {
+    return (
+      <div>
+        <PageHeader title="Publish your store" description="One last step before you can accept real orders." />
+        <Card>
+          <CardBody className="flex flex-col items-center gap-4 py-16 text-center">
+            <div>
+              <h2 className="text-base font-semibold text-ink">Ready to go live?</h2>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
+                Publishing requires a payment method, identity verification, and a minimum wallet top-up - all
+                one-time steps.
+              </p>
+            </div>
+            {publishError && <Alert>{publishError}</Alert>}
+            <div className="flex gap-2">
+              <Button loading={publishing} onClick={publish}>
+                Publish store
+              </Button>
+              <Link href={`/stores/${params.storeId}/wallet`}>
+                <Button variant="secondary">Top up wallet</Button>
+              </Link>
+            </div>
           </CardBody>
         </Card>
       </div>

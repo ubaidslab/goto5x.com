@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { EmailService } from "../notifications/email.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { StorefrontService } from "../storefront/storefront.service";
 
 /**
@@ -23,12 +25,38 @@ export class SupplierOrdersService {
     private readonly prismaAdmin: PrismaAdminService,
     private readonly storefront: StorefrontService,
     private readonly email: EmailService,
+    private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
-  /** FR-3.3 - every order item fulfilled by this supplier, across every connected store. */
-  async listOwnOrderItems(supplierId: string) {
+  /**
+   * FR-3.3 - every order item fulfilled by this supplier, across every
+   * connected store. Module 20 (FR-7.10) closes the gate that was
+   * previously missing: a free-tier supplier linked to more than one store
+   * must filter to a single store (still "functions correctly per-store");
+   * only the Premium tier (via suppliers.aggregated_dashboard_enabled)
+   * unlocks the true cross-store merge below.
+   */
+  async listOwnOrderItems(supplierId: string, storeId?: string) {
+    if (!storeId) {
+      const context = await this.subscriptions.getSupplierPlanContext(supplierId);
+      const aggregatedEnabled = await this.settings.resolve<boolean>("suppliers.aggregated_dashboard_enabled", context);
+      if (!aggregatedEnabled) {
+        const linkedStoreIds = await this.prismaAdmin.storeSupplierLink.findMany({
+          where: { supplierId },
+          select: { storeId: true },
+          distinct: ["storeId"],
+        });
+        if (linkedStoreIds.length > 1) {
+          throw new BadRequestException(
+            "The aggregated multi-store view requires the Premium plan - filter by a single store (?storeId=) instead.",
+          );
+        }
+      }
+    }
+
     const items = await this.prismaAdmin.orderItem.findMany({
-      where: { supplierId },
+      where: { supplierId, ...(storeId ? { storeId } : {}) },
       orderBy: { createdAt: "desc" },
     });
     const orderIds = [...new Set(items.map((i) => i.orderId))];

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentSupplierId } from "../common/decorators/current-supplier.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { RequestStoreLinkDto } from "./dto/request-store-link.dto";
@@ -43,10 +43,10 @@ export class SupplierPortalController {
     return this.supplierPortal.submitForReview(supplierId, dto);
   }
 
-  /** FR-3.3 - every order item this supplier fulfills, across every connected store. */
+  /** FR-3.3 - every order item this supplier fulfills, across every connected store (Premium-gated, FR-7.10). */
   @Get("orders")
-  listOwnOrderItems(@CurrentSupplierId() supplierId: string) {
-    return this.supplierOrders.listOwnOrderItems(supplierId);
+  listOwnOrderItems(@CurrentSupplierId() supplierId: string, @Query("storeId") storeId?: string) {
+    return this.supplierOrders.listOwnOrderItems(supplierId, storeId);
   }
 
   /** FR-3.4 - "supplier uploads tracking ID; system relays it to the buyer." */

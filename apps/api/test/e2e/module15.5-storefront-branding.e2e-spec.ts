@@ -66,6 +66,10 @@ describe("Storefront Buyer Purchase Flow & Store Branding (e2e) - SRS §5.32, §
     await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { userId: user.id }, data: { cnicHash: `test-cnic-hash-${user.id}` } });
+    // Module 20 (SRS §5.6e, FR-6.21) - checkout now also requires the store
+    // to be published; set directly rather than every test going through
+    // the real publish flow (top-up + verify).
+    await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
   }
 

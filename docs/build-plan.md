@@ -1526,6 +1526,71 @@ Module 17's admin invoice-verification screen into a top-up-verification
 screen, the supplier wallet + `Subscription`/`SettingsContext` supplier
 support, and the supplier-facing aggregated dashboard UI (FR-3.3/FR-7.10).
 
+## Module 20 (Supplier Portal Completion & Plan-Fee Wallet) — built
+
+Full scope: `docs/SRS.md` §5.6e (FR-6.21-6.28), revised FR-7.2, supplemented
+FR-7.10, checklist §14.6e. Built exactly as scoped in the founder-approved
+plan above, with one found-during-build fix disclosed rather than silently
+patched: `WalletGraceLadderService` depends on `EmailService` (the
+low-balance warning email) but `BillingModule` never registered it as a
+provider — caught by the new e2e spec's first test run (NestJS DI
+resolution error), fixed by adding `EmailService` to `BillingModule`'s
+providers.
+
+1. **Seller wallet** (`apps/api/src/billing/wallet.service.ts`,
+   `wallet-grace-ladder.service.ts`) — balance computed from `LedgerEntry`,
+   new entry types `wallet_topup_credit`/`wallet_plan_fee_debit`/
+   `wallet_team_seat_fee_debit`/`wallet_device_slot_fee_debit` alongside the
+   existing `commission_accrued`/`commission_waived`. Publish gate
+   (`StorePublishController`, `stores/:id/publish`) checks payment method +
+   CNIC + minimum top-up. Low-balance grace ladder
+   (`WalletLowBalanceSweepScheduler`) tracks warning/grace state on `Seller`
+   (not `Store` - the wallet's real owner), transitions a seller's active
+   stores to the new `orders_paused` `StoreStatus` value, restores instantly
+   on a verified top-up.
+2. **Top-up flow** (`TopUpAdapter`/`ManualBankTransferTopUpAdapter`,
+   `WalletTopUpRequest` model, shared by seller and supplier via an
+   `ownerType`/`ownerId` pair) - the Module 17 admin invoice-verification
+   screen is repurposed (`admin/wallet-topups`, same list-and-verify
+   pattern) rather than rebuilt.
+3. **Plan-fee/Team-seat/device-slot debits** (`PlanFeeDebitService`) -
+   the piece FR-7.2 flagged as "schema-ready, job never built" since Module
+   14, now built as a wallet debit and the thing that finally advances
+   `Subscription.currentPeriodEnd` for an unchanged plan (nothing did
+   before). Insufficient balance downgrades to Free, never
+   `orders_paused`/suspension - that ladder is strictly the commission
+   wallet's concern.
+4. **Supplier wallet + plan gate** (`SupplierWalletService`,
+   `SupplierWalletEntry` model) - closes the Module 14 build-plan note
+   ("Subscription is seller-only... for the same reason"): `Subscription`
+   gained a nullable `supplierId` (exactly one of `sellerId`/`supplierId`,
+   enforced by a hand-written CHECK constraint), `SettingsContext` gained a
+   real `supplier` scope (resolves above `plan`, mirroring FR-8.1's
+   `seller > plan` precedence). `suppliers.aggregated_dashboard_enabled`
+   gates `SupplierOrdersService.listOwnOrderItems()`'s cross-store merge -
+   a free-tier supplier linked to more than one store must pass a
+   `storeId` filter.
+5. **Supplier portal frontend** (`apps/web/app/(supplier)/`) - the surface
+   that never existed in `apps/web` at all: plan/wallet status, connected
+   stores, per-store or aggregated order queue. Signup form gained a
+   Seller/Supplier role toggle (supplier signup was API-reachable since
+   Module 8, never exposed in the UI).
+6. **Dormant, not deleted (FR-6.28):** `InvoiceGenerationScheduler`/
+   `InvoiceOverdueScheduler` removed from `BillingModule`'s providers and
+   `worker.main.ts`'s consumers - `InvoicesService`'s methods are
+   untouched and still callable, simply unscheduled.
+
+Migrations: `20260720090000_module20_wallet_supplier_portal` (wallet/
+supplier schema, the `orders_paused`/`supplier` enum values, the exactly-
+one-owner CHECK constraint) and `20260720091500_module20_wallet_grace_ladder_tracking`
+(the two grace-ladder tracking columns on `sellers`, added in a follow-up
+migration rather than editing the first after it had already been applied
+locally). Tests: one new e2e file, `module20-wallet-supplier-portal.e2e-spec.ts`
+(9 tests, §14.6e), plus every existing checkout-completing e2e test's
+helper updated to set `publishedAt` directly (mirroring the existing
+CNIC-bypass precedent) now that a real publish gate exists. Full suite:
+31 e2e files / 270 tests, 22 unit files / 122 tests, all green.
+
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
 Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18

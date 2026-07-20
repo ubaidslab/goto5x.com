@@ -30,6 +30,12 @@ enum AdminRole {
 
 enum StoreStatus {
   active
+  // Module 20 (SRS §5.6e, FR-6.25) - the wallet's low-balance grace ladder
+  // landed here: storefront browsing behaves like `active` (see
+  // StorefrontService.loadActiveStoreOrThrow), only checkout is blocked.
+  // Distinct from admin-issued `suspended` - never overwrites one, and a
+  // verified top-up lifts this automatically with no admin action.
+  orders_paused
   suspended
   banned
   archived
@@ -96,6 +102,10 @@ enum SettingsScopeType {
   seller
   category
   store
+  // Module 20 (SRS §5.6e supplement, FR-7.10) - the supplier-side
+  // equivalent of `seller` scope; resolves with higher precedence than
+  // `plan`, mirroring FR-8.1's seller > plan > global pattern.
+  supplier
 }
 
 enum ProductStatus {
@@ -292,6 +302,17 @@ model Seller {
   // surfaced as a direct Module 12 dependency, built here (see build-plan.md).
   lifecycleStatus SellerLifecycleStatus @default(active) @map("lifecycle_status")
 
+  // Module 20 (SRS §5.6e, FR-6.25) - the wallet's low-balance grace
+  // ladder tracking, same "sticky sent-at timestamp" pattern as
+  // Store.dormantWarningSentAt (Module 14): set once a warning is sent so
+  // the sweep doesn't re-send every run; both cleared the instant balance
+  // recovers above the threshold. The wallet is per-seller (one seller can
+  // own multiple stores), so this lives here, not on Store - the sweep
+  // applies the resulting active/orders_paused transition to every one of
+  // this seller's currently-active stores uniformly.
+  walletLowBalanceWarningSentAt DateTime? @map("wallet_low_balance_warning_sent_at") @db.Timestamptz
+  walletGracePeriodEndsAt       DateTime? @map("wallet_grace_period_ends_at") @db.Timestamptz
+
   // Module 12 (FR-29.1) - versioned Seller Agreement acceptance. Reuses
   // FR-12.1's "versioned content, timestamp+IP acceptance" spirit but is
   // deliberately its own small table (SellerAgreementVersion) rather than
@@ -301,16 +322,16 @@ model Seller {
   agreementAcceptedAt      DateTime? @map("agreement_accepted_at") @db.Timestamptz
   agreementAcceptedIp      String?   @map("agreement_accepted_ip")
 
-  user             User                          @relation(fields: [userId], references: [id])
-  stores           Store[]
-  ledgerEntries    LedgerEntry[]
-  invoices         SellerInvoice[]
-  subscription     Subscription?
-  teamsLed         Team[]
-  teamMemberships  TeamMember[]
-  promoRedemptions PlatformPromoCodeRedemption[]
-  templateEntitlements TemplateEntitlement[]
-  apiTokens            SellerApiToken[]
+  user                  User                          @relation(fields: [userId], references: [id])
+  stores                Store[]
+  ledgerEntries         LedgerEntry[]
+  invoices              SellerInvoice[]
+  subscription          Subscription?
+  teamsLed              Team[]
+  teamMemberships       TeamMember[]
+  promoRedemptions      PlatformPromoCodeRedemption[]
+  templateEntitlements  TemplateEntitlement[]
+  apiTokens             SellerApiToken[]
   impersonationSessions ImpersonationSession[]
 
   @@map("sellers")
@@ -356,42 +377,43 @@ model AdminUser {
   verifiedInvoices      SellerInvoice[]
   promoCodesCreated     PlatformPromoCode[]
   impersonationSessions ImpersonationSession[]
+  verifiedWalletTopUps  WalletTopUpRequest[]
 
   @@map("admin_users")
 }
 
 model Store {
-  id                   String          @id @default(uuid()) @db.Uuid
-  sellerId             String          @map("seller_id") @db.Uuid
-  name                 String
-  slug                 String          @unique
-  status               StoreStatus     @default(active)
+  id                    String          @id @default(uuid()) @db.Uuid
+  sellerId              String          @map("seller_id") @db.Uuid
+  name                  String
+  slug                  String          @unique
+  status                StoreStatus     @default(active)
   // Module 4: pulled forward from its originally-planned Module 5
   // introduction (FR-16.5) - see docs/build-plan.md's Module 4 amendment
   // note. Only the column + noindex/sitemap read-side behavior are in scope
   // here; the coming-soon page content and password-gate flow themselves
   // are Module 5's job (§14.16).
-  accessMode           StoreAccessMode @default(public) @map("access_mode")
+  accessMode            StoreAccessMode @default(public) @map("access_mode")
   // Module 5 (FR-16.5). Set only when accessMode = password_protected;
   // never selected into any API response (StoresService always queries
   // this table with `omit: { accessPasswordHash: true }` outside the one
   // internal password-verification call) - same "never returned" discipline
   // as the Google Drive refresh token (Module 2).
-  accessPasswordHash   String?         @map("access_password_hash")
-  seoTitle             String?         @map("seo_title")
-  seoDescription       String?         @map("seo_description")
-  currency             String          @default("PKR")
+  accessPasswordHash    String?         @map("access_password_hash")
+  seoTitle              String?         @map("seo_title")
+  seoDescription        String?         @map("seo_description")
+  currency              String          @default("PKR")
   // Module 14 (FR-23.2) - updated on meaningful seller activity; the signal
   // the dormant-store job checks. dormantWarningSentAt prevents re-sending
   // the warning email every job run.
-  lastActiveAt         DateTime        @default(now()) @map("last_active_at") @db.Timestamptz
-  dormantWarningSentAt DateTime?       @map("dormant_warning_sent_at") @db.Timestamptz
-  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  lastActiveAt          DateTime        @default(now()) @map("last_active_at") @db.Timestamptz
+  dormantWarningSentAt  DateTime?       @map("dormant_warning_sent_at") @db.Timestamptz
+  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime        @updatedAt @map("updated_at") @db.Timestamptz
   // Module 15.5 (FR-32.5) - reuses the existing media pipeline (MediaAsset,
   // Module 2) rather than a second upload path; nullable, typographic-mark
   // fallback stays wherever this is unset.
-  logoMediaId          String?         @map("logo_media_id") @db.Uuid
+  logoMediaId           String?         @map("logo_media_id") @db.Uuid
   // Module 16 (FR-20.1) - the onboarding wizard's 4th step ("configure a
   // domain or accept the free subdomain") and theme step both have an
   // explicit-acknowledgment path alongside their derived-from-real-action
@@ -399,9 +421,15 @@ model Store {
   // design (§14.20) - once set, it is never cleared or recomputed, so a
   // later change (e.g. deleting the only product) can never resurrect the
   // wizard for a seller who already finished it.
-  onboardingThemeAckAt  DateTime? @map("onboarding_theme_ack_at") @db.Timestamptz
-  onboardingDomainAckAt DateTime? @map("onboarding_domain_ack_at") @db.Timestamptz
-  onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
+  onboardingThemeAckAt  DateTime?       @map("onboarding_theme_ack_at") @db.Timestamptz
+  onboardingDomainAckAt DateTime?       @map("onboarding_domain_ack_at") @db.Timestamptz
+  onboardingCompletedAt DateTime?       @map("onboarding_completed_at") @db.Timestamptz
+  // Module 20 (SRS §5.6e, FR-6.21) - set once, the moment a seller
+  // explicitly publishes this store (payment method + CNIC + minimum
+  // wallet top-up all satisfied). Null means "not live yet" - checkout
+  // requires this to be set regardless of `status`. Sticky by design, same
+  // "never cleared once set" discipline as onboardingCompletedAt.
+  publishedAt           DateTime?       @map("published_at") @db.Timestamptz
 
   seller              Seller                    @relation(fields: [sellerId], references: [id])
   domains             Domain[]
@@ -686,9 +714,11 @@ model Supplier {
   printifyShopId     String?                    @map("printify_shop_id")
   createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz
 
-  user       User                @relation(fields: [userId], references: [id])
-  storeLinks StoreSupplierLink[]
-  listings   SupplierListing[]
+  user          User                  @relation(fields: [userId], references: [id])
+  storeLinks    StoreSupplierLink[]
+  listings      SupplierListing[]
+  subscription  Subscription?
+  walletEntries SupplierWalletEntry[]
 
   @@map("suppliers")
 }
@@ -871,13 +901,13 @@ model Theme {
 // the plaintext is shown to the admin exactly once, at creation, and never
 // again; only the ciphertext is ever persisted.
 model ExternalApiClient {
-  id                      String               @id @default(uuid()) @db.Uuid
-  clientType              ExternalApiClientType @unique @map("client_type")
-  displayName             String               @map("display_name")
-  isEnabled               Boolean              @default(true) @map("is_enabled")
-  signingSecretEncrypted  String               @map("signing_secret_ref")
-  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  id                     String                @id @default(uuid()) @db.Uuid
+  clientType             ExternalApiClientType @unique @map("client_type")
+  displayName            String                @map("display_name")
+  isEnabled              Boolean               @default(true) @map("is_enabled")
+  signingSecretEncrypted String                @map("signing_secret_ref")
+  createdAt              DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime              @updatedAt @map("updated_at") @db.Timestamptz
 
   sellerApiTokens SellerApiToken[]
 
@@ -896,13 +926,13 @@ enum ExternalApiClientType {
 // shape as `google_drive_connections` (a direct `seller_id = ...` policy,
 // not the `stores` subquery every store-scoped table uses).
 model TemplateEntitlement {
-  id                  String                        @id @default(uuid()) @db.Uuid
-  sellerId            String                        @map("seller_id") @db.Uuid
-  themeId             String                        @map("theme_id") @db.Uuid
+  id                  String                    @id @default(uuid()) @db.Uuid
+  sellerId            String                    @map("seller_id") @db.Uuid
+  themeId             String                    @map("theme_id") @db.Uuid
   source              TemplateEntitlementSource
-  externalPurchaseRef String?                        @map("external_purchase_ref")
-  grantedAt           DateTime                       @default(now()) @map("granted_at") @db.Timestamptz
-  revokedAt           DateTime?                      @map("revoked_at") @db.Timestamptz
+  externalPurchaseRef String?                   @map("external_purchase_ref")
+  grantedAt           DateTime                  @default(now()) @map("granted_at") @db.Timestamptz
+  revokedAt           DateTime?                 @map("revoked_at") @db.Timestamptz
 
   seller Seller @relation(fields: [sellerId], references: [id])
   theme  Theme  @relation(fields: [themeId], references: [id])
@@ -924,13 +954,13 @@ enum TemplateEntitlementSource {
 // seller and one external client, individually revocable. Seller-scoped
 // directly, same RLS shape as TemplateEntitlement/google_drive_connections.
 model SellerApiToken {
-  id         String    @id @default(uuid()) @db.Uuid
-  sellerId   String    @map("seller_id") @db.Uuid
-  clientId   String    @map("client_id") @db.Uuid
-  tokenHash  String    @unique @map("token_hash")
-  scopes     String[]
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  id        String    @id @default(uuid()) @db.Uuid
+  sellerId  String    @map("seller_id") @db.Uuid
+  clientId  String    @map("client_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  scopes    String[]
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
 
   seller Seller            @relation(fields: [sellerId], references: [id])
   client ExternalApiClient @relation(fields: [clientId], references: [id])
@@ -990,9 +1020,17 @@ model Plan {
 // was missing platform-wide: settings.types.ts's SettingsContext.planId has
 // existed since Module 1 but nothing populated it from a real assignment
 // until now - see PlansContextService.
+// Module 20 (SRS FR-7.10 supplement) - sellerId became nullable and
+// supplierId was added so a supplier can hold a real plan assignment too
+// (previously seller-only, the exact gap FR-7.10 flagged as missing).
+// Exactly one of sellerId/supplierId is set - enforced by a CHECK
+// constraint added by hand in this migration (Prisma has no schema-level
+// support for it), the same "Prisma manages columns, migration.sql
+// hand-adds what it can't express" pattern RLS policies already use.
 model Subscription {
   id                String             @id @default(uuid()) @db.Uuid
-  sellerId          String             @unique @map("seller_id") @db.Uuid
+  sellerId          String?            @unique @map("seller_id") @db.Uuid
+  supplierId        String?            @unique @map("supplier_id") @db.Uuid
   planId            String             @map("plan_id") @db.Uuid
   status            SubscriptionStatus @default(active)
   // Null for the Free Plan (no billing cycle, FR-7.3). Set the moment a
@@ -1011,10 +1049,11 @@ model Subscription {
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 
-  seller          Seller @relation(fields: [sellerId], references: [id])
-  plan            Plan   @relation("CurrentPlan", fields: [planId], references: [id])
-  pendingPlan     Plan?  @relation("PendingPlan", fields: [pendingPlanId], references: [id])
-  sponsoredByTeam Team?  @relation(fields: [sponsoredByTeamId], references: [id])
+  seller          Seller?   @relation(fields: [sellerId], references: [id])
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  plan            Plan      @relation("CurrentPlan", fields: [planId], references: [id])
+  pendingPlan     Plan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  sponsoredByTeam Team?     @relation(fields: [sponsoredByTeamId], references: [id])
 
   @@map("subscriptions")
 }
@@ -1135,13 +1174,13 @@ model SettingsValue {
 }
 
 model AdminAuditLog {
-  id          String   @id @default(uuid()) @db.Uuid
-  adminUserId String?  @map("admin_user_id") @db.Uuid
-  action      String
-  targetType  String   @map("target_type")
-  targetId    String?  @map("target_id") @db.Uuid
-  beforeValue Json?    @map("before_value")
-  afterValue  Json?    @map("after_value")
+  id                     String   @id @default(uuid()) @db.Uuid
+  adminUserId            String?  @map("admin_user_id") @db.Uuid
+  action                 String
+  targetType             String   @map("target_type")
+  targetId               String?  @map("target_id") @db.Uuid
+  beforeValue            Json?    @map("before_value")
+  afterValue             Json?    @map("after_value")
   // Module 17 (FR-8.4) - set on every action taken during an impersonation
   // session; null for an ordinary admin action. Tags the audit trail without
   // needing a second table join to know which rows happened under
@@ -1251,17 +1290,17 @@ model PlatformBrandAssetRevision {
 // resolved at the application layer (PlatformMessagesService), same as
 // Settings Registry scope resolution, not via row-level security.
 model PlatformMessage {
-  id             String              @id @default(uuid()) @db.Uuid
-  channel        PlatformMessageChannel
-  targetType     PlatformMessageTargetType @default(all) @map("target_type")
-  targetPlanId   String?             @map("target_plan_id") @db.Uuid
-  targetSellerId String?             @map("target_seller_id") @db.Uuid
-  title          String?
-  body           String
-  startsAt       DateTime?           @map("starts_at") @db.Timestamptz
-  endsAt         DateTime?           @map("ends_at") @db.Timestamptz
-  createdByAdminUserId String?       @map("created_by_admin_user_id") @db.Uuid
-  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  id                   String                    @id @default(uuid()) @db.Uuid
+  channel              PlatformMessageChannel
+  targetType           PlatformMessageTargetType @default(all) @map("target_type")
+  targetPlanId         String?                   @map("target_plan_id") @db.Uuid
+  targetSellerId       String?                   @map("target_seller_id") @db.Uuid
+  title                String?
+  body                 String
+  startsAt             DateTime?                 @map("starts_at") @db.Timestamptz
+  endsAt               DateTime?                 @map("ends_at") @db.Timestamptz
+  createdByAdminUserId String?                   @map("created_by_admin_user_id") @db.Uuid
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([targetType, targetPlanId, targetSellerId], name: "idx_messages_targeting")
   @@map("platform_messages")
@@ -1631,6 +1670,15 @@ enum LedgerEntryType {
   refund_adjustment
   commission_accrued
   commission_waived
+  // Module 20 (SRS §5.6e, FR-6.21/6.23/6.24) - the wallet's own entry
+  // types, on the same table per the founder's explicit "extends...
+  // existing commission debits" instruction. commission_accrued/
+  // commission_waived are unchanged and reused as-is for the commission
+  // debit/waiver side of the wallet - only these four are new.
+  wallet_topup_credit
+  wallet_plan_fee_debit
+  wallet_team_seat_fee_debit
+  wallet_device_slot_fee_debit
 }
 
 model LedgerEntry {
@@ -1639,8 +1687,14 @@ model LedgerEntry {
   orderId          String?         @map("order_id") @db.Uuid
   invoiceId        String?         @map("invoice_id") @db.Uuid
   type             LedgerEntryType
-  // Signed (+/-): commission_accrued is positive (seller owes the
-  // platform), commission_waived is negative (reduces that receivable).
+  // Always stored as a positive magnitude except commission_waived (kept
+  // negative, its original Module 11 convention - see waiveCommission()).
+  // WalletService.getBalance() (Module 20) is the one place that maps
+  // entry type to a +/- sign when computing a balance; every debit type
+  // (commission_accrued, wallet_*_fee_debit) subtracts, wallet_topup_credit
+  // adds, and commission_waived's already-negative amount adds back (a
+  // waiver increases the balance). Nothing else computes a balance from
+  // this table directly.
   amount           Decimal         @db.Decimal(12, 2)
   currency         String
   balanceBucket    BalanceBucket?  @map("balance_bucket")
@@ -1698,4 +1752,66 @@ model SellerInvoice {
   @@index([sellerId, status], name: "idx_seller_invoices_seller_status")
   @@index([status, dueDate], name: "idx_seller_invoices_overdue_check")
   @@map("seller_invoices")
+}
+
+// Module 20 (SRS §5.6e, FR-6.23). Shared by both the seller wallet and the
+// supplier wallet (ownerType/ownerId rather than two near-identical tables)
+// - a top-up request's shape (amount, manual-verification workflow) is
+// identical for both; only which ledger the resulting credit lands on
+// differs, handled in WalletService/SupplierWalletService respectively.
+enum WalletOwnerType {
+  seller
+  supplier
+}
+
+enum TopUpRequestStatus {
+  pending
+  verified
+  rejected
+}
+
+model WalletTopUpRequest {
+  id          String             @id @default(uuid()) @db.Uuid
+  ownerType   WalletOwnerType    @map("owner_type")
+  ownerId     String             @map("owner_id") @db.Uuid
+  amount      Decimal            @db.Decimal(12, 2)
+  currency    String
+  // FR-6.23 - v1.0's one TopUpAdapter implementation is manual bank
+  // transfer; the column exists now so a future gateway-based adapter has
+  // somewhere to record itself without a schema change.
+  method      String             @default("bank_transfer")
+  status      TopUpRequestStatus @default(pending)
+  requestedAt DateTime           @default(now()) @map("requested_at") @db.Timestamptz
+  verifiedAt  DateTime?          @map("verified_at") @db.Timestamptz
+  verifiedBy  String?            @map("verified_by") @db.Uuid
+
+  verifiedByAdmin AdminUser? @relation(fields: [verifiedBy], references: [id])
+
+  @@index([ownerType, ownerId, status], name: "idx_wallet_topups_owner_status")
+  @@map("wallet_topup_requests")
+}
+
+// Module 20 (SRS FR-7.10 supplement). A supplier only ever owes its own
+// Premium-tier plan fee - no commission, no team seats, no device slots -
+// so this is a small, dedicated ledger rather than overloading LedgerEntry
+// (a richer, seller-owned entry-type set) with a second, unrelated owner.
+// Same balance convention as LedgerEntry: amount always a positive
+// magnitude, SupplierWalletService.getBalance() applies the sign.
+enum SupplierLedgerEntryType {
+  topup_credit
+  plan_fee_debit
+}
+
+model SupplierWalletEntry {
+  id         String                  @id @default(uuid()) @db.Uuid
+  supplierId String                  @map("supplier_id") @db.Uuid
+  type       SupplierLedgerEntryType
+  amount     Decimal                 @db.Decimal(12, 2)
+  currency   String
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId, createdAt], name: "idx_supplier_wallet_entries_supplier_created")
+  @@map("supplier_wallet_entries")
 }
