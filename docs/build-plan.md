@@ -1484,6 +1484,48 @@ folding it in would blur what Module 17 actually is. The former Module 20
 (Hardening & Launch Readiness) is renumbered to **Module 21** — the only
 renumbering this causes.
 
+**Superseded by SRS v0.24, approved before Module 20 — see the amendment
+note below.** Point 1 above (monthly `plan_subscription` invoice) is no
+longer what Module 20 builds; the founder finalized the actual v1.0
+collection mechanism as a **prepaid wallet** instead (SRS §5.6e), and the
+plan-fee/Teams-group-total/device-slot debits described here now debit
+that wallet rather than generating an invoice. Point 2 (Supplier Premium
+Plan's full stack) is unchanged and still Module 20's job, supplemented
+with its own supplier-scoped wallet (SRS FR-7.10). Kept verbatim above
+for the historical record of what was actually decided at the time, per
+this project's no-silent-rewrite discipline.
+
+## Amendment approved before Module 20 (SRS v0.24) — Prepaid Credits Wallet
+
+Full spec: `docs/SRS.md`'s v0.24 changelog note, new §5.6e (FR-6.21–6.28),
+FR-7.2 (revised again), FR-7.10 (supplemented), new §14.6e, §14.6c/§14.7's
+updated lines. **Documentation only, no code yet** — a founder-driven
+business-model finalization, applied ahead of Module 20's build per the
+same "amend the SRS first, then build" discipline used throughout.
+
+The monthly commission-invoice mechanism (§5.6c, Module 11) becomes
+**dormant** (preserved, unscheduled — not deleted) and is replaced as
+v1.0's active mechanism by a **prepaid wallet**: a seller tops up before
+publishing (minimum Rs. 500, Settings Registry), commission debits the
+wallet directly on each confirmed sale instead of accruing toward a
+monthly invoice, and a new low-balance grace ladder (warning → grace
+days → `orders_paused`, a new store state distinct from admin
+`suspended` — storefront stays browsable, checkout blocked) replaces the
+old grace-then-suspend flow. Plan fees, Team seat totals, and the
+extra-device-slot add-on (FR-25.7) all debit the same wallet instead of
+generating their own invoice rows. A separate, supplier-scoped wallet
+(no commission/team/device entry types) collects the Supplier Premium
+Plan's fee. Full detail in SRS §5.6e — not restated here to avoid the two
+documents drifting; this note exists so the module-sequence record shows
+*when* and *why* the mechanism changed. Module 20's build-plan scope
+(stated separately, pending founder confirmation before code starts)
+covers: the wallet backend (ledger extension, publish gate, top-up
+flow/`TopUpAdapter`, grace ladder, `orders_paused`), the wallet
+dashboard UI (Balance, top-up screen, transaction history), repurposing
+Module 17's admin invoice-verification screen into a top-up-verification
+screen, the supplier wallet + `Subscription`/`SettingsContext` supplier
+support, and the supplier-facing aggregated dashboard UI (FR-3.3/FR-7.10).
+
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
 Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18

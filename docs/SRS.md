@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.23 (Build-phase amendment)
+**Version:** 0.24 (Build-phase amendment)
 **Date:** 2026-07-19
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -194,6 +194,56 @@ blocked outright while impersonating, so support can fix a seller's
 configuration but can never move money or money-adjacent state on their
 behalf. §14.8 gains four checklist lines for this (banner presence, event
 emission, seller-visible history, blocked-write negative test).
+
+**v0.24 (approved before Module 20) — a business-model pivot inside a
+business-model pivot: the PREPAID CREDITS WALLET replaces §5.6c's monthly
+commission-invoice mechanism as the PRIMARY and ONLY active collection
+path for v1.0.** §5.6c is unchanged as written but is now itself a
+**dormant** mechanism (marked so at its own top, exactly like §5.6/§5.6a/
+§5.6b before it) — preserved for a possible future enterprise/post-paid
+reactivation, never deleted. New **§5.6e (Prepaid Credits Wallet, v1.0
+model)** is the actual v1.0 mechanism: a seller tops up a ledger-backed
+wallet (extends Module 11's `LedgerEntry`, new entry types alongside the
+existing `commission_accrued`/`commission_waived`); publishing a store
+(accepting real orders) requires the wallet to have received at least one
+top-up meeting a configurable minimum (default Rs. 500) on top of the
+existing payment-instruction/CNIC gates (FR-6.14/FR-30.1) — new FR-6.21.
+Commission still accrues only on a confirmed sale (Financial Truth
+Invariant unchanged) but now debits the wallet directly instead of
+accruing toward a monthly invoice — FR-6.22. Top-ups follow the same
+direct-collection, manually-verified pattern already proven for invoices,
+behind a new `TopUpAdapter` interface (mirrors the Payment Adapter
+pattern, §3.5) so a future gateway auto-top-up doesn't touch this logic
+— FR-6.23. A new **low-balance grace ladder** (warning → configurable
+grace days → `orders_paused`, a new store state distinct from admin
+`suspended`: storefront stays browsable, checkout is blocked with a
+respectful notice — instant auto-restore on a verified top-up) replaces
+the old grace-period-then-suspend mechanism for commission debt —
+FR-6.24. A configurable negative-float floor means a confirmed sale's
+commission debit can never fail mid-transaction even if it dips the
+balance below zero — FR-6.25. **FR-7.2 is revised again** (superseding
+v0.20's "monthly `plan_subscription` invoice" pin): a paid plan's fee,
+a Team leader's per-seat group total (FR-7.15/7.18), and the FR-25.7
+extra-device-slot add-on all debit the same seller wallet monthly-in-
+advance instead of generating an invoice; insufficient balance for a
+plan fee is a **downgrade-to-Free** event (FR-7.13's existing mechanism),
+never a store action — the wallet's `orders_paused` ladder is strictly a
+commission/store-operations concern. **FR-7.10 is supplemented**: the
+Supplier Premium Plan's fee debits a **separate, supplier-scoped
+wallet** (own small ledger table, no commission/team/device entry types
+— a supplier only ever pays its own plan fee), and `Subscription`/
+`SettingsContext` gain real supplier support (both were seller-only
+placeholders per the v0.20 amendment note) as part of the same Module 20
+build that finally ships the supplier-facing aggregated dashboard UI.
+The admin commission-invoice verification screen Module 17 just built is
+**repurposed**, not rebuilt: same list-and-verify pattern, now verifying
+top-up requests instead of invoices. §14.6c gains a one-line dormancy
+notice at its top (mechanism preserved, no longer what v1.0 runs); new
+**§14.6e** covers the wallet checklist (publish gate; commission debits
+only a confirmed sale; grace-ladder transitions incl. instant restore;
+negative-float cap; `orders_paused` storefront behavior — browsable,
+checkout blocked; wallet transaction history completeness and plain-
+language rendering); §14.7's FR-7.2 line is revised to match.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -1388,7 +1438,13 @@ mode specifically.
   `reserve_release` after a configurable period if undisputed. All parameters are
   Settings Registry entries.
 
-### 5.6c Direct Seller Collection & Commission Invoicing (v1.0 model, new — v0.15)
+### 5.6c Direct Seller Collection & Commission Invoicing — DORMANT as of v0.24, see §5.6e
+**Superseded as v1.0's active mechanism by §5.6e (Prepaid Credits Wallet),
+approved before Module 20 — this section is preserved verbatim, exactly
+like §5.6/§5.6a/§5.6b's dormancy note below, as a possible future
+enterprise/post-paid reactivation path, not deleted.** Everything below
+this point describes the monthly-invoice mechanism as originally built in
+Module 11; where it conflicts with §5.6e, §5.6e governs v1.0 behavior.
 **The platform never touches buyer money in any v1.0 flow.** A buyer pays the
 seller directly, out-of-platform; the platform's revenue is a commission
 *invoice* the seller owes it after the fact, not a deduction from funds it
@@ -1467,28 +1523,139 @@ unsafe, a regulatory requirement that the platform hold funds in escrow, or
 transaction volume high enough that direct-collection's trust-based model
 no longer scales. None of these are expected at v1.0 launch.
 
+### 5.6e Prepaid Credits Wallet (v1.0 model — replaces §5.6c, new v0.24)
+**v1.0's actual collection mechanism.** Direct Seller Collection (§5.6c's
+opening principle) is unchanged — the platform still never touches buyer
+money — but the platform's own revenue (commission, plan fees, add-ons)
+is now collected **up front, from a wallet the seller funds themselves**,
+not billed after the fact via a monthly invoice. This closes the
+practical gap §5.6c's invoice-then-suspend model had: a seller could
+trade for a full billing period before the platform ever saw a rupee, and
+non-payment only had one lever (suspend). A prepaid wallet makes the
+platform's own revenue collection-risk-free by construction and gives the
+founder a single, simple lever (top up or don't) instead of a grace-
+period/suspend cycle.
+- FR-6.21: **Wallet ledger & activation gate.** Every seller has one
+  wallet: a computed balance over the same append-only `LedgerEntry`
+  table §5.6c already uses (extends it — new entry types for a top-up
+  credit and each debit kind below, alongside the existing
+  `commission_accrued`/`commission_waived` — never a parallel ledger
+  table). Balance = sum of credits minus sum of debits, always computed,
+  never stored redundantly (same "derive, don't cache the derivable"
+  discipline as every other balance in this system). **Signup, store
+  setup, and the onboarding wizard (Module 16) stay entirely free** — no
+  wallet interaction is required to build a store. **Publishing a store**
+  (the point at which it can accept a real, checkout-completed order) is
+  gated on three conditions, all already-established patterns except the
+  third: a configured payment method (FR-6.14, existing), a verified CNIC
+  (FR-30.1, existing), and the wallet having received at least one top-up
+  bringing its balance to or above a configurable minimum (Settings
+  Registry, `billing.wallet_min_initial_topup`, default **Rs. 500**) —
+  this third condition is new and doubles as a light seriousness filter
+  on who actually goes live, not merely a revenue mechanism.
+- FR-6.22: **Commission debits the wallet directly.** `OrdersService.
+  markAsPaid()` still accrues commission at the exact same point and rate
+  as FR-6.16 (default 1%, plan/seller-overridable, unchanged Settings
+  Registry mechanism) — the only change is where that accrual goes: it
+  debits the wallet's computed balance immediately instead of accumulating
+  toward a future monthly invoice. The Financial Truth Invariant (§3.12)
+  is unchanged and, if anything, sharper here: no pending order ever
+  produces a wallet debit, proven the same way §14.6c already proves it
+  for the invoice model. FR-6.20's commission-waiver mechanism (a
+  `commission_waived` entry against one specific line) is unchanged.
+- FR-6.23: **Top-up flow, behind a `TopUpAdapter`.** A seller requests a
+  top-up (a Settings-driven set of preset amounts plus a custom amount,
+  with a plan-tier-specific minimum where applicable) and pays it to the
+  platform's own business account — the same direct-collection,
+  manually-admin-verified pattern §5.6c already proved for invoices, not
+  a new trust model. The credit lands in the wallet only once an admin
+  verifies the payment, an audit-logged control-plane action (FR-8.9)
+  exactly like every other admin mutation. This flow sits behind a new
+  `TopUpAdapter` interface (mirroring the existing Payment Adapter
+  pattern, §3.5) specifically so that a future gateway-based auto-top-up
+  can plug in later as a second adapter implementation without touching
+  wallet/ledger logic itself — v1.0 ships exactly one implementation
+  (manual bank-transfer verification). The Module 17 admin
+  commission-invoice verification screen is **repurposed** for this — same
+  list-and-verify UI pattern, now listing top-up requests instead of
+  invoices, not a new screen built from scratch.
+- FR-6.24: **Deductions beyond commission.** A paid plan's fee, a Team
+  leader's monthly per-seat group total (FR-7.15/7.18, unchanged math —
+  active sponsored member count × the leader's Team tier's seat price),
+  and the FR-25.7 extra-device-slot add-on all debit the same seller
+  wallet, monthly in advance, on the seller's existing billing-cycle
+  cadence — see the revised FR-7.2 (§5.7) for the plan-fee case
+  specifically, since its overdue consequence differs from commission's.
+- FR-6.25: **Low-balance grace ladder.** All thresholds and day-counts
+  below are Settings Registry entries (global scope). When a wallet's
+  balance drops below a configured low-balance threshold
+  (`billing.wallet_low_balance_threshold`), the seller sees a dashboard
+  warning and receives a warning email; if the balance is not restored
+  above the threshold within a configured grace window
+  (`billing.wallet_grace_days`, default **3**), the store transitions to
+  a new **`orders_paused`** state — distinct from admin-issued
+  `suspended` (FR-8.4): the storefront stays fully browsable (catalog,
+  product pages, cart) and shows a respectful "temporarily not accepting
+  orders" notice only at the point checkout would otherwise complete,
+  never a blanket "store unavailable" the way `suspended` reads. A
+  verified top-up that brings the balance back above the threshold lifts
+  `orders_paused` **instantly** — no admin action needed, unlike
+  suspension's admin-driven lift. `orders_paused` never overwrites an
+  independently admin-issued `suspended`/`banned` state, same
+  non-clobbering discipline §14.6c's suspend/lift sweep already
+  established.
+- FR-6.26: **Negative-float cap.** The wallet is permitted to go
+  negative, down to a configurable floor
+  (`billing.wallet_negative_float_limit`, default a small Rs. amount) —
+  this exists purely so a confirmed sale's commission debit can never
+  fail or roll back mid-transaction because of a balance that was
+  positive when the buyer paid but dipped below zero by the time
+  `markAsPaid()` runs the debit. Crossing into negative territory is
+  exactly the kind of balance drop FR-6.25's low-balance threshold is
+  expected to already have caught upstream; the floor is a hard backstop,
+  not the primary mechanism.
+- FR-6.27: **Wallet dashboard.** A "Balance" summary is visible on the
+  seller's dashboard at all times; a dedicated top-up screen (presets +
+  custom amount, FR-6.23) and a full transaction history — every credit
+  and debit, in plain language ("Top-up verified", "Commission — Order
+  #1234", "Monthly plan fee — Growth", never a raw ledger-entry-type
+  string) — are both one click away.
+- FR-6.28: **§5.6c's monthly invoice-generation job, overdue sweep, and
+  suspend-on-nonpayment mechanism are DORMANT**, preserved as working code
+  behind their existing settings/scheduler, simply unscheduled — a future
+  enterprise/post-paid mode may re-enable them. `seller_invoices.
+  invoice_type = 'commission'` rows stop being generated going forward;
+  `plan_subscription` and `group_sponsorship` rows are superseded by
+  FR-6.24/FR-7.2's wallet debits and never generated either. The table and
+  its `InvoiceType` enum are unchanged in shape — nothing is dropped, only
+  unused.
+
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans (e.g. Free / Starter / Growth / Premium) priced in the
   platform's configured currency (PKR at launch), gating features (product count,
   storage, template tiers, custom domain, coded-theme mode, analytics depth) via
   the Settings Registry.
-- FR-7.2: **Recurring billing cycle with invoicing and dunning for paid plans
-  (revised v0.20 — the mechanism pinned explicitly, not left implicit).** A
-  seller on a paid plan is billed via a monthly `plan_subscription`-typed
-  `seller_invoices` row (the same table, same manual-admin-verification and
-  grace-period mechanism already proven for commission invoicing, FR-6.16–18,
-  and for the Teams group invoice, FR-7.15/7.18 — a third invoice type on
-  the same engine, never a parallel one). **Dunning here means graceful
-  downgrade, not suspension:** non-payment past the grace period downgrades
-  the seller to the Free Plan (the identical mechanism FR-7.13 already uses
-  for a voluntary team-leave) — never a store suspension, since an unpaid
-  plan fee is the seller choosing not to afford that tier, not a debt tied
-  to store operations the way commission is. Built in Module 20 (Supplier
-  Portal Completion & Plan-Fee Collection, new v0.20) — the schema
-  (`invoice_type = 'plan_subscription'`) was already built ready for this in
-  Module 14, but the invoice-generation job itself was not; until Module 20
-  ships, a paid plan can only be reached via an admin grant (FR-7.8) or a
-  promo-code-adjacent flow, never real self-service billing.
+- FR-7.2: **Recurring billing cycle for paid plans (revised again v0.24 —
+  supersedes v0.20's invoice-based pin; see FR-6.24/§5.6e).** A seller on
+  a paid plan is billed monthly-in-advance via a **wallet debit**, not a
+  `seller_invoices` row — the same prepaid wallet FR-6.21 already gates
+  publishing on. **Non-payment here means graceful downgrade, not a
+  store action:** insufficient wallet balance for a plan-fee debit
+  downgrades the seller to the Free Plan (the identical mechanism FR-7.13
+  already uses for a voluntary team-leave) — never `orders_paused` or
+  suspension, since an unpaid plan fee is the seller choosing not to
+  afford that tier, not a debt tied to store operations the way
+  commission is; FR-6.25's grace ladder is strictly a
+  commission/store-operations concern and never fires for a plan-fee
+  shortfall. The Teams group total (FR-7.15/7.18, leader-billed) and the
+  FR-25.7 extra-device-slot add-on debit the same wallet on the same
+  cadence, per FR-6.24. Built in Module 20 (Supplier Portal Completion &
+  Plan-Fee Collection) — the `seller_invoices.invoice_type =
+  'plan_subscription'`/`'group_sponsorship'` schema built ready for this
+  in Module 14 is now dormant (FR-6.28) rather than activated; until
+  Module 20 ships, a paid plan can only be reached via an admin grant
+  (FR-7.8) or a promo-code-adjacent flow, never real self-service
+  billing.
 - FR-7.3: **Free Plan (first-class)** — a plan tier with **no billing cycle**,
   bounded by tight Settings-Registry-tunable limits: product count, storage quota,
   access to the base template tier only, no custom domain, and one store per
@@ -1534,6 +1701,13 @@ no longer scales. None of these are expected at v1.0 launch.
   is the actual gate between them (`Subscription`/`SettingsContext` support a
   seller, not a supplier, today) and the supplier-facing dashboard UI itself,
   since no supplier login/dashboard surface has ever been built in `apps/web`.
+  **Supplier wallet (supplemented v0.24):** the Premium tier's fee is
+  collected via the identical prepaid-wallet mechanism §5.6e defines for
+  sellers, but from a **separate, supplier-scoped wallet** — a supplier
+  only ever owes its own plan fee (no commission, no team seats, no
+  device slots), so this is a small, dedicated ledger rather than
+  overloading the seller wallet's richer entry-type set with a second,
+  unrelated owner. `TopUpAdapter` (FR-6.23) is reused as-is.
 - **Confirmation (no gap found):** a **seller's own** multi-supplier management
   — one seller, many linked local suppliers, one seller-side dashboard — is
   already fully covered by existing FRs and requires no new work: FR-2.6/
@@ -3036,7 +3210,12 @@ gate is §14.6c, below.
       and is excluded from every balance/payout-eligibility calculation —
       proven with a deliberately-constructed unpaid order, not assumed
 
-### 14.6c Direct Seller Collection & Commission Invoicing (v1.0 — new, v0.15)
+### 14.6c Direct Seller Collection & Commission Invoicing (v1.0 — new, v0.15) — DORMANT as of v0.24, see §14.6e
+**Every item below remains true of the code as built and tested in
+Module 11 — nothing here regressed.** As of v0.24 this is no longer
+v1.0's *active* mechanism (superseded by the wallet, §14.6e); the
+scheduled invoice-generation/overdue-sweep jobs are simply unscheduled
+going forward, per FR-6.28.
 - [x] A store cannot go live without at least one configured payment method
       (bank/JazzCash/Easypaisa/COD) (FR-6.14) — enforced as a checkout-time
       gate (v1.0 has no separate store draft/publish state)
@@ -3080,6 +3259,46 @@ gate is §14.6c, below.
 - [x] Every monetary display shows the store's configured currency, never a
       hard-coded `"PKR"` string
 
+### 14.6e Prepaid Credits Wallet (v1.0 — new, v0.24, to be built Module 20)
+- [ ] A store cannot be published (accept a real, checkout-completed order)
+      without a configured payment method, a verified CNIC, **and** a
+      wallet top-up meeting the configured minimum, all three (FR-6.21)
+- [ ] Signup, store setup, and the onboarding wizard require no wallet
+      interaction at any step (FR-6.21)
+- [ ] Marking an order paid debits the wallet the correct commission
+      amount immediately — no pending order ever produces a wallet debit
+      (Financial Truth Invariant, §3.12) (FR-6.22)
+- [ ] A seller can request a top-up (preset or custom amount); the credit
+      lands in the wallet only after an admin verifies it, and the
+      verification action is captured in `admin_audit_logs` (FR-6.23,
+      FR-8.9) — the Module 17 admin invoice-verification screen correctly
+      repurposed to list/verify top-ups, not rebuilt from scratch
+- [ ] A plan fee, a Team leader's group total, and an extra-device-slot
+      add-on all debit the wallet monthly-in-advance on the correct
+      cadence and amount (FR-6.24, FR-7.2, FR-7.15/7.18, FR-25.7)
+- [ ] A wallet balance crossing below the low-balance threshold triggers a
+      dashboard warning and email; staying below it past the configured
+      grace period transitions the store to `orders_paused` — storefront
+      still browsable, checkout blocked with a respectful notice — never
+      the blanket `suspended` behavior (FR-6.25)
+- [ ] A verified top-up that restores the balance above the threshold
+      lifts `orders_paused` instantly, with no admin action required
+      (FR-6.25)
+- [ ] `orders_paused` never overwrites an independently admin-issued
+      `suspended`/`banned` state (FR-6.25)
+- [ ] A wallet balance can go negative down to, but never past, the
+      configured negative-float floor — a confirmed sale's commission
+      debit never fails or rolls back the order (FR-6.26)
+- [ ] The seller dashboard shows a live Balance figure, a working top-up
+      screen, and a complete transaction history rendered in plain
+      language (never a raw ledger-entry-type string) (FR-6.27)
+- [ ] §5.6c's invoice-generation/overdue-sweep jobs are unscheduled (not
+      deleted) and produce no new `seller_invoices` rows of any type going
+      forward (FR-6.28)
+- [ ] A supplier's Premium-tier fee debits a separate supplier-scoped
+      wallet, never the seller wallet of any store it's linked to
+      (FR-7.10 supplement)
+
 ### 14.7 Subscription Plans, Pricing & Billing (built Module 14)
 - [x] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
       (FR-8.2). Scoped narrowly to plan groups/tiers — the rest of FR-8.2's
@@ -3103,14 +3322,15 @@ gate is §14.6c, below.
       coded-theme access) enforce correctly for a seller on that plan
 - [x] Billing-cycle mechanics are correct for a full period even though v1.0
       launches on a Free Plan + simple paid tiers
-- [ ] **Plan-fee collection (FR-7.2, revised v0.20 — moved to Module 20):** a
-      monthly `plan_subscription` invoice is generated for a seller on a
-      paid plan, using the identical `seller_invoices` manual-verification/
-      grace-period mechanism as commission invoicing; non-payment past grace
-      downgrades to Free (never suspends the store). **Not yet built** — the
-      schema (`invoice_type = 'plan_subscription'`) exists from Module 14,
-      the generation job does not; until Module 20 ships, a paid plan is
-      reachable only via an admin grant (FR-7.8)
+- [ ] **Plan-fee collection (FR-7.2, revised v0.24 — moved to Module 20):** a
+      seller on a paid plan is debited the plan fee from their prepaid
+      wallet monthly-in-advance (§5.6e/FR-6.24), not via a
+      `seller_invoices` row; insufficient balance downgrades to Free
+      (never `orders_paused`, never suspends the store). **Not yet
+      built** — the `plan_subscription`/`group_sponsorship`
+      `seller_invoices` schema from Module 14 stays dormant (FR-6.28);
+      until Module 20 ships, a paid plan is reachable only via an admin
+      grant (FR-7.8)
 - [x] An admin can grant any plan, including Free, directly to a specific seller,
       bypassing checkout; the grant is captured in `admin_audit_logs` with the
       seller's before/after plan (FR-7.8)
