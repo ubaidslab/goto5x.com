@@ -17,6 +17,7 @@ import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
 import { ExternalApiModule } from "./external-api/external-api.module";
+import { GrowthProgramsModule } from "./growth-programs/growth-programs.module";
 import { GuardrailsModule } from "./guardrails/guardrails.module";
 import { HealthModule } from "./health/health.module";
 import { ImpersonationModule } from "./impersonation/impersonation.module";
@@ -74,6 +75,7 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     TrustSafetyModule,
     PlansModule,
     TeamsModule,
+    GrowthProgramsModule,
     GuardrailsModule,
     ExternalApiModule,
     HealthModule,

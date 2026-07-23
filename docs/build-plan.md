@@ -1840,6 +1840,102 @@ Data Export to Personal Cloud Storage, §5.36).** Reasoning:
    and this SRS's "amend first, don't improvise" discipline means a
    schema change ships in the module whose FR actually requires it.
 
+## Module 22 Phase A (Growth & Partner Programs — shared referral engine) — built
+
+Full scope: `docs/SRS.md` §5.33 FR-33.2-33.4/33.9-33.12 (FR-33.1 already
+shipped standalone), checklist §14.33 (all items checked except FR-33.8
+Careers, Phase B, next). New module `apps/api/src/growth-programs/`.
+
+1. **Schema** — migration `20260723172749_module22_growth_partner_programs_phase_a`:
+   `ProgramParticipant` (one row per seller per program, `@@unique` on
+   `[sellerId, programType]`, `referralCode` issued only on approval),
+   `ReferralAttribution` (`@@unique` on `referredSellerId` — FR-33.3's
+   single-source guarantee enforced at the database layer, not just
+   application logic; `commissionWindowEndsAt` locked in at attribution
+   time from whatever Settings Registry window value was live then),
+   `ProgramContentSubmission` (Creators' manual view-verification queue),
+   `PayoutRequest` (reactivating the dormant §5.6b engine), and three new
+   `LedgerEntryType` values (`program_commission_credit`/
+   `program_reward_credit`/`program_clawback_debit` — `payout_debit` was
+   already reserved in the original schema, unused until now).
+2. **Application/eligibility/approval** (`program-application.service.ts`,
+   FR-33.2) — the one shared shape every program follows: apply → pending
+   → admin approve/reject, plus admin suspend/terminate on an already-
+   approved participant, at any time. Ambassador's application gate (an
+   eligible paid plan, FR-33.5) reuses `SubscriptionsService.getPlanContext()`
+   + a new `growth.ambassador_eligible` Settings Registry key (`plan`
+   scope) — no new eligibility mechanism.
+3. **Attribution** (`referral-attribution.service.ts`, FR-33.1/33.3) —
+   resolves a just-captured `Subscription.referralSource` against an
+   approved participant's `referralCode` at signup, tolerating every
+   non-match case silently (null, stale, unapproved) since signup must
+   never fail because of this. Wired into `AuthService.signup()` right
+   after `assignFreePlanAtSignup`.
+4. **Commission** (`apps/api/src/billing/program-commission.service.ts` —
+   lives in `BillingModule`, not `GrowthProgramsModule`, specifically to
+   avoid a circular module dependency: it reads the new
+   `referral_attributions`/`program_participants` tables directly via
+   `PrismaAdminService`, needing no cross-module DI, while
+   `GrowthProgramsModule` imports `BillingModule` one-directionally for
+   `WalletService` in the withdrawal flow) — called from **exactly one**
+   site, `PlanFeeDebitService.debitDuePlanFees()`'s successful-debit
+   branch (FR-33.4, binding: never from team-seat/device-slot debits or
+   wallet top-ups). `WalletService.getBalance()`'s `signedContribution()`
+   map (the "one place that knowledge lives") updated for the three new
+   credit types plus `payout_debit`.
+5. **Ambassador/Student Referral/Creator** (`program-reward.service.ts`,
+   FR-33.5-33.7) — Ambassador's monthly performance-reward sweep (a new
+   `runMonthlyAmbassadorRewardSweep()`, same idempotent-per-calendar-month
+   pattern as `PlanFeeDebitService`'s team-seat debit) and live
+   certificate-tier lookup (never cached — thresholds are admin-editable
+   Settings Registry data); Creator content submission + **mandatory
+   manual** admin verification before any view-based reward is computed,
+   capped per-creator per-calendar-month.
+6. **Withdrawal** (`program-withdrawal.service.ts`, FR-33.9) — the Payout
+   Request & Disbursement Engine's first real implementation:
+   `requested → approved → processing → paid`/`rejected`. Requesting/
+   approving never touch the ledger; only `paid` creates the real
+   `payout_debit` entry, so a rejected request needs no reversal — the
+   balance was never touched. Clawback (FR-33.10) reuses §5.6e's existing
+   negative-balance mechanism verbatim (a plain debit, no balance check),
+   calling `WalletGraceLadderService.checkImmediateFloorPause()` after,
+   mirroring `OrdersService.markAsPaid()`'s own pattern.
+7. **Fraud** (FR-33.10) — a new `selfReferralFlags()` method added to the
+   *existing* `TrustSafetyMonitorsService`/`AdminTrustSafetyController`
+   (no new admin screen), comparing CNIC hash, store payment-instrument
+   hashes, and signup IP/device fingerprint between a referrer and their
+   referred seller — same comparison shape `RiskScoreService`'s own
+   `matchesSuspendedSellerCluster()` already established.
+8. **Admin queues + reports** (FR-33.11) — application queue and content-
+   verification queue are `@AllowReviewer()` (same sensitivity tier as the
+   moderation queue); the withdrawal queue and clawback endpoint are
+   deliberately **not** `@AllowReviewer()`, same discipline as
+   `AdminTrustSafetyController`/`AdminSellerLifecycleController` — this
+   moves real money. A new `ProgramReportService` computes referrals/
+   conversions/payouts/rejection-rate per program, read-only.
+9. **Legal draft** (FR-33.12) — `docs/legal/growth-partner-programs-terms.md`
+   (Ambassador/Student Referral/Creator only; Careers gets its own terms
+   in Phase B), flagged for human legal review.
+
+Tests: one new e2e file,
+`module22-growth-partner-programs.e2e-spec.ts` (13 tests) — including,
+per the founder's explicit two reminders, a full withdrawal negative-space
+suite (threshold not met, an unapproved participant, a suspended
+participant, a double-request on the same outstanding balance, an admin
+rejection correctly restoring the requestable balance, and a clawback
+after an already-paid withdrawal going negative with its natural recovery
+path exercised directly) and an attribution-locking suite (a direct second
+`ReferralAttribution.create()` for the same referred seller asserted to
+throw a real Postgres unique-constraint violation, not just an
+application-layer check; commission asserted to never accrue from a
+wallet top-up or a GMV-driven `commission_accrued` entry, only from the
+referred seller's own plan-fee debit, at the correct rate).
+
+**Not yet built (Phase B, next): Careers (FR-33.8)** — `JobPosting`/
+`JobApplication`, reusing FR-12.1's versioned-content pattern; no
+referral/commission/wallet machinery, fully independent of everything
+above.
+
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
 Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18

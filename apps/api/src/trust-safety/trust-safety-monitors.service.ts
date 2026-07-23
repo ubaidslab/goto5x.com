@@ -19,6 +19,12 @@ export interface BypassAttemptFlag {
   attemptCount: number;
 }
 
+export interface SelfReferralFlag {
+  referrerSellerId: string;
+  referredSellerId: string;
+  matchedSignal: "cnic" | "payment_instrument" | "device_or_ip";
+}
+
 /**
  * SRS §5.29 FR-29.3 / §5.6c FR-6.19 - read-side admin risk views, zero new
  * persistent "flags" infrastructure: every signal here is computed from
@@ -154,6 +160,87 @@ export class TrustSafetyMonitorsService {
     return [...counts.entries()]
       .filter(([, count]) => count >= threshold)
       .map(([sellerId, attemptCount]) => ({ sellerId, attemptCount }));
+  }
+
+  /**
+   * SRS §5.33 FR-33.10 - extends this admin risk view (never a new screen)
+   * with a signal specific to Growth & Partner Programs: a referrer whose
+   * CNIC, a store payment instrument, or signup device/IP overlaps with
+   * the seller they're claiming referral credit for. Reuses the exact
+   * comparison shape `matchesSuspendedSellerCluster` above already
+   * established (deterministic hashes, `user_security_events` signup
+   * rows) - a read-only view for a human to act on (FR-29.4), never an
+   * auto-penalty; a confirmed finding is what the admin then acts on via
+   * ProgramApplicationService.suspend()/ProgramWithdrawalService.clawback().
+   */
+  async selfReferralFlags(): Promise<SelfReferralFlag[]> {
+    const attributions = await this.prismaAdmin.referralAttribution.findMany({
+      include: { participant: { select: { sellerId: true } } },
+    });
+    if (attributions.length === 0) return [];
+
+    const flags: SelfReferralFlag[] = [];
+    for (const attribution of attributions) {
+      const referrerSellerId = attribution.participant.sellerId;
+      const referredSellerId = attribution.referredSellerId;
+      const matchedSignal = await this.matchSelfReferralSignal(referrerSellerId, referredSellerId);
+      if (matchedSignal) flags.push({ referrerSellerId, referredSellerId, matchedSignal });
+    }
+    return flags;
+  }
+
+  private async matchSelfReferralSignal(
+    referrerSellerId: string,
+    referredSellerId: string,
+  ): Promise<SelfReferralFlag["matchedSignal"] | null> {
+    const [referrer, referred] = await Promise.all([
+      this.prismaAdmin.seller.findUnique({ where: { id: referrerSellerId }, select: { cnicHash: true, userId: true } }),
+      this.prismaAdmin.seller.findUnique({ where: { id: referredSellerId }, select: { cnicHash: true, userId: true } }),
+    ]);
+    if (!referrer || !referred) return null;
+
+    if (referrer.cnicHash && referrer.cnicHash === referred.cnicHash) return "cnic";
+
+    const [referrerStores, referredStores] = await Promise.all([
+      this.prismaAdmin.store.findMany({ where: { sellerId: referrerSellerId }, select: { id: true } }),
+      this.prismaAdmin.store.findMany({ where: { sellerId: referredSellerId }, select: { id: true } }),
+    ]);
+    const [referrerInstruments, referredInstruments] = await Promise.all([
+      this.prismaAdmin.storePaymentInstructions.findMany({
+        where: { storeId: { in: referrerStores.map((s) => s.id) } },
+        select: { bankAccountNumberHash: true, jazzcashNumberHash: true, easypaisaNumberHash: true },
+      }),
+      this.prismaAdmin.storePaymentInstructions.findMany({
+        where: { storeId: { in: referredStores.map((s) => s.id) } },
+        select: { bankAccountNumberHash: true, jazzcashNumberHash: true, easypaisaNumberHash: true },
+      }),
+    ]);
+    const referrerHashes = new Set(
+      referrerInstruments.flatMap((i) => [i.bankAccountNumberHash, i.jazzcashNumberHash, i.easypaisaNumberHash].filter((h): h is string => !!h)),
+    );
+    const paymentMatch = referredInstruments.some((i) =>
+      [i.bankAccountNumberHash, i.jazzcashNumberHash, i.easypaisaNumberHash].some((h) => h && referrerHashes.has(h)),
+    );
+    if (paymentMatch) return "payment_instrument";
+
+    const [referrerEvents, referredEvents] = await Promise.all([
+      this.prismaAdmin.userSecurityEvent.findMany({
+        where: { userId: referrer.userId, eventType: "signup" },
+        select: { ipAddress: true, deviceFingerprint: true },
+      }),
+      this.prismaAdmin.userSecurityEvent.findMany({
+        where: { userId: referred.userId, eventType: "signup" },
+        select: { ipAddress: true, deviceFingerprint: true },
+      }),
+    ]);
+    const referrerIps = new Set(referrerEvents.map((e) => e.ipAddress).filter((v): v is string => !!v));
+    const referrerFingerprints = new Set(referrerEvents.map((e) => e.deviceFingerprint).filter((v): v is string => !!v));
+    const deviceIpMatch = referredEvents.some(
+      (e) => (e.ipAddress && referrerIps.has(e.ipAddress)) || (e.deviceFingerprint && referrerFingerprints.has(e.deviceFingerprint)),
+    );
+    if (deviceIpMatch) return "device_or_ip";
+
+    return null;
   }
 
   private async groupOrdersBySeller(since: Date): Promise<{ sellerId: string; orders: { status: string; placedAt: Date }[] }[]> {

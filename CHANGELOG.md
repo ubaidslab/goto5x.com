@@ -7,6 +7,109 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 22 Phase A — Growth & Partner Programs: shared referral engine
+
+### Added
+- The shared application/eligibility/approval shape (FR-33.2) for all
+  three referral programs — no self-serve join; an admin may suspend or
+  terminate any approved participant at any time.
+- `ReferralAttribution`, unique per referred seller at the database level
+  (FR-33.3) — the first valid attribution across any program wins,
+  permanently; enforced by a real unique constraint, not application logic.
+- Commission restricted to a referred seller's own paid plan-subscription
+  amount only (FR-33.4) — wired into exactly one call site
+  (`PlanFeeDebitService.debitDuePlanFees()`'s successful-debit branch), so
+  it structurally can never accrue from wallet top-ups or a seller's own
+  storefront GMV.
+- Ambassador (FR-33.5): plan-eligibility gate, 8% commission for 6 months
+  (Settings Registry, locked in per-attribution), monthly performance
+  reward sweep, live certificate-tier lookup against admin-editable
+  thresholds.
+- Student Referral (FR-33.6) and Creators (FR-33.7): shared 5%/3-month
+  referral terms; Creators add a manual content-verification queue — a
+  reported view count is never itself a payout trigger.
+- `PayoutRequest` — the Payout Request & Disbursement Engine (SRS §5.6b,
+  dormant since the schema was first drafted), reactivated: requesting/
+  approving never touches the ledger, only a transition to `paid` creates
+  the real debit, so a rejection needs no reversal.
+- Clawback (FR-33.10) reuses the wallet's existing negative-balance
+  mechanism verbatim — can take a participant's balance negative even
+  against an already-paid withdrawal.
+- Self-referral fraud signal added to the existing Trust & Safety admin
+  risk view (`GET /admin/trust-safety/monitors/self-referral`) — CNIC,
+  payment-instrument, and signup device/IP overlap between a referrer and
+  their referred seller.
+- Per-program admin report (referrals, conversions, payouts, rejection
+  rate), application/withdrawal/content-verification admin queues.
+- Migration `20260723172749_module22_growth_partner_programs_phase_a`.
+- Careers (FR-33.8, Phase B) not yet built — no self-referral/commission
+  machinery, next.
+
+## v0.27 — Store Health Score, Verified Store Program, Seller Data Export (spec only, build TBD)
+
+### Added (specification)
+- §5.34/§14.34 Store Health Score: a 0-100 composite score from seven
+  Settings-Registry-weighted inputs (fulfillment timing, cancellation
+  rate, pending-forever rate, dispute/refund signals, profile
+  completeness, account age, moderation/risk history), scheduled
+  recompute + history for trending, plain-language seller-dashboard
+  breakdown. Adds one small schema gap closer: `Store.policyText`.
+- §5.35/§14.35 Verified Store Program: live self-serve eligibility portal,
+  a paid application (processing fee, never a purchase) into a mandatory
+  admin audit queue, a buyer-facing storefront/checkout badge, and a
+  revocable status with both automatic re-review triggers (health drop,
+  T&S action) and a standing admin override.
+- §5.36/§14.36 Seller Data Export to Personal Cloud Storage: a non-blocking
+  export (CSV + summary PDF) to a seller's connected Google Drive on
+  subscription renewal or on demand, with an email-download-link fallback.
+  Explicitly not a substitute for the platform's own backup NFR.
+- FR-22.10 (roadmap note, no build): a future seller mobile app, using the
+  existing SSO + API-first architecture.
+- Slotting: Store Health Score + Verified Store Program become Module 23
+  (tightly coupled to each other); Data Export becomes Module 24
+  (independent). Module 22 (Growth & Partner Programs) is unchanged.
+
+## Module 21 — Hardening & Launch Readiness
+
+### Added
+- CI required-checks (`.github/workflows/ci.yml`): typecheck, unit, e2e
+  (real Postgres/Redis), dependency-audit, web-build.
+- Rate-limit audit against §14.12's endpoint list; the one real gap found
+  (login, seller + admin) closed with the existing dual-key
+  `RateLimitService` pattern.
+- PII-redaction test for the existing logging interceptor.
+- Dependency-vulnerability CI gate (`pnpm audit --audit-level=critical`) +
+  a fixture-proof script; a real `multer` DoS CVE fixed via
+  `pnpm.overrides`.
+- Load/soak simulation CLI (`apps/api/scripts/simulate/`) — seed/run/
+  report/teardown, driven entirely through the real API. Found and fixed
+  three real bugs while smoke-testing it: new sellers' products stuck in
+  the moderation probation queue (100% of simulated orders failed at any
+  N), a missing Postgres grant blocking teardown's trigger-bypass, and a
+  teardown delete against a non-existent column.
+- `docs/launch-runbook.md` — the ordered, checkbox launch-day sequence.
+
+## v0.26 — Growth & Partner Programs (spec only, build TBD) + FR-33.1 standalone
+
+### Added
+- §5.33/§14.33 Growth & Partner Programs: four gated (never self-serve)
+  acquisition channels — Certified Ambassador, Student Referral, Creators,
+  Careers — crediting the existing wallet/ledger and reactivating the
+  dormant Payout Request & Disbursement Engine (§5.6b) for withdrawal.
+- FR-33.1 shipped standalone ahead of the rest: `Subscription.referralSource`
+  captured (shape-validated only) at signup, for both seller and supplier
+  signup paths — this data is unbackfillable, so it couldn't wait for the
+  full module.
+
+## v0.25 — Wallet negative-float floor enforcement fix (post-Module-20)
+
+### Fixed
+- FR-6.26's negative-float floor was seeded but never enforced — a store
+  could take orders indefinitely while its balance ran arbitrarily
+  negative during the grace period. Fixed as an immediate, grace-bypassing
+  pause, checked right after a commission debit lands and on every
+  low-balance sweep pass.
+
 ## v0.24 — Prepaid Credits Wallet (Module 20 build)
 
 ### Added

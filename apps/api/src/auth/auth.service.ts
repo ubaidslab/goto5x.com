@@ -12,6 +12,7 @@ import { RiskScoreService } from "../trust-safety/risk-score.service";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { resolveReferralSource } from "../plans/referral-source.util";
+import { ReferralAttributionService } from "../growth-programs/referral-attribution.service";
 import { JwtAccessPayload } from "../common/types";
 import { labelDevice } from "./device-label.util";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
@@ -56,6 +57,7 @@ export class AuthService {
     private readonly sellerAgreement: SellerAgreementService,
     private readonly riskScore: RiskScoreService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly referralAttribution: ReferralAttributionService,
   ) {}
 
   async signup(dto: SignupDto, ip: string): Promise<{ userId: string } | { waitlisted: true }> {
@@ -146,6 +148,11 @@ export class AuthService {
       // tier 0) plan; this is the real seller->plan assignment that never
       // existed before Module 14 (see subscriptions.service.ts's own note).
       await this.subscriptions.assignFreePlanAtSignup(user.seller!.id, referralSource);
+      // SRS §5.33 FR-33.3 - resolves the just-captured referralSource
+      // against an approved program participant's referral code, if any;
+      // a no-op (never throws, never blocks signup) if null/invalid/
+      // unmatched, same discipline as resolveReferralSource() itself.
+      await this.referralAttribution.tryAttribute(user.seller!.id, referralSource);
     } else if (role === "supplier") {
       // Module 20 (SRS FR-7.10 supplement) - a supplier now gets a real
       // plan assignment too, closing the gap Module 14 documented as

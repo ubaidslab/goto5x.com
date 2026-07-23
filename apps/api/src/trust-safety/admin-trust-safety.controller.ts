@@ -43,6 +43,12 @@ export class AdminTrustSafetyController {
     return this.monitors.bypassAttemptFlags();
   }
 
+  /** Module 22 (SRS §5.33 FR-33.10) - self-referral/fake-cluster signal for Growth & Partner Programs. */
+  @Get("monitors/self-referral")
+  selfReferral() {
+    return this.monitors.selfReferralFlags();
+  }
+
   @Get("payment-review/queue")
   listPaymentReviewQueue() {
     return this.paymentReview.listQueue();

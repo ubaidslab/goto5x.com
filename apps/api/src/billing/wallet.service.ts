@@ -7,7 +7,7 @@ import { round2 } from "../orders/money.util";
 import { ManualBankTransferTopUpAdapter } from "./top-up-adapter.interface";
 
 /**
- * Every debit type subtracts from balance, wallet_topup_credit adds, and
+ * Every debit type subtracts from balance, every credit type adds, and
  * commission_waived's already-negative amount adds back (see the schema
  * comment on LedgerEntry.amount) - this map is the one place that
  * knowledge lives.
@@ -17,10 +17,22 @@ const DEBIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
   "wallet_plan_fee_debit",
   "wallet_team_seat_fee_debit",
   "wallet_device_slot_fee_debit",
+  // Module 22 (SRS §5.33/FR-33.9/33.10) - `payout_debit` (reserved since
+  // the original §5.6b schema, this module's first real writer) and the
+  // clawback debit both reduce balance the same way every other debit
+  // type here does.
+  "payout_debit",
+  "program_clawback_debit",
+]);
+
+const CREDIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
+  "wallet_topup_credit",
+  "program_commission_credit",
+  "program_reward_credit",
 ]);
 
 function signedContribution(type: LedgerEntryType, amount: number): number {
-  if (type === "wallet_topup_credit") return amount;
+  if (CREDIT_TYPES.has(type)) return amount;
   if (type === "commission_waived") return -amount; // amount is already negative - this adds back
   if (DEBIT_TYPES.has(type)) return -amount;
   return 0; // dormant §5.6c/§5.6 entry types never contribute to the v1.0 wallet balance
@@ -84,6 +96,14 @@ export class WalletService {
         return "Team seat fee";
       case "wallet_device_slot_fee_debit":
         return "Extra device slot fee";
+      case "program_commission_credit":
+        return "Growth program referral commission";
+      case "program_reward_credit":
+        return "Growth program reward";
+      case "program_clawback_debit":
+        return "Growth program clawback";
+      case "payout_debit":
+        return "Withdrawal paid";
       default:
         return type;
     }

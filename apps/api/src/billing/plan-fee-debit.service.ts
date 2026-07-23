@@ -3,6 +3,7 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { addInterval } from "../plans/subscriptions.service";
 import { round2 } from "../orders/money.util";
+import { ProgramCommissionService } from "./program-commission.service";
 import { WalletService } from "./wallet.service";
 import { SupplierWalletService } from "./supplier-wallet.service";
 
@@ -33,6 +34,7 @@ export class PlanFeeDebitService {
     private readonly settings: SettingsService,
     private readonly wallet: WalletService,
     private readonly supplierWallet: SupplierWalletService,
+    private readonly programCommission: ProgramCommissionService,
   ) {}
 
   async runMonthlyDebitSweep(now = new Date()): Promise<{ debited: number; downgraded: number }> {
@@ -118,6 +120,12 @@ export class PlanFeeDebitService {
           where: { id: subscription.id },
           data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.plan.billingInterval as "monthly" | "yearly") },
         });
+        // SRS §5.33 FR-33.4 - the ONLY call site: referral commission is
+        // calculated exclusively against a referred seller's own paid
+        // plan-subscription amount, never GMV/sales/wallet top-ups. Never
+        // blocks this debit - a missing/expired/suspended attribution is a
+        // silent no-op inside this call.
+        await this.programCommission.accrueReferralCommissionIfApplicable(subscription.sellerId!, round2(fee), subscription.plan.currency);
         debited += 1;
       } else if (freePlan) {
         await this.prismaAdmin.subscription.update({

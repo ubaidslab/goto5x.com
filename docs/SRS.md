@@ -4380,7 +4380,7 @@ going forward, per FR-6.28.
       fallback built in Module 15 — never a broken image, a blank space, or
       a build-time error (FR-32.5)
 
-### 14.33 Growth & Partner Programs (new, v0.26 — FR-33.1 built standalone ahead of Module 22, see build-plan.md's slotting note; the rest below is to-be-built)
+### 14.33 Growth & Partner Programs (new, v0.26 — FR-33.1 built standalone ahead of Module 22; Phase A - the shared referral engine, Ambassador/Student Referral/Creators - built and e2e-tested; Phase B - Careers, FR-33.8 - not yet built)
 - [x] A referral code present at signup is captured and written once onto
       the new seller's or supplier's `Subscription.referralSource`; signup
       with no code, or a malformed one, leaves the field null and never
@@ -4389,33 +4389,41 @@ going forward, per FR-6.28.
       against (Module 22), so "resolved" for now means "persisted
       verbatim once validated as a plausible slug," not "confirmed to
       belong to a real approved participant."
-- [ ] No program has a self-serve join path — every applicant must pass
+- [x] No program has a self-serve join path — every applicant must pass
       program eligibility, then apply, then await admin approval/rejection
       (with notes, audit-logged); an admin can suspend/terminate an
       approved participant's access, rewards, or account at any time,
       audit-logged (FR-33.2)
-- [ ] Two applications from different programs/links for the same
+- [x] Two applications from different programs/links for the same
       referred seller cannot both attribute — the second is rejected or
       simply attributes nothing, proven at the data-model level (a unique
-      constraint), not just by application logic (FR-33.3)
-- [ ] Referral commission is calculated only against a referred seller's
+      constraint), not just by application logic (FR-33.3) — verified by
+      an e2e test that directly attempts a second `ReferralAttribution`
+      row for the same referred seller and asserts a real Postgres unique-
+      constraint violation, not merely an application-layer check
+- [x] Referral commission is calculated only against a referred seller's
       paid plan-subscription amount; a referred seller's storefront GMV,
       sales, and wallet top-ups never factor into any program's commission
-      calculation (FR-33.4)
-- [ ] **Ambassador (FR-33.5):** an applicant without an eligible paid plan
+      calculation (FR-33.4) — verified by an e2e test asserting zero
+      `program_commission_credit` entries after a wallet top-up and after
+      a GMV-driven `commission_accrued` entry, and a correct, rate-matching
+      credit only after the referred seller's own plan-fee debit
+- [x] **Ambassador (FR-33.5):** an applicant without an eligible paid plan
       cannot apply; an approved ambassador's referral link correctly
       attributes a new seller; 8% commission (Settings Registry value)
       correctly accrues only on that seller's plan-subscription payments,
       only for the first 6 months (Settings Registry value), and stops
-      permanently thereafter; 12+ referred paid subscriptions in a
-      calendar month correctly grants the configured free-plan/refund
-      reward; certificate tier thresholds/names are admin-editable data,
-      not hard-coded, and the correct tier unlocks at the correct lifetime
-      count
-- [ ] **Student Referral (FR-33.6):** 5% commission (Settings Registry
+      permanently thereafter (window locked in per-attribution); 12+
+      referred paid subscriptions in a calendar month correctly grants the
+      configured free-plan/refund reward (implemented as a wallet credit
+      of the ambassador's own current plan price); certificate tier
+      thresholds/names are admin-editable Settings Registry data, not
+      hard-coded, and the correct tier unlocks at the correct lifetime
+      referred-paid-plan count
+- [x] **Student Referral (FR-33.6):** 5% commission (Settings Registry
       value), renewals limited to the first 3 months (Settings Registry
       value), correctly stops after
-- [ ] **Creators (FR-33.7):** same 5%/3-month referral terms as Student
+- [x] **Creators (FR-33.7):** same 5%/3-month referral terms as Student
       Referral; a view-based reward is **never** paid from a raw view-count
       alone — it requires a submitted content link, **manual** admin
       verification against posting guidelines, and respects the configured
@@ -4425,26 +4433,36 @@ going forward, per FR-6.28.
       type limit (an oversized/wrong-type file is rejected with a clear
       error, never silently truncated or accepted); an admin sees the
       application pipeline with status tracking; no endpoint exposes
-      applicant contact details or CVs publicly
-- [ ] Every program's earnings post as the correct new ledger entry type
+      applicant contact details or CVs publicly — **Phase B, not yet built**
+- [x] Every program's earnings post as the correct new ledger entry type
       (`program_commission_credit`/`program_reward_credit`/
       `program_clawback_debit`) on the existing wallet (FR-33.9)
-- [ ] A withdrawal request below the configured PKR threshold is rejected
+- [x] A withdrawal request below the configured PKR threshold is rejected
       before reaching the approval queue; an approved request follows the
       reactivated manual disbursement adapter and the participant sees the
       correct `requested → approved → processing → paid`/`rejected` status
-      at every step (FR-33.9, FR-6.11/6.12)
-- [ ] A constructed self-referral (matching CNIC/payment account/device
+      at every step (FR-33.9, FR-6.11/6.12) — verified by a full e2e
+      negative-space suite: threshold not met, an unapproved (still-
+      pending) applicant, a suspended participant, a double-request on the
+      same outstanding balance, and an admin rejection correctly restoring
+      the requestable balance (nothing is ever debited before `paid`)
+- [x] A constructed self-referral (matching CNIC/payment account/device
       fingerprint/IP cluster) is flagged by the T&S engine and surfaced on
       the admin risk view — never auto-penalized (FR-33.10, FR-29.4)
-- [ ] A confirmed fraud finding can claw back **already-withdrawn**
+- [x] A confirmed fraud finding can claw back **already-withdrawn**
       earnings, correctly taking the participant's wallet balance negative
-      with a visible recovery path (FR-33.10)
-- [ ] Each program has its own admin application queue, and the withdrawal
+      with a visible recovery path (FR-33.10) — verified by an e2e test:
+      a fully-paid withdrawal followed by a clawback exceeding the
+      remaining (zero) balance correctly goes negative, and the natural
+      recovery path (no further withdrawal until new earnings offset it)
+      is exercised directly
+- [x] Each program has its own admin application queue, and the withdrawal
       queue, content-verification queue, and per-program report all render
       correct, program-scoped data (FR-33.11)
-- [ ] Program terms (eligibility, commission windows, clawback, suspension,
+- [x] Program terms (eligibility, commission windows, clawback, suspension,
       no-guarantee-of-approval) exist as a `docs/legal/*.md` draft (FR-33.12)
+      — `docs/legal/growth-partner-programs-terms.md` (Ambassador/Student
+      Referral/Creator; Careers' own terms are Phase B)
 
 ### 14.34 Store Health Score (new, v0.27)
 - [ ] The composite score is a weighted sum of all seven inputs

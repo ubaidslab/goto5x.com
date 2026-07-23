@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AdminModule } from "../admin/admin.module";
+import { GrowthProgramsModule } from "../growth-programs/growth-programs.module";
 import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
@@ -16,7 +17,7 @@ import { SessionService } from "./session.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule, TrustSafetyModule, PlansModule],
+  imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule, TrustSafetyModule, PlansModule, GrowthProgramsModule],
   controllers: [AuthController, AdminAuthController],
   providers: [
     AuthService,

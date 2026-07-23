@@ -9,6 +9,7 @@ import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedWalletSettings } from "../../src/billing/wallet.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
+import { seedGrowthProgramsSettings } from "../../src/growth-programs/growth-programs.seed";
 import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
 import { seedMessagingSettings } from "../../src/messaging/messaging.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
@@ -69,7 +70,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       google_drive_connections,
       seller_agreement_versions,
       platform_promo_code_redemptions, platform_promo_codes,
-      team_members, teams, subscriptions,
+      team_members, teams,
+      payout_requests, program_content_submissions, referral_attributions, program_participants,
+      subscriptions,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans,
       seller_signup_waitlist,
       impersonation_sessions, content_page_revisions, content_pages,
@@ -95,6 +98,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedExternalApiSettings(prisma);
   await seedMessagingSettings(prisma);
   await seedImpersonationSettings(prisma);
+  await seedGrowthProgramsSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded

@@ -13,6 +13,7 @@ import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
 import { PlanFeeDebitService } from "./plan-fee-debit.service";
 import { PlanFeeDebitScheduler } from "./plan-fee-debit.scheduler";
+import { ProgramCommissionService } from "./program-commission.service";
 import { WalletLowBalanceSweepScheduler } from "./wallet-low-balance-sweep.scheduler";
 import {
   AdminWalletController,
@@ -52,6 +53,7 @@ import {
     PlanFeeDebitService,
     PlanFeeDebitScheduler,
     WalletLowBalanceSweepScheduler,
+    ProgramCommissionService,
   ],
   exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService],
 })
