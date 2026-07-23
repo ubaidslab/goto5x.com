@@ -1868,6 +1868,73 @@ model ProgramContentSubmission {
   @@map("program_content_submissions")
 }
 
+// Module 22 Phase B (SRS §5.33, FR-33.8) - Careers. No referral/commission/
+// wallet machinery, fully independent of Phase A's models above. Reuses
+// FR-12.1's "versioned admin-editable content, not a new CMS" DISCIPLINE
+// (admin-managed, not seller-managed, public reads for `open` only) -
+// not literally the same `ContentPage` table, since a job posting needs
+// its own status/application-pipeline shape `ContentPage` doesn't have.
+
+enum JobPostingStatus {
+  draft
+  open
+  closed
+}
+
+model JobPosting {
+  id          String           @id @default(uuid()) @db.Uuid
+  role        String
+  description String
+  status      JobPostingStatus @default(draft)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  applications JobApplication[]
+
+  @@map("job_postings")
+}
+
+// FR-33.8 - "status tracking (received -> reviewing -> interviewing ->
+// rejected/hired - Settings-Registry-editable LABELS, not hard-coded
+// English strings, matching FR-33.5's tier-naming discipline)." The enum
+// below is the fixed internal state machine (needed for real transition
+// logic); `careers.application_stage_labels` (Settings Registry, JSON) is
+// the admin-editable DISPLAY text for each of these five fixed values -
+// same "internal code stays fixed, outward text is data" split FR-33.5's
+// certificate tiers already established.
+enum JobApplicationStatus {
+  received
+  reviewing
+  interviewing
+  rejected
+  hired
+}
+
+// Applicant data (contact details, CV) is never exposed on any public
+// endpoint (FR-33.8, same access discipline as customer PII, §5.13) -
+// enforced by this model having no public-facing read path at all in
+// `careers.controller.ts`; only `admin-careers.controller.ts` (behind
+// `AdminAuthGuard`) ever queries this table.
+model JobApplication {
+  id             String                @id @default(uuid()) @db.Uuid
+  jobPostingId   String                @map("job_posting_id") @db.Uuid
+  applicantName  String                @map("applicant_name")
+  applicantEmail String                @map("applicant_email")
+  applicantPhone String?               @map("applicant_phone")
+  // The object-storage substrate (§3.3), same as every other upload path
+  // in this SRS - a dedicated size/type limit for documents, enforced at
+  // the controller (careers.controller.ts), not this schema.
+  cvUrl          String                @map("cv_url")
+  status         JobApplicationStatus  @default(received)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id])
+
+  @@index([jobPostingId, status], name: "idx_job_applications_posting_status")
+  @@map("job_applications")
+}
+
 /// SRS §5.6b, reactivated by Module 22 (FR-33.9) - the Payout Request &
 /// Disbursement Engine's first real implementation, scoped in v1.0 to
 /// Growth & Partner Programs earnings (the only source of a genuinely

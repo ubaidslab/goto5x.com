@@ -4380,7 +4380,7 @@ going forward, per FR-6.28.
       fallback built in Module 15 — never a broken image, a blank space, or
       a build-time error (FR-32.5)
 
-### 14.33 Growth & Partner Programs (new, v0.26 — FR-33.1 built standalone ahead of Module 22; Phase A - the shared referral engine, Ambassador/Student Referral/Creators - built and e2e-tested; Phase B - Careers, FR-33.8 - not yet built)
+### 14.33 Growth & Partner Programs (new, v0.26 — FR-33.1 built standalone ahead of Module 22; Phase A - the shared referral engine, Ambassador/Student Referral/Creators - built and e2e-tested; Phase B - Careers - built and e2e-tested. Module 22 complete.)
 - [x] A referral code present at signup is captured and written once onto
       the new seller's or supplier's `Subscription.referralSource`; signup
       with no code, or a malformed one, leaves the field null and never
@@ -4428,12 +4428,15 @@ going forward, per FR-6.28.
       alone — it requires a submitted content link, **manual** admin
       verification against posting guidelines, and respects the configured
       monthly per-creator cap even when reported views would justify more
-- [ ] **Careers (FR-33.8):** only `open` job postings are publicly listed;
+- [x] **Careers (FR-33.8):** only `open` job postings are publicly listed;
       a candidate can apply with a CV upload within the configured size/
       type limit (an oversized/wrong-type file is rejected with a clear
       error, never silently truncated or accepted); an admin sees the
       application pipeline with status tracking; no endpoint exposes
-      applicant contact details or CVs publicly — **Phase B, not yet built**
+      applicant contact details or CVs publicly — verified by an e2e test
+      including an explicit wrong-file-type rejection and a direct
+      assertion that the public listing response never contains applicant
+      name/email
 - [x] Every program's earnings post as the correct new ledger entry type
       (`program_commission_credit`/`program_reward_credit`/
       `program_clawback_debit`) on the existing wallet (FR-33.9)

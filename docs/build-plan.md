@@ -1931,10 +1931,41 @@ application-layer check; commission asserted to never accrue from a
 wallet top-up or a GMV-driven `commission_accrued` entry, only from the
 referred seller's own plan-fee debit, at the correct rate).
 
-**Not yet built (Phase B, next): Careers (FR-33.8)** — `JobPosting`/
-`JobApplication`, reusing FR-12.1's versioned-content pattern; no
-referral/commission/wallet machinery, fully independent of everything
-above.
+## Module 22 Phase B (Growth & Partner Programs — Careers) — built (Module 22 complete)
+
+Full scope: `docs/SRS.md` §5.33 FR-33.8, checklist §14.33's Careers line
+(now the last item checked — Module 22 is complete end to end). New
+module `apps/api/src/careers/`, migration
+`20260723180000_module22_growth_partner_programs_phase_b_careers`.
+
+- `JobPosting` (role/description/status: draft/open/closed) and
+  `JobApplication` (applicant name/email/phone, `cvUrl`, a fixed 5-value
+  status enum) — a new, minimal admin-editable content type reusing
+  FR-12.1's discipline (admin-managed, a data write not a deploy) rather
+  than literally overloading `ContentPage`, which has no status/pipeline
+  shape a job posting needs.
+- `careers.controller.ts` (public, no auth) — `GET /careers` lists only
+  `open` postings; `POST /careers/:id/apply` accepts a CV upload via
+  `FileInterceptor`, its own dedicated 5MB/PDF-or-Word limit (distinct
+  from `MediaUploadController`'s 25MB image/clip limit for the same
+  object-storage substrate, §3.3) — a wrong-type or oversized file is
+  rejected with a clear error, never silently accepted.
+- `admin-careers.controller.ts` (`AdminAuthGuard`) — posting CRUD/status,
+  the per-posting application pipeline, and application status updates.
+  Applicant data (contact details, CV) never appears on any public
+  endpoint - structurally, since only this admin controller ever queries
+  `JobApplication`.
+- Stage labels (`received → reviewing → interviewing → rejected/hired`)
+  are Settings-Registry-editable display text
+  (`careers.application_stage_labels`, JSON) — the fixed enum stays the
+  real state machine, only the outward label is admin data, same split
+  FR-33.5's certificate-tier naming already established.
+
+Tests: `module22-careers.e2e-spec.ts` (3 tests) — only-`open`-postings
+public listing, a full apply→pipeline→status-advance flow including an
+explicit wrong-file-type rejection and a direct assertion the public
+listing response never contains applicant name/email, and a closed
+posting rejecting new applications.
 
 ## Module 15 (Customers, Reviews & Data Portability) — built
 

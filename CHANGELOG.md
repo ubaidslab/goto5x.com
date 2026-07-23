@@ -7,6 +7,29 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 22 Phase B — Careers (Module 22 complete)
+
+### Added
+- `JobPosting`/`JobApplication` (FR-33.8) — a minimal admin-editable
+  content type reusing FR-12.1's "admin-managed, data not a deploy"
+  discipline, without overloading the shared `ContentPage` table (a job
+  posting needs its own status/pipeline shape).
+- Public careers listing shows only `open` postings; a candidate applies
+  with a CV upload through a dedicated size/type limit (5MB, PDF/Word
+  only — a document limit, distinct from the media pipeline's 25MB image/
+  clip limit), reusing the existing object-storage substrate.
+- Application-pipeline stage labels (`received`/`reviewing`/
+  `interviewing`/`rejected`/`hired`) are Settings-Registry-editable
+  display text — the internal state machine stays fixed, only the
+  outward label is admin data, mirroring FR-33.5's certificate-tier
+  naming discipline.
+- Applicant data (contact details, CV) never appears on any public
+  endpoint — enforced structurally: only the `AdminAuthGuard`-protected
+  controller ever queries `JobApplication`.
+- Migration `20260723180000_module22_growth_partner_programs_phase_b_careers`.
+- No referral, commission, or wallet code — fully independent of Phase A,
+  as scoped.
+
 ## Module 22 Phase A — Growth & Partner Programs: shared referral engine
 
 ### Added

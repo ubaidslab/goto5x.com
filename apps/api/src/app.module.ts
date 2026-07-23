@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
+import { CareersModule } from "./careers/careers.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { ContentPagesModule } from "./content-pages/content-pages.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
@@ -76,6 +77,7 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     PlansModule,
     TeamsModule,
     GrowthProgramsModule,
+    CareersModule,
     GuardrailsModule,
     ExternalApiModule,
     HealthModule,
