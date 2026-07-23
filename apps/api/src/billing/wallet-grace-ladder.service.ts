@@ -70,16 +70,17 @@ export class WalletGraceLadderService {
    * Called right after a verified top-up (FR-6.25's "instant auto-restore,
    * no admin action needed"). Clears the warning/grace tracking and
    * restores every one of this seller's currently-`orders_paused` stores
-   * to `active` the moment balance crosses back above the threshold - a
-   * no-op if the seller was never in the ladder.
+   * to `active` the moment balance crosses back above the (higher, safer)
+   * warning threshold - this is also the restore path for a seller paused
+   * by the negative-float floor (FR-6.26 fix), which never sets the
+   * warning/grace tracking fields, so this must not gate on them: the
+   * seller-update and store `updateMany` below are harmless no-ops for a
+   * seller who was never in the ladder at all.
    */
   async checkAndRestore(sellerId: string): Promise<void> {
     const threshold = await this.settings.resolve<number>("billing.wallet_low_balance_warning_threshold");
     const balance = await this.wallet.getBalance(sellerId);
     if (balance < threshold) return;
-
-    const seller = await this.prismaAdmin.seller.findUnique({ where: { id: sellerId } });
-    if (!seller || (!seller.walletLowBalanceWarningSentAt && !seller.walletGracePeriodEndsAt)) return;
 
     await this.prismaAdmin.seller.update({
       where: { id: sellerId },
@@ -101,10 +102,51 @@ export class WalletGraceLadderService {
   }
 
   /**
+   * FR-6.26 (fix) - the negative-float floor was seeded but never enforced:
+   * a low balance could run arbitrarily negative through the whole grace
+   * window before anything acted on it. This is the immediate,
+   * grace-bypassing counterpart to the gentler warn-then-pause ladder
+   * below: the moment a seller's balance crosses below the floor - checked
+   * right after a commission debit lands (OrdersService.markAsPaid(), never
+   * blocking the debit itself) and again on every sweep pass - every one of
+   * their `active` stores pauses immediately, no grace days. Restoring is
+   * still the exact same instant path (checkAndRestore(), on a verified
+   * top-up) - there is no separate "floor" restore threshold.
+   */
+  async checkImmediateFloorPause(sellerId: string): Promise<{ paused: boolean }> {
+    const floor = await this.settings.resolve<number>("billing.wallet_negative_float_floor");
+    const balance = await this.wallet.getBalance(sellerId);
+    if (balance >= floor) return { paused: false };
+
+    const result = await this.pauseActiveStores(sellerId);
+    return { paused: result.count > 0 };
+  }
+
+  /** Shared by the floor check above and the grace-expiry branch of runSweep() below - same non-clobbering updateMany, same event. */
+  private async pauseActiveStores(sellerId: string): Promise<{ count: number }> {
+    const result = await this.prismaAdmin.store.updateMany({
+      where: { sellerId, status: "active" },
+      data: { status: "orders_paused" },
+    });
+    if (result.count > 0) {
+      await this.events.emit({
+        eventType: "wallet.orders_paused",
+        actorType: "system",
+        entityType: "seller",
+        entityId: sellerId,
+        metadata: { storeCount: result.count },
+      });
+    }
+    return result;
+  }
+
+  /**
    * FR-6.25 - the scheduled sweep. Per seller (the wallet's real owner,
-   * one seller may hold multiple stores): below threshold + no warning yet
-   * -> send warning, start the grace clock; past the grace deadline and
-   * still below -> pause every one of the seller's `active` stores (never
+   * one seller may hold multiple stores): below the negative-float floor
+   * -> pause immediately regardless of grace state (FR-6.26's fix, above);
+   * otherwise below the (positive) warning threshold + no warning yet ->
+   * send warning, start the grace clock; past the grace deadline and still
+   * below -> pause every one of the seller's `active` stores (never
    * touches `suspended`/`banned`/`archived` - same non-clobbering
    * discipline §14.6c's old suspend/lift sweep already established);
    * recovered above threshold -> restore, same as the instant-restore path.
@@ -112,6 +154,7 @@ export class WalletGraceLadderService {
   async runSweep(now = new Date()): Promise<{ warned: number; paused: number; restored: number }> {
     const threshold = await this.settings.resolve<number>("billing.wallet_low_balance_warning_threshold");
     const graceDays = await this.settings.resolve<number>("billing.wallet_grace_days");
+    const floor = await this.settings.resolve<number>("billing.wallet_negative_float_floor");
 
     const sellers = await this.prismaAdmin.seller.findMany({
       include: { user: { select: { email: true } } },
@@ -123,6 +166,12 @@ export class WalletGraceLadderService {
 
     for (const seller of sellers) {
       const balance = await this.wallet.getBalance(seller.id);
+
+      if (balance < floor) {
+        const result = await this.pauseActiveStores(seller.id);
+        paused += result.count;
+        continue;
+      }
 
       if (balance >= threshold) {
         if (seller.walletLowBalanceWarningSentAt || seller.walletGracePeriodEndsAt) {
@@ -146,20 +195,8 @@ export class WalletGraceLadderService {
       }
 
       if (seller.walletGracePeriodEndsAt && seller.walletGracePeriodEndsAt <= now) {
-        const result = await this.prismaAdmin.store.updateMany({
-          where: { sellerId: seller.id, status: "active" },
-          data: { status: "orders_paused" },
-        });
-        if (result.count > 0) {
-          paused += result.count;
-          await this.events.emit({
-            eventType: "wallet.orders_paused",
-            actorType: "system",
-            entityType: "seller",
-            entityId: seller.id,
-            metadata: { storeCount: result.count },
-          });
-        }
+        const result = await this.pauseActiveStores(seller.id);
+        paused += result.count;
       }
     }
 

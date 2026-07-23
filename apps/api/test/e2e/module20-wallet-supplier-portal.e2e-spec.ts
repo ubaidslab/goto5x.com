@@ -232,6 +232,46 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       const balance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
       expect(balance.body.balance).toBe(-0.5); // 1% of 50, taken from a zero balance
     });
+
+    it("a sale that drives the balance below the floor pauses stores immediately, without waiting for grace to expire; a verified top-up restores (FR-6.26 fix)", async () => {
+      const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("floor-breach@example.com", "floor-breach-store");
+      const adminToken = await createAndLoginAdmin("floor-breach-admin@example.com");
+      const settings = app.get(SettingsService);
+      // A tight floor. No sweep ever runs in this test - the pause must
+      // come from markAsPaid's own immediate floor check, never the
+      // gentler warn-then-grace ladder (which only a sweep can trigger).
+      await settings.setValue("billing.wallet_negative_float_floor", "global", null, -1, ADMIN_ID);
+
+      const { productId, variantId } = await addProduct(token, storeId, 200);
+      const order = await createAndPayManualOrder(token, storeId, productId, variantId);
+      expect(order.status).toBe(201);
+
+      const markPaid = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/orders/${order.body.id}/mark-as-paid`)
+        .set("Authorization", `Bearer ${token}`);
+      // The debit itself never fails, even though it crosses the floor.
+      expect(markPaid.status).toBe(201);
+
+      const balance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
+      expect(balance.body.balance).toBe(-2); // 1% of 200, taken from a zero balance - below the -1 floor
+
+      // Paused immediately by markAsPaid itself - no sweep was ever run.
+      const pausedStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
+      expect(pausedStore.status).toBe("orders_paused");
+
+      const pauseEvent = await superuser.platformEvent.findFirst({ where: { eventType: "wallet.orders_paused", entityId: sellerId } });
+      expect(pauseEvent).not.toBeNull();
+
+      const storefrontRead = await request(app.getHttpServer()).get("/storefront/products?hostname=floor-breach-store.goto5x.com");
+      expect(storefrontRead.status).toBe(200);
+
+      const blockedOrder = await createAndPayManualOrder(token, storeId, productId, variantId);
+      expect(blockedOrder.status).toBe(400);
+
+      await topUpAndVerify(token, adminToken, 500);
+      const restoredStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
+      expect(restoredStore.status).toBe("active");
+    });
   });
 
   describe("Low-balance grace ladder + orders_paused (FR-6.25)", () => {

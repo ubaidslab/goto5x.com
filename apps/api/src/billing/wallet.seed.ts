@@ -4,9 +4,11 @@ import { PrismaClient } from "@prisma/client";
  * Module 20 (SRS §5.6e, FR-6.21/6.24/6.25/6.26). Two thresholds are
  * deliberately separate keys, named so the distinction is obvious in the
  * admin settings UI: `wallet_low_balance_warning_threshold` is a positive
- * "getting risky, top up soon" line; `wallet_negative_float_floor` is a
- * negative hard backstop so a confirmed sale's commission debit never
- * fails mid-transaction. They answer different questions and are never
+ * "getting risky, top up soon" line that starts the gentle warn-then-grace
+ * ladder; `wallet_negative_float_floor` is a negative line that a debit is
+ * always allowed to cross (it never fails or rolls back a sale) but that
+ * immediately pauses the seller's stores the moment it's crossed, bypassing
+ * the grace ladder entirely. They answer different questions and are never
  * meant to be the same value.
  */
 export async function seedWalletSettings(prisma: PrismaClient) {
@@ -57,7 +59,7 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: -100,
       validation: { max: 0 },
-      description: "The most negative (PKR) a wallet balance may go - a hard backstop so a confirmed sale's commission debit never fails or rolls back mid-transaction (SRS FR-6.26). Distinct from the low-balance warning threshold above: this is a floor, not a warning line.",
+      description: "The most negative (PKR) a wallet balance is allowed to run before its stores pause. The commission debit itself never fails or rolls back mid-transaction even if it crosses this line - but the moment balance is below it, active stores pause immediately, bypassing the grace ladder (SRS FR-6.26). Distinct from the low-balance warning threshold above: this is a hard floor, not a warning line.",
     },
     update: {},
   });

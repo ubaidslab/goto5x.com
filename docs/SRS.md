@@ -245,6 +245,38 @@ negative-float cap; `orders_paused` storefront behavior — browsable,
 checkout blocked; wallet transaction history completeness and plain-
 language rendering); §14.7's FR-7.2 line is revised to match.
 
+**v0.25 (post-Module-20 fix) — the negative-float floor (FR-6.26) was
+seeded but never enforced.** The commission debit itself correctly never
+blocked (§14.6e's FR-6.26 guarantee held), but nothing bounded the floor
+as an actual limit: during a low-balance grace period a store could keep
+taking orders indefinitely while its balance ran arbitrarily negative.
+Fixed as an **immediate, grace-bypassing pause**, distinct from the
+gentler warn-then-grace ladder (FR-6.25): the moment a seller's balance
+crosses below the floor — checked right after a commission debit lands
+(`OrdersService.markAsPaid`, never blocking the debit) and again on every
+low-balance sweep pass — their active stores pause immediately, no grace
+days. Restore is the same existing instant-restore path (a verified
+top-up) — no second "floor" restore threshold. §14.6e's FR-6.26 checklist
+line is updated to reflect active enforcement.
+
+**v0.26 (new section, build TBD — see build-plan.md for slotting) — new
+§5.33/§14.33 Growth & Partner Programs:** four gated (never self-serve)
+acquisition channels — Certified Ambassador, Student Referral, Creators,
+and Careers — all crediting the existing wallet/ledger (§5.6e) via three
+new entry types and reactivating the dormant Payout Request &
+Disbursement Engine (§5.6b) for withdrawal, rather than building parallel
+commission or payout machinery. A `ReferralAttribution` row enforces
+single-referral-source-per-seller at the data-model level (FR-33.3);
+commission is calculated only against a referred seller's own paid
+plan-subscription amount, never GMV/sales/wallet top-ups (FR-33.4).
+Creator view-based rewards are gated by manual admin content
+verification, never an automatic view-count payout (FR-33.7). Fraud
+controls extend the existing T&S engine (§5.29) rather than a new
+detector. **One item (FR-33.1, referral-source attribution captured at
+seller signup) is called out to build ahead of the rest of this section**,
+independent of program tables existing yet — that data cannot be
+backfilled once real signups start arriving.
+
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
 supplier adapter/plugin interface, hold-graduation mechanism, shared-identity hook
@@ -2707,6 +2739,152 @@ in the platform.
   fallback stays exactly as built in Module 15** — this FR adds an image
   option, it does not remove the fallback or make a logo mandatory.
 
+### 5.33 Growth & Partner Programs (new, v0.26 — bare-functional in v1.0, real design pass deferred to the founder)
+Four acquisition/growth channels, all gated the same way (eligibility check
+→ application → admin approval — never direct join), all crediting the
+existing wallet/ledger (§5.6e) rather than a parallel payments system, and
+all reusing the existing T&S engine (§5.29), reviewer-role/audit-log
+pattern (§5.8, FR-27.6), and the dormant Payout Request & Disbursement
+Engine (§5.6b) for withdrawal — this section reactivates that engine
+rather than building a second one. UI is bare-functional (the Simplicity
+Invariant baseline every module before a design pass has shipped at,
+§3.13) — the founder does the real visual pass later, same discipline as
+every other module.
+
+- FR-33.1: **Referral-source attribution at signup (build first, ahead of
+  the rest of this section — the data is unbackfillable).** Signup gains
+  an optional `referralSource` capture (a referral code/slug resolved
+  against whichever program tables exist at the time — Ambassador/
+  Student/Creator link, or none) written once, at signup, onto that
+  seller's `Subscription` row. If no valid code is present, or the
+  program tables this FR depends on don't exist yet, the field is simply
+  null — this FR does not require Programs 1–3 to be built first, only the
+  column and the capture-at-signup write path to exist before real seller
+  signups start arriving in production, since a seller who signs up
+  without it recorded can never be attributed retroactively.
+- FR-33.2: **No direct joining, any program.** Every program (33.3–33.6)
+  follows the identical shape: a seller/candidate must first pass an
+  eligibility check (program-specific, e.g. Ambassador requires an
+  existing eligible paid plan), then submits an application, then an
+  admin approves or rejects it (with notes, `admin_audit_logs`-recorded,
+  same audit discipline as every other control-plane mutation). No
+  program has a self-serve join button. An admin may also suspend or
+  terminate any approved participant's access, in-flight rewards, or
+  account at any time for Terms violation, fraud, or suspicious activity
+  — also audit-logged.
+- FR-33.3: **Single referral source per seller, enforced in the data
+  model.** A `ReferralAttribution` record is keyed uniquely per referred
+  seller (one row, ever) — the first valid attribution across any
+  program wins and is written once; a later application from a different
+  program/link for the same seller cannot create a second attribution
+  row (unique constraint, not application-level convention). Commission
+  and reward calculations for a given seller read this one row — they
+  never stack across programs, structurally, not by discipline.
+- FR-33.4: **Commission base — plan-subscription amounts only.**
+  Every program's referral commission (33.5–33.6) is calculated
+  exclusively against amounts the referred seller actually pays the
+  platform for their own plan subscription (§5.6e's wallet plan-fee
+  debits, FR-6.24) — **never** against that seller's storefront GMV,
+  sales, or wallet top-ups collected for commission. A referred seller
+  who never upgrades past the Free Plan generates zero referral
+  commission, by design.
+- FR-33.5: **Program 1 — Certified Ambassador.** Eligibility: applicant
+  must already hold an eligible paid plan (a Settings-Registry-configured
+  plan-tier list, same "which tier gates what" mechanism as every other
+  plan-gated feature, FR-7.1) before applying. On approval, the ambassador
+  receives a unique referral link/code. **Commission:** 8% (Settings
+  Registry value) of a referred seller's paid plan-subscription amount
+  and its renewals, for that seller's **first 6 months only** (Settings
+  Registry value) — after which that seller permanently stops generating
+  commission for this ambassador, tracked per-attribution (FR-33.3), not
+  per-ambassador-lifetime. **Monthly performance reward:** referring 12+
+  (Settings Registry value) *paid* store subscriptions within a calendar
+  month grants a selected premium plan free for the ambassador (or a
+  refund of that plan's fee if already purchased that period) —
+  evaluated by a scheduled monthly sweep, same "idempotent, safe to
+  re-run" discipline as the wallet's own sweeps (§5.6e). **Certificate
+  tiers**, unlocked by lifetime referred paid-sales count crossing
+  admin-configured thresholds (illustrative only: 100/500/1,000/10,000+
+  → Silver/Gold/Diamond/higher) — tier names, thresholds, and count are
+  **Settings-Registry/plan-data**, never hard-coded, mirroring how plan
+  groups/tiers are already founder-editable data (§5.7).
+- FR-33.6: **Program 2 — Student Referral.** Application + admin approval,
+  same shape as FR-33.2. Commission: 5% (Settings Registry value) of a
+  referred seller's paid plan-subscription amount, renewals limited to
+  the **first 3 months only** (Settings Registry value). Earnings post to
+  the same wallet/ledger mechanism as every other program in this section
+  (FR-33.9) — no separate accounting.
+- FR-33.7: **Program 3 — Creators.** Application + admin approval, same
+  5%/3-month referral terms as FR-33.6 (Student Referral), **plus** a
+  per-million-views reward (a Settings Registry rate, PKR per million
+  views, per platform) for promotional content on TikTok, Instagram,
+  YouTube, Snapchat, Facebook, X, and Pinterest. **Anti-fraud requirement
+  (binding — view counts are trivially purchasable): a view count is an
+  eligibility SIGNAL only, never an automatic payout trigger.** Every
+  view-based reward requires, in order: (a) the creator submits a content
+  link as proof; (b) an admin manually verifies the content against
+  published per-platform posting guidelines (proper platform mention/
+  branding/quality — a checklist the admin confirms, not an automated
+  check); (c) a configurable monthly cap per creator (Settings Registry
+  value) bounds total view-reward payout regardless of reported views.
+  Only content that has passed manual verification is reward-eligible —
+  an unverified or rejected submission generates nothing.
+- FR-33.8: **Program 4 — Careers.** A new admin-editable content type,
+  `JobPosting` (role, description, status: draft/open/closed) — reuses
+  FR-12.1's versioned-admin-content mechanism, not a new CMS. A public
+  careers listing shows only `open` postings. A candidate applies through
+  the site with contact details plus a CV upload (the existing
+  object-storage substrate, §3.3 — a dedicated size/type limit for
+  documents, same "explicit limit, no silent truncation" discipline as
+  every other upload path in this SRS, e.g. FR-9.2). An admin sees an
+  application pipeline per posting with status tracking (received →
+  reviewing → interviewing → rejected/hired — Settings-Registry-editable
+  labels, not hard-coded English strings, matching FR-33.5's tier-naming
+  discipline). Applicant data (contact details, CV) is **never** exposed
+  on any public endpoint — admin-only, same access discipline as customer
+  PII elsewhere in this SRS (§5.13).
+- FR-33.9: **Earnings post to the existing wallet/ledger as new entry
+  types** — `program_commission_credit` (FR-33.5/33.6/33.7's referral
+  commission), `program_reward_credit` (FR-33.5's monthly performance
+  reward, FR-33.7's view-based reward), `program_clawback_debit`
+  (FR-33.10's fraud recovery) — extending §5.6e's `LedgerEntry` the same
+  way the wallet itself extended Module 11's ledger, never a parallel
+  ledger. **Withdrawal reactivates the dormant Payout Request &
+  Disbursement Engine (§5.6b)** rather than building a second one: a
+  participant requests a withdrawal once their earned balance crosses a
+  configurable threshold (Settings Registry value, **in PKR**, never a
+  hard-coded USD amount), an admin approves it, funds move via the
+  existing **manual disbursement adapter** (FR-6.11, unchanged), and
+  status is visible to the participant through the same
+  `requested → approved → processing → paid`/`rejected` lifecycle
+  FR-6.12 already specifies.
+- FR-33.10: **Fraud controls extend the existing T&S engine (§5.29),
+  introduce no parallel detector.** Self-referral detection (an
+  applicant's own CNIC, payment account, device fingerprint, or IP
+  cluster matching the seller they're claiming credit for — reusing
+  FR-30.3/FR-30.5's existing identity/fingerprint signals), fake-account
+  clusters, and abnormal referral-to-conversion velocity all extend
+  FR-29.3's rule-based signal set; detection surfaces on the same admin
+  risk view, never auto-penalizes (FR-29.4's "informs a human" discipline
+  applies here too). A confirmed fraud finding triggers reward
+  cancellation and/or **clawback** — a `program_clawback_debit` entry
+  that can take a participant's wallet balance negative even against
+  **already-withdrawn** earnings (the recovery path is the same negative-
+  balance mechanism §5.6e already prices for the commission wallet, not a
+  new one) — and, at admin discretion, suspension per FR-33.2.
+- FR-33.11: **Admin control terminal gains**, per program: an application
+  queue (approve/reject with notes), a withdrawal approval queue, a
+  content-link verification queue (Creators only, FR-33.7), participant
+  suspension controls, and a per-program report (referrals, conversions,
+  payouts, rejection rate) — all built on the existing admin
+  queue/reviewer-role/audit-log pattern (§5.8, FR-27.6), not a new admin
+  framework.
+- FR-33.12: **Legal drafts.** Program terms — eligibility, the commission
+  window per program, clawback, suspension grounds, and an explicit
+  no-guarantee-of-approval statement — ship as a `docs/legal/*.md` draft,
+  flagged for human legal review, same discipline as every other legal
+  text in this SRS (FR-12.2).
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -3259,45 +3437,55 @@ going forward, per FR-6.28.
 - [x] Every monetary display shows the store's configured currency, never a
       hard-coded `"PKR"` string
 
-### 14.6e Prepaid Credits Wallet (v1.0 — new, v0.24, to be built Module 20)
-- [ ] A store cannot be published (accept a real, checkout-completed order)
+### 14.6e Prepaid Credits Wallet (v1.0 — built Module 20, floor-enforcement fix v0.25)
+- [x] A store cannot be published (accept a real, checkout-completed order)
       without a configured payment method, a verified CNIC, **and** a
       wallet top-up meeting the configured minimum, all three (FR-6.21)
-- [ ] Signup, store setup, and the onboarding wizard require no wallet
+- [x] Signup, store setup, and the onboarding wizard require no wallet
       interaction at any step (FR-6.21)
-- [ ] Marking an order paid debits the wallet the correct commission
+- [x] Marking an order paid debits the wallet the correct commission
       amount immediately — no pending order ever produces a wallet debit
       (Financial Truth Invariant, §3.12) (FR-6.22)
-- [ ] A seller can request a top-up (preset or custom amount); the credit
+- [x] A seller can request a top-up (preset or custom amount); the credit
       lands in the wallet only after an admin verifies it, and the
       verification action is captured in `admin_audit_logs` (FR-6.23,
       FR-8.9) — the Module 17 admin invoice-verification screen correctly
       repurposed to list/verify top-ups, not rebuilt from scratch
-- [ ] A plan fee, a Team leader's group total, and an extra-device-slot
+- [x] A plan fee, a Team leader's group total, and an extra-device-slot
       add-on all debit the wallet monthly-in-advance on the correct
       cadence and amount (FR-6.24, FR-7.2, FR-7.15/7.18, FR-25.7)
-- [ ] A wallet balance crossing below the low-balance threshold triggers a
+- [x] A wallet balance crossing below the low-balance threshold triggers a
       dashboard warning and email; staying below it past the configured
       grace period transitions the store to `orders_paused` — storefront
       still browsable, checkout blocked with a respectful notice — never
       the blanket `suspended` behavior (FR-6.25)
-- [ ] A verified top-up that restores the balance above the threshold
+- [x] A verified top-up that restores the balance above the threshold
       lifts `orders_paused` instantly, with no admin action required
       (FR-6.25)
-- [ ] `orders_paused` never overwrites an independently admin-issued
+- [x] `orders_paused` never overwrites an independently admin-issued
       `suspended`/`banned` state (FR-6.25)
-- [ ] A wallet balance can go negative down to, but never past, the
+- [x] A wallet balance can go negative down to, but never past, the
       configured negative-float floor — a confirmed sale's commission
       debit never fails or rolls back the order (FR-6.26)
-- [ ] The seller dashboard shows a live Balance figure, a working top-up
+- [x] The seller dashboard shows a live Balance figure, a working top-up
       screen, and a complete transaction history rendered in plain
       language (never a raw ledger-entry-type string) (FR-6.27)
-- [ ] §5.6c's invoice-generation/overdue-sweep jobs are unscheduled (not
+- [x] §5.6c's invoice-generation/overdue-sweep jobs are unscheduled (not
       deleted) and produce no new `seller_invoices` rows of any type going
       forward (FR-6.28)
-- [ ] A supplier's Premium-tier fee debits a separate supplier-scoped
+- [x] A supplier's Premium-tier fee debits a separate supplier-scoped
       wallet, never the seller wallet of any store it's linked to
       (FR-7.10 supplement)
+- [x] **Negative-float floor is an actively-enforced immediate pause, not
+      just an unblocking backstop (fix, v0.25):** the moment a seller's
+      balance crosses below the configured floor — checked right after a
+      commission debit lands (`markAsPaid`, never blocking the debit
+      itself) and again on every low-balance sweep pass — every one of
+      their `active` stores transitions to `orders_paused` immediately,
+      bypassing the warning/grace-days ladder entirely (that ladder still
+      handles the gentler above-floor path unchanged). A verified top-up
+      restores instantly via the same existing restore path — there is no
+      separate "floor" restore threshold (FR-6.26)
 
 ### 14.7 Subscription Plans, Pricing & Billing (built Module 14)
 - [x] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
@@ -3322,15 +3510,14 @@ going forward, per FR-6.28.
       coded-theme access) enforce correctly for a seller on that plan
 - [x] Billing-cycle mechanics are correct for a full period even though v1.0
       launches on a Free Plan + simple paid tiers
-- [ ] **Plan-fee collection (FR-7.2, revised v0.24 — moved to Module 20):** a
+- [x] **Plan-fee collection (FR-7.2, revised v0.24 — built Module 20):** a
       seller on a paid plan is debited the plan fee from their prepaid
       wallet monthly-in-advance (§5.6e/FR-6.24), not via a
       `seller_invoices` row; insufficient balance downgrades to Free
-      (never `orders_paused`, never suspends the store). **Not yet
-      built** — the `plan_subscription`/`group_sponsorship`
-      `seller_invoices` schema from Module 14 stays dormant (FR-6.28);
-      until Module 20 ships, a paid plan is reachable only via an admin
-      grant (FR-7.8)
+      (never `orders_paused`, never suspends the store — that path is the
+      commission-wallet floor's job alone). The `plan_subscription`/
+      `group_sponsorship` `seller_invoices` schema from Module 14 stays
+      dormant (FR-6.28)
 - [x] An admin can grant any plan, including Free, directly to a specific seller,
       bypassing checkout; the grant is captured in `admin_audit_logs` with the
       seller's before/after plan (FR-7.8)
@@ -3965,6 +4152,67 @@ going forward, per FR-6.28.
 - [x] With no logo set, both surfaces show the exact typographic-mark
       fallback built in Module 15 — never a broken image, a blank space, or
       a build-time error (FR-32.5)
+
+### 14.33 Growth & Partner Programs (new, v0.26 — to be built, module TBD per build-plan.md slotting)
+- [ ] A referral code present at signup is resolved and written once onto
+      the new seller's `Subscription` row; signup with no code, or an
+      invalid one, leaves the field null and never blocks signup (FR-33.1)
+- [ ] No program has a self-serve join path — every applicant must pass
+      program eligibility, then apply, then await admin approval/rejection
+      (with notes, audit-logged); an admin can suspend/terminate an
+      approved participant's access, rewards, or account at any time,
+      audit-logged (FR-33.2)
+- [ ] Two applications from different programs/links for the same
+      referred seller cannot both attribute — the second is rejected or
+      simply attributes nothing, proven at the data-model level (a unique
+      constraint), not just by application logic (FR-33.3)
+- [ ] Referral commission is calculated only against a referred seller's
+      paid plan-subscription amount; a referred seller's storefront GMV,
+      sales, and wallet top-ups never factor into any program's commission
+      calculation (FR-33.4)
+- [ ] **Ambassador (FR-33.5):** an applicant without an eligible paid plan
+      cannot apply; an approved ambassador's referral link correctly
+      attributes a new seller; 8% commission (Settings Registry value)
+      correctly accrues only on that seller's plan-subscription payments,
+      only for the first 6 months (Settings Registry value), and stops
+      permanently thereafter; 12+ referred paid subscriptions in a
+      calendar month correctly grants the configured free-plan/refund
+      reward; certificate tier thresholds/names are admin-editable data,
+      not hard-coded, and the correct tier unlocks at the correct lifetime
+      count
+- [ ] **Student Referral (FR-33.6):** 5% commission (Settings Registry
+      value), renewals limited to the first 3 months (Settings Registry
+      value), correctly stops after
+- [ ] **Creators (FR-33.7):** same 5%/3-month referral terms as Student
+      Referral; a view-based reward is **never** paid from a raw view-count
+      alone — it requires a submitted content link, **manual** admin
+      verification against posting guidelines, and respects the configured
+      monthly per-creator cap even when reported views would justify more
+- [ ] **Careers (FR-33.8):** only `open` job postings are publicly listed;
+      a candidate can apply with a CV upload within the configured size/
+      type limit (an oversized/wrong-type file is rejected with a clear
+      error, never silently truncated or accepted); an admin sees the
+      application pipeline with status tracking; no endpoint exposes
+      applicant contact details or CVs publicly
+- [ ] Every program's earnings post as the correct new ledger entry type
+      (`program_commission_credit`/`program_reward_credit`/
+      `program_clawback_debit`) on the existing wallet (FR-33.9)
+- [ ] A withdrawal request below the configured PKR threshold is rejected
+      before reaching the approval queue; an approved request follows the
+      reactivated manual disbursement adapter and the participant sees the
+      correct `requested → approved → processing → paid`/`rejected` status
+      at every step (FR-33.9, FR-6.11/6.12)
+- [ ] A constructed self-referral (matching CNIC/payment account/device
+      fingerprint/IP cluster) is flagged by the T&S engine and surfaced on
+      the admin risk view — never auto-penalized (FR-33.10, FR-29.4)
+- [ ] A confirmed fraud finding can claw back **already-withdrawn**
+      earnings, correctly taking the participant's wallet balance negative
+      with a visible recovery path (FR-33.10)
+- [ ] Each program has its own admin application queue, and the withdrawal
+      queue, content-verification queue, and per-program report all render
+      correct, program-scoped data (FR-33.11)
+- [ ] Program terms (eligibility, commission windows, clawback, suspension,
+      no-guarantee-of-approval) exist as a `docs/legal/*.md` draft (FR-33.12)
 
 ---
 

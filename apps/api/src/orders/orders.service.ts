@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { OrderStatus } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
+import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
 import { CustomersService } from "../customers/customers.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
@@ -35,6 +36,7 @@ export class OrdersService {
     private readonly printifyAdapter: PrintifyAdapter,
     private readonly ledger: LedgerService,
     private readonly customers: CustomersService,
+    private readonly walletGraceLadder: WalletGraceLadderService,
   ) {}
 
   async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; tag?: string }) {
@@ -138,6 +140,20 @@ export class OrdersService {
 
     await this.notifyBuyer({ storeName, domains, storeSlug }, order, "confirmed");
     await this.forwardSupplierItems(order);
+
+    // FR-6.26 (fix) - the commission debit that just landed above must
+    // never be blocked by this, but a debit that pushes the seller's
+    // balance below the negative-float floor pauses their stores
+    // immediately (bypassing the gentler grace ladder) - same non-blocking
+    // discipline as forwardSupplierItems above.
+    try {
+      await this.walletGraceLadder.checkImmediateFloorPause(sellerId);
+    } catch (err) {
+      this.logger.error(
+        `Failed to run the wallet negative-float floor check for seller ${sellerId} after order ${orderId} - payment confirmation is unaffected.`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
 
     return order;
   }

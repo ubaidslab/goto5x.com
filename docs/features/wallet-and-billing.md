@@ -38,10 +38,15 @@ never touch buyer money while still collecting its own revenue safely.
   fully visible to browse, with a polite "not accepting orders right now"
   message at checkout. The moment a top-up is verified, the store starts
   accepting orders again immediately, no extra steps.
-- **Never a failed sale.** The wallet is allowed to dip slightly negative so
-  that a real, already-placed order is never blocked by an accounting edge
-  case — the low-balance warning is meant to catch problems long before that
-  ever happens.
+- **Never a failed sale.** A commission deduction is never blocked or rolled
+  back, even if it takes the wallet negative — a real, already-placed order
+  is never undone by an accounting edge case.
+- **The negative floor pauses immediately.** Unlike the gentler warning-then-
+  grace-period path above, crossing the hard negative floor pauses the
+  seller's stores right away — checked the instant a commission deduction
+  lands, and again on every routine sweep. There's no grace window for this
+  one: it's a hard line, not a warning. A verified top-up restores the store
+  instantly either way.
 
 ## Settings keys
 

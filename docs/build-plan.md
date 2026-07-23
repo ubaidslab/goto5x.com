@@ -57,8 +57,9 @@ See "Amendment approved after Module 14, ahead of Module 15" below for why.
 | 17 | Admin Control Plane completion — **built** | 1, 6, 11, 12, 14 | Remainder of 14.8: general admin-editable content pages (FR-12.1) plus platform brand assets built on the same mechanism (FR-12.3); in-app messaging (FR-8.15); the real-time analytics + unit-economics dashboard UI (FR-8.10, on top of Module 14's data-only `UnitEconomicsService`); seller impersonation/view-any-store with the founder-approved impersonation-transparency additions (FR-8.4 — support-mode banner, `platform_event` on session start, seller-visible support-access history, blocked high-risk writes during impersonation); the Listing Moderation Engine's bare functional queue admin page + REVIEWER negative-access confirmation (FR-27.6, new in v0.11); commission-invoice verification screen (Module 11). **T&S enforcement/risk-view screens were already built in Module 12 — removed from this row, not remaining work here.** |
 | 18 | External-SaaS Bridges — **built** | 4, 2 | 14.22, incl. referral attribution + discount eligibility (FR-24.13–24.14, new in v0.7) |
 | 19 | Platform's Own Site — premium pass | — (content/visual, blocked on branding assets) | 14.0 (remainder) |
-| 20 | **Supplier Portal Completion & Plan-Fee Collection** (new, v0.20) | 8, 9, 11, 14 | Remainder of 14.3 (FR-3.3's supplier-facing dashboard UI — the aggregation API/data already exists, built in Module 9), the Supplier Premium Plan's actual gate (FR-7.10 — `Subscription`/`SettingsContext` gain supplier support), and 14.7's plan-fee collection line (FR-7.2 revised v0.20 — `plan_subscription` invoice generation, extending Module 11/14's `InvoicesService`) |
+| 20 | **Supplier Portal Completion & Plan-Fee Collection, revised v0.24 into Prepaid Credits Wallet** — **built** | 8, 9, 11, 14 | §14.6e (wallet, publish gate, grace ladder, negative-float floor — floor-enforcement fix v0.25), remainder of 14.3 (supplier dashboard UI), FR-7.10's Supplier Premium Plan gate, 14.7's plan-fee-via-wallet line |
 | 21 | Hardening & Launch Readiness (renumbered v0.20 from 20) | all above | 14.12 (remainder), full cross-tenant sweep |
+| 22 | **Growth & Partner Programs** (new, v0.26) | 1, 6 (signup-velocity extension), 8/§5.6b (dormant disbursement reactivation), 11 (ledger), 12 (T&S engine extension), 14 (plan-tier eligibility gate), §5.6e/Module 20 (wallet), 17 (content-pages system for Careers, admin queue pattern) | §14.33 — see "Growth & Partner Programs slotting" below for the fuller reasoning and why it sits *after* 21, not before |
 
 **Two modules inserted in v0.10** (see the SRS's own v0.9→v0.10 changelog for
 the full reasoning, this is just the sequencing consequence): **Listing
@@ -1590,6 +1591,84 @@ locally). Tests: one new e2e file, `module20-wallet-supplier-portal.e2e-spec.ts`
 helper updated to set `publishedAt` directly (mirroring the existing
 CNIC-bypass precedent) now that a real publish gate exists. Full suite:
 31 e2e files / 270 tests, 22 unit files / 122 tests, all green.
+
+**Post-delivery fix (v0.25):** the founder's own direct repo verification
+caught a real gap this module's own testing missed —
+`billing.wallet_negative_float_floor` was seeded but never read by any
+debit/sweep path, so it bounded nothing. Fixed: `WalletGraceLadderService
+.checkImmediateFloorPause(sellerId)` (new method, plus a shared
+`pauseActiveStores()` helper extracted from the existing sweep's pause
+branch) — called non-blockingly from `OrdersService.markAsPaid()` right
+after the commission debit commits, and from `runSweep()`'s first check
+per seller (ahead of the warning/grace branches). Crossing the floor
+pauses active stores immediately, bypassing the grace ladder entirely;
+restore reuses the existing instant-restore path, no second threshold.
+One new e2e test added to the existing file (floor-breach → immediate
+pause → verified top-up restores). §14.6e/§14.7 checklist items also
+retroactively checked off in this fix's commit — the original Module 20
+commit built everything but never flipped the SRS checkboxes to match.
+
+---
+
+## Growth & Partner Programs slotting (Module 22, v0.26 — plan stated, build pending founder confirmation)
+
+Full scope: `docs/SRS.md` §5.33/§14.33 (FR-33.1–33.12). Four founder-specified
+programs (Certified Ambassador, Student Referral, Creators, Careers), all
+gated the same way (eligibility → application → admin approval), all
+crediting the existing wallet/ledger, all reusing the existing T&S engine.
+
+**Slotting: after Module 21 (Hardening & Launch Readiness), as its own
+Module 22 — not folded into, or ahead of, the launch-readiness gate.**
+Reasoning:
+
+1. **Nothing about core marketplace function depends on it.** A seller can
+   sign up, publish a store, sell, and get paid (Modules 1–20) with zero
+   input from any referral/ambassador/careers program. This is acquisition
+   tooling, not commerce plumbing — it doesn't belong on the critical path
+   to a sellable, launchable platform.
+2. **Module 21 is described as "all above… full cross-tenant sweep."**
+   Inserting a brand-new module ahead of it would mean Module 21's own
+   dependency list grows to include Growth & Partner Programs, and its
+   security sweep would need to cover a feature that reactivates a
+   previously-dormant money-movement path (disbursement, §5.6b) — new
+   attack surface (self-referral fraud, fake-account clusters, clawback
+   edge cases) landing *inside* the hardening pass meant to close out
+   everything that came before it. Cleaner to let Module 21 harden the
+   platform as it stands through Module 20, ship, and bring Growth &
+   Partner Programs in afterward as its own self-contained, separately
+   hardened addition.
+3. **Reactivating dormant disbursement machinery deserves its own
+   scrutiny, not a rider on the launch gate.** §5.6b has sat dormant and
+   unbuilt since the v0.15 payment-model pivot; the first thing that ever
+   exercises it moving real money *out* of the platform is exactly the
+   kind of change that should land, and be verified, on its own — not
+   bundled into the same push as the final pre-launch sweep.
+4. **`UI stays bare-functional` (founder's own instruction) is itself a
+   signal this isn't launch-blocking polish** — every other genuinely
+   launch-blocking module in this sequence (15.5, for instance) got a
+   real design bar specifically *because* it's launch-blocking. This one
+   doesn't get that treatment because it isn't.
+
+**The one exception — FR-33.1 (referral-source attribution at signup)
+should NOT wait for Module 22.** The founder's own callout is correct:
+this data is unbackfillable, and real seller signups may start arriving
+as soon as Module 21 clears, well before Module 22's full engine exists.
+Recommendation: ship FR-33.1 as a small, standalone amendment (one
+nullable column + one write path, no program tables required to exist
+yet) immediately after whichever module is currently in flight when this
+is confirmed — not gated on Module 22's approval, and not skipped while
+waiting for it.
+
+**Internal split within Module 22 (build order, once confirmed):**
+Programs 1–3 (Ambassador/Student/Creator) share one engine — application/
+approval, `ReferralAttribution`, commission calculation, wallet ledger
+entries, withdrawal/disbursement reactivation, T&S fraud hooks — and
+should be built together first. Careers (Program 4) touches none of that
+machinery (no referral, no commission, no wallet) and reuses the content-
+pages system almost as-is; it can be built either alongside or
+immediately after the referral engine without blocking on it, and would
+be the first candidate to defer if the module needs splitting further for
+checklist-gating purposes.
 
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
