@@ -81,6 +81,48 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
     expect(storesRes.body).toEqual([]);
   });
 
+  it("captures a referral code at signup onto Subscription.referralSource - malformed codes are nulled, not rejected (FR-33.1)", async () => {
+    const withCode = await request(app.getHttpServer()).post("/auth/signup").send({
+      agreementAccepted: true,
+      email: "referred-seller@example.com",
+      password: "correct-horse-battery",
+      businessName: "Referred Store",
+      referralCode: "amb_ali-01",
+    });
+    expect(withCode.status).toBe(201);
+    const referredUser = await superuser.user.findUniqueOrThrow({ where: { email: "referred-seller@example.com" } });
+    const referredSeller = await superuser.seller.findUniqueOrThrow({ where: { userId: referredUser.id } });
+    const referredSub = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: referredSeller.id } });
+    expect(referredSub.referralSource).toBe("amb_ali-01");
+
+    const withBadCode = await request(app.getHttpServer()).post("/auth/signup").send({
+      agreementAccepted: true,
+      email: "bad-code-seller@example.com",
+      password: "correct-horse-battery",
+      businessName: "Bad Code Store",
+      referralCode: "not a valid slug!!",
+    });
+    expect(withBadCode.status).toBe(201);
+    const badCodeSeller = await superuser.seller.findUniqueOrThrow({
+      where: { userId: (await superuser.user.findUniqueOrThrow({ where: { email: "bad-code-seller@example.com" } })).id },
+    });
+    const badCodeSub = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: badCodeSeller.id } });
+    expect(badCodeSub.referralSource).toBeNull();
+
+    const withoutCode = await request(app.getHttpServer()).post("/auth/signup").send({
+      agreementAccepted: true,
+      email: "no-code-seller@example.com",
+      password: "correct-horse-battery",
+      businessName: "No Code Store",
+    });
+    expect(withoutCode.status).toBe(201);
+    const noCodeSeller = await superuser.seller.findUniqueOrThrow({
+      where: { userId: (await superuser.user.findUniqueOrThrow({ where: { email: "no-code-seller@example.com" } })).id },
+    });
+    const noCodeSub = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: noCodeSeller.id } });
+    expect(noCodeSub.referralSource).toBeNull();
+  });
+
   it("rejects login with the wrong password", async () => {
     await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "founder2@example.com",

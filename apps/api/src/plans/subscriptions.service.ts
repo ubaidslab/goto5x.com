@@ -31,8 +31,15 @@ export class SubscriptionsService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  /** Called once, from AuthService.signup() - every seller starts on the Free (individual, tier 0) plan. */
-  async assignFreePlanAtSignup(sellerId: string): Promise<void> {
+  /**
+   * Called once, from AuthService.signup() - every seller starts on the
+   * Free (individual, tier 0) plan. `referralSource` (SRS FR-33.1) is
+   * captured here, once, since this is the only place a Subscription row
+   * is ever created for a seller - already-shape-validated by
+   * resolveReferralSource(), never re-validated against a program table
+   * here since none exist yet (Module 22).
+   */
+  async assignFreePlanAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
     const freePlan = await this.prisma.plan.findFirst({
       where: { planGroup: "individual", tierOrder: 0 },
     });
@@ -42,7 +49,7 @@ export class SubscriptionsService {
       throw new Error("No Free (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
     }
     await this.prisma.subscription.create({
-      data: { sellerId, planId: freePlan.id },
+      data: { sellerId, planId: freePlan.id, referralSource },
     });
   }
 
@@ -57,12 +64,12 @@ export class SubscriptionsService {
    * closing the gap build-plan.md flagged since Module 14 ("Subscription
    * is seller-only... for the same reason [no supplier portal]").
    */
-  async assignFreeSupplierPlanAtSignup(supplierId: string): Promise<void> {
+  async assignFreeSupplierPlanAtSignup(supplierId: string, referralSource: string | null = null): Promise<void> {
     const freePlan = await this.prisma.plan.findFirst({ where: { planGroup: "supplier", tierOrder: 0 } });
     if (!freePlan) {
       throw new Error("No Free (supplier, tier 0) plan exists - plans.seed.ts must run before signup.");
     }
-    await this.prisma.subscription.create({ data: { supplierId, planId: freePlan.id } });
+    await this.prisma.subscription.create({ data: { supplierId, planId: freePlan.id, referralSource } });
   }
 
   async getSupplierSubscription(supplierId: string) {

@@ -48,4 +48,13 @@ export class SignupDto {
   @IsString()
   @MaxLength(200)
   deviceFingerprint?: string;
+
+  // SRS §5.33/FR-33.1 - captured once, at signup, since it can never be
+  // backfilled. Loosely validated here (length only) - shape/format
+  // validation happens in resolveReferralSource(), which never blocks
+  // signup on a bad code, only nulls it.
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  referralCode?: string;
 }

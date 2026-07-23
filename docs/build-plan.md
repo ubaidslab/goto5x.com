@@ -1659,6 +1659,16 @@ yet) immediately after whichever module is currently in flight when this
 is confirmed — not gated on Module 22's approval, and not skipped while
 waiting for it.
 
+**Shipped (v0.26, standalone, ahead of the rest of Module 22):**
+`Subscription.referralSource` (migration
+`20260723083536_module22_referral_source_attribution`), captured from
+`SignupDto.referralCode` via `resolveReferralSource()`
+(`apps/api/src/plans/referral-source.util.ts` — shape-validates only, no
+program table to resolve against yet, never blocks signup on a bad code).
+Wired through both `assignFreePlanAtSignup`/`assignFreeSupplierPlanAtSignup`
+so seller and supplier signups both capture it. §14.33's FR-33.1 line
+checked off; the rest of §14.33 stays pending Module 22.
+
 **Internal split within Module 22 (build order, once confirmed):**
 Programs 1–3 (Ambassador/Student/Creator) share one engine — application/
 approval, `ReferralAttribution`, commission calculation, wallet ledger

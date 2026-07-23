@@ -11,6 +11,7 @@ import { SettingsService } from "../settings-registry/settings.service";
 import { RiskScoreService } from "../trust-safety/risk-score.service";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
+import { resolveReferralSource } from "../plans/referral-source.util";
 import { JwtAccessPayload } from "../common/types";
 import { labelDevice } from "./device-label.util";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
@@ -128,6 +129,10 @@ export class AuthService {
     // device fingerprint the client supplied (a risk-score input only).
     await this.securityEvents.record(user.id, "signup", ip, dto.deviceFingerprint);
 
+    // SRS §5.33/FR-33.1 - captured once here, regardless of role, since
+    // this is the only moment it can ever be recorded (unbackfillable).
+    const referralSource = resolveReferralSource(dto.referralCode);
+
     if (role === "seller") {
       // SRS §5.29/FR-29.1 - SignupDto.agreementAccepted is already validated
       // `=== true` before this point; recording acceptance here is what
@@ -140,12 +145,12 @@ export class AuthService {
       // SRS §5.7/FR-7.1/7.3 - every seller starts on the Free (individual,
       // tier 0) plan; this is the real seller->plan assignment that never
       // existed before Module 14 (see subscriptions.service.ts's own note).
-      await this.subscriptions.assignFreePlanAtSignup(user.seller!.id);
+      await this.subscriptions.assignFreePlanAtSignup(user.seller!.id, referralSource);
     } else if (role === "supplier") {
       // Module 20 (SRS FR-7.10 supplement) - a supplier now gets a real
       // plan assignment too, closing the gap Module 14 documented as
       // deferred ("Subscription is seller-only... for the same reason").
-      await this.subscriptions.assignFreeSupplierPlanAtSignup(user.supplier!.id);
+      await this.subscriptions.assignFreeSupplierPlanAtSignup(user.supplier!.id, referralSource);
     }
 
     return { userId: user.id };

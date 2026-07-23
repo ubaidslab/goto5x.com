@@ -1046,6 +1046,10 @@ model Subscription {
   // member; null for an unsponsored subscription (including a member who has
   // left, per FR-7.13's graceful downgrade).
   sponsoredByTeamId String?            @map("sponsored_by_team_id") @db.Uuid
+  // v0.26/FR-33.1 - captured once, at signup, never backfillable. No
+  // Growth & Partner Programs tables exist yet to resolve this against
+  // (Module 22) - it is stored as given (shape-validated only) until then.
+  referralSource    String?            @map("referral_source")
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 

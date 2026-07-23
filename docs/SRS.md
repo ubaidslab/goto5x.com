@@ -4153,10 +4153,15 @@ going forward, per FR-6.28.
       fallback built in Module 15 — never a broken image, a blank space, or
       a build-time error (FR-32.5)
 
-### 14.33 Growth & Partner Programs (new, v0.26 — to be built, module TBD per build-plan.md slotting)
-- [ ] A referral code present at signup is resolved and written once onto
-      the new seller's `Subscription` row; signup with no code, or an
-      invalid one, leaves the field null and never blocks signup (FR-33.1)
+### 14.33 Growth & Partner Programs (new, v0.26 — FR-33.1 built standalone ahead of Module 22, see build-plan.md's slotting note; the rest below is to-be-built)
+- [x] A referral code present at signup is captured and written once onto
+      the new seller's or supplier's `Subscription.referralSource`; signup
+      with no code, or a malformed one, leaves the field null and never
+      blocks signup (FR-33.1). **Scope note:** this only captures and
+      shape-validates the code — no program table exists yet to resolve it
+      against (Module 22), so "resolved" for now means "persisted
+      verbatim once validated as a plausible slug," not "confirmed to
+      belong to a real approved participant."
 - [ ] No program has a self-serve join path — every applicant must pass
       program eligibility, then apply, then await admin approval/rejection
       (with notes, audit-logged); an admin can suspend/terminate an
