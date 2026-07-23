@@ -46,7 +46,7 @@ interface SupportAccessEntry {
 }
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
-  { id: "default", label: "Indigo (default)", swatch: "#5b5fef" },
+  { id: "default", label: "Blue (default)", swatch: "#0071e3" },
   { id: "emerald", label: "Emerald", swatch: "#1f9254" },
   { id: "amber", label: "Amber", swatch: "#b5750a" },
   { id: "rose", label: "Rose", swatch: "#c23b6b" },

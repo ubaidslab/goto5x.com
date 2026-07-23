@@ -1,16 +1,19 @@
 @import "tailwindcss";
 
 /*
- * goto5x.com Design Tokens — v1 (provisional, founder review pending)
- * -----------------------------------------------------------------
+ * goto5x.com Design Tokens — v2, monochrome premium direction (provisional,
+ * founder design pass still pending — see CLAUDE.md's "UI/UX Skills
+ * Policy" section)
+ * -----------------------------------------------------------------------
  * Single source of truth for every color, type, spacing, radius, shadow,
  * and motion value used across the seller dashboard (and, later, any other
  * apps/web surface that adopts this system). Rebranding — a new accent
  * color, a real logo, adjusted type scale — is a change to this file only,
- * never a per-screen rewrite. Direction: apple.com-class minimalism,
- * horizonx.so-class motion, iOS-like polish — a clean sans-serif, a
- * restrained neutral palette plus one confident accent, generous
- * whitespace, and subtle depth rather than heavy borders/shadows.
+ * never a per-screen rewrite. Direction: monochrome premium — near-white
+ * surfaces, near-black ink, a grayscale scale between, and AT MOST one
+ * restrained accent (used sparingly: links, the primary CTA) — apple.com
+ * discipline, horizonx.so-class motion, iOS-like polish; generous
+ * whitespace and subtle depth rather than heavy borders/shadows.
  *
  * Values inside `@theme` are read by Tailwind v4 to generate matching
  * utilities (e.g. --color-accent -> bg-accent/text-accent/border-accent,
@@ -21,7 +24,8 @@
 @theme {
   /* Neutrals - the near-black/near-white pairing this whole system reads
      against; deliberately not pure #000/#fff (matches the softer, less
-     clinical iOS/Apple neutral scale). */
+     clinical iOS/Apple neutral scale). Already a true grayscale - no hue
+     tint - so the monochrome direction needed no change here. */
   --color-canvas: #f5f5f7;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
@@ -31,14 +35,20 @@
   --color-ink-muted: #6e6e73;
   --color-ink-faint: #8e8e93;
 
-  /* Accent - the one confident color. Placeholder brand color pending
-     founder review (see the wordmark note in Header.tsx); every other
-     color in this file is neutral by design so a future accent swap
-     never fights a second "loud" color. */
-  --color-accent: #5b5fef;
-  --color-accent-hover: #4a4edb;
-  --color-accent-active: #3d40c4;
-  --color-accent-subtle: #eef0fe;
+  /* Accent - the ONE restrained color, used sparingly (links, primary
+     CTA) - every other color in this file is neutral by design so a
+     future accent swap never fights a second "loud" color. Changed from
+     a saturated violet/indigo to a restrained, apple.com-style blue -
+     closer to Apple's own link/CTA blue than a SaaS-generic brand hue,
+     which reads calmer against an otherwise fully grayscale UI. Still a
+     placeholder pending the founder's real design pass (see the wordmark
+     note below) - the exact hue matters less than the "at most one, used
+     sparingly" discipline this token structure enforces.
+  */
+  --color-accent: #0071e3;
+  --color-accent-hover: #0058b0;
+  --color-accent-active: #00468c;
+  --color-accent-subtle: #e8f2fd;
   --color-on-accent: #ffffff;
 
   /* Semantic status colors - kept muted/refined, never neon, for order
@@ -85,10 +95,10 @@
     --color-ink-muted: #a1a1a6;
     --color-ink-faint: #7a7a7e;
 
-    --color-accent: #7b7ff5;
-    --color-accent-hover: #9295f7;
-    --color-accent-active: #6165e8;
-    --color-accent-subtle: #23234a;
+    --color-accent: #409cff;
+    --color-accent-hover: #64b3ff;
+    --color-accent-active: #2a86ea;
+    --color-accent-subtle: #16283d;
 
     --color-success-subtle: #113322;
     --color-warning-subtle: #3a2a0d;
