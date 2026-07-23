@@ -1801,6 +1801,45 @@ immediately after the referral engine without blocking on it, and would
 be the first candidate to defer if the module needs splitting further for
 checklist-gating purposes.
 
+**v0.27 slotting decision — Store Health Score, Verified Store Program,
+and Data Export do NOT fold into Module 22; they become two new sibling
+modules built immediately after it, in this order: Module 22 (Growth &
+Partner Programs, exactly as scoped above, unchanged) → Module 23 (Store
+Health Score & Verified Store Program, §5.34/§5.35) → Module 24 (Seller
+Data Export to Personal Cloud Storage, §5.36).** Reasoning:
+
+1. **Thematically distinct from Growth & Partner Programs.** Module 22 is
+   acquisition tooling (referral/ambassador/creator/careers) — none of it
+   touches order fulfillment data, T&S risk scoring, or domain tenure.
+   Store Health Score and the Verified Store Program are a trust/quality
+   surface reading from Orders (§5.9), Trust & Safety (§5.29/§5.30), and
+   Domains (§5.3) — different data, different admin workflow (a health-
+   driven eligibility portal and a mandatory audit queue, vs. an
+   application/approval queue for a referral program). Folding them
+   together would produce one oversized module with two unrelated §14
+   checklists to gate at once, working against the "one module at a time"
+   discipline this whole engagement runs on.
+2. **Store Health Score and the Verified Store Program are tightly
+   coupled to each other and belong together.** §5.35's first eligibility
+   criterion reads §5.34's score directly, and its revocation trigger
+   (FR-35.5) fires *from* a health-score drop — building them apart would
+   mean shipping half a feature (a score with no consumer, or a
+   verification flow with no health signal to gate on). One module,
+   Module 23, covers both.
+3. **Data Export is fully independent of both** — no shared code, no
+   shared eligibility logic, reuses only already-built mechanisms (CSV
+   export, PDF generation, Google Drive integration). It's the smallest
+   of the three by a wide margin and could in principle build in any
+   order relative to 22/23; slotting it last (Module 24) keeps the
+   trust-surface pair (23) together as one clean unit and leaves Data
+   Export as the easy, low-risk module to build whenever schedule
+   pressure favors a quick win.
+4. **The new `Store.policyText` schema addition (FR-34.1) lands in
+   Module 23, not Module 22** — it's needed for Store Health Score's
+   profile-completeness input, has nothing to do with Growth Programs,
+   and this SRS's "amend first, don't improvise" discipline means a
+   schema change ships in the module whose FR actually requires it.
+
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
 Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18

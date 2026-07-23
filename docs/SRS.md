@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.24 (Build-phase amendment)
+**Version:** 0.27 (Build-phase amendment)
 **Date:** 2026-07-19
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -276,6 +276,28 @@ detector. **One item (FR-33.1, referral-source attribution captured at
 seller signup) is called out to build ahead of the rest of this section**,
 independent of program tables existing yet — that data cannot be
 backfilled once real signups start arriving.
+
+**v0.27 (new sections, build TBD — see build-plan.md for slotting) — new
+§5.34/§14.34 Store Health Score, §5.35/§14.35 Verified Store Program, and
+§5.36/§14.36 Seller Data Export to Personal Cloud Storage; a roadmap-only
+note added to §5.22 (FR-22.10, future seller mobile app — documented, not
+built in v1.0):** a per-store composite score (0-100, Settings-Registry-
+weighted) computed entirely from data this SRS already collects — order
+timeline events, cancellations, disputes, the existing §5.30 Risk Score
+Engine output, and profile completeness — closes with one small, real
+schema gap called out rather than glossed over (stores have no policy-text
+field yet, needed for the completeness signal FR-34.1 asks for). The
+Verified Store Program (§5.35) is the health score's first real consumer:
+a live self-serve eligibility check, a paid application (fee is for
+processing, never a guarantee — mandatory human admin audit, no
+criteria-pass auto-approval), a buyer-facing badge at the storefront header
+and checkout, and a revocable status with both automatic re-review
+triggers and a standing admin override, all audit-logged. Data Export
+(§5.36) is fully independent of both — a seller-value convenience reusing
+three already-built mechanisms (CSV export, PDF generation, the Google
+Drive integration) end to end, explicitly **not** a substitute for the
+platform's own off-box backup NFR (§6), which stays binding regardless of
+whether a given seller has Drive connected.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -2090,6 +2112,16 @@ ships, and so v1.0's schema doesn't need to be redesigned to accommodate them.
   existing Payment Adapter.
 - FR-22.9: **CSV import metafields/complex option combinations** (deferred from
   v1.0, FR-18.1) — the fast-follow to the core-fields-only v1.0 importer.
+- FR-22.10: **A goto5x seller mobile app (roadmap note only, v0.27 — not
+  built, no schema/architecture change implied by this entry).** Would
+  carry push notifications and in-app document delivery (invoices,
+  §5.36's export bundles) as native capabilities email cannot offer,
+  built on the **existing** SSO handoff (§5.24) and API-first architecture
+  (§3.1) — no new auth mechanism or parallel API surface anticipated.
+  Email remains the only transactional channel in v1.0; this entry exists
+  so a future mobile build doesn't have to re-litigate the auth/API
+  approach, same "documented ahead of time" purpose as every other entry
+  in this section.
 
 ### 5.23 Business Guard-Rails & Platform Economics
 Every threshold below is a Settings Registry entry, not a hard-coded constant.
@@ -2884,6 +2916,174 @@ every other module.
   no-guarantee-of-approval statement — ship as a `docs/legal/*.md` draft,
   flagged for human legal review, same discipline as every other legal
   text in this SRS (FR-12.2).
+
+### 5.34 Store Health Score (new, v0.27 — foundation for §5.35's Verified
+Store Program, standalone seller value on its own)
+A per-store composite score, 0-100, computed entirely from data this SRS
+already collects elsewhere — no new tracking subsystem, only the one small
+schema gap called out in FR-34.1's completeness signal.
+
+- FR-34.1: **Composite score, seven weighted inputs, each concretely
+  defined against existing data (no vague "quality signal"):**
+  1. **On-time fulfillment rate** — for delivered/completed order items,
+     the elapsed time from the order's `confirmed` timeline event
+     (FR-17.4's `OrderTimelineEvent`) to its `shipped` event, compared
+     against a Settings Registry target duration (`storehealth
+     .fulfillment_target_days`) — there is no per-order promised-delivery
+     date in this schema, so "on-time" means "within the platform's
+     configured fulfillment SLA," not a literal broken promise.
+  2. **Cancellation rate** — `orders.status = cancelled` ÷ total orders,
+     trailing window (Settings Registry days).
+  3. **Pending-forever rate** — `orders.status = pending` for longer than a
+     Settings Registry staleness threshold (`storehealth
+     .stale_pending_days`) ÷ total orders in the window.
+  4. **Dispute/refund signals** — `orders.status = disputed` count
+     (FR-6.5's existing dispute status) plus FR-6.20's commission-dispute
+     count, in the same trailing window. v1.1's formal returns workflow
+     (FR-22.3) is not built yet — this input uses what exists today, not a
+     future table.
+  5. **Profile completeness** — a store logo present (FR-32.x), at least
+     one payment method configured (`StorePaymentInstructions`), CNIC
+     verified (`Seller.cnicEncrypted` present, FR-30.1), **and a store
+     policy statement present — the one real, disclosed schema gap**:
+     `Store` has no policy-text field today (verified against
+     `schema.prisma` while planning this FR, not assumed). This module
+     adds one (`Store.policyText`, freeform, seller-editable, shown on the
+     storefront) purely to make this completeness signal real, not a
+     placeholder that always scores zero.
+  6. **Account age** — `Seller.createdAt` — a fixed input, never
+     improvable except by time passing, so it is capped at a modest weight
+     (Settings Registry) — this score should never be dominated by "has
+     existed a long time" over actually running a good store.
+  7. **Moderation/risk history** — reuses §5.30's existing Risk Score
+     Engine output (`Seller.riskScore`) and §5.29's `lifecycleStatus`
+     directly, rather than re-deriving a parallel signal from raw
+     moderation events.
+
+  Each input's **weight** (summing to 100) is a Settings Registry value,
+  editable without a deploy, same discipline as every other tunable
+  business constant in this SRS (e.g. FR-6.1's commission rate).
+- FR-34.2: **Recomputed on a schedule** (a new scheduler, same idempotent/
+  safe-to-re-run discipline as `WalletLowBalanceSweepScheduler` and every
+  other sweep in this SRS), plus **history kept** (one row per computation,
+  `StoreHealthScoreHistory`) so the seller dashboard can render a trend,
+  not just a single number.
+- FR-34.3: **Seller dashboard display** — the current score plus a
+  plain-language breakdown naming exactly which input(s) are lowering it
+  and a concrete suggestion for each (e.g. "3 orders have been pending for
+  over 5 days — mark them shipped or cancel them to improve this"),
+  following the Simplicity Invariant (§3.13) — no raw weighted-sum math
+  shown to a non-technical seller.
+
+### 5.35 Verified Store Program (new, v0.27 — strict/earned-trust model:
+the fee is for processing an application, never a purchase of the badge)
+Deliberately modeled on "earn it, keep earning it" rather than "pay once,
+keep forever" — every eligibility criterion below is Settings-Registry-
+configurable, and the badge is revocable, never a one-time grant.
+
+- FR-35.1: **Live eligibility portal.** A seller-facing screen evaluates
+  the seller's current standing against every criterion in real time and
+  shows a pass/fail per criterion in plain language (Simplicity Invariant,
+  §3.13) — never a single opaque "not eligible" message. Default criteria
+  (each a Settings Registry value, admin-editable):
+  - **6+ months continuous selling on the same custom domain** —
+    evaluated from the store's current `Domain.verifiedAt` (§5.3/FR-11.x);
+    attaching a *different* domain resets this clock, since it is a new
+    `Domain` row with its own `verifiedAt` — no new field needed, existing
+    data already expresses "continuous on the same domain" correctly.
+  - **Store Health Score ≥ 80** (Settings Registry value) — reads §5.34's
+    score directly.
+  - **CNIC verified** — `Seller.cnicEncrypted` present (FR-30.1).
+  - **Zero unresolved T&S flags** — `Seller.lifecycleStatus = active`
+    (§5.29) — `warned`/`restricted`/`suspended`/`banned` all fail this
+    criterion.
+  - **Minimum confirmed-sales volume** (Settings Registry value) — a count
+    of `orders` at `confirmed` status or later for that store.
+- FR-35.2: **Application, fee, mandatory admin audit — in that order,
+  never auto-approved even when every criterion above passes.** An
+  eligible seller applies and the verification fee (Settings Registry
+  amount) debits their existing wallet (§5.6e, a new `LedgerEntry` type
+  `verification_fee_debit`) at application time, **before** admin review —
+  this is a processing fee, not a result purchase, and the copy/UX must
+  say so explicitly (binding, not just a legal footnote). The application
+  then enters a **mandatory** admin audit queue (same reviewer-role/
+  audit-log pattern as every other admin queue in this SRS, §5.8/FR-27.6):
+  the reviewer sees the full picture — health score breakdown, T&S/risk
+  history, KYC status — and can approve or reject with notes. A reviewer
+  may reject an applicant who technically passes every automated criterion
+  (e.g. a documented pattern of borderline behavior the automated checks
+  don't catch) — the eligibility portal states clearly that passing every
+  criterion means "you may apply," never "you will be approved."
+- FR-35.3: **Reject refunds the fee** (Settings Registry policy: full
+  refund is the v1.0 default, expressed as data so the founder can change
+  it without a deploy) via a `verification_fee_refund_credit` ledger
+  entry, same mechanism FR-33.x's clawback entries already established —
+  no new refund pathway.
+- FR-35.4: **Badge rendering** — a buyer-facing trust mark on the
+  storefront header (every page) and at checkout (the moment a buyer is
+  deciding to trust the seller with payment, per the founder's framing) —
+  reads live status, never a cached/stale flag; the badge disappears the
+  instant status is no longer `verified` (revocation, FR-35.5), with no
+  propagation delay beyond normal page-render freshness.
+- FR-35.5: **Revocation — automatic re-review trigger, plus a standing
+  admin override, both audit-logged.** If a verified store's Store Health
+  Score drops below the configured threshold, or a T&S enforcement action
+  lands against the seller (`lifecycleStatus` leaves `active`), the store
+  is **automatically flagged for re-review** (not auto-revoked — a human
+  confirms, same "informs a human" discipline as FR-29.4) and the badge is
+  suspended pending that review. An admin may also revoke verified status
+  directly, at any time, for any reason, with notes — `admin_audit_logs`-
+  recorded, same as every other control-plane mutation in this SRS.
+- FR-35.6: **Annual re-verification** — a Settings Registry toggle
+  (default: on). When enabled, a verified store's status expires after 12
+  months unless the seller re-applies (no new fee by default — a second
+  Settings Registry value can require one) and passes the same live
+  eligibility/admin-audit path as the original application, never a
+  rubber-stamp renewal.
+- FR-35.7: **Legal draft.** Program terms — the fee is for processing, not
+  a purchase; eligibility criteria are subject to change; approval is
+  never guaranteed even when criteria pass; revocation grounds and the
+  re-verification cadence — ship as a `docs/legal/*.md` draft, flagged for
+  human legal review (same discipline as FR-33.12).
+
+### 5.36 Seller Data Export to Personal Cloud Storage (new, v0.27 — a
+seller convenience, explicitly **not** a replacement for the platform's
+own off-box backup NFR, §6, which remains binding regardless)
+Reuses three already-built mechanisms end to end — CSV export (FR-18.2),
+PDF generation (FR-19.1's invoice template engine), and the Google Drive
+integration (§3.3/Module 2) — no new export format, PDF engine, or
+storage integration.
+
+- FR-36.1: **Triggers.** (a) automatically on each subscription renewal
+  (§5.7's billing cycle), and (b) on-demand from the seller's own settings
+  screen, rate-limited (Settings Registry value, e.g. once per rolling 24
+  hours) to prevent an accidental tight loop from hammering Drive's API or
+  the export job.
+- FR-36.2: **Contents** — the seller's own trailing-period products,
+  orders, and customers as CSVs (the existing exporter, FR-18.2, scoped to
+  the period since the last export) plus one summary PDF (reuses FR-19.1's
+  PDF engine with a new summary template, not the invoice template
+  itself).
+- FR-36.3: **Delivery.** If the seller has an active Google Drive
+  connection (§3.3), the export uploads there directly, in a dedicated
+  app-created folder (never writing into a folder the seller didn't
+  create for this purpose). If Drive isn't connected, the fallback is an
+  email (the existing `EmailService`) containing a time-limited download
+  link to the export bundle, generated the same way FR-19.2's invoice
+  download link already works — no new signed-URL mechanism.
+- FR-36.4: **Non-blocking, binding.** This job runs as best-effort
+  background work; a failure (Drive API error, generation error) is
+  logged and **never** blocks, delays, or affects the subscription renewal
+  itself, same "a seller's legitimate action must never fail because of
+  bookkeeping" discipline this SRS already applies elsewhere (e.g. §5.26's
+  `EventsService.emit()`).
+- FR-36.5: **Explicit non-substitution statement.** This feature is
+  seller-facing convenience only. The platform's own automated, off-box
+  database and media backups (§6's Availability NFR) are the actual
+  disaster-recovery mechanism and remain mandatory regardless of whether
+  any given seller has ever connected Drive or received an export — this
+  FR must never be read, marketed, or relied upon internally as satisfying
+  that NFR.
 
 ---
 
@@ -4245,6 +4445,77 @@ going forward, per FR-6.28.
       correct, program-scoped data (FR-33.11)
 - [ ] Program terms (eligibility, commission windows, clawback, suspension,
       no-guarantee-of-approval) exist as a `docs/legal/*.md` draft (FR-33.12)
+
+### 14.34 Store Health Score (new, v0.27)
+- [ ] The composite score is a weighted sum of all seven inputs
+      (fulfillment timing, cancellation rate, pending-forever rate,
+      dispute/refund signals, profile completeness, account age,
+      moderation/risk history), each weight a live Settings Registry value
+      — changing a weight changes the next computed score without a
+      deploy (FR-34.1)
+- [ ] Profile completeness correctly requires the new `Store.policyText`
+      field to be non-empty alongside logo/payment-method/CNIC — a store
+      missing any one of the four scores lower on this input specifically,
+      not the whole score to zero (FR-34.1)
+- [ ] The scheduled recompute job is idempotent (safe to re-run) and
+      writes one `StoreHealthScoreHistory` row per run; the seller
+      dashboard renders a trend from that history, not just the latest
+      value (FR-34.2)
+- [ ] The dashboard breakdown correctly names the specific input(s)
+      dragging the score down with a plain-language suggestion — never
+      raw weights/math shown to the seller (FR-34.3)
+
+### 14.35 Verified Store Program (new, v0.27)
+- [ ] The eligibility portal correctly evaluates all five default criteria
+      live and shows a per-criterion pass/fail — changing any one
+      Settings Registry threshold (health score minimum, tenure months,
+      sales volume) changes what the portal reports without a deploy
+      (FR-35.1)
+- [ ] Attaching a *different* custom domain resets the "6+ months
+      continuous" clock (verified against the new domain's own
+      `verifiedAt`), proven by an actual domain-swap test, not just
+      code-read (FR-35.1)
+- [ ] The verification fee debits the seller's wallet as a
+      `verification_fee_debit` ledger entry **at application time**, before
+      any admin decision exists (FR-35.2)
+- [ ] **The eligibility gate cannot be bypassed via direct API call** — an
+      application submitted for a seller who fails any criterion is
+      rejected server-side even if a client-side portal check is skipped
+      entirely (FR-35.1/35.2, cross-cutting with §14.12's API-boundary
+      discipline)
+- [ ] An application that passes every automated criterion can still be
+      **rejected** by the admin reviewer (proving approval is never
+      automatic even when eligible) — rejection correctly issues a
+      `verification_fee_refund_credit` for the full fee (FR-35.2/35.3)
+- [ ] The badge renders on the storefront header and at checkout for a
+      `verified` store, and disappears immediately once status changes —
+      no stale/cached badge state (FR-35.4)
+- [ ] A Store Health Score drop below the configured threshold, and a T&S
+      enforcement action landing on the seller, **each independently**
+      auto-flag a verified store for re-review and suspend the badge
+      pending that review — neither auto-revokes without a human
+      confirming (FR-35.5)
+- [ ] An admin can revoke verified status directly at any time, with
+      notes, audit-logged (FR-35.5)
+- [ ] With annual re-verification enabled (Settings Registry toggle), a
+      verified store's status correctly expires at 12 months and must
+      re-pass the full live eligibility + admin-audit path — never a
+      rubber-stamp renewal (FR-35.6)
+
+### 14.36 Seller Data Export to Personal Cloud Storage (new, v0.27)
+- [ ] An export is generated automatically on subscription renewal and
+      correctly contains the trailing-period products/orders/customers
+      CSVs plus one summary PDF (FR-36.1/36.2)
+- [ ] An on-demand export request beyond the configured rate limit
+      (Settings Registry value) is rejected, not silently queued or
+      double-generated (FR-36.1)
+- [ ] With Drive connected, the export uploads into a dedicated
+      app-created folder; with Drive **not** connected, the seller instead
+      receives an email with a working time-limited download link
+      (FR-36.3)
+- [ ] A forced export-generation failure (e.g. Drive API error injected in
+      a test) is logged and does **not** block, delay, or fail the
+      subscription renewal itself (FR-36.4)
 
 ---
 
