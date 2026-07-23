@@ -41,7 +41,14 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]), // generic API-wide guard; auth-specific limits use RateLimitService
+    // Generic API-wide guard; auth-specific limits use RateLimitService.
+    // `limit` is env-overridable (default 100/60s, unchanged) - found
+    // necessary while running Module 21's load/soak simulation tool: real
+    // load-test traffic all originates from one load-generator IP, so this
+    // per-IP limit otherwise drowns the whole run in 429s before any real
+    // latency/error data can be collected (see docs/launch-runbook.md's
+    // simulation section for the override to use during that run only).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT_PER_MINUTE) || 100 }]),
     PrismaModule,
     RedisModule,
     EventsModule,

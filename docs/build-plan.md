@@ -1610,6 +1610,127 @@ commit built everything but never flipped the SRS checkboxes to match.
 
 ---
 
+## Module 21 (Hardening & Launch Readiness) — built
+
+Full scope: founder-approved with scope additions beyond the original
+8-item proposal (SRS §14.12, this module is the launch gate so it grew).
+No schema/migrations — this module is CI, hardening, and tooling, not
+product surface.
+
+1. **CI required-checks** (`.github/workflows/ci.yml`) — 5 jobs:
+   `typecheck`, `unit-tests`, `e2e-tests` (real Postgres 16/Redis 7 service
+   containers, `bootstrap-db.sql` + `prisma migrate deploy` as superuser,
+   full suite run on every push), `dependency-audit`, `web-build`. Marking
+   these as GitHub branch-protection *required* status checks is a
+   separate one-time repo-admin action this file doesn't itself do.
+2. **Rate-limit audit** against the SRS §14.12 endpoint list — see the
+   checklist entry below for the full breakdown. The one real gap found
+   and closed: login (seller and admin) had never used
+   `RateLimitService` despite `app.module.ts`'s own comment implying it
+   should; fixed with the same dual-key (per-account + per-IP) pattern
+   signup/password-reset already used, new Settings Registry key
+   `auth.login_rate_limit_per_hour`.
+3. **PII-redaction verification** — `PiiRedactionInterceptor` already
+   existed (logs method/path/status/duration, never body/query/headers);
+   `pii-redaction.interceptor.spec.ts` is the new test proving it, against
+   a hand-built fake `ExecutionContext`/`CallHandler`.
+4. **Dependency-audit step** — `pnpm audit --audit-level=critical`
+   (CI-blocking, currently 0 findings) plus an informational
+   `--audit-level=high` report, and
+   `scripts/verify-dependency-audit-blocks-vulnerable-package.sh` (proves
+   the scanning mechanism itself works via a throwaway fixture pinning a
+   real known-vulnerable package). One real fix landed alongside this:
+   `multer` was resolving to a vulnerable 2.0.2 via
+   `@nestjs/platform-express`'s own semver ceiling — `pnpm update` alone
+   couldn't get past it, so a root `pnpm.overrides` entry
+   (`"multer": "^2.2.0"`) was added, closing 4 real high-severity multer
+   DoS CVEs. The remaining ~15 high-severity findings (mostly a Next.js
+   14→15 major bump, plus several transitive deps) are a disclosed
+   founder-decision item in `docs/launch-runbook.md`, not silently forced
+   or silently ignored — this sandbox has no automated `apps/web` test
+   suite to verify a Next.js major bump this close to launch.
+5. **Secrets-store deployment doc** — folded into
+   `docs/launch-runbook.md`'s Secrets section rather than shipped as a
+   separate document, since it's one step in the same ordered launch
+   sequence.
+6. **Load/soak simulation tooling** (`apps/api/scripts/simulate/`) — a
+   `seed`/`run`/`report`/`teardown` CLI (`pnpm run simulate <command>`)
+   that creates N dummy sellers/stores through the **real running API**
+   (never raw SQL bulk-insert, so every business invariant — Financial
+   Truth Invariant, moderation, wallet gates, publish gate — is satisfied
+   for free by reusing already-tested code paths), then drives concurrent
+   storefront + dashboard traffic for a configurable duration and reports
+   error counts by type, p50/p95/p99 latency per endpoint group, slowest
+   DB queries (via `pg_stat_statements`, with a graceful fallback message
+   if it isn't enabled), and two concrete SQL-provable invariants
+   (duplicate commission-ledger entries per order; cross-tenant
+   `order_items`/`media_assets`). Refuses to run against a
+   `NODE_ENV=production` box without an explicit `--i-know` flag
+   (`safety.ts`). Teardown is a scoped, manifest-driven delete (never a
+   blind wipe — this tool may run against a real pre-launch environment
+   with genuine Settings Registry/plan configuration worth preserving),
+   using `SET LOCAL session_replication_role = replica` since this schema
+   has no `ON DELETE CASCADE` anywhere.
+
+   **Found and fixed while smoke-testing this tool end-to-end (the
+   founder's own item 8 requirement) — three real, load-bearing bugs that
+   unit tests and typechecking alone could not have caught:**
+   - A new seller's first `moderation.new_seller_probation_count` products
+     (10 by default, FR-27.3) are queued `pending` regardless of keyword
+     content — since every simulated seller only creates 3-6 products,
+     **100% of simulated orders failed at any N** until `seed.ts` was
+     fixed to approve each product via `POST
+     /admin/moderation/queue/:id/approve` right after creating it
+     (deliberately leaving the one flagged-title product per ~8% of
+     sellers pending, to still exercise the moderation queue on purpose).
+   - `app_admin` is `BYPASSRLS` but not Postgres superuser, and
+     `SET ... session_replication_role` is superuser-only by default in
+     stock Postgres — `teardown.ts` failed with "permission denied" on
+     every run. Fixed with a new `bootstrap-db.sql` grant
+     (`GRANT SET ON PARAMETER session_replication_role TO app_admin`,
+     PG15+), the narrowest privilege that unblocks it.
+   - `teardown.ts` tried to delete from `seller_agreement_versions` by
+     `seller_id` — that table has no such column at all; it's the global,
+     shared table of published agreement *text* versions
+     (`schema.prisma`'s `SellerAgreementVersion`), not a per-seller
+     acceptance record (that's 3 columns directly on `sellers`). Fixed by
+     removing the erroneous delete entirely.
+   - Two further issues surfaced only under concurrent traffic, not seed:
+     the global `ThrottlerGuard` (100 req/60s/IP) and the new
+     `auth.login_rate_limit_per_hour` limit both correctly do their job
+     against a load-generator that — by construction — looks like one
+     source IP, drowning the report in `429`s instead of real latency
+     data. Fixed the tool itself (`traffic.ts`'s `dashboardWorker` now
+     logs in once per simulated session instead of once per loop
+     iteration — more realistic *and* stops needlessly burning the login
+     limit) and added a documented, temporary
+     `THROTTLE_LIMIT_PER_MINUTE` env override
+     (`app.module.ts`, `.env.example`) for real large-N runs, spelled out
+     in `docs/launch-runbook.md`'s simulation section.
+7. **Founder launch runbook** (`docs/launch-runbook.md`) — the ordered,
+   checkbox-per-item, end-to-end launch-day sequence: VPS provisioning,
+   DNS, secrets, bringing the stack up, seeding reference data, backup
+   verification (including an actual restore test, not just a `pg_dump`),
+   founder verification items (carrying forward README's existing list
+   plus a new Rich Results Test check for FR-16.6's Product JSON-LD,
+   not previously an explicit checklist item), the simulation run + report
+   review, then real launch Settings values to configure (commission %,
+   grace thresholds, banned-keyword lists, plan/pricing, rate limits).
+8. **Final reconfirmation** — full green run of typecheck, the unit suite
+   (26 suites / 134 tests), the e2e suite (31 suites / 274 tests, real
+   Postgres/Redis), the web build, and a local simulation smoke at
+   `--count 5` (seed → run → report → teardown, against a real locally
+   running API instance) — the three bugs listed above were found and
+   fixed by this exact step, not left for the founder's real-hardware run
+   to discover first.
+
+Migrations: none. Tests: `safety.spec.ts` (3), `stats.spec.ts` (3),
+`pii-redaction.interceptor.spec.ts` (2) new unit tests; two new e2e tests
+(seller/admin login rate-limit). Full suite: 26 unit files / 134 tests, 31
+e2e files / 274 tests, all green.
+
+---
+
 ## Growth & Partner Programs slotting (Module 22, v0.26 — plan stated, build pending founder confirmation)
 
 Full scope: `docs/SRS.md` §5.33/§14.33 (FR-33.1–33.12). Four founder-specified

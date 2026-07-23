@@ -22,6 +22,19 @@ export async function seedModule1Settings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "auth.login_rate_limit_per_hour" },
+    create: {
+      key: "auth.login_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 20,
+      validation: { min: 1, max: 1000 },
+      description: "Maximum login attempts per account and per IP per hour (Module 21, §14.12 rate-limit audit - closes a real gap: signup/password-reset already used RateLimitService, login never did).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "auth.password_reset_token_ttl_minutes" },
     create: {
       key: "auth.password_reset_token_ttl_minutes",

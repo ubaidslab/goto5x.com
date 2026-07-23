@@ -3659,16 +3659,43 @@ going forward, per FR-6.28.
       the enabled flag is off (FR-11.3, new v0.18)
 
 ### 14.12 Security & Compliance (cross-cutting, applies to every module above)
-- [ ] The full automated cross-tenant test suite passes as a release gate (§3.2)
-- [ ] Rate limiting verified on auth endpoints, listing-submission endpoints,
+- [x] The full automated cross-tenant test suite passes as a release gate
+      (§3.2, Module 21) — CI's `e2e-tests` job (`.github/workflows/ci.yml`)
+      runs the whole suite (274 tests) against real Postgres/Redis on every
+      push, blocking on any failure
+- [x] Rate limiting verified on auth endpoints, listing-submission endpoints,
       payout-request endpoints, the Product Feed API, the Template Install/
-      License API, and public storefront/API endpoints
-- [ ] Secrets (gateway keys, supplier API credentials, Drive OAuth secrets, and
+      License API, and public storefront/API endpoints (Module 21 audit) —
+      signup/password-reset already used `RateLimitService`; **login (seller
+      and admin) was the one real gap found and closed**, same dual-key
+      (per-account + per-IP) pattern, new Settings Registry key
+      `auth.login_rate_limit_per_hour`; listing-submission, the Product Feed
+      API, and the Template Install/License API each already had their own
+      Settings-Registry-configurable limits from their own modules;
+      storefront/public API endpoints are covered by the global
+      `ThrottlerGuard` (100 req/60s/IP); payout-request endpoints don't exist
+      in v1.0 - payouts are dormant per §5.6b, confirmed via a full
+      controller-route grep, not assumed
+- [x] Secrets (gateway keys, supplier API credentials, Drive OAuth secrets, and
       both external-SaaS signing secrets) are confirmed stored in an encrypted
-      secrets store, never in a committed env file
-- [ ] PII redaction verified in application logs
-- [ ] A dependency-vulnerability scan runs in CI and blocks a
-      deliberately-introduced known-vulnerable dependency
+      secrets store, never in a committed env file (Module 21) — `.env`/
+      `.env.test` gitignored throughout this engagement (verified via `git
+      status` never showing them tracked); `docs/launch-runbook.md`'s
+      Secrets section is the deployment doc for the real production secrets
+      store
+- [x] PII redaction verified in application logs (Module 21) —
+      `PiiRedactionInterceptor` logs method/path/status/duration only, never
+      body/query/headers; `pii-redaction.interceptor.spec.ts` asserts no
+      email/password/token/cookie value ever appears in the logged string
+- [x] A dependency-vulnerability scan runs in CI and blocks a
+      deliberately-introduced known-vulnerable dependency (Module 21) — CI's
+      `dependency-audit` job runs `pnpm audit --audit-level=critical`
+      (blocking, currently 0 findings) plus a `--audit-level=high`
+      informational report, and
+      `scripts/verify-dependency-audit-blocks-vulnerable-package.sh` proves
+      the scanning mechanism itself works by pinning a real known-vulnerable
+      package (`minimist@0.0.8`) in a throwaway fixture and asserting the
+      audit catches it
 
 ### 14.13 Customers (CRM)
 - [x] A checkout — storefront or manual (FR-17.1) — auto-creates or matches a

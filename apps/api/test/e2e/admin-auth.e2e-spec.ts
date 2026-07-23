@@ -98,6 +98,27 @@ describe("Admin auth + MFA + audit log (e2e) - SRS FR-8.9/FR-8.12, §14.8/§14.1
     expect(verify.status).toBe(401);
   });
 
+  it("rejects admin login beyond the configured per-account rate limit (Module 21, §14.12 rate-limit audit)", async () => {
+    await createAdmin("admin-rl@example.com", "admin-password-rl");
+    await superuser.settingsValue.create({
+      data: {
+        definitionKey: "auth.login_rate_limit_per_hour",
+        scopeType: "global",
+        scopeId: null,
+        value: 2,
+      },
+    });
+
+    const attempt = () =>
+      request(app.getHttpServer())
+        .post("/admin/auth/login")
+        .send({ email: "admin-rl@example.com", password: "wrong-password" });
+
+    expect((await attempt()).status).toBe(401);
+    expect((await attempt()).status).toBe(401);
+    expect((await attempt()).status).toBe(429);
+  });
+
   it("audit log is immutable at the database grant level, not just the application layer", async () => {
     const { adminUser } = await createAdmin("admin4@example.com", "admin-password-4");
     const log = await superuser.adminAuditLog.create({

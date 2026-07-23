@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, HttpStatus, Post, Req } from "@nestjs/common";
+import { Request } from "express";
 import { AdminAuthService } from "./admin-auth.service";
 import { AdminLoginDto, AdminMfaVerifyDto } from "./dto/admin-login.dto";
 
@@ -8,8 +9,8 @@ export class AdminAuthController {
 
   @Post("login")
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: AdminLoginDto) {
-    return this.adminAuth.login(dto);
+  login(@Body() dto: AdminLoginDto, @Req() req: Request) {
+    return this.adminAuth.login(dto, req.ip ?? "unknown");
   }
 
   @Post("mfa/enroll")

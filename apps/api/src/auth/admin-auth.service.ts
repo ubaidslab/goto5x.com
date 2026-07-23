@@ -6,6 +6,8 @@ import { authenticator } from "otplib";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { JwtAccessPayload } from "../common/types";
 import { AuditLogService } from "../admin/audit-log.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { AdminLoginDto } from "./dto/admin-login.dto";
 import { SessionService } from "./session.service";
 
@@ -32,9 +34,20 @@ export class AdminAuthService {
     private readonly config: ConfigService,
     private readonly sessions: SessionService,
     private readonly auditLog: AuditLogService,
+    private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
   ) {}
 
-  async login(dto: AdminLoginDto): Promise<{ preAuthToken: string; mfaEnrolled: boolean }> {
+  async login(dto: AdminLoginDto, ip: string): Promise<{ preAuthToken: string; mfaEnrolled: boolean }> {
+    // Module 21 (§14.12 rate-limit audit) - same gap and same fix as
+    // seller/supplier login (AuthService.login()): dual-keyed (account +
+    // IP), checked before the bcrypt compare. Admin accounts have
+    // BYPASSRLS access, so this is if anything the more sensitive of the
+    // two login surfaces to close.
+    const loginLimit = await this.settings.resolve<number>("auth.login_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`admin-login:${dto.email}`, loginLimit);
+    await this.rateLimit.enforcePerHour(`admin-login-ip:${ip}`, loginLimit);
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       include: { adminUser: true },

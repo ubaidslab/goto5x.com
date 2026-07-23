@@ -1,0 +1,181 @@
+name: CI
+
+# Module 21 (SRS §14.12) - "the full automated cross-tenant test suite
+# passes as a release gate" and "a dependency-vulnerability scan runs in
+# CI and blocks a deliberately-introduced known-vulnerable dependency".
+# Mark typecheck/unit-tests/e2e-tests/dependency-audit as required status
+# checks in the repo's branch protection settings (GitHub UI: Settings ->
+# Branches -> Branch protection rules) - this workflow makes the checks
+# exist and run; requiring them on the default branch is a one-time,
+# separate repo-admin action (see docs/launch-runbook.md).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10"
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client (needed for apps/api types)
+        run: pnpm --filter @goto5x/api prisma:generate
+      - name: Typecheck apps/api
+        run: pnpm --filter @goto5x/api exec tsc --noEmit
+      - name: Typecheck apps/web
+        run: pnpm --filter @goto5x/web exec tsc --noEmit
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @goto5x/api prisma:generate
+      - name: Unit tests (no external services required)
+        run: pnpm test:api
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    # Real Postgres + Redis, matching README's "Running tests" e2e
+    # instructions exactly - this is the release gate for the cross-tenant/
+    # RLS suite, not a mocked substitute.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-superuser-password
+          POSTGRES_DB: goto5x
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Bootstrap app_runtime/app_admin roles (once per fresh database)
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d goto5x \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=goto5x \
+            -f apps/api/scripts/bootstrap-db.sql
+
+      - name: Run migrations (as superuser - app roles only have DML rights)
+        env:
+          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/goto5x?schema=public
+        run: pnpm --filter @goto5x/api exec prisma migrate deploy
+
+      - name: Write apps/api/.env.test
+        run: |
+          cat > apps/api/.env.test <<'EOF'
+          NODE_ENV=test
+          PORT=3000
+          DATABASE_URL=postgresql://app_runtime:ci-runtime-password@localhost:5432/goto5x?schema=public
+          DATABASE_ADMIN_URL=postgresql://app_admin:ci-admin-password@localhost:5432/goto5x?schema=public
+          TEST_SUPERUSER_DATABASE_URL=postgresql://postgres:ci-superuser-password@localhost:5432/goto5x?schema=public
+          REDIS_URL=redis://localhost:6379
+          JWT_ACCESS_SECRET=ci-test-secret-not-for-production-use-1234567890
+          JWT_ACCESS_TTL_MINUTES=15
+          JWT_REFRESH_TTL_DAYS=30
+          ADMIN_MFA_ISSUER_NAME=goto5x.com
+          EMAIL_PROVIDER=console
+          EMAIL_FROM_ADDRESS=no-reply@goto5x.com
+          APP_BASE_URL=http://localhost:3001
+          MINIO_ENDPOINT=http://localhost:4569
+          MINIO_ROOT_USER=S3RVER
+          MINIO_ROOT_PASSWORD=S3RVER
+          MINIO_BUCKET=goto5x-media-test
+          GOOGLE_DRIVE_CLIENT_ID=test-client-id
+          GOOGLE_DRIVE_CLIENT_SECRET=test-client-secret
+          GOOGLE_DRIVE_REDIRECT_URI=http://localhost:3000/media/drive/callback
+          DRIVE_TOKEN_ENCRYPTION_KEY=cVKW5U8XxG2Wn9GxwZ8v4vQY2ZC1o9dCmR3hT5nQmZ4=
+          PRINTIFY_API_KEY=ci-test-printify-key-placeholder
+          TRAEFIK_DYNAMIC_CONFIG_DIR=/tmp/goto5x-traefik-dynamic-test
+          IDENTITY_ENCRYPTION_KEY=hPVvBmwP4FUPhlWoIzKOyj1FZ1UBu0N+AbNgZoVNsPk=
+          IDENTITY_FINGERPRINT_HMAC_SECRET=ci-test-identity-fingerprint-hmac-secret
+          EXTERNAL_API_SECRET_ENCRYPTION_KEY=UBSQp73iyfU/LUU+gFQ69pB9C2Gw1Tg1RVqSmuM/FdE=
+          EOF
+
+      - name: E2E tests (real Postgres + Redis - the cross-tenant/RLS release gate)
+        run: pnpm test:api:e2e
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Blocking audit (critical severity)
+        run: pnpm run audit
+
+      - name: Informational audit (high severity - reported, not blocking)
+        run: pnpm run audit:report
+
+      - name: Prove the audit mechanism itself blocks a known-vulnerable package
+        run: pnpm run verify:dependency-audit-mechanism
+
+  web-build:
+    runs-on: ubuntu-latest
+    # apps/web has no automated test suite (see README's Module 4/5
+    # disclosures) - a production build is the closest automated proxy:
+    # it fails on type errors, broken imports, and invalid static
+    # generation, same as the manual `next build` smoke test README
+    # already documents for local verification.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @goto5x/web build

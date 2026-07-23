@@ -197,4 +197,30 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
     expect((await attempt(2)).status).toBe(201);
     expect((await attempt(3)).status).toBe(429);
   });
+
+  it("rejects login beyond the configured per-account rate limit (Module 21, §14.12 rate-limit audit)", async () => {
+    await request(app.getHttpServer()).post("/auth/signup").send({
+      agreementAccepted: true,
+      email: "login-rl@example.com",
+      password: "correct-horse-battery",
+      businessName: "Login RL Store",
+    });
+    await superuser.settingsValue.create({
+      data: {
+        definitionKey: "auth.login_rate_limit_per_hour",
+        scopeType: "global",
+        scopeId: null,
+        value: 2,
+      },
+    });
+
+    const attempt = () =>
+      request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ email: "login-rl@example.com", password: "wrong-password" });
+
+    expect((await attempt()).status).toBe(401);
+    expect((await attempt()).status).toBe(401);
+    expect((await attempt()).status).toBe(429);
+  });
 });

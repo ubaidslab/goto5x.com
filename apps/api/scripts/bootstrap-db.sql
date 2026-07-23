@@ -61,3 +61,16 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_runtime, app_admin;
 -- (see prisma/migrations/*_rls_and_audit_grants/migration.sql) to restore
 -- immutability. Normal `prisma migrate deploy`/`migrate dev` workflows never
 -- hit this - only the destructive `migrate reset` does.
+
+-- Module 21's load/soak simulation teardown tool (apps/api/scripts/simulate/
+-- teardown.ts) needs to temporarily suspend FK/trigger enforcement
+-- (`SET LOCAL session_replication_role = replica`) to delete a scoped set of
+-- rows without hand-maintaining a 30-table dependency order - this schema
+-- has no ON DELETE CASCADE anywhere by design. Setting that GUC is
+-- superuser-only by default in stock Postgres; `app_admin` only has
+-- BYPASSRLS, not superuser, so without this grant the teardown tool fails
+-- with "permission denied to set parameter" (caught by actually running the
+-- teardown tool against a real Postgres instance, not assumed). PG15+
+-- supports granting exactly this one parameter instead of a broader
+-- privilege - found while making the teardown tool actually work end-to-end.
+GRANT SET ON PARAMETER session_replication_role TO app_admin;

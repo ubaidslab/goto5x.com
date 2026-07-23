@@ -179,6 +179,17 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip: string, userAgent: string | undefined): Promise<TokenPair | MfaStepRequired> {
+    // Module 21 (§14.12 rate-limit audit) - signup/password-reset already
+    // used RateLimitService (see this module's own comment in
+    // app.module.ts: "auth-specific limits use RateLimitService"); login
+    // was the one auth endpoint that never got it, relying only on the
+    // generic 100/min API-wide ThrottlerGuard. Dual-keyed (account + IP),
+    // same shape as password-reset's own FR-25.2 limiting - checked before
+    // the bcrypt compare so a lockout doesn't burn compute on every attempt.
+    const loginLimit = await this.settings.resolve<number>("auth.login_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`login:${dto.email}`, loginLimit);
+    await this.rateLimit.enforcePerHour(`login-ip:${ip}`, loginLimit);
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       include: { seller: true, supplier: true },

@@ -12,3 +12,8 @@ coverage/
 apps/api/prisma/.env
 dump.rdb
 *.tsbuildinfo
+
+# Module 21 load/soak simulation tool - run manifests and generated reports
+# are local run state, never checked in.
+apps/api/scripts/simulate/.runs/
+apps/api/scripts/simulate/reports/

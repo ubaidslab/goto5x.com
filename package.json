@@ -10,6 +10,15 @@
     "test:api": "pnpm --filter @goto5x/api test",
     "test:api:e2e": "pnpm --filter @goto5x/api test:e2e",
     "prisma:migrate": "pnpm --filter @goto5x/api prisma:migrate",
-    "prisma:generate": "pnpm --filter @goto5x/api prisma:generate"
+    "prisma:generate": "pnpm --filter @goto5x/api prisma:generate",
+    "audit": "pnpm audit --audit-level=critical",
+    "audit:report": "pnpm audit --audit-level=high || true",
+    "verify:dependency-audit-mechanism": "bash scripts/verify-dependency-audit-blocks-vulnerable-package.sh",
+    "simulate": "pnpm --filter @goto5x/api simulate"
+  },
+  "pnpm": {
+    "overrides": {
+      "multer": "^2.2.0"
+    }
   }
 }
