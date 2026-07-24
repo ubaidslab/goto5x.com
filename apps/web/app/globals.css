@@ -1,25 +1,27 @@
 @import "tailwindcss";
 
 /*
- * goto5x.com Design Tokens — v2, monochrome premium direction (provisional,
- * founder design pass still pending — see CLAUDE.md's "UI/UX Skills
- * Policy" section)
+ * eyosto Design System — v1 (Phase 1, Module 19)
  * -----------------------------------------------------------------------
  * Single source of truth for every color, type, spacing, radius, shadow,
- * and motion value used across the seller dashboard (and, later, any other
- * apps/web surface that adopts this system). Rebranding — a new accent
- * color, a real logo, adjusted type scale — is a change to this file only,
- * never a per-screen rewrite. Direction: monochrome premium — near-white
- * surfaces, near-black ink, a grayscale scale between, and AT MOST one
- * restrained accent (used sparingly: links, the primary CTA) — apple.com
+ * and motion value used across eyosto's dashboard, marketing site,
+ * storefronts, and admin terminal. Rebranding — a new accent color, an
+ * adjusted type scale — is a change to this file only, never a per-screen
+ * rewrite. See /design-system for the live contract every component below
+ * is checked against.
+ *
+ * Direction: monochrome premium — near-white surfaces, near-black ink, a
+ * full grayscale scale between, and AT MOST one restrained accent (used
+ * sparingly: links, the primary CTA, active/selected state) — apple.com
  * discipline, horizonx.so-class motion, iOS-like polish; generous
  * whitespace and subtle depth rather than heavy borders/shadows.
  *
  * Values inside `@theme` are read by Tailwind v4 to generate matching
  * utilities (e.g. --color-accent -> bg-accent/text-accent/border-accent,
- * --radius-md -> rounded-md, --shadow-md -> shadow-md). Everything else
- * (motion) is plain CSS custom properties consumed directly, since
- * Tailwind has no first-class "motion token" namespace.
+ * --radius-md -> rounded-md, --shadow-md -> shadow-md, --text-display ->
+ * text-display). Motion is plain CSS custom properties consumed directly
+ * (Tailwind has no first-class "motion token" namespace) and mirrored as
+ * JS constants in lib/motion.ts for GSAP to read the same values from.
  */
 @theme {
   /* Neutrals - the near-black/near-white pairing this whole system reads
@@ -62,22 +64,89 @@
   --color-info: #2f6fed;
   --color-info-subtle: #eaf1fe;
 
-  /* Type - Inter, loaded via next/font/google in app/layout.tsx and
-     exposed as --font-inter; falls back to the system sans stack so
-     text never flashes unstyled. */
+  /* Type - two families, one job each (premium-design-taste's pairing
+     rule: max 2 families, commit site-wide). Plus Jakarta Sans (--font-
+     display) carries headlines/hero/wordmark voice; Inter (--font-sans)
+     stays the body/UI face - proven legible at 13-14px across every dense
+     dashboard table this product has shipped. Both loaded via next/font/
+     google in app/layout.tsx; system-stack fallbacks so text never
+     flashes unstyled. */
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-plus-jakarta), var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
 
-  /* Radii - generous, iOS-leaning. */
+  /* Type scale - a confident, considered ramp rather than default
+     Tailwind sizes. Large sizes get tighter tracking + line-height (a
+     hero headline reads as one gesture, not stacked paragraph lines);
+     body sizes stay roomy (1.5-1.6) for long-form and dense-table
+     legibility alike. Every step below generates a matching text-*
+     utility (Tailwind v4 --text-* namespace), so text-display / text-h1
+     / text-eyebrow etc. are real, reusable classes - not one-off
+     clamp()s copy-pasted per hero. */
+  --text-display: clamp(2.75rem, 2rem + 3vw, 6rem);
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 700;
+
+  --text-h1: clamp(2rem, 1.6rem + 1.5vw, 3rem);
+  --text-h1--line-height: 1.12;
+  --text-h1--letter-spacing: -0.025em;
+  --text-h1--font-weight: 700;
+
+  --text-h2: 1.75rem;
+  --text-h2--line-height: 1.2;
+  --text-h2--letter-spacing: -0.015em;
+  --text-h2--font-weight: 600;
+
+  --text-h3: 1.375rem;
+  --text-h3--line-height: 1.3;
+  --text-h3--letter-spacing: -0.01em;
+  --text-h3--font-weight: 600;
+
+  --text-h4: 1.125rem;
+  --text-h4--line-height: 1.4;
+  --text-h4--letter-spacing: -0.005em;
+  --text-h4--font-weight: 600;
+
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.6;
+
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.55;
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.5;
+
+  --text-eyebrow: 0.75rem;
+  --text-eyebrow--line-height: 1.4;
+  --text-eyebrow--letter-spacing: 0.08em;
+  --text-eyebrow--font-weight: 600;
+
+  /* Spacing - Tailwind v4's default 4px-based scale already IS the
+     systematic 4/8/12/16/24/32/48/64/96/128 ramp premium layouts need; no
+     override required. The two semantic tokens below exist only for the
+     one rhythm default Tailwind spacing doesn't name: a marketing page's
+     between-section breathing room (used from Phase 2 onward). */
+  --spacing-section: 6rem;
+  --spacing-section-lg: 9rem;
+
+  /* Radii - generous, iOS-leaning; one more step for full pills/avatars. */
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1.25rem;
   --radius-xl: 1.75rem;
+  --radius-full: 9999px;
 
-  /* Shadows - soft, low-opacity, large blur: depth without a hard edge. */
+  /* Shadows - soft, low-opacity, large blur: depth without a hard edge.
+     --shadow-xl is reserved for the highest layer (modal/dialog surfaces
+     floating above a scrim). */
   --shadow-xs: 0 1px 2px rgba(29, 29, 31, 0.04);
   --shadow-sm: 0 2px 8px rgba(29, 29, 31, 0.06);
   --shadow-md: 0 8px 24px rgba(29, 29, 31, 0.08);
   --shadow-lg: 0 16px 48px rgba(29, 29, 31, 0.12);
+  --shadow-xl: 0 24px 64px rgba(29, 29, 31, 0.18);
 }
 
 /* Dark-mode token overrides - same variable names, new values, so every
@@ -140,12 +209,24 @@
 /* Motion - horizonx.so-class: confident, physics-leaning easing, never
    linear/robotic. Applied via the .transition-smooth helper below rather
    than Tailwind's default transition utilities, so the curve/duration
-   stay centralized here. */
+   stay centralized here. Mirrored as JS constants in lib/motion.ts so
+   GSAP timelines (Phase 2+) read the exact same numbers - one source of
+   truth for motion whether it's driven by CSS or GSAP.
+   - ease-standard: confident decelerate (expo-out) - the default for
+     anything entering or responding to input (hovers, reveals, opens).
+   - ease-in: fast accelerate - exits should leave quicker than entrances
+     arrive, or motion reads sluggish/laggy on the way out.
+   - ease-emphasized: a touch of overshoot for the rare moment that wants
+     real delight (a success state, a magnetic CTA settle) - never the
+     default, always a deliberate choice. */
 :root {
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-emphasized: cubic-bezier(0.34, 1.56, 0.64, 1);
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --duration-slow: 320ms;
+  --duration-slower: 560ms;
 }
 
 @layer base {
@@ -153,30 +234,45 @@
     color-scheme: light dark;
   }
 
-  /* A visible, on-brand focus ring everywhere - never suppressed, only
-     restyled (accessibility non-negotiable, premium doesn't mean invisible
-     focus states). Scoped to this system's own surfaces (see
-     .app-shell-surface below), not the whole document, so it doesn't
-     reach into the still-unstyled auth/storefront pages this module
-     doesn't touch. */
-  .app-shell-surface :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 4px;
-  }
-}
-
-@layer utilities {
-  /* Applied once, by the (dashboard) route group's own layout - this is
-     the module-10 design system's surface, deliberately not forced onto
-     every route in the app (auth/admin/storefront are untouched, "bare
-     functional" pages outside this module's scope). */
-  .app-shell-surface {
+  body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+  }
+
+  /* A visible, on-brand focus ring everywhere - never suppressed, only
+     restyled (accessibility non-negotiable, premium doesn't mean invisible
+     focus states). Product-wide as of Phase 1 (previously scoped only to
+     the dashboard's .app-shell-surface, back when auth/marketing/
+     storefront were still unstyled placeholder pages). */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Kept for the dashboard route group's own layout, which still scopes
+     the per-seller dashboard-theme accent swap (see [data-dashboard-
+     theme] above) to this class. Base surface styling now lives on
+     `body` above and applies everywhere. */
+  .app-shell-surface {
     min-height: 100vh;
   }
 
@@ -188,5 +284,59 @@
   .transition-smooth-fast {
     transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease-standard);
+  }
+}
+
+/* Radix overlay motion - every floating/overlay primitive (Dialog,
+   DropdownMenu, Select, Tooltip) animates in/out via these two keyframe
+   pairs, driven by Radix's own [data-state] attribute. Exits use
+   --ease-in and run faster than entrances (--ease-standard) - the same
+   "exit quicker than enter" discipline as the rest of this system's
+   motion, just expressed as keyframes instead of a transition since
+   Radix unmounts on close. */
+@keyframes overlay-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes overlay-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.96) translateY(4px); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+[data-radix-popper-content-wrapper] [data-state="open"],
+.eyosto-overlay[data-state="open"] {
+  animation: overlay-in var(--duration-base) var(--ease-standard);
+}
+.eyosto-overlay[data-state="closed"] {
+  animation: overlay-out var(--duration-fast) var(--ease-in);
+}
+.eyosto-fade[data-state="open"] {
+  animation: fade-in var(--duration-fast) var(--ease-standard);
+}
+.eyosto-fade[data-state="closed"] {
+  animation: fade-out var(--duration-fast) var(--ease-in);
+}
+.eyosto-scrim[data-state="open"] {
+  animation: scrim-in var(--duration-base) var(--ease-standard);
+}
+.eyosto-scrim[data-state="closed"] {
+  animation: fade-out var(--duration-fast) var(--ease-in);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eyosto-overlay, .eyosto-fade, .eyosto-scrim {
+    animation: none !important;
   }
 }

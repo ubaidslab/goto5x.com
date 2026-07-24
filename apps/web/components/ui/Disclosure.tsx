@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { ReactNode, useState } from "react";
 
 /**
@@ -15,22 +16,13 @@ export function Disclosure({ label, children }: { label: string; children: React
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between text-sm font-medium text-ink-muted transition-smooth-fast hover:text-ink"
+        className="flex w-full items-center justify-between rounded-sm text-sm font-medium text-ink-muted transition-smooth-fast hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         aria-expanded={open}
       >
         {label}
-        <svg
-          className={`h-4 w-4 transition-smooth ${open ? "rotate-180" : ""}`}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.75}
-          aria-hidden
-        >
-          <path d="M5 7.5l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <ChevronDown className={`h-4 w-4 transition-smooth ${open ? "rotate-180" : ""}`} strokeWidth={1.75} aria-hidden />
       </button>
-      {open && <div className="mt-4 space-y-4">{children}</div>}
+      {open && <div className="mt-4 space-y-4 animate-[fade-in_var(--duration-base)_var(--ease-standard)]">{children}</div>}
     </div>
   );
 }

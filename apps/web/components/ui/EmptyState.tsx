@@ -17,11 +17,15 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-      {icon && <div className="text-ink-faint">{icon}</div>}
+    <div className="flex flex-col items-center gap-4 px-6 py-16 text-center">
+      {icon && (
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-canvas text-ink-faint" aria-hidden>
+          {icon}
+        </div>
+      )}
       <div>
-        <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">{description}</p>
+        <h3 className="text-h4 font-display text-ink">{title}</h3>
+        <p className="mx-auto mt-1.5 max-w-sm text-sm text-ink-muted">{description}</p>
       </div>
       {action}
     </div>

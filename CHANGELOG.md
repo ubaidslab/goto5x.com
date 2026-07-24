@@ -7,6 +7,38 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 19 (Product Design System) — Phase 1 of 8: foundation
+
+Platform name is now official — **eyosto**. Founder-directed 8-phase
+design pass across the whole product; this entry covers Phase 1 only.
+
+### Added
+- Real type scale (`text-display` through `text-eyebrow`), two marketing-
+  rhythm spacing tokens, `shadow-xl`, `radius-full`, and two new easing
+  curves (`ease-in`, `ease-emphasized`) plus `duration-slower` in
+  `apps/web/app/globals.css`, mirrored as JS constants in the new
+  `apps/web/lib/motion.ts` for GSAP.
+- Plus Jakarta Sans added as the display typeface (headlines/hero/
+  wordmark) alongside the existing Inter body face.
+- "eyosto" typographic wordmark replacing the old "goto5x" glyph-mark +
+  text lockup (`components/dashboard/Sidebar.tsx`).
+- shadcn/ui-style component kit: existing `Button`/`Card`/`Badge`/`Alert`/
+  `Field`/`EmptyState`/`PageHeader`/`Spinner`/`Disclosure` upgraded in
+  place (same import paths/props, full 8-state coverage); twelve new
+  Radix-based primitives (`Label`/`Checkbox`/`Switch`/`Tabs`/`Table`/
+  `Dialog`/`DropdownMenu`/`Avatar`/`Progress`/`Skeleton`/`Tooltip`/
+  `Separator`) plus a toast system.
+- Two reusable GSAP motion primitives: `Reveal` (scroll-triggered fade/
+  rise-in, reduced-motion aware) and `Magnetic` (cursor-follow hover for
+  a page's single primary CTA).
+- `/design-system` — the live token + component contract page every later
+  phase is checked against.
+
+### Not yet built (Phases 2-8, same module, next)
+Marketing site, auth/onboarding, dashboard (core + remaining), buyer
+storefronts, admin terminal — no page outside `/design-system` has been
+visually restyled yet.
+
 ## Module 25 (P0) — Admin Terminal Completion
 
 ### Added

@@ -2061,6 +2061,104 @@ in isolation, a direct admin revoke (audit-logged), and annual
 re-verification expiry forcing a genuine new application (at the
 Settings-default zero reverification fee).
 
+## Module 19 (Product Design System) — Phase 1 of 8, checkpoint reported
+
+The design phase this whole build deferred, per the "known sequencing risk"
+noted at the top of this document: founder branding sign-off finally landed
+(platform name is now official — **eyosto**, lowercase wordmark), unblocking
+the visual pass every module before this one built functionally but left at
+"bare, no design pass yet." Founder-directed 8-phase execution, one
+checkpoint per phase. This entry covers **Phase 1 (design system
+foundation)** only — Phases 2-8 (marketing site, auth/onboarding, dashboard
+core + remaining, buyer surfaces, admin terminal, final pass) are not yet
+started.
+
+**Tokens** (`apps/web/app/globals.css`) — the monochrome premium direction
+from Module 10 already had a correct, hue-free grayscale ramp and a single
+restrained accent; Phase 1 filled in what was actually missing rather than
+redoing what worked:
+- A real type scale (`--text-display` through `--text-eyebrow`, using
+  Tailwind v4's paired `--text-*--line-height`/`--letter-spacing`/
+  `-weight` properties) — large sizes get tight negative tracking (a
+  headline reads as one gesture), body sizes stay roomy (1.5-1.6 line
+  height).
+- Two semantic spacing tokens (`--spacing-section`/`-lg`) for marketing-page
+  rhythm from Phase 2 onward — Tailwind's own default 4px-based scale
+  already was the systematic ramp for everything else, no reinvention.
+- `--shadow-xl` (the one missing step, for the highest-layer dialog/scrim
+  case) and `--radius-full`.
+- Motion: added `--ease-in` (fast accelerate, exits only) and
+  `--ease-emphasized` (rare overshoot) alongside the existing
+  `--ease-standard`; `--duration-slower` for hero-level reveals. Mirrored
+  as JS constants in the new `apps/web/lib/motion.ts` so GSAP timelines and
+  CSS transitions read the exact same numbers.
+- Base layer promoted from dashboard-only (`.app-shell-surface`) to
+  product-wide: `body` now sets the font/background/ink globally, headings
+  (`h1-h4`) default to the display face, `:focus-visible` is a real ring
+  everywhere (not just inside the dashboard shell), and a
+  `prefers-reduced-motion` block zeroes every animation/transition
+  duration site-wide.
+- New Radix overlay keyframes (`overlay-in`/`-out`, `fade-in`/`-out`,
+  `scrim-in`) driving three reusable animation classes
+  (`.eyosto-overlay`/`.eyosto-fade`/`.eyosto-scrim`) so Dialog/DropdownMenu/
+  Tooltip/Toast all animate in with `ease-standard`, out with `ease-in`,
+  from one shared definition.
+
+**Typography** (`apps/web/app/layout.tsx`) — Plus Jakarta Sans added via
+`next/font/google` as the display face (headlines, hero copy, the
+wordmark); Inter kept as the body/UI face rather than replaced site-wide —
+it's already proven legible at 13-14px across every dense dashboard table
+this product has shipped, and premium-design-taste's own pairing rule caps
+a system at two families. Queried `ui-ux-pro-max`'s typography domain for a
+premium-dashboard-appropriate pairing candidate list before deciding.
+
+**Wordmark** (`apps/web/components/dashboard/Sidebar.tsx`) — replaced the
+old "goto5x" glyph-mark + text lockup with a plain typographic "eyosto"
+lockup in the display face (no logo/icon design work, per CLAUDE.md's
+Design Direction — the name is now official, not a placeholder, but a
+visual mark is still future work). Root layout metadata updated to match.
+Deliberately NOT a site-wide find/replace of "goto5x" — the ~9 remaining
+hard-coded copy occurrences (marketing homepage, signup page, storefront
+verified-store chrome) are plain page copy belonging to their own later
+phases (2, 3, 6 respectively), not this foundation phase.
+
+**Component kit** (`apps/web/components/ui/`) — installed the shadcn/ui
+stack (Radix primitives, `class-variance-authority`, `clsx` +
+`tailwind-merge` via a new `cn()` helper in `apps/web/lib/utils.ts`,
+`lucide-react`, `gsap`) rather than continuing purely hand-rolled
+components, per the founder's brief. Existing components
+(`Button`/`Card`/`Badge`/`Alert`/`Field`(`Input`/`Textarea`/`Select`)/
+`EmptyState`/`PageHeader`/`Spinner`/`Disclosure`) were upgraded in place —
+same import paths and prop APIs (21-25 pages each already depend on these,
+confirmed by grep before touching anything), full hover/focus-visible/
+active/disabled/loading/error states added, restyled through `cn()` against
+the token file. Twelve new Radix-based primitives added
+(`Label`/`Checkbox`/`Switch`/`Tabs`/`Table`/`Dialog`/`DropdownMenu`/
+`Avatar`/`Progress`/`Skeleton`/`Tooltip`/`Separator`), plus a toast system
+(`Toast`/`Toaster` + `apps/web/lib/use-toast.ts`'s shared queue, mounted
+once in the root layout). Two reusable motion primitives added
+(`apps/web/components/motion/Reveal.tsx` — GSAP + ScrollTrigger
+scroll-reveal wrapper, a no-op under `prefers-reduced-motion`;
+`Magnetic.tsx` — cursor-follow hover, reserved for a page's single primary
+CTA per the skill's own restraint rule).
+
+**`/design-system` preview page** — the contract page every later phase is
+checked against: identity/hero, color, typography, spacing & radii, depth,
+motion (with a live magnetic-CTA demo and the three easing curves
+explained), then every component in the kit with as many of its 8 states
+demonstrated as a static page can show (default/hover/focus-visible/active/
+disabled/loading are all genuinely interactive on the live page; error is
+shown explicitly on a form field). Verified via Playwright screenshots at
+1440px desktop and 390px mobile (see checkpoint report) — full reveal
+animations confirmed with `prefers-reduced-motion` emulation to check the
+page's real, un-animated layout at every section.
+
+**Deliberately out of scope for Phase 1:** no page outside `/design-system`
+was restyled yet (Phases 2-8's job); no Radix `Select` (the existing native
+`<select>` wrapper already covers current needs; a richer picker can be
+added when a specific screen needs it); the ~9 remaining "goto5x" copy
+occurrences noted above.
+
 ## Module 25 (Admin Terminal Completion) — built (P0 + P1 + P2)
 
 Founder-directed, not an SRS-FR-driven module — triggered by a completeness

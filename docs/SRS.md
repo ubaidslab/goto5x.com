@@ -3409,6 +3409,19 @@ next module starts. Each item is written to be testable, not aspirational.
 ### 14.0 Platform's Own Site
 - [ ] Public site meets the premium visual bar (apple.com-level polish +
       horizonx.so motion, §13) — explicit founder sign-off against FR-0.1
+      (Module 19, Phase 1 of 8 complete — see the sub-item immediately
+      below; Phases 2-8, covering every actual page, are not yet built)
+- [x] **Module 19 Phase 1 (design system foundation):** finalized type
+      scale/grayscale ramp/accent/spacing/radii/shadows/motion curves in
+      `apps/web/app/globals.css`; the "eyosto" typographic wordmark (name
+      now official, founder branding sign-off landed); the shared UI kit
+      restyled to a shadcn/ui-on-Radix base (existing components upgraded
+      in place, same props/import paths; 12 new primitives + a toast
+      system); a live `/design-system` contract page showing every
+      component in as many of its 8 states as a static page can — proven
+      via Playwright screenshots at 1440px desktop and 390px mobile, with
+      `prefers-reduced-motion` emulation confirming the page's real,
+      un-animated layout at every section
 - [ ] Mobile-responsive across the three most common breakpoints
 - [ ] Signup flow works end-to-end: create account → verify email → land in
       dashboard

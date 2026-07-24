@@ -4,14 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navItems } from "./nav-items";
 
-/** Placeholder wordmark - swap for the real logo once branding assets exist (founder review pending, see design-tokens note in app/globals.css). */
+/**
+ * Typographic wordmark - "eyosto" is the official platform name (no logo
+ * design work per CLAUDE.md's Design Direction; this stays a considered
+ * type treatment, not a mark/icon). Nothing else in this codebase should
+ * hard-code the name outside this component and the brand-asset/content-
+ * page system (SRS FR-12.1/FR-12.3) - a future rebrand is a data change.
+ */
 function Wordmark() {
   return (
-    <div className="flex items-center gap-2 px-2">
-      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-bold text-on-accent">
-        5x
-      </span>
-      <span className="text-sm font-semibold tracking-tight text-ink">goto5x</span>
+    <div className="px-2">
+      <span className="font-display text-h4 font-bold tracking-tight text-ink">eyosto</span>
     </div>
   );
 }
