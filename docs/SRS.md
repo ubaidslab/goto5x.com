@@ -3064,13 +3064,29 @@ storage integration.
   the period since the last export) plus one summary PDF (reuses FR-19.1's
   PDF engine with a new summary template, not the invoice template
   itself).
-- FR-36.3: **Delivery.** If the seller has an active Google Drive
-  connection (§3.3), the export uploads there directly, in a dedicated
+- FR-36.3: **Delivery** (revised, v0.28 security fix — supersedes the
+  original "time-limited download link" wording, which never matched
+  reality; see the disclosed discrepancy this replaces below). If the
+  seller has an active Google Drive connection (§3.3) with the upload
+  scope granted, the export uploads there directly, in a dedicated
   app-created folder (never writing into a folder the seller didn't
-  create for this purpose). If Drive isn't connected, the fallback is an
-  email (the existing `EmailService`) containing a time-limited download
-  link to the export bundle, generated the same way FR-19.2's invoice
-  download link already works — no new signed-URL mechanism.
+  create for this purpose) — this path is unaffected by the fix, since
+  it's the seller's own Drive, not this platform's storage. Every file in
+  the bundle (products/orders/customers CSVs, summary PDF) **contains
+  customer PII and is stored under a non-public object-storage prefix**;
+  the only read path is an ownership-checked, authenticated endpoint
+  (`GET sellers/me/data-export/:exportId/download/:file`, `JwtAuthGuard`
+  + a same-seller check, 404 for anyone else) that streams the bytes —
+  never a public URL, signed or otherwise. If Drive isn't connected (or
+  only holds the pre-existing `drive.readonly` scope), the fallback is an
+  email (the existing `EmailService`) linking to the dashboard's Data
+  export card — login required — never a direct link to the file itself.
+  **Disclosed limitation:** the application never emits the raw storage
+  key/URL to any client (proven by e2e test), but true "unreachable by an
+  unauthenticated raw request" also depends on the production MinIO
+  bucket policy denying anonymous reads on this prefix — a deploy-time
+  infra step (`docs/launch-runbook.md`), not something a Node-level test
+  against this repo's own code can mechanically prove end to end.
 - FR-36.4: **Non-blocking, binding.** This job runs as best-effort
   background work; a failure (Drive API error, generation error) is
   logged and **never** blocks, delays, or affects the subscription renewal
@@ -3983,6 +3999,18 @@ going forward, per FR-6.28.
       (v0.21):** no store-logo-upload capability exists anywhere in the platform as
       of Module 15, so the "branded" header is the store name in a designed
       typographic mark, not an uploaded image — see FR-19.1's revised text.
+      **Known hardening item, flagged not fixed (v0.28, surfaced during
+      Module 24's security review):** `Order.invoicePdfUrl` uses the same
+      plain, permanent, unsigned public MinIO URL pattern that Module 24's
+      export bundles were found to wrongly reuse for genuinely
+      PII-sensitive files. An invoice is lower-sensitivity than a full
+      customer export (one buyer's own order, not a seller's whole
+      customer/order list) — not nothing, but not the same severity — so
+      this is deliberately **not** fixed as a side effect of Module 24 (no
+      scope creep on an unrelated, already-shipped, already-tested
+      FR-19.1 path). Revisit alongside the OPS Security Hardening pass or
+      a future module: the same private-prefix + authenticated-download
+      pattern built for Module 24 would apply directly.
 - [ ] **Exactly one invoice template exists in v1.0** (true — built, tenant- and
       tax-mode-tested), but it **still needs the single, explicit founder sign-off**
       against the "clean and professional" bar (FR-19.2) before this line can be
@@ -4588,23 +4616,51 @@ going forward, per FR-6.28.
       methods under the widened `drive.file` OAuth scope); with Drive
       **not** connected, or connected under the old `drive.readonly`-only
       scope (pre-dating this module), the seller instead receives an email
-      with a download link (FR-36.3). **Disclosed deviation from this
-      FR's text:** the "time-limited download link" language does not
-      reflect actual code — no signed/expiring-URL mechanism exists
-      anywhere in the codebase (`Order.invoicePdfUrl` and every other
-      MinIO-backed URL are plain, permanent, unsigned public URLs); FR-36.3
-      itself says not to build a new signed-URL mechanism for this module,
-      so the export bundle correctly reuses that same (non-expiring)
-      `ObjectStorageService.putObject()` URL pattern, with the discrepancy
-      documented in code comments rather than silently "fixed" out of
-      scope. Proven by two e2e tests: one asserting a Drive-connected,
-      upload-scoped seller's files land in Drive (verified via the fake
-      `IDriveClient`'s recorded calls) with `deliveryMethod: "drive"`; one
-      asserting a connection made before the upload scope existed
-      (`drive.readonly` only, the real shape of every
+      linking to the dashboard's Data export card, login required (FR-36.3,
+      revised v0.28 — see below). Proven by two e2e tests: one asserting a
+      Drive-connected, upload-scoped seller's files land in Drive (verified
+      via the fake `IDriveClient`'s recorded calls) with
+      `deliveryMethod: "drive"`; one asserting a connection made before the
+      upload scope existed (`drive.readonly` only, the real shape of every
       `GoogleDriveConnection` row created before this module) correctly
       falls back to email rather than attempting an upload it structurally
       cannot perform.
+- [x] **v0.28 security fix, founder-flagged before proceeding to the Admin
+      Terminal Completeness Audit:** the original build stored export
+      bundles (products/orders/customers CSVs, summary PDF — all
+      customer-PII-bearing) as plain, permanent, unsigned public MinIO
+      URLs — the same pattern every other file link in the app uses, but
+      wrong specifically *here* because these files carry PII, unlike a
+      product image. Fixed by: (a) storing every export file under a
+      `private-exports/` object-storage prefix, never returned as a public
+      URL anywhere; (b) the `SellerDataExport` columns renamed
+      `*CsvUrl`/`summaryPdfUrl` → `*CsvKey`/`summaryPdfKey` to make the
+      "internal key, not a URL" invariant visible in the schema itself
+      (migration `20260725100000_module24_security_private_exports`); (c)
+      a new ownership-checked, authenticated endpoint,
+      `GET sellers/me/data-export/:exportId/download/:file`
+      (`JwtAuthGuard` + a same-seller check — a different seller's ID gets
+      404, not the file), streaming bytes via a new
+      `ObjectStorageService.getObject()`, as the *only* read path; (d) the
+      list/history endpoint (`GET sellers/me/data-export`) now returns
+      `hasProductsCsv`/`hasOrdersCsv`/`hasCustomersCsv`/`hasSummaryPdf`
+      booleans instead of any key/URL field; (e) the email fallback links
+      to the dashboard's Data export card (login required), never a raw
+      object link. Proven by e2e tests: the list response's serialized
+      JSON contains neither the `private-exports` prefix nor anything
+      matching a URL; the download endpoint returns 401 with no token and
+      404 for a different seller's token, 200 for the owner; the email
+      spy asserts the link contains `/login` and never `private-exports`.
+      **Disclosed limitation, not silently glossed over:** these tests
+      prove the *application* never emits a fetchable raw link — they
+      cannot prove a raw HTTP GET straight at the underlying MinIO object
+      is rejected, since that depends on the production bucket's policy
+      (deny anonymous reads on `private-exports/`), which this repo's test
+      double (`s3rver`) does not model realistically and no test against
+      it could honestly claim to verify. Required as a real deploy-time
+      step, added to `docs/launch-runbook.md`. Google Drive delivery is
+      entirely unaffected by this fix (that's the seller's own Drive
+      storage, not this platform's).
 - [x] A forced export-generation failure is logged and does **not** block,
       delay, or fail the subscription renewal itself (FR-36.4).
       `DataExportService.processExport()` wraps its entire body (record

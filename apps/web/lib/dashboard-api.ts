@@ -50,6 +50,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * Module 24 security fix (v0.28) - export files require the Bearer token
+ * this API uses throughout (no cookie auth exists), so a plain `<a href>`
+ * can't hit an authenticated download route. This fetches the bytes with
+ * the same auth header as every other request, then the caller triggers
+ * the actual browser save via a blob object URL.
+ */
+async function download(path: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    throw new ApiError(res.statusText, res.status);
+  }
+  return res.blob();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
@@ -57,4 +72,5 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   upload: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
+  download,
 };

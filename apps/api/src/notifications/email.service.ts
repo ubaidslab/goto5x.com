@@ -100,12 +100,18 @@ export class EmailService {
     );
   }
 
-  /** Module 24 (SRS §5.36, FR-36.3) - the fallback path when a seller has no active Google Drive connection with upload access. */
-  async sendDataExportReadyEmail(to: string, downloadUrl: string): Promise<void> {
+  /**
+   * Module 24 (SRS §5.36, FR-36.3, revised v0.28) - the fallback path when
+   * a seller has no active Google Drive connection with upload access.
+   * `dashboardLoginUrl` is deliberately a login link, never a raw
+   * object-storage link - the export contains customer PII, so the email
+   * itself must not be a viable path to the files without authenticating.
+   */
+  async sendDataExportReadyEmail(to: string, dashboardLoginUrl: string): Promise<void> {
     await this.send(
       to,
       "Your goto5x.com data export is ready",
-      `Your latest data export (products, orders, customers, and a summary PDF) is ready. Download it here: ${downloadUrl}\n\nThis is a convenience export for your own records - it is not a substitute for our own platform backups, which run automatically regardless.`,
+      `Your latest data export (products, orders, customers, and a summary PDF) is ready to download. Log in here, then go to Settings -> Data export: ${dashboardLoginUrl}\n\nThis is a convenience export for your own records - it is not a substitute for our own platform backups, which run automatically regardless.`,
     );
   }
 }

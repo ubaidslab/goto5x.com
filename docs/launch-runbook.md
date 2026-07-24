@@ -101,6 +101,22 @@ calls, real third-party services).
       (`docker compose exec minio mc mb local/$MINIO_BUCKET`, or the MinIO
       console at the container's console port) — the app does not
       auto-create it (README's "Secrets" table, `MINIO_BUCKET` row).
+- [ ] **Required (Module 24 security fix, v0.28):** the bucket must NOT
+      grant anonymous/public read on the `private-exports/` prefix —
+      `SellerDataExport`'s products/orders/customers CSVs and summary PDF
+      contain customer PII and are served exclusively through the
+      authenticated `GET sellers/me/data-export/:id/download/:file`
+      endpoint, never a direct object URL. Whatever policy makes other
+      prefixes (`sellers/*/logo`, product images, etc.) publicly
+      fetchable, explicitly exclude `private-exports/*` from it (e.g.
+      `mc anonymous set download local/$MINIO_BUCKET` scoped per-prefix,
+      not bucket-wide — check current MinIO docs for the exact per-prefix
+      policy syntax). This is the one piece of the fix this repo's test
+      suite cannot mechanically verify (the e2e test double doesn't model
+      bucket ACLs) — confirm it directly after deploy: `curl` the
+      constructed key path
+      (`<MEDIA_PUBLIC_BASE_URL or MINIO_ENDPOINT/MINIO_BUCKET>/private-exports/sellers/<id>/exports/<file>`)
+      with no auth header and confirm it is rejected, not served.
 - [ ] Confirm Traefik issued real Let's Encrypt certificates: visit
       `https://<platform-domain>` in a browser and check the padlock/cert
       issuer, not just that the page loads.

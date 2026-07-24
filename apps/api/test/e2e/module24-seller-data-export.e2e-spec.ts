@@ -6,6 +6,7 @@ import { AppModule } from "../../src/app.module";
 import { encryptDriveToken } from "../../src/media/drive-token-crypto.util";
 import { DRIVE_CLIENT, DRIVE_FILE_SCOPE, IDriveClient } from "../../src/media/google-drive/drive-client.interface";
 import { DataExportService } from "../../src/data-export/data-export.service";
+import { EmailService } from "../../src/notifications/email.service";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
@@ -165,15 +166,66 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     const completed = await superuser.sellerDataExport.findUniqueOrThrow({ where: { id: created.id } });
     expect(completed.status).toBe("completed");
     expect(completed.deliveryMethod).toBe("email"); // no Drive connection for this seller
-    expect(completed.productsCsvUrl).toBeTruthy();
-    expect(completed.ordersCsvUrl).toBeTruthy();
-    expect(completed.customersCsvUrl).toBeTruthy();
-    expect(completed.summaryPdfUrl).toBeTruthy();
+    expect(completed.productsCsvKey).toBeTruthy();
+    expect(completed.ordersCsvKey).toBeTruthy();
+    expect(completed.customersCsvKey).toBeTruthy();
+    expect(completed.summaryPdfKey).toBeTruthy();
+    // v0.28 security fix - the stored value is an internal storage key
+    // under the non-public prefix, never a URL.
+    expect(completed.productsCsvKey).toMatch(/^private-exports\//);
+    expect(completed.productsCsvKey).not.toMatch(/^https?:\/\//);
 
-    const csvRes = await fetch(completed.productsCsvUrl!);
-    const csvText = await csvRes.text();
-    expect(csvText).toContain("Export Product");
+    const download = await request(app.getHttpServer())
+      .get(`/sellers/me/data-export/${created.id}/download/products`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(download.status).toBe(200);
+    expect(download.text).toContain("Export Product");
   }, 30000);
+
+  it("v0.28 security fix: the export list/history response never leaks a raw storage key or URL, only per-file availability flags (FR-36.3)", async () => {
+    const { token, storeId, sellerId } = await createStore("export-no-leak@example.com", "export-no-leak");
+    await seedOneOfEach(storeId);
+    const dataExport = app.get(DataExportService);
+    const run = await dataExport.requestOnDemandExport(sellerId);
+    await dataExport.processExport(run.id);
+
+    const list = await request(app.getHttpServer()).get("/sellers/me/data-export").set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    const row = list.body.find((r: { id: string }) => r.id === run.id);
+    expect(row).toBeTruthy();
+    expect(row.status).toBe("completed");
+    expect(row.hasProductsCsv).toBe(true);
+    expect(row.hasOrdersCsv).toBe(true);
+    expect(row.hasCustomersCsv).toBe(true);
+    expect(row.hasSummaryPdf).toBe(true);
+    // None of the raw keys, and nothing resembling a fetchable URL, ever
+    // reaches the response body.
+    const serialized = JSON.stringify(list.body);
+    expect(serialized).not.toContain("private-exports");
+    expect(serialized).not.toMatch(/https?:\/\//);
+  });
+
+  it("v0.28 security fix: the download endpoint requires authentication and rejects a seller that doesn't own the export (FR-36.3)", async () => {
+    const { token, storeId, sellerId } = await createStore("export-owner@example.com", "export-owner");
+    await seedOneOfEach(storeId);
+    const dataExport = app.get(DataExportService);
+    const run = await dataExport.requestOnDemandExport(sellerId);
+    await dataExport.processExport(run.id);
+
+    const noAuth = await request(app.getHttpServer()).get(`/sellers/me/data-export/${run.id}/download/products`);
+    expect(noAuth.status).toBe(401);
+
+    const { token: otherToken } = await createStore("export-intruder@example.com", "export-intruder");
+    const wrongSeller = await request(app.getHttpServer())
+      .get(`/sellers/me/data-export/${run.id}/download/products`)
+      .set("Authorization", `Bearer ${otherToken}`);
+    expect(wrongSeller.status).toBe(404);
+
+    const owner = await request(app.getHttpServer())
+      .get(`/sellers/me/data-export/${run.id}/download/products`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(owner.status).toBe(200);
+  });
 
   it("an on-demand export request beyond the configured rate limit is rejected, not silently queued or double-generated (FR-36.1)", async () => {
     const { token } = await createStore("export-ratelimit@example.com", "export-ratelimit");
@@ -201,11 +253,17 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     expect(fakeDriveClient.uploadFile).toHaveBeenCalled();
 
     const withoutDrive = await createStore("export-no-drive@example.com", "export-no-drive");
+    const sendSpy = jest.spyOn(app.get(EmailService), "sendDataExportReadyEmail");
     const emailRun = await dataExport.requestOnDemandExport(withoutDrive.sellerId);
     await dataExport.processExport(emailRun.id);
     const emailCompleted = await superuser.sellerDataExport.findUniqueOrThrow({ where: { id: emailRun.id } });
     expect(emailCompleted.status).toBe("completed");
     expect(emailCompleted.deliveryMethod).toBe("email");
+    // v0.28 security fix - the email fallback links to a login page, never
+    // a raw, unauthenticated object-storage URL for a PII-bearing file.
+    expect(sendSpy).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("/login"));
+    const [, link] = sendSpy.mock.calls[sendSpy.mock.calls.length - 1];
+    expect(link).not.toContain("private-exports");
   });
 
   it("a connection made before the upload scope existed (drive.readonly only) correctly falls back to email rather than attempting an upload it can't perform", async () => {

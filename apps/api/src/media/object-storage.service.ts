@@ -1,6 +1,15 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import type { Readable } from "stream";
+
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
 
 /**
  * Thin wrapper around the S3-compatible API MinIO exposes (SRS §3.3). Using
@@ -38,6 +47,19 @@ export class ObjectStorageService {
 
   async deleteObject(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  /**
+   * Module 24 security fix (v0.28) - reads an object's bytes back through
+   * this service's own credentials rather than a public URL, so a key can be
+   * stored/served without ever being reachable by an unauthenticated raw
+   * request. Used by SellerDataExport's authenticated download endpoint
+   * (PII-bearing CSVs/PDF must never sit behind a guessable public URL).
+   */
+  async getObject(key: string): Promise<{ body: Buffer; contentType?: string }> {
+    const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const body = await streamToBuffer(result.Body as Readable);
+    return { body, contentType: result.ContentType };
   }
 
   getPublicUrl(key: string): string {

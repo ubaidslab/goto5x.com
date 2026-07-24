@@ -31,20 +31,42 @@ change.
   under a widened OAuth scope including `drive.file`), else an email
   fallback. Pre-existing connections made under the old `drive.readonly`-
   only scope correctly degrade to email rather than attempting an upload
-  they cannot perform. **Disclosed deviation:** no signed/expiring-URL
-  mechanism exists anywhere in this codebase; per FR-36.3's own
-  instruction not to build one for this module, the email fallback link
-  reuses the same plain, non-expiring `ObjectStorageService.putObject()`
-  URL pattern as every other file link in the app (e.g.
-  `Order.invoicePdfUrl`) — documented in code, not silently patched.
+  they cannot perform.
 - Non-blocking guarantee (FR-36.4): `DataExportService.processExport()`
   never throws — a generation or delivery failure is caught, logged, and
   recorded on the row as `status: "failed"` with a `failureReason`,
   including the case where the export row itself can't be found; the
   subscription renewal that triggered it is provably unaffected.
 - Seller-facing UI: a "Data export" card on the store Settings page
-  (request-on-demand button + export history with status badges).
+  (request-on-demand button + export history, with per-file download
+  links per the security fix below).
 - Migration `20260725090000_module24_seller_data_export`.
+
+### Fixed (v0.28, security, same-day follow-up before this module's
+checklist could be approved as final)
+- Export bundles contain customer PII (buyer emails/names/order details)
+  and had initially been stored as plain, permanent, unsigned public
+  MinIO URLs — the pattern every other file link in this app uses, but
+  wrong specifically here. Fixed: files now live under a `private-exports/`
+  object-storage prefix, never returned as a public URL anywhere;
+  `SellerDataExport`'s `*CsvUrl`/`summaryPdfUrl` columns renamed to
+  `*CsvKey`/`summaryPdfKey` (migration
+  `20260725100000_module24_security_private_exports`) to make "internal
+  key, not a URL" visible in the schema; the sole read path is a new
+  ownership-checked, authenticated endpoint,
+  `GET sellers/me/data-export/:exportId/download/:file`, streaming bytes
+  via a new `ObjectStorageService.getObject()`; the list/history endpoint
+  now returns `hasProductsCsv`/`hasOrdersCsv`/`hasCustomersCsv`/
+  `hasSummaryPdf` booleans instead of any key or URL; the email fallback
+  links to the dashboard's Data export card (login required) instead of
+  a raw file link. Google Drive delivery is unaffected (that's the
+  seller's own Drive, not this platform's storage). **Flagged, not
+  fixed:** `Order.invoicePdfUrl` shares the original plain-public-URL
+  pattern — lower severity (one buyer's own order, not a seller's full
+  customer/order list) and deliberately out of scope here; added to
+  `docs/SRS.md` §14.19 as a known hardening item for a future pass.
+  `docs/launch-runbook.md` gained a required deploy-time step: the MinIO
+  bucket policy must not grant anonymous reads on `private-exports/`.
 
 ## Module 23 — Store Health Score + Verified Store Program
 

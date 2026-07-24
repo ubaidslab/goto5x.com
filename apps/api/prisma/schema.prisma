@@ -2064,6 +2064,11 @@ enum DataExportDeliveryMethod {
 // giving FR-36.2's "scoped to the period since the last export" without a
 // separate cursor field. This same table's most recent row (any trigger)
 // is also what FR-36.1(b)'s on-demand rate limit is checked against.
+// v0.28 security fix: the *CsvKey/*PdfKey columns are internal
+// ObjectStorageService keys (under a non-public "private/" prefix), never
+// public URLs - they must never be returned to any client. The only access
+// path is the ownership-checked `GET .../download/:file` streaming
+// endpoint (FR-36.3, revised).
 model SellerDataExport {
   id              String                    @id @default(uuid()) @db.Uuid
   sellerId        String                    @map("seller_id") @db.Uuid
@@ -2072,10 +2077,10 @@ model SellerDataExport {
   deliveryMethod  DataExportDeliveryMethod? @map("delivery_method")
   periodStart     DateTime                  @map("period_start") @db.Timestamptz
   periodEnd       DateTime                  @map("period_end") @db.Timestamptz
-  productsCsvUrl  String?                   @map("products_csv_url")
-  ordersCsvUrl    String?                   @map("orders_csv_url")
-  customersCsvUrl String?                   @map("customers_csv_url")
-  summaryPdfUrl   String?                   @map("summary_pdf_url")
+  productsCsvKey  String?                   @map("products_csv_key")
+  ordersCsvKey    String?                   @map("orders_csv_key")
+  customersCsvKey String?                   @map("customers_csv_key")
+  summaryPdfKey   String?                   @map("summary_pdf_key")
   failureReason   String?                   @map("failure_reason")
   createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz
   completedAt     DateTime?                 @map("completed_at") @db.Timestamptz

@@ -52,7 +52,18 @@ interface DataExportRow {
   status: "pending" | "completed" | "failed";
   deliveryMethod: "drive" | "email" | null;
   createdAt: string;
+  hasProductsCsv: boolean;
+  hasOrdersCsv: boolean;
+  hasCustomersCsv: boolean;
+  hasSummaryPdf: boolean;
 }
+
+const EXPORT_FILE_LABELS: { file: "products" | "orders" | "customers" | "summary"; label: string; flag: keyof DataExportRow }[] = [
+  { file: "products", label: "Products", flag: "hasProductsCsv" },
+  { file: "orders", label: "Orders", flag: "hasOrdersCsv" },
+  { file: "customers", label: "Customers", flag: "hasCustomersCsv" },
+  { file: "summary", label: "Summary", flag: "hasSummaryPdf" },
+];
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
   { id: "default", label: "Blue (default)", swatch: "#0071e3" },
@@ -126,6 +137,27 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setExportError(err instanceof ApiError ? err.message : "Couldn't request a data export.");
     } finally {
       setRequestingExport(false);
+    }
+  }
+
+  /**
+   * v0.28 security fix - export files contain customer PII and are no
+   * longer plain URLs; this streams the bytes through the authenticated
+   * download endpoint and triggers the browser's normal save flow via a
+   * short-lived blob object URL (revoked immediately after the click).
+   */
+  async function downloadExportFile(exportId: string, file: string, filename: string) {
+    setExportError(null);
+    try {
+      const blob = await api.download(`/sellers/me/data-export/${exportId}/download/${file}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "Couldn't download that file.");
     }
   }
 
@@ -425,6 +457,20 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                     <div>
                       <p className="text-sm text-ink">{e.trigger === "on_demand" ? "Requested" : "Subscription renewal"}</p>
                       <p className="text-xs text-ink-muted">{new Date(e.createdAt).toLocaleString()}</p>
+                      {e.status === "completed" && (
+                        <div className="mt-1 flex gap-3">
+                          {EXPORT_FILE_LABELS.filter((f) => e[f.flag]).map((f) => (
+                            <button
+                              key={f.file}
+                              type="button"
+                              className="text-xs text-accent underline"
+                              onClick={() => downloadExportFile(e.id, f.file, `${f.file}.${f.file === "summary" ? "pdf" : "csv"}`)}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <Badge tone={e.status === "completed" ? "success" : e.status === "failed" ? "danger" : "warning"}>
                       {e.status === "completed" ? `Sent via ${e.deliveryMethod}` : e.status}

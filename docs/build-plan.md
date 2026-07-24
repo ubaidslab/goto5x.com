@@ -2112,13 +2112,7 @@ Full scope: `docs/SRS.md` §5.36 (FR-36.1-36.5), checklist §14.36. New
   `ensureExportFolderId()` creates (once) a dedicated app-owned folder via
   the new `IDriveClient.createFolder`/`uploadFile` methods; a Drive
   upload failure mid-flight (revoked token, API error) falls back to
-  email rather than leaving the export undelivered. **Disclosed
-  deviation:** FR-36.3's "time-limited download link" phrasing does not
-  match any real mechanism in this codebase — every MinIO-backed URL
-  (including `Order.invoicePdfUrl`) is a plain, permanent, unsigned public
-  URL, and FR-36.3 itself says not to build a new signed-URL scheme for
-  this module, so the email fallback reuses that same existing pattern,
-  with the gap documented in code rather than silently patched.
+  email rather than leaving the export undelivered.
 - Non-blocking guarantee (FR-36.4): `processExport()` wraps its entire
   body — including the initial `SellerDataExport` row lookup — in one
   try/catch; any failure records `status: "failed"` + `failureReason` on
@@ -2127,17 +2121,63 @@ Full scope: `docs/SRS.md` §5.36 (FR-36.1-36.5), checklist §14.36. New
   its own enqueue call so a queueing failure can never affect the
   renewal that triggered it.
 - Seller-facing UI: a "Data export" card on the store Settings page —
-  request-on-demand button plus export history with status badges.
+  request-on-demand button plus per-file download links, per the
+  security fix below.
 
-Tests: `module24-seller-data-export.e2e-spec.ts` (5 tests) - a real
+**v0.28 security fix (same day, before the checklist could be approved
+final):** the first draft stored export bundles — customer-PII-bearing
+CSVs and a summary PDF — as plain, permanent, unsigned public MinIO
+URLs, following the existing (but here-inappropriate) pattern every
+other file link in this app uses. Migration
+`20260725100000_module24_security_private_exports` renames
+`SellerDataExport`'s `*CsvUrl`/`summaryPdfUrl` columns to
+`*CsvKey`/`summaryPdfKey`; every export file now writes under a
+`private-exports/` object-storage prefix that is never returned as a
+public URL. The sole read path is a new endpoint,
+`GET sellers/me/data-export/:exportId/download/:file`
+(`JwtAuthGuard` + an ownership check — a non-owner's ID gets 404, not the
+file), streaming bytes via a new `ObjectStorageService.getObject()`
+(`GetObjectCommand` + a stream-to-buffer helper). `listOwn()` now maps to
+a safe DTO (`hasProductsCsv`/`hasOrdersCsv`/`hasCustomersCsv`/
+`hasSummaryPdf` booleans, no key/URL fields at all) so the raw storage
+key can never leak through the history endpoint either. The email
+fallback (`EmailService.sendDataExportReadyEmail`) now links to
+`${APP_BASE_URL}/login` instead of a file URL — the seller logs in, then
+opens the dashboard's Data export card, which now renders a "Download"
+link per file that fetches the bytes with the same Bearer-token auth
+every other dashboard request uses (`dashboard-api.ts` gained a
+`download()` helper returning a `Blob`, since a plain `<a href>` can't
+attach an Authorization header) and triggers the browser's save flow via
+a short-lived blob object URL. Google Drive delivery is entirely
+unaffected — that path never touched a public URL to begin with.
+**Flagged, not fixed:** `Order.invoicePdfUrl` shares the original
+plain-public-URL pattern; lower severity (one buyer's own order vs. a
+seller's full customer/order list) and deliberately left out of scope
+here — see `docs/SRS.md` §14.19's new hardening note.
+**Disclosed limitation:** the fix guarantees the *application* never
+emits a fetchable raw link (proven by e2e test — the list response's
+serialized JSON contains neither the prefix nor anything URL-shaped); it
+cannot prove a direct HTTP GET at the underlying MinIO object is
+rejected, since that depends on the production bucket policy denying
+anonymous reads on `private-exports/`, which the e2e test double
+(`s3rver`) doesn't model realistically. Added as a required, verifiable
+step to `docs/launch-runbook.md`.
+
+Tests: `module24-seller-data-export.e2e-spec.ts` (7 tests) - a real
 subscription renewal producing an export whose three CSVs and one PDF
-each contain exactly the trailing-period rows; an on-demand request
-inside the rate-limit window correctly rejected with no new row created;
-a Drive-connected, upload-scoped seller's files landing in Drive
-(verified against the fake `IDriveClient`'s recorded calls); a
-connection made under the old `drive.readonly`-only scope correctly
-falling back to email; and a forced failure against a nonexistent export
-ID proven not to throw, with the triggering renewal itself unaffected.
+each contain exactly the trailing-period rows, fetched via the
+authenticated download endpoint; an on-demand request inside the
+rate-limit window correctly rejected with no new row created; a
+Drive-connected, upload-scoped seller's files landing in Drive (verified
+against the fake `IDriveClient`'s recorded calls) with the email
+fallback's link spied and asserted to be a login link, never a raw
+storage reference; a connection made under the old `drive.readonly`-only
+scope correctly falling back to email; a forced failure against a
+nonexistent export ID proven not to throw, with the triggering renewal
+itself unaffected; the list/history response's JSON proven to never
+contain the private-exports prefix or a URL; and the download endpoint
+proven to reject an unauthenticated request (401) and a non-owning
+seller's token (404) while accepting the true owner's (200).
 
 ## Module 15 (Customers, Reviews & Data Portability) — built
 

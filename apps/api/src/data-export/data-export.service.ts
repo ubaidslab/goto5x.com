@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { RedisService } from "../common/redis/redis.service";
@@ -17,6 +17,16 @@ const PRODUCT_HEADER = ["Store", "Product ID", "Title", "Status", "Created At"];
 const ORDER_HEADER = ["Store", "Order ID", "Placed At", "Status", "Currency", "Total Amount"];
 const CUSTOMER_HEADER = ["Store", "Customer ID", "Email", "Name", "Orders Count", "Total Spent", "Created At"];
 
+/**
+ * Module 24 security fix (v0.28): export bundles contain customer PII, so
+ * every object this service writes lives under this prefix, which is never
+ * exposed as a public URL anywhere - the sole read path is
+ * `downloadFile()`'s ownership-checked stream. Distinct from the
+ * `sellers/{id}/...` prefix media/invoices already use, which IS served
+ * publicly (documented gap, see docs/SRS.md §14.19's hardening note).
+ */
+const PRIVATE_EXPORT_PREFIX = "private-exports";
+
 function accessTokenCacheKey(sellerId: string): string {
   return `drive:access_token:${sellerId}`;
 }
@@ -25,8 +35,17 @@ interface BundleFile {
   filename: string;
   mimeType: string;
   buffer: Buffer;
-  url: string;
+  key: string;
 }
+
+type DownloadFileParam = "products" | "orders" | "customers" | "summary";
+
+const DOWNLOAD_FILES: Record<DownloadFileParam, { column: "productsCsvKey" | "ordersCsvKey" | "customersCsvKey" | "summaryPdfKey"; filename: string; contentType: string }> = {
+  products: { column: "productsCsvKey", filename: "products.csv", contentType: "text/csv" },
+  orders: { column: "ordersCsvKey", filename: "orders.csv", contentType: "text/csv" },
+  customers: { column: "customersCsvKey", filename: "customers.csv", contentType: "text/csv" },
+  summary: { column: "summaryPdfKey", filename: "summary.pdf", contentType: "application/pdf" },
+};
 
 /**
  * SRS §5.36, FR-36.1-36.5 - the Seller Data Export engine. Reuses the CSV
@@ -96,8 +115,57 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     return this.enqueue(sellerId, "on_demand");
   }
 
+  /**
+   * v0.28 security fix - deliberately excludes the *Key columns from the
+   * response shape. Those are internal ObjectStorageService keys, not
+   * URLs; returning them to the client would hand back exactly the
+   * guessable-path information the download endpoint exists to avoid
+   * leaking. `hasX` flags are all the frontend needs to render a
+   * download link per file.
+   */
   async listOwn(sellerId: string) {
-    return this.prismaAdmin.sellerDataExport.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" } });
+    const rows = await this.prismaAdmin.sellerDataExport.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" } });
+    return rows.map((r) => ({
+      id: r.id,
+      trigger: r.trigger,
+      status: r.status,
+      deliveryMethod: r.deliveryMethod,
+      periodStart: r.periodStart,
+      periodEnd: r.periodEnd,
+      createdAt: r.createdAt,
+      completedAt: r.completedAt,
+      failureReason: r.failureReason,
+      hasProductsCsv: r.productsCsvKey !== null,
+      hasOrdersCsv: r.ordersCsvKey !== null,
+      hasCustomersCsv: r.customersCsvKey !== null,
+      hasSummaryPdf: r.summaryPdfKey !== null,
+    }));
+  }
+
+  /**
+   * FR-36.3 (revised, v0.28 security fix) - the only read path for export
+   * bytes. Ownership-checked (404, not 403, so a non-owner learns nothing
+   * about whether the export exists) and streamed straight from object
+   * storage - the raw key is never returned to any client.
+   */
+  async downloadFile(sellerId: string, exportId: string, file: string): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    const spec = DOWNLOAD_FILES[file as DownloadFileParam];
+    if (!spec) {
+      throw new BadRequestException(`Unknown export file "${file}".`);
+    }
+
+    const record = await this.prismaAdmin.sellerDataExport.findUnique({ where: { id: exportId } });
+    if (!record || record.sellerId !== sellerId) {
+      throw new NotFoundException("Export not found.");
+    }
+
+    const key = record[spec.column];
+    if (!key) {
+      throw new NotFoundException("This export doesn't have that file.");
+    }
+
+    const { body } = await this.objectStorage.getObject(key);
+    return { buffer: body, filename: spec.filename, contentType: spec.contentType };
   }
 
   private async enqueue(sellerId: string, trigger: "subscription_renewal" | "on_demand") {
@@ -139,13 +207,14 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
         currency: bundle.currency,
       });
       const summaryPdfBuffer = await this.invoicePdf.renderToBuffer(summaryHtml);
-      const summaryPdfUrl = summaryPdfBuffer
-        ? await this.objectStorage.putObject(`sellers/${seller.id}/exports/summary-${Date.now()}.pdf`, summaryPdfBuffer, "application/pdf")
-        : null;
+      const summaryPdfKey = summaryPdfBuffer ? `${PRIVATE_EXPORT_PREFIX}/sellers/${seller.id}/exports/summary-${Date.now()}.pdf` : null;
+      if (summaryPdfKey && summaryPdfBuffer) {
+        await this.objectStorage.putObject(summaryPdfKey, summaryPdfBuffer, "application/pdf");
+      }
 
       const files: BundleFile[] = [...bundle.files];
-      if (summaryPdfUrl && summaryPdfBuffer) {
-        files.push({ filename: "summary.pdf", mimeType: "application/pdf", buffer: summaryPdfBuffer, url: summaryPdfUrl });
+      if (summaryPdfKey && summaryPdfBuffer) {
+        files.push({ filename: "summary.pdf", mimeType: "application/pdf", buffer: summaryPdfBuffer, key: summaryPdfKey });
       }
 
       const deliveryMethod = await this.deliver(seller.id, seller.user.email, files);
@@ -156,10 +225,10 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
           status: "completed",
           completedAt: new Date(),
           deliveryMethod,
-          productsCsvUrl: bundle.productsCsvUrl,
-          ordersCsvUrl: bundle.ordersCsvUrl,
-          customersCsvUrl: bundle.customersCsvUrl,
-          summaryPdfUrl,
+          productsCsvKey: bundle.productsCsvKey,
+          ordersCsvKey: bundle.ordersCsvKey,
+          customersCsvKey: bundle.customersCsvKey,
+          summaryPdfKey,
         },
       });
     } catch (err) {
@@ -209,44 +278,39 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     const customersCsv = toCsv(CUSTOMER_HEADER, customerRows);
 
     const timestamp = Date.now();
-    const productsCsvUrl = await this.objectStorage.putObject(
-      `sellers/${sellerId}/exports/products-${timestamp}.csv`,
-      Buffer.from(productsCsv, "utf-8"),
-      "text/csv",
-    );
-    const ordersCsvUrl = await this.objectStorage.putObject(
-      `sellers/${sellerId}/exports/orders-${timestamp}.csv`,
-      Buffer.from(ordersCsv, "utf-8"),
-      "text/csv",
-    );
-    const customersCsvUrl = await this.objectStorage.putObject(
-      `sellers/${sellerId}/exports/customers-${timestamp}.csv`,
-      Buffer.from(customersCsv, "utf-8"),
-      "text/csv",
-    );
+    const productsCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/products-${timestamp}.csv`;
+    const ordersCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/orders-${timestamp}.csv`;
+    const customersCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/customers-${timestamp}.csv`;
+    await this.objectStorage.putObject(productsCsvKey, Buffer.from(productsCsv, "utf-8"), "text/csv");
+    await this.objectStorage.putObject(ordersCsvKey, Buffer.from(ordersCsv, "utf-8"), "text/csv");
+    await this.objectStorage.putObject(customersCsvKey, Buffer.from(customersCsv, "utf-8"), "text/csv");
 
     return {
-      productsCsvUrl,
-      ordersCsvUrl,
-      customersCsvUrl,
+      productsCsvKey,
+      ordersCsvKey,
+      customersCsvKey,
       productCount: products.length,
       orderCount: orders.length,
       customerCount: customers.length,
       totalRevenue,
       currency,
       files: [
-        { filename: "products.csv", mimeType: "text/csv", buffer: Buffer.from(productsCsv, "utf-8"), url: productsCsvUrl },
-        { filename: "orders.csv", mimeType: "text/csv", buffer: Buffer.from(ordersCsv, "utf-8"), url: ordersCsvUrl },
-        { filename: "customers.csv", mimeType: "text/csv", buffer: Buffer.from(customersCsv, "utf-8"), url: customersCsvUrl },
+        { filename: "products.csv", mimeType: "text/csv", buffer: Buffer.from(productsCsv, "utf-8"), key: productsCsvKey },
+        { filename: "orders.csv", mimeType: "text/csv", buffer: Buffer.from(ordersCsv, "utf-8"), key: ordersCsvKey },
+        { filename: "customers.csv", mimeType: "text/csv", buffer: Buffer.from(customersCsv, "utf-8"), key: customersCsvKey },
       ] as BundleFile[],
     };
   }
 
   /**
-   * FR-36.3 - Drive when the seller has an active, upload-capable
-   * connection; otherwise the email-with-download-link fallback. A Drive
-   * upload failure (network, revoked mid-flight, etc.) falls back to email
-   * rather than leaving the export undelivered.
+   * FR-36.3 (revised, v0.28 security fix) - Drive when the seller has an
+   * active, upload-capable connection (unaffected by this fix - that's the
+   * seller's own Drive, not this platform's storage); otherwise an email
+   * fallback linking to the dashboard's Data export card, never a raw
+   * object-storage link, since these files carry customer PII and must
+   * require login to reach. A Drive upload failure (network, revoked
+   * mid-flight, etc.) falls back to email rather than leaving the export
+   * undelivered.
    */
   private async deliver(sellerId: string, email: string, files: BundleFile[]): Promise<"drive" | "email"> {
     const canUpload = await this.driveConnections.canUploadExports(sellerId);
@@ -267,8 +331,8 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const primaryLink = files.find((f) => f.filename === "summary.pdf")?.url ?? files[0]?.url ?? "";
-    await this.email.sendDataExportReadyEmail(email, primaryLink);
+    const dashboardLink = `${this.config.getOrThrow<string>("APP_BASE_URL")}/login`;
+    await this.email.sendDataExportReadyEmail(email, dashboardLink);
     return "email";
   }
 
