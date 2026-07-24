@@ -24,6 +24,34 @@ export class InvoicePdfService {
    * null on failure - CheckoutService simply leaves `invoicePdfUrl` unset.
    */
   async generate(data: InvoiceData): Promise<string | null> {
+    try {
+      const pdf = await this.renderPdfBuffer(renderInvoiceHtml(data));
+      const key = `stores/${data.storeId}/invoices/${data.orderId}.pdf`;
+      return await this.objectStorage.putObject(key, pdf, "application/pdf");
+    } catch (err) {
+      this.logger.warn(`Invoice PDF generation failed for order ${data.orderId}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Module 24 (SRS §5.36, FR-36.2) - reuses the exact same Playwright
+   * HTML->PDF renderer for the data-export summary PDF, per the FR's own
+   * "no new PDF engine" constraint. Returns the raw buffer (rather than
+   * uploading itself) so a caller that also needs the same bytes for a
+   * second destination (e.g. a Google Drive upload) never has to render
+   * twice. Best-effort - returns null on failure rather than throwing.
+   */
+  async renderToBuffer(html: string): Promise<Buffer | null> {
+    try {
+      return await this.renderPdfBuffer(html);
+    } catch (err) {
+      this.logger.warn(`PDF rendering failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  private async renderPdfBuffer(html: string): Promise<Buffer> {
     let browser;
     try {
       browser = await chromium.launch({
@@ -31,13 +59,8 @@ export class InvoicePdfService {
         args: ["--no-sandbox"],
       });
       const page = await browser.newPage();
-      await page.setContent(renderInvoiceHtml(data), { waitUntil: "load" });
-      const pdf = await page.pdf({ format: "A4", printBackground: true });
-      const key = `stores/${data.storeId}/invoices/${data.orderId}.pdf`;
-      return await this.objectStorage.putObject(key, pdf, "application/pdf");
-    } catch (err) {
-      this.logger.warn(`Invoice PDF generation failed for order ${data.orderId}: ${(err as Error).message}`);
-      return null;
+      await page.setContent(html, { waitUntil: "load" });
+      return await page.pdf({ format: "A4", printBackground: true });
     } finally {
       await browser?.close();
     }

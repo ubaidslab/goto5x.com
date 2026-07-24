@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Input, Textarea } from "@/components/ui/Field";
@@ -45,6 +46,14 @@ interface SupportAccessEntry {
   durationMinutes: number;
 }
 
+interface DataExportRow {
+  id: string;
+  trigger: "subscription_renewal" | "on_demand";
+  status: "pending" | "completed" | "failed";
+  deliveryMethod: "drive" | "email" | null;
+  createdAt: string;
+}
+
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
   { id: "default", label: "Blue (default)", swatch: "#0071e3" },
   { id: "emerald", label: "Emerald", swatch: "#1f9254" },
@@ -58,6 +67,9 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [policyText, setPolicyText] = useState("");
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policySaved, setPolicySaved] = useState(false);
+  const [dataExports, setDataExports] = useState<DataExportRow[] | null>(null);
+  const [requestingExport, setRequestingExport] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +108,27 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       .catch(() => {});
   }
 
+  function loadDataExports() {
+    api
+      .get<DataExportRow[]>("/sellers/me/data-export")
+      .then(setDataExports)
+      .catch(() => setDataExports([]));
+  }
+
+  /** Module 24 (SRS §5.36, FR-36.1(b)) - on-demand, rate-limited server-side. */
+  async function requestDataExport() {
+    setExportError(null);
+    setRequestingExport(true);
+    try {
+      await api.post("/sellers/me/data-export");
+      loadDataExports();
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "Couldn't request a data export.");
+    } finally {
+      setRequestingExport(false);
+    }
+  }
+
   useEffect(() => {
     api
       .get<{ accessMode: AccessMode; logoUrl: string | null; policyText: string | null }>(`/stores/${params.storeId}`)
@@ -118,6 +151,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
       .then(setPayment)
       .catch(() => {});
+    loadDataExports();
     api
       .get<SupportAccessEntry[]>("/sellers/me/support-access-history")
       .then(setSupportAccessHistory)
@@ -371,6 +405,34 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 Save
               </Button>
             </form>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Data export"
+            description="A convenience copy of your products, orders, and customers for your own records - delivered to your connected Google Drive, or emailed if Drive isn't connected. Not a substitute for our own platform backups."
+          />
+          <CardBody className="space-y-4">
+            {exportError && <Alert>{exportError}</Alert>}
+            <Button loading={requestingExport} onClick={requestDataExport}>
+              Request export now
+            </Button>
+            {dataExports && dataExports.length > 0 && (
+              <div className="divide-y divide-border">
+                {dataExports.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                    <div>
+                      <p className="text-sm text-ink">{e.trigger === "on_demand" ? "Requested" : "Subscription renewal"}</p>
+                      <p className="text-xs text-ink-muted">{new Date(e.createdAt).toLocaleString()}</p>
+                    </div>
+                    <Badge tone={e.status === "completed" ? "success" : e.status === "failed" ? "danger" : "warning"}>
+                      {e.status === "completed" ? `Sent via ${e.deliveryMethod}` : e.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardBody>
         </Card>
 

@@ -24,6 +24,9 @@ export interface DownloadedDriveFile {
   mimeType: string;
 }
 
+/** Module 24 (SRS §5.36, FR-36.3) - the scope required to create/write files the app itself owns (never a folder the seller created). */
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
 /**
  * Adapter boundary (same shape of idea as the Supplier Adapter pattern, SRS
  * §3.5): the real implementation talks to Google's actual APIs and cannot be
@@ -42,4 +45,8 @@ export interface IDriveClient {
   listImportableFiles(accessToken: string): Promise<DriveFile[]>;
   downloadFile(accessToken: string, fileId: string): Promise<DownloadedDriveFile>;
   revoke(refreshToken: string): Promise<void>;
+  /** Module 24 (FR-36.3) - creates a folder the app owns (requires `drive.file` scope); returns the new folder's Drive file ID. */
+  createFolder(accessToken: string, name: string): Promise<string>;
+  /** Module 24 (FR-36.3) - uploads into a folder the app already created; returns the new file's Drive file ID. */
+  uploadFile(accessToken: string, folderId: string, filename: string, mimeType: string, buffer: Buffer): Promise<string>;
 }

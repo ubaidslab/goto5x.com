@@ -46,6 +46,8 @@ describe("Platform Event Log (e2e) - SRS §3.11/FR-26.x, §14.23", () => {
         .mockResolvedValue([{ id: "drive-file-1", name: "vacation.jpg", mimeType: "image/jpeg" }]),
       downloadFile: jest.fn().mockResolvedValue({ buffer: Buffer.from("drive-bytes"), mimeType: "image/jpeg" }),
       revoke: jest.fn(),
+      createFolder: jest.fn(),
+      uploadFile: jest.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })

@@ -37,16 +37,27 @@ export class PlanFeeDebitService {
     private readonly programCommission: ProgramCommissionService,
   ) {}
 
-  async runMonthlyDebitSweep(now = new Date()): Promise<{ debited: number; downgraded: number }> {
+  /**
+   * `renewedSellerIds` (Module 24, SRS §5.36, FR-36.1(a)) - every seller
+   * whose plan fee was just successfully debited this sweep (i.e. actually
+   * renewed, not downgraded) - the worker triggers each one's data export
+   * AFTER this sweep returns, at the orchestration layer rather than via a
+   * direct service injection here, so BillingModule never needs to import
+   * DataExportModule (which itself imports MediaModule -> AuthModule ->
+   * GrowthProgramsModule -> BillingModule - a real cycle this avoids
+   * entirely rather than papering over with forwardRef()).
+   */
+  async runMonthlyDebitSweep(now = new Date()): Promise<{ debited: number; downgraded: number; renewedSellerIds: string[] }> {
     let debited = 0;
     let downgraded = 0;
+    const renewedSellerIds: string[] = [];
 
-    debited += await this.debitDuePlanFees(now, (n) => (downgraded += n));
+    debited += await this.debitDuePlanFees(now, (n) => (downgraded += n), (id) => renewedSellerIds.push(id));
     debited += await this.debitDueTeamSeatTotals(now);
     debited += await this.debitDueDeviceSlotAddOns(now);
     debited += await this.debitDueSupplierPlanFees(now, (n) => (downgraded += n));
 
-    return { debited, downgraded };
+    return { debited, downgraded, renewedSellerIds };
   }
 
   /** FR-7.10 supplement - the supplier-side mirror of debitDuePlanFees, debiting the separate supplier wallet. */
@@ -89,7 +100,7 @@ export class PlanFeeDebitService {
   }
 
   /** FR-7.2 (revised v0.24) - insufficient balance downgrades to Free, never orders_paused/suspension. */
-  private async debitDuePlanFees(now: Date, onDowngrade: (count: number) => void): Promise<number> {
+  private async debitDuePlanFees(now: Date, onDowngrade: (count: number) => void, onRenewed: (sellerId: string) => void): Promise<number> {
     const due = await this.prismaAdmin.subscription.findMany({
       where: { sellerId: { not: null }, currentPeriodEnd: { lte: now } },
       include: { plan: true },
@@ -126,6 +137,7 @@ export class PlanFeeDebitService {
         // blocks this debit - a missing/expired/suspended attribution is a
         // silent no-op inside this call.
         await this.programCommission.accrueReferralCommissionIfApplicable(subscription.sellerId!, round2(fee), subscription.plan.currency);
+        onRenewed(subscription.sellerId!);
         debited += 1;
       } else if (freePlan) {
         await this.prismaAdmin.subscription.update({

@@ -30,6 +30,8 @@ describe("DriveImportService", () => {
         return { buffer: Buffer.from(`bytes-for-${fileId}`), mimeType: file?.mimeType ?? "application/octet-stream" };
       }),
       revoke: jest.fn(),
+      createFolder: jest.fn(),
+      uploadFile: jest.fn(),
     };
   }
 

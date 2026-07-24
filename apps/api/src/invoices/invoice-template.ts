@@ -24,11 +24,11 @@ export interface InvoiceData {
   totalAmount: number;
 }
 
-function money(amount: number, currency: string): string {
+export function money(amount: number, currency: string): string {
   return `${currency} ${amount.toFixed(2)}`;
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 

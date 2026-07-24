@@ -22,6 +22,9 @@ import { ObjectStorageService } from "./object-storage.service";
     DriveImportService,
     { provide: DRIVE_CLIENT, useClass: GoogleDriveClientService },
   ],
-  exports: [MediaAssetsService, ObjectStorageService],
+  // DriveConnectionsService/DRIVE_CLIENT exported starting Module 24 (SRS
+  // §5.36, FR-36.3) - DataExportModule needs both to check for an active
+  // Drive connection and upload into the seller's dedicated export folder.
+  exports: [MediaAssetsService, ObjectStorageService, DriveConnectionsService, DRIVE_CLIENT],
 })
 export class MediaModule {}

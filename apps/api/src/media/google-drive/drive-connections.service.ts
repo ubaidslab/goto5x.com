@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { TenantPrismaService } from "../../prisma/tenant-prisma.service";
 import { SecurityEventService } from "../../auth/security-event.service";
 import { decryptDriveToken, encryptDriveToken } from "../drive-token-crypto.util";
-import { DRIVE_CLIENT, IDriveClient } from "./drive-client.interface";
+import { DRIVE_CLIENT, DRIVE_FILE_SCOPE, IDriveClient } from "./drive-client.interface";
 
 const DRIVE_CONNECTION_SAFE_SELECT = {
   id: true,
@@ -86,6 +86,35 @@ export class DriveConnectionsService {
     await this.tenantPrisma.run(sellerId, (tx) =>
       tx.googleDriveConnection.update({ where: { sellerId }, data: { lastUsedAt: new Date() } }),
     );
+  }
+
+  /**
+   * Module 24 (SRS §5.36, FR-36.3) - true only when the seller has an
+   * active connection AND it was granted the `drive.file` upload scope. A
+   * connection made before Module 24 shipped only has `drive.readonly` -
+   * this correctly returns false for it rather than attempting (and
+   * failing) an upload; the seller must reconnect once to grant the wider
+   * scope.
+   */
+  async canUploadExports(sellerId: string): Promise<boolean> {
+    const connection = await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.googleDriveConnection.findUnique({ where: { sellerId } }),
+    );
+    return Boolean(connection && connection.status === "active" && connection.grantedScopes.includes(DRIVE_FILE_SCOPE));
+  }
+
+  /** Module 24 - the ID of this seller's dedicated, app-created export folder, creating it once (lazily) and reusing it thereafter. */
+  async ensureExportFolderId(sellerId: string, accessToken: string): Promise<string> {
+    const connection = await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.googleDriveConnection.findUnique({ where: { sellerId } }),
+    );
+    if (connection?.exportFolderId) return connection.exportFolderId;
+
+    const folderId = await this.driveClient.createFolder(accessToken, "goto5x Data Exports");
+    await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.googleDriveConnection.update({ where: { sellerId }, data: { exportFolderId: folderId } }),
+    );
+    return folderId;
   }
 
   async revoke(sellerId: string, userId: string) {

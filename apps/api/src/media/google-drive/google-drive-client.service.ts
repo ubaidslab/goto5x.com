@@ -11,6 +11,17 @@ import {
 
 const DRIVE_SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
+  // Module 24 (SRS §5.36, FR-36.3) - required to create/write the seller's
+  // dedicated export folder and its files. `drive.file` only ever grants
+  // access to files/folders THIS app creates - never the seller's own
+  // existing Drive content - which is exactly "never a folder the seller
+  // didn't create for this purpose" enforced structurally by Google's own
+  // scope model, not by application-level discipline alone. A connection
+  // made before this scope was added only has `drive.readonly`
+  // (`GoogleDriveConnection.grantedScopes`) - DataExportService checks for
+  // this scope and falls back to the email delivery path until the seller
+  // reconnects; it never silently attempts an upload it can't perform.
+  "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/userinfo.email",
 ];
 
@@ -108,5 +119,31 @@ export class GoogleDriveClientService implements IDriveClient {
   async revoke(refreshToken: string): Promise<void> {
     const client = this.buildOAuthClient();
     await client.revokeToken(refreshToken);
+  }
+
+  async createFolder(accessToken: string, name: string): Promise<string> {
+    const client = this.buildOAuthClient();
+    client.setCredentials({ access_token: accessToken });
+    const drive = google.drive({ auth: client, version: "v3" });
+    const { data } = await drive.files.create({
+      requestBody: { name, mimeType: "application/vnd.google-apps.folder" },
+      fields: "id",
+    });
+    if (!data.id) throw new Error("Google Drive did not return a folder ID.");
+    return data.id;
+  }
+
+  async uploadFile(accessToken: string, folderId: string, filename: string, mimeType: string, buffer: Buffer): Promise<string> {
+    const client = this.buildOAuthClient();
+    client.setCredentials({ access_token: accessToken });
+    const drive = google.drive({ auth: client, version: "v3" });
+    const { Readable } = await import("node:stream");
+    const { data } = await drive.files.create({
+      requestBody: { name: filename, parents: [folderId] },
+      media: { mimeType, body: Readable.from(buffer) },
+      fields: "id",
+    });
+    if (!data.id) throw new Error("Google Drive did not return a file ID.");
+    return data.id;
   }
 }

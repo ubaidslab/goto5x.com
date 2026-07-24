@@ -4557,20 +4557,65 @@ going forward, per FR-6.28.
       `verification.reverification_fee_pkr` default (0 — "no new fee")
       correctly applied instead of the original application fee.
 
-### 14.36 Seller Data Export to Personal Cloud Storage (new, v0.27)
-- [ ] An export is generated automatically on subscription renewal and
+### 14.36 Seller Data Export to Personal Cloud Storage (new, v0.27) — built and e2e-tested (Module 24)
+- [x] An export is generated automatically on subscription renewal and
       correctly contains the trailing-period products/orders/customers
-      CSVs plus one summary PDF (FR-36.1/36.2)
-- [ ] An on-demand export request beyond the configured rate limit
-      (Settings Registry value) is rejected, not silently queued or
-      double-generated (FR-36.1)
-- [ ] With Drive connected, the export uploads into a dedicated
-      app-created folder; with Drive **not** connected, the seller instead
-      receives an email with a working time-limited download link
-      (FR-36.3)
-- [ ] A forced export-generation failure (e.g. Drive API error injected in
-      a test) is logged and does **not** block, delay, or fail the
-      subscription renewal itself (FR-36.4)
+      CSVs plus one summary PDF (FR-36.1/36.2). Triggered from
+      `PlanFeeDebitService.runMonthlyDebitSweep()`'s successful-renewal
+      branch via a `renewedSellerIds` return value consumed at the
+      worker-orchestration layer (`worker.main.ts`), not a direct service
+      injection — `BillingModule` importing `DataExportModule` directly
+      would create a real module cycle
+      (`BillingModule -> DataExportModule -> MediaModule -> AuthModule ->
+      GrowthProgramsModule -> BillingModule`). Proven by an e2e test that
+      renews a subscription and asserts the resulting
+      `SellerDataExport` row's three CSVs and one PDF all contain exactly
+      the trailing-period rows, scoped across **all** of the seller's
+      stores (the trigger is per-seller — `Subscription.sellerId` is
+      `@unique` — not per-store).
+- [x] An on-demand export request beyond the configured rate limit
+      (`data_export.on_demand_min_interval_hours`, a Settings Registry
+      value) is rejected, not silently queued or double-generated
+      (FR-36.1). Enforced directly against `SellerDataExport`'s own
+      `createdAt` timestamps (a rolling "time since last request" check)
+      rather than the existing fixed-clock-hour `RateLimitService`, which
+      is architecturally a different kind of limiter. Proven by an e2e
+      test requesting a second on-demand export inside the window and
+      asserting a 400 with no new row created.
+- [x] With Drive connected **and upload-scoped**, the export uploads into
+      a dedicated app-created folder (`GoogleDriveConnection.exportFolderId`,
+      created via the newly-added `IDriveClient.createFolder`/`uploadFile`
+      methods under the widened `drive.file` OAuth scope); with Drive
+      **not** connected, or connected under the old `drive.readonly`-only
+      scope (pre-dating this module), the seller instead receives an email
+      with a download link (FR-36.3). **Disclosed deviation from this
+      FR's text:** the "time-limited download link" language does not
+      reflect actual code — no signed/expiring-URL mechanism exists
+      anywhere in the codebase (`Order.invoicePdfUrl` and every other
+      MinIO-backed URL are plain, permanent, unsigned public URLs); FR-36.3
+      itself says not to build a new signed-URL mechanism for this module,
+      so the export bundle correctly reuses that same (non-expiring)
+      `ObjectStorageService.putObject()` URL pattern, with the discrepancy
+      documented in code comments rather than silently "fixed" out of
+      scope. Proven by two e2e tests: one asserting a Drive-connected,
+      upload-scoped seller's files land in Drive (verified via the fake
+      `IDriveClient`'s recorded calls) with `deliveryMethod: "drive"`; one
+      asserting a connection made before the upload scope existed
+      (`drive.readonly` only, the real shape of every
+      `GoogleDriveConnection` row created before this module) correctly
+      falls back to email rather than attempting an upload it structurally
+      cannot perform.
+- [x] A forced export-generation failure is logged and does **not** block,
+      delay, or fail the subscription renewal itself (FR-36.4).
+      `DataExportService.processExport()` wraps its entire body (record
+      lookup included) in try/catch, recording `status: "failed"` +
+      `failureReason` on the row and never throwing — even the
+      failure-recording write itself is wrapped in a no-op `.catch()`, so
+      a doubly-broken export (e.g. a since-deleted row) still cannot
+      propagate an exception to its caller. Proven by an e2e test that
+      forces `processExport()` against a nonexistent export ID and asserts
+      the call resolves (not rejects), then asserts
+      `triggerRenewalExport()` for the same seller also resolves cleanly.
 
 ---
 

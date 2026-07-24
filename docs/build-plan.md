@@ -2061,6 +2061,84 @@ in isolation, a direct admin revoke (audit-logged), and annual
 re-verification expiry forcing a genuine new application (at the
 Settings-default zero reverification fee).
 
+## Module 24 (Seller Data Export to Personal Cloud Storage) — built
+
+Full scope: `docs/SRS.md` §5.36 (FR-36.1-36.5), checklist §14.36. New
+`apps/api/src/data-export/` module (`DataExportModule`). Migration
+`20260725090000_module24_seller_data_export`.
+
+- `DataExportService` — owns its own BullMQ queue (`data-export`,
+  `DataExportService.onModuleInit()`/`onModuleDestroy()` construct/close
+  it directly, same pattern as `ImportJobsService`, not a separate
+  Scheduler class). `enqueue()` computes `periodStart` from the seller's
+  last **completed** export (or the seller's `createdAt` if none exists)
+  through `periodEnd = now`, then creates a `pending` `SellerDataExport`
+  row and queues a job carrying only its ID — the worker resolves
+  everything else from the row (`processExport(exportId)`, matching every
+  other per-job processor in this codebase).
+- Two triggers (FR-36.1): `triggerRenewalExport(sellerId)`, called from
+  the worker's `plan-fee-debit` processor for each ID in
+  `PlanFeeDebitService.runMonthlyDebitSweep()`'s new `renewedSellerIds`
+  return value (never a direct `BillingModule` -> `DataExportModule`
+  import — that edge would complete a real cycle through `MediaModule` ->
+  `AuthModule` -> `GrowthProgramsModule` -> `BillingModule`, so the
+  cross-service call is deliberately pushed to the worker's
+  `NestApplicationContext` orchestration layer instead, which can resolve
+  either service regardless of which module structurally imports which);
+  and `requestOnDemandExport(sellerId)`, rate-limited to once per
+  `data_export.on_demand_min_interval_hours` (Settings Registry) via a
+  rolling check against the export table's own most recent `createdAt` —
+  not the existing fixed-clock-hour `RateLimitService`, which is a
+  differently-shaped limiter.
+- `generateBundle()` — fresh, date-ranged queries across **all** of the
+  seller's stores (the trigger is per-seller; `Subscription.sellerId` is
+  `@unique`, so a seller has exactly one renewal cycle regardless of
+  store count) for products/orders/customers, written via `toCsv`
+  (FR-18.2's existing primitive) into three CSVs. Deliberately a fresh
+  code path rather than an extension of the single-store, no-date-filter
+  `CsvExportService` — extending it risked regressing its already-shipped
+  FR-18.2 behavior for a different concept.
+- Summary PDF: `InvoicePdfService.renderToBuffer(html): Promise<Buffer|null>`
+  (new) renders the existing Playwright pipeline to a buffer without
+  uploading, so `DataExportService` can upload it once via
+  `ObjectStorageService.putObject()` and reuse the same buffer for the
+  Drive-upload path — avoids the wasteful double-render an earlier draft
+  had (render-and-upload, then re-render for the in-memory buffer).
+- Delivery (FR-36.3): `DriveConnectionsService.canUploadExports()` gates
+  on the new `DRIVE_FILE_SCOPE` (`drive.file`) being present in
+  `GoogleDriveConnection.grantedScopes` — connections made before this
+  module only have `drive.readonly` and correctly degrade to email rather
+  than attempting an upload the grant can't support.
+  `ensureExportFolderId()` creates (once) a dedicated app-owned folder via
+  the new `IDriveClient.createFolder`/`uploadFile` methods; a Drive
+  upload failure mid-flight (revoked token, API error) falls back to
+  email rather than leaving the export undelivered. **Disclosed
+  deviation:** FR-36.3's "time-limited download link" phrasing does not
+  match any real mechanism in this codebase — every MinIO-backed URL
+  (including `Order.invoicePdfUrl`) is a plain, permanent, unsigned public
+  URL, and FR-36.3 itself says not to build a new signed-URL scheme for
+  this module, so the email fallback reuses that same existing pattern,
+  with the gap documented in code rather than silently patched.
+- Non-blocking guarantee (FR-36.4): `processExport()` wraps its entire
+  body — including the initial `SellerDataExport` row lookup — in one
+  try/catch; any failure records `status: "failed"` + `failureReason` on
+  the row (itself wrapped in a no-op `.catch()`, so even a doubly-broken
+  export can't propagate). `triggerRenewalExport()` additionally wraps
+  its own enqueue call so a queueing failure can never affect the
+  renewal that triggered it.
+- Seller-facing UI: a "Data export" card on the store Settings page —
+  request-on-demand button plus export history with status badges.
+
+Tests: `module24-seller-data-export.e2e-spec.ts` (5 tests) - a real
+subscription renewal producing an export whose three CSVs and one PDF
+each contain exactly the trailing-period rows; an on-demand request
+inside the rate-limit window correctly rejected with no new row created;
+a Drive-connected, upload-scoped seller's files landing in Drive
+(verified against the fake `IDriveClient`'s recorded calls); a
+connection made under the old `drive.readonly`-only scope correctly
+falling back to email; and a forced failure against a nonexistent export
+ID proven not to throw, with the triggering renewal itself unaffected.
+
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
 Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18

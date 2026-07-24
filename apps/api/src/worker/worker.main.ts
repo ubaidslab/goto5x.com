@@ -21,6 +21,8 @@ import { StoreHealthScoreService } from "../store-health/store-health-score.serv
 import { STORE_HEALTH_SWEEP_QUEUE_NAME } from "../store-health/store-health-sweep.queue";
 import { VerificationReReviewService } from "../verification/verification-re-review.service";
 import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
+import { DataExportService } from "../data-export/data-export.service";
+import { DATA_EXPORT_JOB_NAME, DATA_EXPORT_QUEUE_NAME } from "../data-export/data-export.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -41,6 +43,7 @@ async function main() {
   const productImport = appContext.get(ProductImportService);
   const storeHealth = appContext.get(StoreHealthScoreService);
   const verificationReReview = appContext.get(VerificationReReviewService);
+  const dataExport = appContext.get(DataExportService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -95,7 +98,18 @@ async function main() {
   // wallet instead of generating an invoice.
   const planFeeDebitWorker = new Worker(
     PLAN_FEE_DEBIT_QUEUE_NAME,
-    async () => planFeeDebit.runMonthlyDebitSweep(),
+    async () => {
+      const result = await planFeeDebit.runMonthlyDebitSweep();
+      // Module 24 (SRS §5.36, FR-36.1(a)) - triggered at this orchestration
+      // layer, not via a direct service injection into PlanFeeDebitService,
+      // which would create a real module cycle (BillingModule ->
+      // DataExportModule -> MediaModule -> AuthModule -> GrowthProgramsModule
+      // -> BillingModule). triggerRenewalExport() never throws.
+      for (const sellerId of result.renewedSellerIds) {
+        await dataExport.triggerRenewalExport(sellerId);
+      }
+      return result;
+    },
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 
@@ -171,9 +185,24 @@ async function main() {
     console.error(`verification-re-review-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 24 (SRS §5.36, FR-36.1-36.4) - per-export processing job.
+  // DataExportService.processExport() never throws (FR-36.4) - a
+  // generation/delivery failure is caught inside it and recorded on the
+  // export row itself.
+  const dataExportWorker = new Worker(
+    DATA_EXPORT_QUEUE_NAME,
+    async (job) => dataExport.processExport(job.data.exportId as string),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  dataExportWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`${DATA_EXPORT_JOB_NAME} (seller-data-export) job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24).",
   );
 
   const shutdown = async () => {
@@ -186,6 +215,7 @@ async function main() {
     await productImportWorker.close();
     await storeHealthSweepWorker.close();
     await verificationReReviewSweepWorker.close();
+    await dataExportWorker.close();
     await appContext.close();
     process.exit(0);
   };

@@ -99,4 +99,13 @@ export class EmailService {
       `Your goto5x.com wallet balance has dropped below the recommended minimum. Top up within ${graceDays} day(s) to avoid your store(s) pausing new orders - your storefront stays visible, but checkout will be temporarily unavailable until you top up.`,
     );
   }
+
+  /** Module 24 (SRS §5.36, FR-36.3) - the fallback path when a seller has no active Google Drive connection with upload access. */
+  async sendDataExportReadyEmail(to: string, downloadUrl: string): Promise<void> {
+    await this.send(
+      to,
+      "Your goto5x.com data export is ready",
+      `Your latest data export (products, orders, customers, and a summary PDF) is ready. Download it here: ${downloadUrl}\n\nThis is a convenience export for your own records - it is not a substitute for our own platform backups, which run automatically regardless.`,
+    );
+  }
 }

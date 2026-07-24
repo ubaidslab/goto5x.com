@@ -13,6 +13,7 @@ import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.intercep
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
 import { CustomersModule } from "./customers/customers.module";
+import { DataExportModule } from "./data-export/data-export.module";
 import { DataPortabilityModule } from "./data-portability/data-portability.module";
 import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
@@ -82,6 +83,7 @@ import { VerificationModule } from "./verification/verification.module";
     CareersModule,
     StoreHealthModule,
     VerificationModule,
+    DataExportModule,
     GuardrailsModule,
     ExternalApiModule,
     HealthModule,

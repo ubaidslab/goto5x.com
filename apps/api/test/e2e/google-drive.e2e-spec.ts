@@ -54,6 +54,8 @@ describe("Google Drive connect/status/revoke (e2e, with a fake Google client) - 
         .mockResolvedValue([{ id: "drive-file-1", name: "vacation.jpg", mimeType: "image/jpeg" }]),
       downloadFile: jest.fn().mockResolvedValue({ buffer: Buffer.from("real-drive-bytes"), mimeType: "image/jpeg" }),
       revoke: jest.fn().mockResolvedValue(undefined),
+      createFolder: jest.fn().mockResolvedValue("fake-export-folder-id"),
+      uploadFile: jest.fn().mockResolvedValue("fake-export-file-id"),
     };
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })

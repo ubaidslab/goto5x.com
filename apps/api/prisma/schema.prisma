@@ -343,6 +343,7 @@ model Seller {
   referralAttributionReceived ReferralAttribution?          @relation("ReferralAttributionReferred")
   payoutRequests              PayoutRequest[]
   verifiedStoreApplications   VerifiedStoreApplication[]
+  dataExports                 SellerDataExport[]
 
   @@map("sellers")
 }
@@ -910,6 +911,11 @@ model GoogleDriveConnection {
   connectedAt           DateTime              @default(now()) @map("connected_at") @db.Timestamptz
   lastUsedAt            DateTime?             @map("last_used_at") @db.Timestamptz
   revokedAt             DateTime?             @map("revoked_at") @db.Timestamptz
+  // Module 24 (SRS §5.36, FR-36.3) - the ID of the one dedicated,
+  // app-created Drive folder this seller's data exports upload into,
+  // created lazily on first successful Drive-delivered export and reused
+  // thereafter - never a folder the seller created themselves.
+  exportFolderId        String?               @map("export_folder_id")
 
   @@map("google_drive_connections")
 }
@@ -2030,6 +2036,54 @@ model VerifiedStoreApplication {
 
   @@index([status, createdAt], name: "idx_verified_store_app_status_created")
   @@map("verified_store_applications")
+}
+
+enum DataExportTrigger {
+  subscription_renewal
+  on_demand
+}
+
+enum DataExportStatus {
+  pending
+  completed
+  failed
+}
+
+enum DataExportDeliveryMethod {
+  drive
+  email
+}
+
+// Module 24 (SRS §5.36, FR-36.1-36.5) - one row per export run, across ALL
+// of a seller's stores (the trigger - subscription renewal - is per-seller,
+// `Subscription.sellerId` is unique, so the bundle is seller-scoped, not
+// store-scoped, same category as `ProgramParticipant`/`PayoutRequest`: no
+// RLS policy of its own, accessed via `PrismaAdminService` + explicit
+// sellerId filtering). `periodStart` is the previous completed export's
+// `periodEnd` (or the seller's own `createdAt` for a first-ever export),
+// giving FR-36.2's "scoped to the period since the last export" without a
+// separate cursor field. This same table's most recent row (any trigger)
+// is also what FR-36.1(b)'s on-demand rate limit is checked against.
+model SellerDataExport {
+  id              String                    @id @default(uuid()) @db.Uuid
+  sellerId        String                    @map("seller_id") @db.Uuid
+  trigger         DataExportTrigger
+  status          DataExportStatus          @default(pending)
+  deliveryMethod  DataExportDeliveryMethod? @map("delivery_method")
+  periodStart     DateTime                  @map("period_start") @db.Timestamptz
+  periodEnd       DateTime                  @map("period_end") @db.Timestamptz
+  productsCsvUrl  String?                   @map("products_csv_url")
+  ordersCsvUrl    String?                   @map("orders_csv_url")
+  customersCsvUrl String?                   @map("customers_csv_url")
+  summaryPdfUrl   String?                   @map("summary_pdf_url")
+  failureReason   String?                   @map("failure_reason")
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+  completedAt     DateTime?                 @map("completed_at") @db.Timestamptz
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, createdAt], name: "idx_seller_data_exports_seller_created")
+  @@map("seller_data_exports")
 }
 
 /// SRS §5.6b, reactivated by Module 22 (FR-33.9) - the Payout Request &

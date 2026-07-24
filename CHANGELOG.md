@@ -7,6 +7,45 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 24 — Seller Data Export to Personal Cloud Storage
+
+### Added
+- `SellerDataExport` (FR-36.1-36.5) — a seller-scoped, cross-store data
+  export job. Triggers: automatically on each successful subscription
+  renewal (`PlanFeeDebitService.runMonthlyDebitSweep()` returns
+  `renewedSellerIds`, consumed by the worker's orchestration layer, not a
+  direct `BillingModule -> DataExportModule` import — that edge would
+  create a real module cycle through `MediaModule -> AuthModule ->
+  GrowthProgramsModule -> BillingModule`); or on-demand, rate-limited to
+  once per `data_export.on_demand_min_interval_hours` (Settings Registry)
+  via a rolling check against the export table's own timestamps.
+- Bundle contents (FR-36.2): trailing-period products/orders/customers
+  CSVs (reusing `toCsv`, FR-18.2's primitive, via fresh date-ranged
+  queries — not a modification of the existing single-store
+  `CsvExportService`) plus one summary PDF (reusing the Playwright
+  renderer via a new `InvoicePdfService.renderToBuffer()` that returns a
+  buffer without uploading, avoiding a redundant second render for the
+  Drive-upload path).
+- Delivery (FR-36.3): Google Drive when the seller has an active,
+  upload-scoped connection (`IDriveClient.createFolder`/`uploadFile`,
+  under a widened OAuth scope including `drive.file`), else an email
+  fallback. Pre-existing connections made under the old `drive.readonly`-
+  only scope correctly degrade to email rather than attempting an upload
+  they cannot perform. **Disclosed deviation:** no signed/expiring-URL
+  mechanism exists anywhere in this codebase; per FR-36.3's own
+  instruction not to build one for this module, the email fallback link
+  reuses the same plain, non-expiring `ObjectStorageService.putObject()`
+  URL pattern as every other file link in the app (e.g.
+  `Order.invoicePdfUrl`) — documented in code, not silently patched.
+- Non-blocking guarantee (FR-36.4): `DataExportService.processExport()`
+  never throws — a generation or delivery failure is caught, logged, and
+  recorded on the row as `status: "failed"` with a `failureReason`,
+  including the case where the export row itself can't be found; the
+  subscription renewal that triggered it is provably unaffected.
+- Seller-facing UI: a "Data export" card on the store Settings page
+  (request-on-demand button + export history with status badges).
+- Migration `20260725090000_module24_seller_data_export`.
+
 ## Module 23 — Store Health Score + Verified Store Program
 
 ### Added
