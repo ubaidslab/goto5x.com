@@ -13,6 +13,18 @@ import { NextRequest, NextResponse } from "next/server";
  * app/sitemap.ts and app/robots.ts read the Host header directly
  * themselves (see their own comments), for both the platform host and
  * every tenant host, so they must not be rewritten under /storefront.
+ *
+ * `/marketing` is also excluded - it's `public/marketing/`, the
+ * platform's own static asset directory (screenshots/graphics used by
+ * the marketing site), never tenant content. It must stay excluded for a
+ * second reason too: `next/image`'s built-in optimizer re-enters the
+ * whole request pipeline internally (`fetchInternalImage` in
+ * next/dist/server/image-optimizer.js mocks a request through this same
+ * middleware) to fetch the source file - without this exclusion, that
+ * internal re-entrant request gets rewritten to
+ * `/storefront/marketing/...`, 404s, and every `next/image` on a
+ * `/marketing/*` asset breaks with "isn't a valid image" (found while
+ * building the Phase 2 marketing homepage).
  */
 const PLATFORM_HOSTS = (process.env.PLATFORM_HOSTNAMES ?? "localhost:3000,app.localhost:3000,app.localhost")
   .split(",")
@@ -30,5 +42,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next|favicon.ico|sitemap.xml|robots.txt|storefront).*)"],
+  matcher: ["/((?!_next|favicon.ico|sitemap.xml|robots.txt|storefront|marketing).*)"],
 };

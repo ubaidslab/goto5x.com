@@ -2206,6 +2206,116 @@ not a new phase.
   no-preference and `prefers-reduced-motion: reduce`, across all three
   pages (`/`, `/design-system`, `/design-system/type`).
 
+## Module 19 (Product Design System) — Phase 2 of 8, checkpoint reported
+
+Marketing site, per the founder's ambition-raised brief: judged against
+dayos.com/tasteskill-class landing pages, not "clean minimal." Full
+scroll-driven storytelling (GSAP ScrollTrigger reveals throughout, one
+signature WebGL moment in the hero), mandatory real imagery (device-mockup
+frames around actual screenshots of the seeded "Northline Goods" store —
+no stock photos, no lorem ipsum), and the full page set: homepage,
+pricing, about, careers, legal.
+
+**Infrastructure first** — native Postgres/Redis dev stack stood up, the
+Module 21 simulation CLI (`apps/api/scripts/simulate/`) run to seed a
+realistic demo store ("Northline Goods"), then real dashboard/storefront
+screenshots captured through a local Host-header-spoofing reverse proxy
+(Playwright/Chromium can't override the protected `Host` header directly
+for navigation) and cropped into `apps/web/public/marketing/`.
+
+**Homepage** (`apps/web/app/page.tsx`, fully rewritten) — nav → hero
+(`Hero3D.tsx`: raw WebGL1, no Three.js, a small confined noise-gradient in
+ink/accent tones behind the headline, gated behind `IntersectionObserver`
++ `prefers-reduced-motion` + WebGL-availability checks, always mounted
+*behind* a static SVG gradient fallback that's the real LCP candidate) →
+social proof (`LogoStrip`) → problem→solution narrative → a pinned
+horizontal-scroll feature-card rail (`HorizontalScrollCards.tsx`,
+gsap-animations pattern 6) → real-screenshot product showcase
+(`DeviceMockup` × 3) → templates teaser → stat counters → live `/plans`
+pricing → testimonials (explicitly labeled placeholder — no fake company
+names presented as real) → FAQ → final CTA band → footer. `/pricing`
+rebuilt the same way (live `/plans` across Individual/Team/Supplier, own
+FAQ set).
+
+**New marketing primitives** (`apps/web/components/marketing/`):
+`MarketingNav` (scroll-shrinking glass pill), `MarketingFooter`,
+`SectionTitle`, `FeatureCard`, `PricingCard`, `TestimonialCard`,
+`FAQAccordion`, `StatCounter` (GSAP count-up), `DeviceMockup`,
+`ImageStack`, `LogoStrip`, `HorizontalScrollCards`, `AbstractGraphic`
+(code-generated SVG gradient mesh/dot grid built from the token file's own
+CSS custom properties, never a stock asset).
+
+**`/about`** — mission/values/stats shell in the same design language,
+final CTA into `/careers`.
+
+**`/careers`** — the founder flagged this had a real, unused backend
+(`GET /careers`, `POST /careers/:id/apply` — Module 22 Phase B, no auth).
+Built the public listing against it plus an apply-with-CV dialog
+(`Dialog` primitive, multipart `FormData` upload) rather than placeholder
+copy — verified end-to-end against two seeded job postings.
+
+**`/legal/[slug]`** — renders the real drafts already in `docs/legal/*.md`
+(terms-of-service → `/legal/terms`, privacy-policy → `/legal/privacy`,
+refund-policy → `/legal/refund-policy`, plus the two growth/verified-store
+terms docs at their own filename slugs) through a small purpose-built
+markdown renderer (`apps/web/lib/legal-markdown.tsx` — headings/
+blockquote/list/bold/inline-code only, the actual subset those five
+documents use; a full markdown library would be a dependency for a
+problem five small, structurally-simple documents don't have). Reads the
+on-disk drafts directly rather than through the `ContentPage` API
+(FR-12.1) — these are still counsel-unreviewed drafts (each carries its
+own "DRAFT — NOT LEGAL ADVICE" banner, preserved verbatim), not
+admin-editable copy yet; wiring them into the live content-page system is
+future work once counsel signs off.
+
+**Color A/B** (`/design-system/color-ab`, not linked from nav/footer) —
+the founder's requested comparison: hero + one more section rendered
+twice, the shipped monochrome default against a warmer "energy" accent
+(`#ff4d1c`, `[data-marketing-theme="energy"]` in `globals.css` — same
+scoped-CSS-variable mechanism already proven by the dashboard-theme
+presets a few sections up in this file). `Hero3D` took an optional
+`accentHex` prop (default unchanged) so the WebGL shader's hardcoded
+uniform can mirror whichever accent the wrapping scope is using. A
+screenshot-comparison surface only — the shipped homepage's code has no
+A/B toggle logic.
+
+**Bug found and fixed during this pass**: `PricingCard`s inside a `Reveal
+stagger` on `/pricing` stayed permanently stuck at `opacity: 0` even after
+a real scroll. Root cause: `.transition-smooth(-fast)` (used by the CTA's
+own hover/press feedback) sets `transition-duration`/`-timing-function`
+but never `transition-property`, which defaults to `all` — including
+`opacity`/`transform`, the exact two properties GSAP's reveal tween
+drives. The CSS transition engine and the tween fought over ownership of
+those properties and the reveal lost permanently. Fixed inside
+`Reveal.tsx` only (`gsap.set(targets, { transition: "none" })` before the
+tween, `clearProps: "transition"` in `onComplete`) rather than at the
+`.transition-smooth` utility level — scoping that utility's
+`transition-property` away from `transform`/`opacity` would have silently
+undone transform-based hover/press feedback on Button, PricingCard's CTA,
+FAQAccordion, MarketingNav's CTA, and the homepage's own CTAs (confirmed
+by grep before choosing the fix site). Verified against the isolated
+repro, the real `/pricing` page, and the homepage's own pricing section,
+all now correctly settling at `opacity: 1`.
+
+**Also fixed**: `next/image`'s optimizer makes an internal re-entrant
+request for local images that was getting caught by the multi-tenant
+storefront rewrite in `middleware.ts`; added `marketing` to the exclusion
+matcher (already excludes `_next`/`favicon.ico`/etc.) alongside installing
+`sharp` (a hard requirement for Next 14's image optimizer, not just a
+recommendation).
+
+**Deliberately out of scope for Phase 2:** Phases 3-8 (auth/onboarding,
+dashboard core + remaining, buyer storefronts, admin terminal, final
+pass); wiring the legal drafts through `ContentPage` (pending counsel
+review); a real markdown library (five small documents don't need one).
+
+Verified via Playwright at 1440px desktop and 390px mobile, plus a
+`prefers-reduced-motion: reduce` pass, across `/`, `/pricing`, `/about`,
+`/careers`, `/legal/terms`, and `/design-system/color-ab` — full-page
+screenshots use genuine incremental scroll (`page.mouse.wheel()`), not
+just reduced-motion emulation, since native image lazy-loading and
+ScrollTrigger reveals only fire on a real scroll.
+
 ## Module 25 (Admin Terminal Completion) — built (P0 + P1 + P2)
 
 Founder-directed, not an SRS-FR-driven module — triggered by a completeness

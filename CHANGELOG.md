@@ -71,6 +71,65 @@ corrected Phase 1, same checkpoint gate — not a new phase.
   position for fixed elements on a non-scrolling page, so it stayed at
   `opacity: 0` permanently. Replaced with a plain CSS fade-in.
 
+## Module 19 (Product Design System) — Phase 2: marketing site
+
+Full marketing site built to the founder's scroll-driven-storytelling
+spec, judged against dayos.com/tasteskill-class landing pages rather than
+"clean minimal." Same checkpoint gate as Phase 1.
+
+### Added
+- Homepage (`apps/web/app/page.tsx`) rebuilt end to end: nav, hero (raw
+  WebGL1 signature moment behind the headline, `Hero3D.tsx` - no Three.js,
+  static SVG gradient fallback is the real LCP candidate), social proof,
+  problem→solution narrative, a pinned horizontal-scroll feature-card rail
+  (`HorizontalScrollCards.tsx`), a real-product-screenshot section (three
+  `DeviceMockup` frames around actual screenshots of the seeded "Northline
+  Goods" store, not stock photos), templates teaser, stat counters, live
+  `/plans`-fed pricing, testimonials (explicitly labeled placeholder),
+  FAQ, and a final CTA band.
+- `/pricing` rebuilt the same way: live `/plans` fetch across
+  Individual/Team/Supplier tiers, FAQ.
+- New marketing primitive components (`apps/web/components/marketing/`):
+  `MarketingNav`, `MarketingFooter`, `SectionTitle`, `FeatureCard`,
+  `PricingCard`, `TestimonialCard`, `FAQAccordion`, `StatCounter`,
+  `DeviceMockup`, `ImageStack`, `LogoStrip`, `HorizontalScrollCards`,
+  `AbstractGraphic` (code-generated gradient mesh/dot grid, no stock
+  assets), `Hero3D`.
+- `/about` — mission/values/stats shell in the same design language.
+- `/careers` — public listing wired to the real `GET /careers` API
+  (Module 22 Phase B) with an apply-with-CV dialog against
+  `POST /careers/:id/apply`, not placeholder copy.
+- `/legal/[slug]` — renders the real drafts in `docs/legal/*.md` (terms,
+  privacy, refund-policy, plus the two growth/verified-store terms docs)
+  through a small purpose-built markdown renderer
+  (`apps/web/lib/legal-markdown.tsx`); intentionally reads the on-disk
+  drafts rather than the `ContentPage` API, since these are still
+  unreviewed-by-counsel drafts, not admin-editable copy yet.
+- `/design-system/color-ab` — founder-requested color A/B: the hero + one
+  more section rendered twice, monochrome default vs. a warmer "energy"
+  accent (`[data-marketing-theme="energy"]` in `globals.css`, same scoped-
+  CSS-variable mechanism as the existing dashboard-theme presets). Not
+  linked from nav/footer and not a shipped page - a screenshot-comparison
+  surface only.
+
+### Fixed
+- `Reveal.tsx`: a target carrying `.transition-smooth(-fast)` for its own
+  hover/press state (e.g. `PricingCard`'s CTA) has its CSS
+  `transition-property` default to `all`, which includes `opacity`/
+  `transform` - the same two properties GSAP's reveal tween drives. The
+  CSS transition engine and the tween fought over ownership of those
+  properties, and the reveal could get permanently stuck at its `opacity:
+  0` "from" state (found on `/pricing`'s `PricingCard` grids). Fixed by
+  suspending the CSS transition for exactly the reveal's own animation
+  window (`gsap.set(targets, { transition: "none" })` before the tween,
+  `clearProps: "transition"` in `onComplete`), scoped to `Reveal` itself
+  rather than weakening the shared `.transition-smooth` utility (which
+  would have silently undone transform-based hover/press feedback on
+  seven-plus other components).
+- `middleware.ts`: added `marketing` to the exclusion matcher - `next/
+  image`'s optimizer makes an internal re-entrant request for local
+  images that was getting caught by the multi-tenant storefront rewrite.
+
 ## Module 25 (P0) — Admin Terminal Completion
 
 ### Added

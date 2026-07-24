@@ -239,6 +239,20 @@
   --color-accent-subtle: #fbe9f0;
 }
 
+/* Phase 2 checkpoint color A/B (founder-requested comparison, not shipped
+   copy) - a warmer "energy" accent + canvas tint scoped to
+   [data-marketing-theme="energy"], same mechanism as the dashboard presets
+   above. Lives only on the /design-system/color-ab preview route, never on
+   the real homepage - the shipped default stays the monochrome+restrained-
+   blue direction until the founder picks a winner. */
+[data-marketing-theme="energy"] {
+  --color-canvas: #fdf6f1;
+  --color-accent: #ff4d1c;
+  --color-accent-hover: #e63e10;
+  --color-accent-active: #c2330b;
+  --color-accent-subtle: #ffe9de;
+}
+
 /* Motion - horizonx.so-class: confident, physics-leaning easing, never
    linear/robotic. Applied via the .transition-smooth helper below rather
    than Tailwind's default transition utilities, so the curve/duration

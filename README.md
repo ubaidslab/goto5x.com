@@ -124,6 +124,31 @@ immediately afterward** (it's idempotent/safe to re-run at any time — see the
 comments in the script). Caught by running the full test suite after a reset
 and watching every query fail with "permission denied," not assumed to be fine.
 
+## Previewing the marketing site (Module 19 Phase 2)
+
+The API must already be running (steps above) since the marketing pages
+fetch live data (`/plans`, `/careers`) rather than hard-coding it.
+
+1. `cd apps/web && pnpm dev` — visit `http://localhost:3000/`.
+2. Pages to look at: `/` (homepage), `/pricing`, `/about`, `/careers`,
+   `/legal/terms` (also `/legal/privacy`, `/legal/refund-policy`), and
+   `/design-system/color-ab` (the founder's monochrome-vs-"energy" color
+   comparison — not linked from the nav, direct URL only).
+3. `/careers` needs at least one `open` job posting to show anything
+   besides the empty state — there's no seed script for this shipped yet;
+   create one directly (`npx ts-node -e '...'` against
+   `prisma.jobPosting.create({ data: { role, description, status: "open" } })`)
+   or through the admin API if you want to see the listing populated.
+4. **Judge the motion with a real scroll, not `prefers-reduced-motion`
+   emulation alone** — every section reveal is GSAP ScrollTrigger-driven
+   and only fires on genuine scroll input; toggling reduced-motion in
+   DevTools only shows the (correct, but different) instant-render
+   fallback path, not the real experience most visitors get.
+5. The hero's WebGL signature moment (`Hero3D`) needs a browser with WebGL
+   support and no `prefers-reduced-motion` — it silently no-ops (just the
+   static SVG gradient stays visible) otherwise, which is the intended
+   fallback, not a bug.
+
 ## Local setup (with Docker)
 
 ```sh
