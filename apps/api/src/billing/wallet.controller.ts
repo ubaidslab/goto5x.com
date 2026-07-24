@@ -4,8 +4,11 @@ import { CurrentSupplierId } from "../common/decorators/current-supplier.decorat
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
+import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
 import { JwtAccessPayload } from "../common/types";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { AdjustSellerWalletDto } from "./dto/adjust-seller-wallet.dto";
 import { RequestTopUpDto } from "./dto/request-topup.dto";
 import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
@@ -33,6 +36,8 @@ export class SellerWalletController {
   }
 
   @Post("topup-requests")
+  @UseGuards(ImpersonationWriteGuard)
+  @BlockDuringImpersonation()
   async requestTopUp(@CurrentSellerId() sellerId: string, @Body() dto: RequestTopUpDto) {
     const currency = "PKR";
     const request = await this.wallet.requestTopUp(sellerId, dto.amount, currency);
@@ -106,6 +111,12 @@ export class AdminWalletController {
   @Post(":topUpId/reject")
   reject(@Param("topUpId") topUpId: string, @CurrentUser() user: JwtAccessPayload) {
     return this.wallet.rejectTopUp(topUpId, user.adminUserId!);
+  }
+
+  /** Module 25 (Admin Completion) - the seller-360 page's "adjust wallet" inline action. */
+  @Post("sellers/:sellerId/adjust")
+  adjust(@Param("sellerId") sellerId: string, @Body() dto: AdjustSellerWalletDto, @CurrentUser() user: JwtAccessPayload) {
+    return this.wallet.adminManualAdjust(sellerId, dto.amount, "PKR", dto.reason, user.adminUserId!);
   }
 }
 

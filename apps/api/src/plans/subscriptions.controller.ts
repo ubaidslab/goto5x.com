@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
+import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { SellerAgreementGuard } from "../trust-safety/seller-agreement.guard";
 import { ChangePlanDto } from "./dto/change-plan.dto";
 import { RedeemPromoCodeDto } from "./dto/redeem-promo-code.dto";
@@ -21,11 +23,15 @@ export class SubscriptionsController {
   }
 
   @Post("change")
+  @UseGuards(ImpersonationWriteGuard)
+  @BlockDuringImpersonation()
   change(@CurrentSellerId() sellerId: string, @Body() dto: ChangePlanDto) {
     return this.subscriptions.requestPlanChange(sellerId, dto.planId);
   }
 
   @Post("redeem-promo")
+  @UseGuards(ImpersonationWriteGuard)
+  @BlockDuringImpersonation()
   redeemPromo(@CurrentSellerId() sellerId: string, @Body() dto: RedeemPromoCodeDto) {
     return this.promoCodes.redeem(sellerId, dto.code);
   }

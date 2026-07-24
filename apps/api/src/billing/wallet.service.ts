@@ -27,6 +27,9 @@ const DEBIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
   // application-processing fee, same debit convention as every other fee
   // debit above.
   "verification_fee_debit",
+  // Module 25 (Admin Completion) - the seller-360 page's manual "adjust
+  // wallet" inline action.
+  "admin_manual_debit",
 ]);
 
 const CREDIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
@@ -34,6 +37,7 @@ const CREDIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
   "program_commission_credit",
   "program_reward_credit",
   "verification_fee_refund_credit",
+  "admin_manual_credit",
 ]);
 
 function signedContribution(type: LedgerEntryType, amount: number): number {
@@ -113,6 +117,10 @@ export class WalletService {
         return "Verified Store application fee";
       case "verification_fee_refund_credit":
         return "Verified Store application fee refunded";
+      case "admin_manual_credit":
+        return "Manual admin credit";
+      case "admin_manual_debit":
+        return "Manual admin debit";
       default:
         return type;
     }
@@ -212,5 +220,37 @@ export class WalletService {
       afterValue: { status: "rejected" },
     });
     return after;
+  }
+
+  /**
+   * Module 25 (Admin Completion) - the seller-360 page's "adjust wallet"
+   * inline action. `amount` is signed: positive credits, negative debits
+   * (never zero - a no-op adjustment has no reason to exist). A reason is
+   * mandatory and lands on the audit entry, not the ledger row itself (no
+   * ledger entry type here carries a free-text reason column, same as
+   * every other entry type).
+   */
+  async adminManualAdjust(sellerId: string, amount: number, currency: string, reason: string, adminUserId: string) {
+    if (amount === 0) {
+      throw new BadRequestException("Adjustment amount must not be zero.");
+    }
+    if (!reason.trim()) {
+      throw new BadRequestException("A reason is required for a manual wallet adjustment.");
+    }
+
+    const type: LedgerEntryType = amount > 0 ? "admin_manual_credit" : "admin_manual_debit";
+    const entry = await this.prismaAdmin.ledgerEntry.create({
+      data: { sellerId, type, amount: round2(Math.abs(amount)), currency },
+    });
+
+    await this.auditLog.record({
+      adminUserId,
+      action: "billing.wallet_manual_adjust",
+      targetType: "seller",
+      targetId: sellerId,
+      afterValue: { type, amount: round2(Math.abs(amount)), currency, reason },
+    });
+
+    return entry;
   }
 }

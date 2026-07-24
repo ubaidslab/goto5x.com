@@ -2061,6 +2061,116 @@ in isolation, a direct admin revoke (audit-logged), and annual
 re-verification expiry forcing a genuine new application (at the
 Settings-default zero reverification fee).
 
+## Module 25 (Admin Terminal Completion) — P0 built, P1/P2 next
+
+Founder-directed, not an SRS-FR-driven module — triggered by a completeness
+audit (research-only, no code) evaluating every admin capability against
+"a solo founder operating the entire platform daily with zero developer
+intervention." The audit found: 10 of 16 admin queues were API-only (no
+frontend page); 0 of ~90 Settings Registry keys had a write UI (read-only
+list only); no admin HOME page, no global search, no unified per-seller
+view, no system status page, no admin notification center existed; and
+four seller-facing money-write endpoints had never been wired to the
+`@BlockDuringImpersonation()` mechanism Module 17 already built. Founder
+approved the full P0+P1+P2 gap-table scope as one module, sequenced
+P0-first, with a checkpoint report after P0. New
+`apps/api/src/admin-completion/` module (`AdminCompletionModule`).
+Migration `20260726090000_module25_admin_completion`.
+
+- `AdminOverviewService`/`AdminOverviewController` (`GET admin/overview`)
+  — today's signups/orders/GMV (fresh "today" filtering) plus every
+  pending-queue count, each with a jump-link. All-time GMV/revenue/
+  active-store count reuse `UnitEconomicsService.computeRealTimeAnalytics()`
+  as-is (FR-8.10, already built Module 17) rather than a second analytics
+  engine. Every queue count mirrors the exact filter its own admin page
+  already uses (e.g. `moderationStatus: "pending"`, `status:
+  "pending_review"`) — a fan-out, not a second copy of any business rule.
+- `AdminSearchService`/`AdminSearchController` (`GET admin/search?q=`) —
+  partial name/email/ID across sellers/stores/orders/suppliers. Built on
+  raw `$queryRaw` + `Prisma.sql` (this codebase's existing precedent from
+  `StorefrontService`'s ranked full-text search), not the Prisma query
+  API's typed `contains` filter — a `@db.Uuid` column has no native
+  Postgres `LIKE` support without an explicit `::text` cast, which the
+  typed API can't express.
+- `AdminSellerOverviewService`/`AdminSellerOverviewController` (`GET
+  admin/sellers/:id/overview`) — the seller-360 page's data source.
+  Aggregates across every module that already holds a slice of "this one
+  seller's data" (profile+`WalletService`+`InvoicesService`+
+  `StoreHealthScoreService`+`TrustSafetyMonitorsService`+`SessionService`+
+  `ProgramParticipant` rows) rather than a new denormalized table. T&S
+  flags are filtered client-side (in the service) from the existing
+  monitor methods' full-list results by `sellerId` — those methods have
+  no per-seller query parameter, and adding one would have meant touching
+  Module 12's already-shipped, already-tested T&S code for a read this
+  module can get more simply by filtering. The timeline merges
+  `AdminAuditLog` (`targetId: sellerId`) with `PlatformEvent`
+  (`entityId: sellerId`), sorted together, rather than a new audit
+  concept.
+- `SettingsAdminController` gained `GET admin/settings/resolve` — walks
+  the same `PRECEDENCE` order `SettingsService.resolve()` already uses,
+  but returns every allowed scope's own row (or its absence) instead of
+  stopping at the first hit, plus each row's `updatedBy` resolved to the
+  acting admin's email. The write UI's client-side validation
+  (type-check + `min`/`max`) mirrors `SettingsService.validateValue()`'s
+  server-side rules exactly, so a rejected value never round-trips to
+  the API only to bounce.
+- `WalletService.adminManualAdjust()` — the seller-360 page's "adjust
+  wallet" action. Two new `LedgerEntryType` values
+  (`admin_manual_credit`/`admin_manual_debit`) wired into `WalletService`'s
+  `DEBIT_TYPES`/`CREDIT_TYPES` sets and `labelFor()`, per Module 20's own
+  documented invariant (the one place that knowledge lives). New endpoint
+  `POST admin/wallet-topups/sellers/:sellerId/adjust` on the existing
+  `AdminWalletController` (billing module already owns `WalletService`,
+  avoiding a new cross-module import).
+- **Genuine gap closed, not just new-module scope:** the audit's research
+  phase discovered `POST sellers/me/wallet/topup-requests`, `POST
+  sellers/me/subscription/change`, `POST
+  sellers/me/subscription/redeem-promo`, and `POST
+  sellers/me/growth-programs/withdrawals` had shipped in earlier modules
+  without the `@BlockDuringImpersonation()` + `ImpersonationWriteGuard`
+  pair Module 17 built specifically for this class of endpoint (mark-
+  as-paid and payment-instruction changes already had it). All four now
+  carry it — a one-line addition per endpoint, reusing the exact existing
+  mechanism rather than building a parallel one (an earlier draft of this
+  module did build a redundant ad-hoc guard before this was discovered
+  mid-build and reverted).
+- Frontend: shared `apps/web/app/(admin)/admin/layout.tsx` (nav sidebar
+  linking every existing + new admin page — this section had no shared
+  layout or nav at all before) and `apps/web/lib/admin-api.ts` (a shared
+  fetch wrapper mirroring the seller dashboard's `dashboard-api.ts`,
+  since every admin page before this hand-rolled its own
+  `localStorage.getItem("adminAccessToken")` + header plumbing). Three
+  new pages: `/admin` (home), `/admin/search`, `/admin/sellers/[sellerId]`
+  (seller-360). `/admin/settings` substantially rewritten for the write
+  UI described above.
+
+Tests: `module25-admin-completion.e2e-spec.ts` (6 tests) - the overview
+endpoint reflecting a same-day signup and a pending top-up in its queue
+counts; global search finding a seller/store/order/supplier each by a
+partial substring (name, email, and a partial-UUID match for the
+seller); the seller-360 endpoint's every section present and correctly
+scoped; the settings-resolve endpoint reporting the correct winning
+scope/effective-value/last-changed-by after a seller-scoped override;
+the wallet-adjust action's both directions plus its two rejection cases
+(zero amount, missing reason) plus an audit-log-row assertion; and all
+four newly-decorated endpoints returning 403 under an impersonation
+token.
+
+**Not yet built (P1/P2, same module, founder-approved to continue after
+this P0 checkpoint):** frontend pages for the eight backend surfaces
+that were API-only before this module (growth-programs' three queues +
+reports, careers, the real commission-invoices list, supplier adapters,
+the audit-log viewer, admin-granted-plan/promo-codes, category creation,
+the T&S self-referral monitor); a system status page (queue depths, job
+failures, storage/disk usage, email delivery failures — genuinely new
+backend instrumentation, nothing today exposes BullMQ or disk metrics);
+an admin notification center ("what needs attention since last login" —
+needs a new `AdminUser.lastSeenNotificationsAt` field); bulk actions on
+the highest-volume queues (moderation, wallet top-ups); and splitting
+`/admin/invoices` back into its two correctly-named screens (it's
+currently wired to wallet top-ups, not the commission-invoices endpoint
+its name implies).
+
 ## Module 24 (Seller Data Export to Personal Cloud Storage) — built
 
 Full scope: `docs/SRS.md` §5.36 (FR-36.1-36.5), checklist §14.36. New

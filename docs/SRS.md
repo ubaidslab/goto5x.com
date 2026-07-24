@@ -3798,11 +3798,16 @@ going forward, per FR-6.28.
 - [x] **Impersonation transparency:** a high-risk write attempted during an
       impersonation session — mark-as-paid, a payment-instruction change, or
       a payout/invoice action — is rejected, while an ordinary settings write
-      still succeeds (FR-8.4) — built Module 17. **Disclosed scope note:**
-      "payout/invoice action" is future-proofed via the same
-      `@BlockDuringImpersonation()` decorator, ready to apply the moment such
-      a seller-facing endpoint exists — none does yet (invoice actions are
-      admin-only today, and payouts are dormant per §5.6d)
+      still succeeds (FR-8.4) — built Module 17. **Disclosed scope note,
+      closed by Module 25:** at the time this was written, "payout/invoice
+      action" had no seller-facing endpoint yet to apply
+      `@BlockDuringImpersonation()` to. Module 25's completeness audit found
+      four that had since shipped without it — `POST
+      sellers/me/wallet/topup-requests`, `POST sellers/me/subscription/
+      change`, `POST sellers/me/subscription/redeem-promo`, and `POST
+      sellers/me/growth-programs/withdrawals` — all four now carry the same
+      decorator, proven by an e2e test asserting each returns 403 under an
+      impersonation token.
 - [ ] **Audit log immutability:** an attempt to `UPDATE` or `DELETE` an
       `admin_audit_logs` row fails at the database grant level (FR-8.9)
 - [x] Enabling maintenance mode shows the maintenance page to buyers/sellers while
@@ -3848,6 +3853,72 @@ going forward, per FR-6.28.
       already `@AllowReviewer()`-guarded endpoints verbatim, so the negative-
       access guarantee holds by construction (no separate auth path exists
       for the new page to bypass)
+- [x] **Admin Completion, Module 25 (P0), founder-directed completeness
+      audit closing the gap this whole section's own checklist items
+      never covered — a home overview, global search, and a unified
+      per-seller view):**
+  - [x] Every pending-queue count on the admin HOME page (`GET
+        admin/overview`) jump-links to its own queue page in one click —
+        wallet top-ups, Verified Store applications/re-review, product
+        moderation, T&S payment-review + all five monitor flag types are
+        live today; the three growth-program queues and the careers
+        queue jump-link to pages Module 25's P1 phase still needs to
+        build (disclosed, not silently glossed over — see
+        `docs/build-plan.md`'s Module 25 P0 section)
+  - [x] Global search (`GET admin/search?q=`) finds a seller, store,
+        order, and supplier each by a partial substring of its name/
+        email/ID — proven by one e2e test per entity type, including a
+        `id::text ILIKE` partial-UUID match (Prisma's typed query API
+        can't filter a `@db.Uuid` column by substring at all; this
+        required raw `$queryRaw` + `Prisma.sql`, this codebase's
+        pre-existing pattern from `StorefrontService`'s ranked search)
+  - [x] The seller-360 page (`GET admin/sellers/:id/overview`) renders
+        every section the founder's audit named for one seller in one
+        response: profile, stores (with live health score + verified
+        status), wallet balance + recent ledger, invoices, T&S flags
+        (filtered from the existing monitor services, not recomputed),
+        devices/sessions, growth-program participation, and a merged
+        audit-log + platform-event timeline — proven by an e2e test
+        asserting every section is present and correctly scoped to that
+        one seller
+  - [x] Every Settings Registry key is now editable end-to-end through
+        the admin UI (`/admin/settings`), not just listable: a new `GET
+        admin/settings/resolve` endpoint exposes the same PRECEDENCE
+        order `SettingsService.resolve()` uses as a full chain (every
+        allowed scope's own override, or its absence, plus who last
+        changed it and when), so the UI never guesses which scope is
+        winning. The write form is type-aware (boolean/number/string/
+        json, with the definition's own `min`/`max` enforced client-side
+        before the request even fires, mirroring
+        `SettingsService.validateValue()`'s server-side rules) and shows
+        a confirm-with-old-vs-new-value step for any key under
+        `billing.*`, containing "commission", or under
+        `platform.maintenance*` — proven by an e2e test setting a
+        seller-scoped override on `billing.commission_rate_percent` and
+        asserting the resolve endpoint reports the correct winning scope,
+        effective value, and the acting admin's own email as
+        last-changed-by
+  - [x] A new admin "adjust wallet" action (`POST
+        admin/wallet-topups/sellers/:sellerId/adjust`) credits or debits
+        a seller's wallet with a mandatory reason, rejects a zero amount
+        or a missing reason (400), and is audit-logged with the reason
+        attached to the audit entry (two new `LedgerEntryType` values,
+        `admin_manual_credit`/`admin_manual_debit`, migration
+        `20260726090000_module25_admin_completion`) — proven by an e2e
+        test covering both directions and both rejection cases, plus an
+        `admin_audit_logs` row assertion
+  - [ ] **Not yet built (Module 25 P1/P2, same module, sequenced after
+        this P0 checkpoint):** frontend pages for the eight backend
+        surfaces that were API-only (growth-programs' three queues +
+        reports, careers, the real commission-invoices list, supplier
+        adapters, the audit-log viewer, admin-granted-plan/promo-codes,
+        category creation, the T&S self-referral monitor), a system
+        status page (queue depths/job failures/storage/email-failures,
+        with a "backups: not yet configured" stub line until the OPS
+        Security Hardening pass lands), an admin notification center,
+        bulk actions on the highest-volume queues, and splitting
+        `/admin/invoices` back into its two correct screens (wallet
+        top-ups vs. commission invoices)
 
 ### 14.9 Media Management
 - [ ] Google Drive import copies files into MinIO; the storefront still serves

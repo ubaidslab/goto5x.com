@@ -2,6 +2,8 @@ import { Body, Controller, ForbiddenException, Get, Param, Post, UseGuards } fro
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
+import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
+import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { JwtAccessPayload } from "../common/types";
 import { ClawbackDto } from "./dto/clawback.dto";
@@ -16,6 +18,8 @@ export class SellerProgramWithdrawalController {
   constructor(private readonly withdrawals: ProgramWithdrawalService) {}
 
   @Post()
+  @UseGuards(ImpersonationWriteGuard)
+  @BlockDuringImpersonation()
   request(@CurrentSellerId() sellerId: string, @Body() dto: RequestPayoutDto) {
     return this.withdrawals.requestPayout(sellerId, dto.amount);
   }

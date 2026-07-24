@@ -7,6 +7,56 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 25 (P0) — Admin Terminal Completion
+
+### Added
+- Admin HOME page (`GET admin/overview`, `/admin`) — today's signups/
+  orders/GMV alongside every pending-queue count (wallet top-ups,
+  Verified Store applications/re-review, moderation, T&S payment-review +
+  five monitor types, growth-program applications/content/withdrawals,
+  career applicants), each jump-linking to its queue.
+- Global search (`GET admin/search?q=`, `/admin/search`) — partial name/
+  email/ID match across sellers, stores, orders, and suppliers via raw
+  `$queryRaw` + `Prisma.sql` (a partial match against a `@db.Uuid` column
+  needs an explicit `::text` cast Prisma's typed query API can't express).
+- Seller-360 page (`GET admin/sellers/:id/overview`,
+  `/admin/sellers/:sellerId`) — one aggregated read across profile,
+  stores (with live health score + verified status), wallet + recent
+  ledger, invoices, growth-program participation, T&S flags, devices/
+  sessions, and a merged audit-log + platform-event timeline, with inline
+  actions (approve activation, lifecycle change, impersonate, wallet
+  adjust) reusing already-guarded endpoints.
+- Settings Registry write UI (`/admin/settings`) — a new `GET
+  admin/settings/resolve` endpoint exposes the full precedence chain
+  (every allowed scope's own override or its absence, plus who last
+  changed it and when); the write form is type-aware (boolean/number/
+  string/json, client-side min/max validation mirroring the server's own
+  rules) with a confirm-with-old-vs-new-value step for high-impact keys
+  (`billing.*`, anything containing "commission", `platform.maintenance*`).
+- Wallet manual-adjust action (`POST
+  admin/wallet-topups/sellers/:sellerId/adjust`) — a reason-required
+  admin credit/debit, audit-logged, via two new `LedgerEntryType` values
+  (`admin_manual_credit`/`admin_manual_debit`, migration
+  `20260726090000_module25_admin_completion`).
+- Shared admin nav (`apps/web/app/(admin)/admin/layout.tsx`) and a shared
+  `admin-api.ts` fetch wrapper (mirroring the seller dashboard's
+  `dashboard-api.ts`) — this admin section had neither before.
+- Closed a real gap the completeness audit found: four seller-facing
+  money-write endpoints (`POST sellers/me/wallet/topup-requests`, `POST
+  sellers/me/subscription/change`, `POST
+  sellers/me/subscription/redeem-promo`, `POST
+  sellers/me/growth-programs/withdrawals`) had never been wired to the
+  existing `@BlockDuringImpersonation()` mechanism (built Module 17) —
+  all four now reject with 403 under an impersonation token.
+
+### Not yet built (Module 25 P1/P2, same module, next)
+Frontend pages for eight API-only backend surfaces (growth-programs'
+three queues + reports, careers, the real commission-invoices list,
+supplier adapters, the audit-log viewer, admin-granted-plan/promo-codes,
+category creation, the T&S self-referral monitor); a system status page;
+an admin notification center; bulk actions; splitting `/admin/invoices`
+into its two correctly-named screens.
+
 ## Module 24 — Seller Data Export to Personal Cloud Storage
 
 ### Added

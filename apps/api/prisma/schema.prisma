@@ -1746,6 +1746,14 @@ enum LedgerEntryType {
   // same clawback/refund-credit mechanism already established by Module 22.
   verification_fee_debit
   verification_fee_refund_credit
+  // Module 25 (Admin Completion, SRS Admin Control Plane) - the seller-360
+  // page's "adjust wallet" inline action. A manual, admin-initiated,
+  // reason-required correction (goodwill credit, error correction) -
+  // never system-generated, always audit-logged with the reason attached
+  // to the audit entry (the ledger row itself has no reason column, same
+  // as every other entry type here).
+  admin_manual_credit
+  admin_manual_debit
 }
 
 model LedgerEntry {
