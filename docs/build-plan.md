@@ -1967,6 +1967,100 @@ explicit wrong-file-type rejection and a direct assertion the public
 listing response never contains applicant name/email, and a closed
 posting rejecting new applications.
 
+## Module 23 (Store Health Score + Verified Store Program) — built
+
+Full scope: `docs/SRS.md` §5.34 (FR-34.1-34.3), §5.35 (FR-35.1-35.7),
+checklists §14.34/§14.35. Two new modules, tightly coupled per the
+founder-approved v0.27 slotting note (Verified Store's eligibility gate
+reads the health score; the health-drop re-review trigger is checked by
+its own sweep rather than a cross-module call, avoiding any circular
+dependency): `apps/api/src/store-health/` and `apps/api/src/verification/`
+(`VerificationModule` imports `StoreHealthModule` one-directionally).
+Migration `20260724120000_module23_store_health_verified_store`.
+
+- `StoreHealthScoreService.computeForStore()` — seven inputs, each a
+  Settings Registry weight: on-time fulfillment (confirmed→shipped
+  `OrderTimelineEvent` gap vs. a configurable target), cancellation rate,
+  pending-forever rate, dispute/refund signals (`disputed` orders +
+  `commission_waived` ledger entries), profile completeness (logo,
+  payment method via the existing `hasAnyPaymentMethod()` helper, CNIC,
+  and the new `Store.policyText`), account age (capped by weight, never
+  dominates), and moderation/risk history (reused directly from §5.30's
+  Risk Score Engine + `lifecycleStatus`). The composite score normalizes
+  by the actual sum of the (editable) weights, not an assumed 100 — a
+  disclosed robustness choice so admin drift in one weight can never push
+  the score outside 0-100.
+- `Store.policyText` (the one real schema gap FR-34.1 itself calls out) —
+  editable from the store Settings page's new "Store policy" card.
+- `StoreHealthScoreHistory` + `StoreHealthSweepScheduler`
+  (`store-health-sweep` BullMQ queue, worker-registered,
+  `storehealth.recompute_interval_hours`) — one row per run; the seller
+  dashboard (`/stores/:id/health`) renders a trend plus a plain-language
+  breakdown naming the specific inputs dragging the score down, never raw
+  weights/math (Simplicity Invariant §3.13).
+- `VerificationEligibilityService.check()` — the five default criteria,
+  each Settings-Registry-driven; the SAME function backs both the
+  seller-facing live portal (`GET /stores/:id/verification/eligibility`)
+  and `apply()`'s server-side gate, so the two structurally cannot drift
+  (closing the "bypass via direct API call" risk by construction, not by
+  a second parallel check). "Same custom domain, 6+ months" reads the
+  store's most-recently-attached `Domain` row's own `verifiedAt` — no new
+  field, and attaching a different domain naturally resets the clock
+  since it's a fresh row.
+- `VerificationApplicationService` — `apply()` (re-checks eligibility,
+  debits the Settings-driven fee as a `verification_fee_debit` ledger
+  entry before any admin decision exists, opens the mandatory audit-queue
+  row), `approve()`/`reject()` (reject refunds the fee per
+  `verification.refund_on_reject`, default true), `revoke()` (a standing,
+  any-time admin override requiring a reason), `clearReReview()` (resolves
+  a flagged re-review with no action).
+- `VerificationReReviewService.runSweep()` (scheduled,
+  `verification-re-review-sweep` queue) — independently checks every
+  `verified` store for a health-score drop below threshold OR a T&S
+  enforcement action (`lifecycleStatus != active`), flagging either
+  trigger alone (never auto-revoking - a human confirms via the admin
+  queue); separately expires annual re-verification (Settings toggle,
+  default on) at 12 months, requiring a full fresh application - the
+  reverification fee (`verification.reverification_fee_pkr`, default 0)
+  is charged instead of the original fee when a prior approval exists for
+  the store.
+- Two new `LedgerEntryType` values (`verification_fee_debit`,
+  `verification_fee_refund_credit`) wired into `WalletService`'s
+  `DEBIT_TYPES`/`CREDIT_TYPES` sets and `labelFor()` - the one place that
+  knowledge lives, per Module 20's own documented invariant.
+- Badge wiring: `StorefrontService.getStorePublic()` now returns
+  `verified: store.verifiedStatus === "verified"`; the web app's
+  `SiteHeader` component renders it once and is reused by both the
+  storefront header (every page) and the checkout page - one code change
+  satisfies both required render points, reading live (no cache) on every
+  request.
+- Admin queue: `AdminVerificationController`, `AdminAuthGuard`-only (no
+  `@AllowReviewer()`) - money-adjacent (fee refund on reject), matching
+  the existing "money-moving admin actions are admin-only" precedent.
+- Seller-facing pages: `/stores/:id/health` (score, breakdown,
+  suggestions, history) and `/stores/:id/verification` (eligibility
+  criteria, apply action, application history, current status) - both
+  added to `nav-items.ts`. Admin page: `/admin/verification` (bare
+  functional view, no design pass yet, same discipline as the other admin
+  screens) - application queue with the frozen eligibility snapshot, and
+  the re-review queue.
+- `docs/legal/verified-store-program-terms.md` (draft, flagged for legal
+  review, same discipline as every other `docs/legal/*.md` draft).
+
+Tests: `module23-store-health-verification.e2e-spec.ts` (14 tests) -
+Settings-Registry-driven weights (zeroing a poorly-scoring input's weight
+measurably changes the next score), profile completeness partial credit,
+idempotent recompute + history-backed dashboard, plain-language
+suggestions; the eligibility portal changing live with a threshold, an
+actual domain-swap resetting the tenure clock, the fee debiting before
+any decision exists, the eligibility gate rejecting a direct API bypass,
+a fully-eligible application still being rejectable (with a full refund),
+the badge appearing/disappearing immediately across storefront+checkout,
+the health-score-drop and T&S-enforcement re-review triggers each tested
+in isolation, a direct admin revoke (audit-logged), and annual
+re-verification expiry forcing a genuine new application (at the
+Settings-default zero reverification fee).
+
 ## Module 15 (Customers, Reviews & Data Portability) — built
 
 Full scope: `docs/SRS.md` §5.13 (FR-13.1-13.3), §5.14 (FR-14.1-14.4), §5.18

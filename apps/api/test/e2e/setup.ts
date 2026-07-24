@@ -20,9 +20,11 @@ import {
   seedModule3Settings,
   seedPlatformEventsSettings,
 } from "../../src/settings-registry/settings.seed";
+import { seedStoreHealthSettings } from "../../src/store-health/store-health.seed";
 import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
 import { seedBuiltInThemes, seedModule4Settings } from "../../src/theme-engine/themes.seed";
 import { seedSellerAgreementV1, seedTrustSafetySettings } from "../../src/trust-safety/trust-safety.seed";
+import { seedVerificationSettings } from "../../src/verification/verification.seed";
 
 /**
  * Builds a real NestJS app wired to the real local Postgres/Redis started for
@@ -73,6 +75,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       platform_promo_code_redemptions, platform_promo_codes,
       team_members, teams,
       job_applications, job_postings,
+      verified_store_applications, store_health_score_history,
       payout_requests, program_content_submissions, referral_attributions, program_participants,
       subscriptions,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans,
@@ -102,6 +105,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedImpersonationSettings(prisma);
   await seedGrowthProgramsSettings(prisma);
   await seedCareersSettings(prisma);
+  await seedStoreHealthSettings(prisma);
+  await seedVerificationSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded

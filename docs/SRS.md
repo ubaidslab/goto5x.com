@@ -4467,61 +4467,95 @@ going forward, per FR-6.28.
       — `docs/legal/growth-partner-programs-terms.md` (Ambassador/Student
       Referral/Creator; Careers' own terms are Phase B)
 
-### 14.34 Store Health Score (new, v0.27)
-- [ ] The composite score is a weighted sum of all seven inputs
+### 14.34 Store Health Score (new, v0.27) — built and e2e-tested (Module 23)
+- [x] The composite score is a weighted sum of all seven inputs
       (fulfillment timing, cancellation rate, pending-forever rate,
       dispute/refund signals, profile completeness, account age,
       moderation/risk history), each weight a live Settings Registry value
       — changing a weight changes the next computed score without a
-      deploy (FR-34.1)
-- [ ] Profile completeness correctly requires the new `Store.policyText`
+      deploy (FR-34.1). `StoreHealthScoreService.computeForStore()`
+      normalizes by the *actual* sum of the (editable) weights rather than
+      assuming they total exactly 100 — a deliberate robustness choice so
+      an admin tweaking one weight without rebalancing the rest can never
+      push the score out of its 0-100 bound. Proven by an e2e test that
+      zeroes `storehealth.weight_fulfillment` on a store with a poorly-
+      scoring fulfillment input and asserts the recomputed score rises.
+- [x] Profile completeness correctly requires the new `Store.policyText`
       field to be non-empty alongside logo/payment-method/CNIC — a store
       missing any one of the four scores lower on this input specifically,
-      not the whole score to zero (FR-34.1)
-- [ ] The scheduled recompute job is idempotent (safe to re-run) and
-      writes one `StoreHealthScoreHistory` row per run; the seller
-      dashboard renders a trend from that history, not just the latest
-      value (FR-34.2)
-- [ ] The dashboard breakdown correctly names the specific input(s)
+      not the whole score to zero (FR-34.1). `Store.policyText` is
+      seller-editable from the store Settings page ("Store policy" card).
+      Proven by an e2e test asserting the completeness fraction moves from
+      0 to exactly 0.25 (1 of 4) the moment `policyText` alone is set.
+- [x] The scheduled recompute job (`StoreHealthSweepScheduler` +
+      `store-health-sweep` BullMQ queue, worker-registered) is idempotent
+      (safe to re-run) and writes one `StoreHealthScoreHistory` row per
+      run; the seller dashboard (`/stores/:id/health`) renders a trend
+      from that history, not just the latest value (FR-34.2)
+- [x] The dashboard breakdown correctly names the specific input(s)
       dragging the score down with a plain-language suggestion — never
       raw weights/math shown to the seller (FR-34.3)
 
-### 14.35 Verified Store Program (new, v0.27)
-- [ ] The eligibility portal correctly evaluates all five default criteria
-      live and shows a per-criterion pass/fail — changing any one
-      Settings Registry threshold (health score minimum, tenure months,
-      sales volume) changes what the portal reports without a deploy
-      (FR-35.1)
-- [ ] Attaching a *different* custom domain resets the "6+ months
+### 14.35 Verified Store Program (new, v0.27) — built and e2e-tested (Module 23)
+- [x] The eligibility portal (`GET /stores/:id/verification/eligibility`,
+      `VerificationEligibilityService.check()`) correctly evaluates all
+      five default criteria live and shows a per-criterion pass/fail —
+      changing any one Settings Registry threshold (health score minimum,
+      tenure months, sales volume) changes what the portal reports
+      without a deploy (FR-35.1)
+- [x] Attaching a *different* custom domain resets the "6+ months
       continuous" clock (verified against the new domain's own
       `verifiedAt`), proven by an actual domain-swap test, not just
       code-read (FR-35.1)
-- [ ] The verification fee debits the seller's wallet as a
+- [x] The verification fee debits the seller's wallet as a
       `verification_fee_debit` ledger entry **at application time**, before
-      any admin decision exists (FR-35.2)
-- [ ] **The eligibility gate cannot be bypassed via direct API call** — an
+      any admin decision exists (FR-35.2) — proven by asserting the ledger
+      entry exists immediately after `apply()`, with the application's
+      `decidedAt` still null.
+- [x] **The eligibility gate cannot be bypassed via direct API call** — an
       application submitted for a seller who fails any criterion is
-      rejected server-side even if a client-side portal check is skipped
-      entirely (FR-35.1/35.2, cross-cutting with §14.12's API-boundary
-      discipline)
-- [ ] An application that passes every automated criterion can still be
+      rejected server-side (400, zero `VerifiedStoreApplication` rows
+      created) even if a client-side portal check is skipped entirely
+      (FR-35.1/35.2, cross-cutting with §14.12's API-boundary discipline).
+      The same `VerificationEligibilityService.check()` backs both the
+      read-only portal and `apply()`'s enforcement gate — one function, so
+      the two can never drift apart.
+- [x] An application that passes every automated criterion can still be
       **rejected** by the admin reviewer (proving approval is never
       automatic even when eligible) — rejection correctly issues a
-      `verification_fee_refund_credit` for the full fee (FR-35.2/35.3)
-- [ ] The badge renders on the storefront header and at checkout for a
-      `verified` store, and disappears immediately once status changes —
-      no stale/cached badge state (FR-35.4)
-- [ ] A Store Health Score drop below the configured threshold, and a T&S
+      `verification_fee_refund_credit` for the full fee (FR-35.2/35.3),
+      per the Settings-controlled `verification.refund_on_reject` policy
+      (default: true)
+- [x] The badge renders on the storefront header and at checkout for a
+      `verified` store (`Store.verifiedStatus`, surfaced as `verified` on
+      `GET /storefront/store`, `cache: "no-store"` on the web app's
+      fetch — rendered once in `SiteHeader`, reused by both the storefront
+      header and the checkout page), and disappears immediately once
+      status changes — no stale/cached badge state (FR-35.4)
+- [x] A Store Health Score drop below the configured threshold, and a T&S
       enforcement action landing on the seller, **each independently**
       auto-flag a verified store for re-review and suspend the badge
       pending that review — neither auto-revokes without a human
-      confirming (FR-35.5)
-- [ ] An admin can revoke verified status directly at any time, with
-      notes, audit-logged (FR-35.5)
-- [ ] With annual re-verification enabled (Settings Registry toggle), a
-      verified store's status correctly expires at 12 months and must
-      re-pass the full live eligibility + admin-audit path — never a
-      rubber-stamp renewal (FR-35.6)
+      confirming (FR-35.5). `VerificationReReviewService.runSweep()`
+      (scheduled) checks both conditions independently; proven by two
+      separate e2e tests, one isolating the health-score trigger with a
+      healthy T&S status, the other isolating the T&S trigger with a
+      healthy score.
+- [x] An admin can revoke verified status directly at any time, with
+      notes, audit-logged (FR-35.5) — `RevokeNotesDto` requires a non-
+      empty reason; `AdminVerificationController`'s
+      `POST stores/:id/revoke`, guarded by `AdminAuthGuard` only (money-
+      adjacent, same discipline as every other control-plane money action
+      in this SRS).
+- [x] With annual re-verification enabled (Settings Registry toggle,
+      default: on), a verified store's status correctly expires at 12
+      months and must re-pass the full live eligibility + admin-audit
+      path — never a rubber-stamp renewal (FR-35.6). Proven by an e2e
+      test: expire a verified store via the sweep, then submit a fresh
+      application through the normal `apply()` path and confirm it lands
+      in `pending_review` (not auto-verified), with the
+      `verification.reverification_fee_pkr` default (0 — "no new fee")
+      correctly applied instead of the original application fee.
 
 ### 14.36 Seller Data Export to Personal Cloud Storage (new, v0.27)
 - [ ] An export is generated automatically on subscription renewal and

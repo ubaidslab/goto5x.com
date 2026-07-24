@@ -165,6 +165,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     seoTitle: store.name,
     seoDescription: null,
     logoUrl: null,
+    verified: false,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
   };
 

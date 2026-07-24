@@ -324,15 +324,15 @@ model Seller {
 
   user                        User                          @relation(fields: [userId], references: [id])
   stores                      Store[]
-  ledgerEntries                LedgerEntry[]
-  invoices                     SellerInvoice[]
-  subscription                 Subscription?
-  teamsLed                     Team[]
-  teamMemberships              TeamMember[]
-  promoRedemptions             PlatformPromoCodeRedemption[]
-  templateEntitlements         TemplateEntitlement[]
-  apiTokens                    SellerApiToken[]
-  impersonationSessions        ImpersonationSession[]
+  ledgerEntries               LedgerEntry[]
+  invoices                    SellerInvoice[]
+  subscription                Subscription?
+  teamsLed                    Team[]
+  teamMemberships             TeamMember[]
+  promoRedemptions            PlatformPromoCodeRedemption[]
+  templateEntitlements        TemplateEntitlement[]
+  apiTokens                   SellerApiToken[]
+  impersonationSessions       ImpersonationSession[]
   // Module 22 (SRS §5.33) - a seller may hold participation in more than one
   // program (e.g. Ambassador AND Creator) but never apply to the same
   // program twice (ProgramParticipant's own @@unique enforces that).
@@ -340,8 +340,9 @@ model Seller {
   // attribution AS A REFERRED SELLER (FR-33.3) - distinct from
   // programParticipations, which is this seller acting AS a referrer/participant.
   programParticipations       ProgramParticipant[]
-  referralAttributionReceived ReferralAttribution?         @relation("ReferralAttributionReferred")
+  referralAttributionReceived ReferralAttribution?          @relation("ReferralAttributionReferred")
   payoutRequests              PayoutRequest[]
+  verifiedStoreApplications   VerifiedStoreApplication[]
 
   @@map("sellers")
 }
@@ -382,11 +383,12 @@ model AdminUser {
 
   user User @relation(fields: [userId], references: [id])
 
-  auditLogs             AdminAuditLog[]
-  verifiedInvoices      SellerInvoice[]
-  promoCodesCreated     PlatformPromoCode[]
-  impersonationSessions ImpersonationSession[]
-  verifiedWalletTopUps  WalletTopUpRequest[]
+  auditLogs                AdminAuditLog[]
+  verifiedInvoices         SellerInvoice[]
+  promoCodesCreated        PlatformPromoCode[]
+  impersonationSessions    ImpersonationSession[]
+  verifiedWalletTopUps     WalletTopUpRequest[]
+  decidedVerifiedStoreApps VerifiedStoreApplication[]
 
   @@map("admin_users")
 }
@@ -440,25 +442,57 @@ model Store {
   // "never cleared once set" discipline as onboardingCompletedAt.
   publishedAt           DateTime?       @map("published_at") @db.Timestamptz
 
-  seller              Seller                    @relation(fields: [sellerId], references: [id])
-  domains             Domain[]
-  themeSettings       StoreThemeSettings?
-  collections         Collection[]
-  navigationMenus     StoreNavigationMenu[]
-  shippingSettings    StoreShippingSettings?
-  taxSettings         StoreTaxSettings?
-  paymentInstructions StorePaymentInstructions?
-  discountCodes       DiscountCode[]
-  supplierLinks       StoreSupplierLink[]
-  listingReviews      ListingReview[]
-  carts               Cart[]
-  orders              Order[]
-  customers           Customer[]
-  importJobs          ImportJob[]
-  logoMedia           MediaAsset?               @relation("StoreLogo", fields: [logoMediaId], references: [id])
+  // Module 23 (SRS §5.34, FR-34.1's disclosed schema gap) - freeform,
+  // seller-editable, shown on the storefront; exists purely so the Store
+  // Health Score's "profile completeness" input has a real policy-text
+  // signal to check rather than a placeholder that always scores zero.
+  policyText String? @map("policy_text")
+
+  // Module 23 (SRS §5.35, FR-35.4-35.6) - the Verified Store Program's
+  // current badge state for this store. Separate from
+  // `VerifiedStoreApplication` (below), which is the per-application
+  // history/audit-queue row: this is the live, buyer-facing status a
+  // single store carries at any moment (never more than one "current"
+  // state), while an application is a point-in-time request that resolves
+  // into a change to this state. `verifiedStatus = verified` is the ONLY
+  // state that renders the storefront/checkout badge (FR-35.4) - every
+  // other value (including `pending_re_review`) hides it immediately, by
+  // construction, with no separate "hide badge" flag needed.
+  verifiedStatus    VerifiedStoreStatus @default(not_verified) @map("verified_status")
+  verifiedSince     DateTime?           @map("verified_since") @db.Timestamptz
+  verifiedExpiresAt DateTime?           @map("verified_expires_at") @db.Timestamptz
+  reReviewFlaggedAt DateTime?           @map("re_review_flagged_at") @db.Timestamptz
+  reReviewReason    String?             @map("re_review_reason")
+
+  seller                    Seller                     @relation(fields: [sellerId], references: [id])
+  domains                   Domain[]
+  themeSettings             StoreThemeSettings?
+  collections               Collection[]
+  navigationMenus           StoreNavigationMenu[]
+  shippingSettings          StoreShippingSettings?
+  taxSettings               StoreTaxSettings?
+  paymentInstructions       StorePaymentInstructions?
+  discountCodes             DiscountCode[]
+  supplierLinks             StoreSupplierLink[]
+  listingReviews            ListingReview[]
+  carts                     Cart[]
+  orders                    Order[]
+  customers                 Customer[]
+  importJobs                ImportJob[]
+  logoMedia                 MediaAsset?                @relation("StoreLogo", fields: [logoMediaId], references: [id])
+  healthScoreHistory        StoreHealthScoreHistory[]
+  verifiedStoreApplications VerifiedStoreApplication[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
+}
+
+enum VerifiedStoreStatus {
+  not_verified
+  pending_re_review
+  verified
+  revoked
+  expired
 }
 
 // Module 3 (Custom Domain & TLS). `created_at` is a genuine addition to the
@@ -1700,6 +1734,12 @@ enum LedgerEntryType {
   program_commission_credit
   program_reward_credit
   program_clawback_debit
+  // Module 23 (SRS §5.35/FR-35.2/35.3) - the Verified Store Program's
+  // application-processing fee (never a purchase of the badge itself, see
+  // the FR's own binding framing) and its full refund on an admin reject,
+  // same clawback/refund-credit mechanism already established by Module 22.
+  verification_fee_debit
+  verification_fee_refund_credit
 }
 
 model LedgerEntry {
@@ -1826,19 +1866,19 @@ model ProgramParticipant {
 model ReferralAttribution {
   id String @id @default(uuid()) @db.Uuid
 
-  referredSellerId String              @unique @map("referred_seller_id") @db.Uuid
-  participantId    String              @map("participant_id") @db.Uuid
+  referredSellerId       String              @unique @map("referred_seller_id") @db.Uuid
+  participantId          String              @map("participant_id") @db.Uuid
   // Denormalized from participant.programType at attribution time - stable
   // even if the participant's own row is later suspended/terminated (a
   // suspended participant's PAST attributions/window are unaffected;
   // ProgramCommissionService blocks only NEW accrual while suspended).
-  programType      ReferralProgramType @map("program_type")
+  programType            ReferralProgramType @map("program_type")
   // FR-33.5/33.6/33.7 - the commission window is locked in using whichever
   // Settings Registry window value was in effect AT ATTRIBUTION TIME. A
   // later admin change to the window setting must never retroactively
   // shorten or lengthen an attribution already in flight.
-  commissionWindowEndsAt DateTime @map("commission_window_ends_at") @db.Timestamptz
-  attributedAt           DateTime @default(now()) @map("attributed_at") @db.Timestamptz
+  commissionWindowEndsAt DateTime            @map("commission_window_ends_at") @db.Timestamptz
+  attributedAt           DateTime            @default(now()) @map("attributed_at") @db.Timestamptz
 
   participant    ProgramParticipant @relation(fields: [participantId], references: [id])
   referredSeller Seller             @relation("ReferralAttributionReferred", fields: [referredSellerId], references: [id])
@@ -1916,23 +1956,80 @@ enum JobApplicationStatus {
 // `careers.controller.ts`; only `admin-careers.controller.ts` (behind
 // `AdminAuthGuard`) ever queries this table.
 model JobApplication {
-  id             String                @id @default(uuid()) @db.Uuid
-  jobPostingId   String                @map("job_posting_id") @db.Uuid
-  applicantName  String                @map("applicant_name")
-  applicantEmail String                @map("applicant_email")
-  applicantPhone String?               @map("applicant_phone")
+  id             String               @id @default(uuid()) @db.Uuid
+  jobPostingId   String               @map("job_posting_id") @db.Uuid
+  applicantName  String               @map("applicant_name")
+  applicantEmail String               @map("applicant_email")
+  applicantPhone String?              @map("applicant_phone")
   // The object-storage substrate (§3.3), same as every other upload path
   // in this SRS - a dedicated size/type limit for documents, enforced at
   // the controller (careers.controller.ts), not this schema.
-  cvUrl          String                @map("cv_url")
-  status         JobApplicationStatus  @default(received)
-  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+  cvUrl          String               @map("cv_url")
+  status         JobApplicationStatus @default(received)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz
 
   jobPosting JobPosting @relation(fields: [jobPostingId], references: [id])
 
   @@index([jobPostingId, status], name: "idx_job_applications_posting_status")
   @@map("job_applications")
+}
+
+// Module 23 (SRS §5.34, FR-34.2) - one row per scheduled recompute run, so
+// the seller dashboard can render a trend, not just the latest value.
+// `breakdown` is a JSON array of per-input {key, weight, fraction,
+// contribution, note?} - the exact same numbers the plain-language
+// dashboard breakdown (FR-34.3) is derived from, kept alongside the score
+// itself rather than re-derived on every read.
+model StoreHealthScoreHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  storeId    String   @map("store_id") @db.Uuid
+  score      Int
+  breakdown  Json
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, computedAt], name: "idx_store_health_history_store_computed")
+  @@map("store_health_score_history")
+}
+
+enum VerifiedStoreApplicationStatus {
+  pending_review
+  approved
+  rejected
+}
+
+// Module 23 (SRS §5.35, FR-35.2/35.3) - one row per application (including
+// each annual re-verification re-application, FR-35.6 - never a rubber-
+// stamp renewal, so it goes through this exact same queue again).
+// `eligibilitySnapshot` freezes the criteria pass/fail picture the
+// reviewer saw at decision time (health score, tenure, CNIC, T&S, sales
+// volume) so a later change to Settings Registry thresholds never rewrites
+// the historical record of what was actually reviewed. Distinct from
+// `Store.verifiedStatus`/`reReviewFlaggedAt` (the store's current live
+// badge state) - a drift-triggered re-review flag (FR-35.5) is resolved
+// directly on the Store, without a new row here, since no fee is charged
+// and no fresh eligibility application was submitted.
+model VerifiedStoreApplication {
+  id                  String                         @id @default(uuid()) @db.Uuid
+  storeId             String                         @map("store_id") @db.Uuid
+  sellerId            String                         @map("seller_id") @db.Uuid
+  status              VerifiedStoreApplicationStatus @default(pending_review)
+  feeAmount           Decimal                        @map("fee_amount") @db.Decimal(12, 2)
+  currency            String
+  eligibilitySnapshot Json                           @map("eligibility_snapshot")
+  decidedBy           String?                        @map("decided_by") @db.Uuid
+  decidedAt           DateTime?                      @map("decided_at") @db.Timestamptz
+  decisionNotes       String?                        @map("decision_notes")
+  createdAt           DateTime                       @default(now()) @map("created_at") @db.Timestamptz
+
+  store          Store      @relation(fields: [storeId], references: [id])
+  seller         Seller     @relation(fields: [sellerId], references: [id])
+  decidedByAdmin AdminUser? @relation(fields: [decidedBy], references: [id])
+
+  @@index([status, createdAt], name: "idx_verified_store_app_status_created")
+  @@map("verified_store_applications")
 }
 
 /// SRS §5.6b, reactivated by Module 22 (FR-33.9) - the Payout Request &

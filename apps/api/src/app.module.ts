@@ -33,12 +33,14 @@ import { ReviewsModule } from "./reviews/reviews.module";
 import { SellersModule } from "./sellers/sellers.module";
 import { SettingsModule } from "./settings-registry/settings.module";
 import { StorefrontModule } from "./storefront/storefront.module";
+import { StoreHealthModule } from "./store-health/store-health.module";
 import { StoreSettingsModule } from "./store-settings/store-settings.module";
 import { SuppliersModule } from "./suppliers/suppliers.module";
 import { TeamsModule } from "./teams/teams.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
 import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
+import { VerificationModule } from "./verification/verification.module";
 
 @Module({
   imports: [
@@ -78,6 +80,8 @@ import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
     TeamsModule,
     GrowthProgramsModule,
     CareersModule,
+    StoreHealthModule,
+    VerificationModule,
     GuardrailsModule,
     ExternalApiModule,
     HealthModule,

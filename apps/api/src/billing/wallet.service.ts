@@ -23,12 +23,17 @@ const DEBIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
   // type here does.
   "payout_debit",
   "program_clawback_debit",
+  // Module 23 (SRS §5.35/FR-35.2) - the Verified Store Program's
+  // application-processing fee, same debit convention as every other fee
+  // debit above.
+  "verification_fee_debit",
 ]);
 
 const CREDIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
   "wallet_topup_credit",
   "program_commission_credit",
   "program_reward_credit",
+  "verification_fee_refund_credit",
 ]);
 
 function signedContribution(type: LedgerEntryType, amount: number): number {
@@ -104,6 +109,10 @@ export class WalletService {
         return "Growth program clawback";
       case "payout_debit":
         return "Withdrawal paid";
+      case "verification_fee_debit":
+        return "Verified Store application fee";
+      case "verification_fee_refund_credit":
+        return "Verified Store application fee refunded";
       default:
         return type;
     }

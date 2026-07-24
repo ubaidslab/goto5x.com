@@ -55,6 +55,33 @@ function NavItems({ items, theme }: { items: NavigationItem[]; theme: ResolvedTh
 }
 
 /**
+ * Module 23 (SRS §5.35, FR-35.4) - the buyer-facing trust mark, rendered
+ * here so it appears on every storefront page AND at checkout (the
+ * checkout page reuses this same SiteHeader) - one code change satisfies
+ * both required render points.
+ */
+function VerifiedBadge() {
+  return (
+    <span
+      title="This store has passed goto5x's Verified Store review."
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 11,
+        fontWeight: 600,
+        color: "#0071e3",
+        background: "rgba(0, 113, 227, 0.1)",
+        borderRadius: 999,
+        padding: "2px 8px",
+      }}
+    >
+      ✓ Verified
+    </span>
+  );
+}
+
+/**
  * FR-32.5 - the storefront's brand mark: the seller's uploaded logo when
  * set, otherwise the store name as a typographic mark. Never absent -
  * unlike the nav row below it (which can legitimately be empty), a buyer
@@ -67,7 +94,7 @@ export function SiteHeader({
 }: {
   navigation: PublicNavigation;
   theme: ResolvedThemeSettings;
-  store: { name: string; logoUrl: string | null };
+  store: { name: string; logoUrl: string | null; verified?: boolean };
 }) {
   return (
     <header
@@ -81,7 +108,7 @@ export function SiteHeader({
         background: theme.colors.background,
       }}
     >
-      <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+      <a href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
         {store.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={store.logoUrl} alt={store.name} style={{ height: 40, maxWidth: 200, objectFit: "contain" }} />
@@ -90,6 +117,7 @@ export function SiteHeader({
             {store.name}
           </span>
         )}
+        {store.verified && <VerifiedBadge />}
       </a>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         {navigation.header.length > 0 && <NavItems items={navigation.header} theme={theme} />}

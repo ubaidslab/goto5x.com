@@ -178,6 +178,11 @@ export class StorefrontService {
       // FR-32.5 - null when no logo is set; every consuming surface falls
       // back to its typographic mark rather than treating this as an error.
       logoUrl: store.logoMedia?.url ?? null,
+      // Module 23 (SRS §5.35, FR-35.4) - reads live off `Store.verifiedStatus`
+      // on every request (this whole response is `cache: "no-store"` on the
+      // web app's fetch), so a revocation/expiry disappears the badge with
+      // no propagation delay beyond normal page-render freshness.
+      verified: store.verifiedStatus === "verified",
       theme: store.themeSettings
         ? {
             name: store.themeSettings.theme.name,

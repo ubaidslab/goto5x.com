@@ -9,6 +9,8 @@ export interface PublicStore {
   seoDescription: string | null;
   /** FR-32.5 - null when no logo is set; consuming surfaces fall back to a typographic mark. */
   logoUrl: string | null;
+  /** Module 23 (SRS §5.35, FR-35.4) - the Verified Store Program's live badge flag. */
+  verified: boolean;
   theme: { name: string; settings: Record<string, unknown> } | null;
 }
 

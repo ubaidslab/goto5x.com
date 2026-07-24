@@ -17,6 +17,14 @@ export class UpdateStoreDto {
   @MaxLength(320)
   seoDescription?: string;
 
+  // Module 23 (SRS §5.34, FR-34.1) - freeform, shown on the storefront; also
+  // the one Store Health Score "profile completeness" input a seller can
+  // directly fill in from this same screen.
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  policyText?: string;
+
   @IsOptional()
   @IsEnum(["public", "coming_soon", "password_protected"])
   accessMode?: StoreAccessMode;

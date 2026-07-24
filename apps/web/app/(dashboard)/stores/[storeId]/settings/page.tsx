@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
@@ -55,6 +55,9 @@ const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
 export default function StoreSettingsPage({ params }: { params: { storeId: string } }) {
   const [accessMode, setAccessMode] = useState<AccessMode>("public");
   const [accessPassword, setAccessPassword] = useState("");
+  const [policyText, setPolicyText] = useState("");
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [policySaved, setPolicySaved] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,10 +98,11 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
 
   useEffect(() => {
     api
-      .get<{ accessMode: AccessMode; logoUrl: string | null }>(`/stores/${params.storeId}`)
+      .get<{ accessMode: AccessMode; logoUrl: string | null; policyText: string | null }>(`/stores/${params.storeId}`)
       .then((s) => {
         setAccessMode(s.accessMode);
         setLogoUrl(s.logoUrl);
+        setPolicyText(s.policyText ?? "");
       })
       .finally(() => setLoaded(true));
     api
@@ -139,6 +143,22 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't save store settings.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Module 23 (SRS §5.34, FR-34.1) - also the one seller-editable input the Store Health Score's profile-completeness check reads. */
+  async function savePolicyText(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setPolicySaved(false);
+    setSavingPolicy(true);
+    try {
+      await api.patch(`/stores/${params.storeId}`, { policyText });
+      setPolicySaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save your store policy.");
+    } finally {
+      setSavingPolicy(false);
     }
   }
 
@@ -327,6 +347,27 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 />
               )}
               <Button type="submit" loading={saving}>
+                Save
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Store policy" description="Shown on your storefront, and counted toward your Store Health Score's profile completeness." />
+          <CardBody>
+            <form onSubmit={savePolicyText} className="space-y-4">
+              {policySaved && <Alert tone="success">Saved.</Alert>}
+              <Field label="Policy statement" htmlFor="policy-text" hint="Shipping, returns, or other buyer-facing policy text.">
+                <Textarea
+                  id="policy-text"
+                  rows={5}
+                  value={policyText}
+                  onChange={(e) => setPolicyText(e.target.value)}
+                  placeholder="e.g. We ship within 2 business days. Returns accepted within 7 days of delivery."
+                />
+              </Field>
+              <Button type="submit" loading={savingPolicy}>
                 Save
               </Button>
             </form>

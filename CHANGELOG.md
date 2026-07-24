@@ -7,6 +7,62 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 23 — Store Health Score + Verified Store Program
+
+### Added
+- `StoreHealthScoreService` (FR-34.1-34.3) — a 0-100 composite score per
+  store from seven Settings-Registry-weighted inputs (on-time fulfillment,
+  cancellation rate, pending-forever rate, dispute/refund signals, profile
+  completeness, account age (capped), moderation/risk history via §5.30's
+  existing Risk Score Engine). Normalizes by the actual sum of the
+  (editable) weights rather than assuming they total 100 — robust to an
+  admin tweaking one weight without rebalancing the rest.
+- `Store.policyText` (new field, FR-34.1's disclosed schema gap) —
+  freeform, seller-editable from the store Settings page, shown on the
+  storefront and counted toward profile completeness.
+- `StoreHealthScoreHistory` (FR-34.2) — one row per scheduled recompute
+  run (`StoreHealthSweepScheduler`, `store-health-sweep` BullMQ queue);
+  the seller dashboard (`/stores/:id/health`) renders a trend and a
+  plain-language breakdown of what's lowering the score, never raw
+  weighted-sum math (FR-34.3, Simplicity Invariant §3.13).
+- `VerifiedStoreApplication` + `Store.verifiedStatus`/`verifiedSince`/
+  `verifiedExpiresAt`/`reReviewFlaggedAt`/`reReviewReason` (FR-35.1-35.6)
+  — the Verified Store Program. A live eligibility portal
+  (`GET /stores/:id/verification/eligibility`) evaluates 6+ months on the
+  same verified custom domain, Store Health Score ≥ 80, CNIC verified,
+  zero unresolved T&S flags, and a minimum confirmed-sales volume — all
+  Settings-Registry-driven. The SAME check function gates `apply()`
+  server-side, so the portal can never drift from the real enforcement
+  gate (proven by an e2e test posting a failing application directly).
+- New `LedgerEntryType` values `verification_fee_debit`/
+  `verification_fee_refund_credit` — the application fee debits at apply
+  time (before any admin decision), and a Settings-controlled policy
+  (default: full refund) reverses it on rejection. The fee is explicitly a
+  processing fee, never a purchase of the badge — an eligible applicant
+  can still be rejected by the mandatory admin audit queue.
+- The badge (`Store.verifiedStatus === "verified"`) is surfaced as
+  `verified` on `GET /storefront/store` (`cache: "no-store"`) and rendered
+  once in the shared `SiteHeader` component, which the checkout page also
+  reuses — one code change satisfies both required render points
+  (storefront header + checkout), with no propagation delay.
+- `VerificationReReviewService` (FR-35.5/35.6, scheduled sweep) —
+  independently checks every verified store for a Store Health Score drop
+  below threshold OR a T&S enforcement action (`lifecycleStatus != active`),
+  auto-flagging either trigger for re-review (badge suspended, no
+  auto-revoke); separately expires annual re-verification (Settings
+  toggle, default on) after 12 months, requiring a full fresh application
+  through the same live eligibility + mandatory-audit path — never a
+  rubber-stamp renewal.
+- Admin queue (`AdminVerificationController`, `AdminAuthGuard`-only —
+  money-adjacent, same discipline as every other control-plane money
+  action): approve/reject applications (reject refunds the fee), resolve
+  a flagged re-review (clear or confirm-revoke), and a standing direct
+  revoke at any time (requires a reason, audit-logged).
+- Migration `20260724120000_module23_store_health_verified_store`.
+- `docs/legal/verified-store-program-terms.md` (draft, flagged for legal
+  review) — the fee-is-processing-not-purchase framing, eligibility/
+  revocation/re-verification terms.
+
 ## Module 22 Phase B — Careers (Module 22 complete)
 
 ### Added

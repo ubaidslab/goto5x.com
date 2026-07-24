@@ -17,6 +17,10 @@ import { CartService } from "../orders/cart.service";
 import { CART_ABANDONMENT_QUEUE_NAME } from "../orders/cart-abandonment.queue";
 import { SupplierSyncService } from "../suppliers/supplier-sync.service";
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
+import { StoreHealthScoreService } from "../store-health/store-health-score.service";
+import { STORE_HEALTH_SWEEP_QUEUE_NAME } from "../store-health/store-health-sweep.queue";
+import { VerificationReReviewService } from "../verification/verification-re-review.service";
+import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -35,6 +39,8 @@ async function main() {
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
+  const storeHealth = appContext.get(StoreHealthScoreService);
+  const verificationReReview = appContext.get(VerificationReReviewService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -141,9 +147,33 @@ async function main() {
     console.error(`product-import job ${job?.id} failed:`, err);
   });
 
+  // Module 23 (SRS §5.34, FR-34.2) - Store Health Score recompute sweep.
+  const storeHealthSweepWorker = new Worker(
+    STORE_HEALTH_SWEEP_QUEUE_NAME,
+    async () => storeHealth.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  storeHealthSweepWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`store-health-sweep job ${job?.id} failed:`, err);
+  });
+
+  // Module 23 (SRS §5.35, FR-35.5/35.6) - Verified Store re-review/expiry sweep.
+  const verificationReReviewSweepWorker = new Worker(
+    VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME,
+    async () => verificationReReview.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  verificationReReviewSweepWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`verification-re-review-sweep job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23).",
   );
 
   const shutdown = async () => {
@@ -154,6 +184,8 @@ async function main() {
     await walletLowBalanceSweepWorker.close();
     await dormantStoreWorker.close();
     await productImportWorker.close();
+    await storeHealthSweepWorker.close();
+    await verificationReReviewSweepWorker.close();
     await appContext.close();
     process.exit(0);
   };
