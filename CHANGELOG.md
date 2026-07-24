@@ -39,6 +39,38 @@ Marketing site, auth/onboarding, dashboard (core + remaining), buyer
 storefronts, admin terminal — no page outside `/design-system` has been
 visually restyled yet.
 
+## Module 19 (Product Design System) — Phase 1 redo (v1.1)
+
+Phase 1 above was **founder-rejected on visual direction** (Plus Jakarta
+Sans read as "friendly startup," not "premium minimal"). This is the
+corrected Phase 1, same checkpoint gate — not a new phase.
+
+### Changed
+- Display typeface: Plus Jakarta Sans → **Geist** (`geist` npm package,
+  `next/font/local`), in `apps/web/app/layout.tsx`. Inter unchanged as the
+  body/UI face.
+- `apps/web/app/globals.css`: neutrals rewritten to an ink-on-paper palette
+  (`--color-canvas: #faf9f6`, `--color-ink: #0a0a0a`); type scale rebuilt
+  with bigger clamps, tighter large-size tracking (-0.02em to -0.04em),
+  and one uniform heading weight (700, was a 600/700 mix);
+  `--spacing-section`/`-lg` doubled; shadows softened.
+- `/design-system` page rebuilt to the new tokens (swatches, labels,
+  copy, and section spacing all corrected).
+
+### Added
+- `/design-system/type` — Geist vs. Instrument Sans (tightened) side-by-side
+  comparison at matched scale/tracking/weight, with the decision reasoning
+  written out on the page.
+- Real hero section at `apps/web/app/page.tsx` (the platform's actual
+  marketing homepage): wordmark nav, staggered GSAP headline entrance,
+  magnetic primary CTA, subtle scroll cue.
+
+### Fixed
+- Scroll cue initially used `Reveal` (GSAP ScrollTrigger) on a
+  `position: fixed` element; ScrollTrigger cannot resolve a valid trigger
+  position for fixed elements on a non-scrolling page, so it stayed at
+  `opacity: 0` permanently. Replaced with a plain CSS fade-in.
+
 ## Module 25 (P0) — Admin Terminal Completion
 
 ### Added

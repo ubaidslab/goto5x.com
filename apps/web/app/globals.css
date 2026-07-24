@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 /*
- * eyosto Design System — v1 (Phase 1, Module 19)
+ * eyosto Design System — v1.1 (Phase 1 redo, Module 19)
  * -----------------------------------------------------------------------
+ * v1.1 note: v1's Plus Jakarta Sans + softer neutrals were founder-
+ * rejected as reading "friendly startup," not "premium minimal." This
+ * pass swaps to Geist, hardens the neutrals to warm-paper/near-black with
+ * real contrast jumps, doubles marketing-surface spacing, blunts shadows
+ * toward "distance not drama," and enforces one heavy heading weight
+ * throughout instead of a 600/700 mix. See each token group's own comment
+ * below for the specific before/after reasoning.
  * Single source of truth for every color, type, spacing, radius, shadow,
  * and motion value used across eyosto's dashboard, marketing site,
  * storefronts, and admin terminal. Rebranding — a new accent color, an
@@ -24,28 +31,36 @@
  * JS constants in lib/motion.ts for GSAP to read the same values from.
  */
 @theme {
-  /* Neutrals - the near-black/near-white pairing this whole system reads
-     against; deliberately not pure #000/#fff (matches the softer, less
-     clinical iOS/Apple neutral scale). Already a true grayscale - no hue
-     tint - so the monochrome direction needed no change here. */
-  --color-canvas: #f5f5f7;
+  /* Neutrals - "ink-on-paper" (founder redo direction, post Phase-1
+     rejection). A warm paper canvas (not a cool/blue-tinted gray - the
+     previous #f5f5f7 measured 229/229/234, a faint COOL tilt that read as
+     generic-SaaS-gray rather than considered) against a true near-black
+     ink, with real lightness jumps between steps rather than a smooth,
+     low-contrast gradient - canvas/surface sit close together, then each
+     step down is a deliberate, visible move: ~98% -> 100% -> 91% -> 85%
+     -> 61% -> 42% -> 4% L. Borders stay hairline-subtle (1px, low
+     contrast against both canvas and surface) - depth comes from spacing
+     and type weight, not visible edges. */
+  --color-canvas: #faf9f6;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-border: #e5e5ea;
-  --color-border-strong: #d2d2d7;
-  --color-ink: #1d1d1f;
-  --color-ink-muted: #6e6e73;
-  --color-ink-faint: #8e8e93;
+  --color-border: #eae7e1;
+  --color-border-strong: #dbd7ce;
+  --color-ink: #0a0a0a;
+  --color-ink-muted: #6b6862;
+  --color-ink-faint: #9c988f;
 
-  /* Accent - the ONE restrained color, used sparingly (links, primary
-     CTA) - every other color in this file is neutral by design so a
-     future accent swap never fights a second "loud" color. Changed from
-     a saturated violet/indigo to a restrained, apple.com-style blue -
-     closer to Apple's own link/CTA blue than a SaaS-generic brand hue,
-     which reads calmer against an otherwise fully grayscale UI. Still a
-     placeholder pending the founder's real design pass (see the wordmark
-     note below) - the exact hue matters less than the "at most one, used
-     sparingly" discipline this token structure enforces.
+  /* Accent - the ONE restrained color. Hardened discipline after the
+     Phase-1 rejection: on any marketing/hero-class page, accent may
+     appear in AT MOST one place - the primary CTA - never as a
+     decorative highlight, underline, or badge tint alongside it. Inside
+     the dashboard/admin product, it also drives functional interactive
+     state (checked/on toggles, focus rings, the active nav item) - that's
+     conventional UI state, not a second "brand voice spend." Every other
+     color in this file is neutral by design so a future accent swap never
+     fights a second "loud" color. Still a placeholder hue pending the
+     founder's real brand-color pass - the discipline matters more than
+     the exact value.
   */
   --color-accent: #0071e3;
   --color-accent-hover: #0058b0;
@@ -65,53 +80,64 @@
   --color-info-subtle: #eaf1fe;
 
   /* Type - two families, one job each (premium-design-taste's pairing
-     rule: max 2 families, commit site-wide). Plus Jakarta Sans (--font-
-     display) carries headlines/hero/wordmark voice; Inter (--font-sans)
-     stays the body/UI face - proven legible at 13-14px across every dense
-     dashboard table this product has shipped. Both loaded via next/font/
-     google in app/layout.tsx; system-stack fallbacks so text never
-     flashes unstyled. */
+     rule: max 2 families, commit site-wide). GEIST (--font-display)
+     carries headlines/hero/wordmark voice - Vercel's own family (used on
+     vercel.com), a neo-grotesque built on classic Swiss-typography
+     principles. Replaces Plus Jakarta Sans, which read "friendly
+     startup" rather than "premium minimal" at hero scale (founder
+     rejection, Phase 1 redo) - see /design-system/type for the
+     side-by-side comparison against the one alternative considered
+     (Instrument Sans) and why Geist won. Inter (--font-sans) stays the
+     body/UI face - proven legible at 13-14px across every dense
+     dashboard table this product has shipped. Geist loaded via the
+     `geist` npm package (a pre-optimized next/font/local build, since
+     Geist isn't on Google Fonts); Inter via next/font/google. Both in
+     app/layout.tsx; system-stack fallbacks so text never flashes
+     unstyled. */
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: var(--font-plus-jakarta), var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-geist-sans), var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
 
-  /* Type scale - a confident, considered ramp rather than default
-     Tailwind sizes. Large sizes get tighter tracking + line-height (a
-     hero headline reads as one gesture, not stacked paragraph lines);
-     body sizes stay roomy (1.5-1.6) for long-form and dense-table
-     legibility alike. Every step below generates a matching text-*
-     utility (Tailwind v4 --text-* namespace), so text-display / text-h1
-     / text-eyebrow etc. are real, reusable classes - not one-off
+  /* Type scale - redone bigger and blunter after the Phase-1 rejection:
+     hero display now bottoms out at 3.5rem (was 2.75rem) and tops out at
+     7.5rem: at any viewport this reads as unmistakably large, not
+     "timid." Weight discipline - EVERY heading tier (display through h4)
+     is now the same single heavy weight (700); the previous 600/700 mix
+     across h2-h4 was exactly the "in-betweens scattered" this direction
+     rules out. Tracking stays inside -0.02 to -0.04em on every large
+     size. Body sizes stay roomy (1.55-1.65 line-height) for long-form and
+     dense-table legibility alike. Every step below generates a matching
+     text-* utility (Tailwind v4 --text-* namespace) - not one-off
      clamp()s copy-pasted per hero. */
-  --text-display: clamp(2.75rem, 2rem + 3vw, 6rem);
-  --text-display--line-height: 1.05;
-  --text-display--letter-spacing: -0.035em;
+  --text-display: clamp(3.5rem, 2.25rem + 6vw, 7.5rem);
+  --text-display--line-height: 0.98;
+  --text-display--letter-spacing: -0.04em;
   --text-display--font-weight: 700;
 
-  --text-h1: clamp(2rem, 1.6rem + 1.5vw, 3rem);
-  --text-h1--line-height: 1.12;
-  --text-h1--letter-spacing: -0.025em;
+  --text-h1: clamp(2.5rem, 1.9rem + 2.5vw, 4rem);
+  --text-h1--line-height: 1.05;
+  --text-h1--letter-spacing: -0.03em;
   --text-h1--font-weight: 700;
 
-  --text-h2: 1.75rem;
-  --text-h2--line-height: 1.2;
-  --text-h2--letter-spacing: -0.015em;
-  --text-h2--font-weight: 600;
+  --text-h2: clamp(1.75rem, 1.5rem + 1vw, 2.25rem);
+  --text-h2--line-height: 1.15;
+  --text-h2--letter-spacing: -0.025em;
+  --text-h2--font-weight: 700;
 
-  --text-h3: 1.375rem;
-  --text-h3--line-height: 1.3;
-  --text-h3--letter-spacing: -0.01em;
-  --text-h3--font-weight: 600;
+  --text-h3: 1.5rem;
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.02em;
+  --text-h3--font-weight: 700;
 
-  --text-h4: 1.125rem;
-  --text-h4--line-height: 1.4;
-  --text-h4--letter-spacing: -0.005em;
-  --text-h4--font-weight: 600;
+  --text-h4: 1.1875rem;
+  --text-h4--line-height: 1.35;
+  --text-h4--letter-spacing: -0.015em;
+  --text-h4--font-weight: 700;
 
-  --text-body-lg: 1.125rem;
-  --text-body-lg--line-height: 1.6;
+  --text-body-lg: 1.1875rem;
+  --text-body-lg--line-height: 1.65;
 
-  --text-body: 1rem;
-  --text-body--line-height: 1.6;
+  --text-body: 1.0625rem;
+  --text-body--line-height: 1.65;
 
   --text-sm: 0.875rem;
   --text-sm--line-height: 1.55;
@@ -121,16 +147,18 @@
 
   --text-eyebrow: 0.75rem;
   --text-eyebrow--line-height: 1.4;
-  --text-eyebrow--letter-spacing: 0.08em;
+  --text-eyebrow--letter-spacing: 0.12em;
   --text-eyebrow--font-weight: 600;
 
   /* Spacing - Tailwind v4's default 4px-based scale already IS the
      systematic 4/8/12/16/24/32/48/64/96/128 ramp premium layouts need; no
-     override required. The two semantic tokens below exist only for the
-     one rhythm default Tailwind spacing doesn't name: a marketing page's
-     between-section breathing room (used from Phase 2 onward). */
-  --spacing-section: 6rem;
-  --spacing-section-lg: 9rem;
+     override required. The two semantic tokens below name the one rhythm
+     default Tailwind spacing doesn't: a marketing page's between-section
+     breathing room. DOUBLED after the Phase-1 rejection (6rem/9rem ->
+     12rem/18rem) - "generous" was still cramped; luxury reads as more
+     air than feels comfortable at first. */
+  --spacing-section: 12rem;
+  --spacing-section-lg: 18rem;
 
   /* Radii - generous, iOS-leaning; one more step for full pills/avatars. */
   --radius-sm: 0.5rem;
@@ -139,14 +167,18 @@
   --radius-xl: 1.75rem;
   --radius-full: 9999px;
 
-  /* Shadows - soft, low-opacity, large blur: depth without a hard edge.
+  /* Shadows - "distance, not drama" (founder redo direction): apple's own
+     depth comes from how far a layer sits from the page, not from a
+     visible dark edge. Every step below drops its max opacity roughly in
+     half from the original Phase-1 pass while pushing blur/offset further
+     out - the shadow should be felt as air, barely seen as a mark.
      --shadow-xl is reserved for the highest layer (modal/dialog surfaces
      floating above a scrim). */
-  --shadow-xs: 0 1px 2px rgba(29, 29, 31, 0.04);
-  --shadow-sm: 0 2px 8px rgba(29, 29, 31, 0.06);
-  --shadow-md: 0 8px 24px rgba(29, 29, 31, 0.08);
-  --shadow-lg: 0 16px 48px rgba(29, 29, 31, 0.12);
-  --shadow-xl: 0 24px 64px rgba(29, 29, 31, 0.18);
+  --shadow-xs: 0 1px 2px rgba(10, 10, 10, 0.02);
+  --shadow-sm: 0 4px 12px rgba(10, 10, 10, 0.03);
+  --shadow-md: 0 16px 40px rgba(10, 10, 10, 0.04);
+  --shadow-lg: 0 32px 80px rgba(10, 10, 10, 0.05);
+  --shadow-xl: 0 48px 120px rgba(10, 10, 10, 0.07);
 }
 
 /* Dark-mode token overrides - same variable names, new values, so every
@@ -174,10 +206,11 @@
     --color-danger-subtle: #3a1917;
     --color-info-subtle: #112b4a;
 
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 32px 80px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 48px 120px rgba(0, 0, 0, 0.6);
   }
 }
 

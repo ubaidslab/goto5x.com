@@ -62,12 +62,12 @@ const NAV_SECTIONS = [
   ["layout", "Layout"],
 ] as const;
 
-function SectionLabel({ eyebrow, title, description }: { eyebrow: string; title: string; description?: string }) {
+function SectionLabel({ eyebrow, title, description }: { eyebrow: string; title: string; description?: React.ReactNode }) {
   return (
-    <div className="mb-8 max-w-2xl">
+    <div className="mb-16 max-w-2xl">
       <p className="text-eyebrow uppercase text-accent">{eyebrow}</p>
-      <h2 className="mt-2 font-display text-h1 text-ink">{title}</h2>
-      {description && <p className="mt-3 text-body text-ink-muted">{description}</p>}
+      <h2 className="mt-3 font-display text-h1 text-ink">{title}</h2>
+      {description && <p className="mt-4 text-body text-ink-muted">{description}</p>}
     </div>
   );
 }
@@ -111,22 +111,22 @@ export default function DesignSystemPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main className="mx-auto max-w-6xl px-6 py-32">
         {/* ============ IDENTITY / HERO ============ */}
-        <section id="identity" className="scroll-mt-20 pb-24">
+        <section id="identity" className="scroll-mt-20 pb-48">
           <Reveal>
-            <p className="text-eyebrow uppercase text-accent">Phase 1 · Module 19</p>
-            <h1 className="mt-3 font-display text-display text-ink">
+            <p className="text-eyebrow uppercase text-accent">Phase 1 · Module 19 · v1.1</p>
+            <h1 className="mt-4 font-display text-display text-ink">
               The eyosto
               <br />
               design system.
             </h1>
-            <p className="mt-6 max-w-xl text-body-lg text-ink-muted">
+            <p className="mt-8 max-w-xl text-body-lg text-ink-muted">
               One token file, one component kit, one contract. Every screen across the marketing
               site, dashboard, storefronts, and admin terminal is built from what&apos;s on this
               page — nothing here is a one-off.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-4">
+            <div className="mt-10 flex flex-wrap items-center gap-4">
               <Magnetic>
                 <Button size="lg">
                   Explore the kit <ArrowRight className="h-4 w-4" />
@@ -138,7 +138,7 @@ export default function DesignSystemPage() {
             </div>
           </Reveal>
 
-          <Reveal delay={0.1} className="mt-16 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Reveal delay={0.1} className="mt-24 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Card>
               <CardBody>
                 <p className="font-display text-h2 text-ink">2</p>
@@ -167,27 +167,27 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ COLOR ============ */}
-        <section id="color" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="color" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel
               eyebrow="Foundation"
               title="Color"
-              description="Monochrome premium: a true grayscale from canvas to ink, and exactly one restrained accent - used only for links, the primary CTA, and active/selected state. Every status color is muted, never neon."
+              description="Ink on paper: a warm-white canvas, near-black ink, and a grayscale ramp with real contrast jumps between steps - never a soft, sludgy gradient. Exactly one restrained accent, used only for links, the primary CTA, and active/selected state. Every status color is muted, never neon."
             />
           </Reveal>
           <Reveal stagger={0.04} className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <Swatch name="Canvas" cssVar="--color-canvas" hex="#f5f5f7" />
+            <Swatch name="Canvas" cssVar="--color-canvas" hex="#faf9f6" />
             <Swatch name="Surface" cssVar="--color-surface" hex="#ffffff" />
-            <Swatch name="Border" cssVar="--color-border" hex="#e5e5ea" />
-            <Swatch name="Border strong" cssVar="--color-border-strong" hex="#d2d2d7" />
-            <Swatch name="Ink" cssVar="--color-ink" hex="#1d1d1f" />
-            <Swatch name="Ink muted" cssVar="--color-ink-muted" hex="#6e6e73" />
-            <Swatch name="Ink faint" cssVar="--color-ink-faint" hex="#8e8e93" />
+            <Swatch name="Border" cssVar="--color-border" hex="#eae7e1" />
+            <Swatch name="Border strong" cssVar="--color-border-strong" hex="#dbd7ce" />
+            <Swatch name="Ink" cssVar="--color-ink" hex="#0a0a0a" />
+            <Swatch name="Ink muted" cssVar="--color-ink-muted" hex="#6b6862" />
+            <Swatch name="Ink faint" cssVar="--color-ink-faint" hex="#9c988f" />
             <Swatch name="Accent" cssVar="--color-accent" hex="#0071e3" />
             <Swatch name="Accent hover" cssVar="--color-accent-hover" hex="#0058b0" />
             <Swatch name="Accent subtle" cssVar="--color-accent-subtle" hex="#e8f2fd" />
           </Reveal>
-          <p className="mb-3 mt-10 text-sm font-medium text-ink">Semantic status (never the accent)</p>
+          <p className="mb-4 mt-14 text-sm font-medium text-ink">Semantic status (never the accent)</p>
           <Reveal stagger={0.04} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Swatch name="Success" cssVar="--color-success" hex="#1f9254" />
             <Swatch name="Warning" cssVar="--color-warning" hex="#b5750a" />
@@ -197,66 +197,76 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ TYPE ============ */}
-        <section id="type" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="type" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel
               eyebrow="Foundation"
               title="Typography"
-              description="Plus Jakarta Sans carries display voice - headlines, hero copy, the wordmark. Inter stays the body/UI face, proven legible at 13-14px across every dense dashboard table this product ships. Two families, one job each."
+              description={
+                <>
+                  Geist carries display voice — headlines, hero copy, the wordmark. Inter stays the
+                  body/UI face, proven legible at 13-14px across every dense dashboard table this
+                  product ships. One heavy weight (700) for every heading tier, one regular (400) for
+                  everything else — no in-betweens scattered across the scale.{" "}
+                  <a href="/design-system/type" className="text-accent underline-offset-4 hover:underline">
+                    See the Geist vs. Instrument Sans comparison →
+                  </a>
+                </>
+              }
             />
           </Reveal>
-          <Reveal stagger={0.05} className="space-y-6">
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+          <Reveal stagger={0.05} className="space-y-8">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="font-display text-display text-ink">Sell more, worry less.</p>
-              <p className="font-mono text-xs text-ink-faint">text-display · Plus Jakarta Sans 700 · -0.035em</p>
+              <p className="font-mono text-xs text-ink-faint">text-display · Geist 700 · -0.04em</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="font-display text-h1 text-ink">Everything your store needs.</p>
-              <p className="font-mono text-xs text-ink-faint">text-h1 · 700 · -0.025em</p>
+              <p className="font-mono text-xs text-ink-faint">text-h1 · Geist 700 · -0.03em</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="font-display text-h2 text-ink">Built for the way you sell.</p>
-              <p className="font-mono text-xs text-ink-faint">text-h2 · 600 · -0.015em</p>
+              <p className="font-mono text-xs text-ink-faint">text-h2 · Geist 700 · -0.025em</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="font-display text-h3 text-ink">Orders, inventory, and payouts.</p>
-              <p className="font-mono text-xs text-ink-faint">text-h3 · 600</p>
+              <p className="font-mono text-xs text-ink-faint">text-h3 · Geist 700 · -0.02em</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="font-display text-h4 text-ink">Section heading</p>
-              <p className="font-mono text-xs text-ink-faint">text-h4 · 600</p>
+              <p className="font-mono text-xs text-ink-faint">text-h4 · Geist 700 · -0.015em</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="text-body-lg text-ink">
                 A confident body size for pricing copy and feature descriptions - roomy line-height for easy scanning.
               </p>
-              <p className="font-mono text-xs text-ink-faint">text-body-lg · Inter 400 · 1.6</p>
+              <p className="font-mono text-xs text-ink-faint">text-body-lg · Inter 400 · 1.65</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="text-body text-ink">The default paragraph size for dashboard copy, form helper text, and everyday reading.</p>
-              <p className="font-mono text-xs text-ink-faint">text-body · Inter 400 · 1.6</p>
+              <p className="font-mono text-xs text-ink-faint">text-body · Inter 400 · 1.65</p>
             </div>
-            <div className="flex flex-col gap-1 border-b border-border pb-6">
+            <div className="flex flex-col gap-2 border-b border-border pb-8">
               <p className="text-sm text-ink-muted">Dense table cells, secondary labels, and metadata use this size.</p>
               <p className="font-mono text-xs text-ink-faint">text-sm · Inter 400</p>
             </div>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               <p className="text-eyebrow uppercase text-ink-faint">Eyebrow label</p>
-              <p className="font-mono text-xs text-ink-faint">text-eyebrow · Inter 600 · 0.08em tracking</p>
+              <p className="font-mono text-xs text-ink-faint">text-eyebrow · Inter 600 · 0.12em tracking</p>
             </div>
           </Reveal>
         </section>
 
         {/* ============ SPACING & RADII ============ */}
-        <section id="spacing" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="spacing" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel
               eyebrow="Foundation"
               title="Spacing & radii"
-              description="Tailwind's default 4px-based scale already is the systematic ramp this system needs - no reinvention. Two semantic tokens add marketing-page section rhythm. Radii step from a tight 8px control up to a generous 28px hero card."
+              description="Tailwind's default 4px-based scale already is the systematic ramp this system needs - no reinvention. Two semantic tokens add marketing-page section rhythm, doubled in this redo (12rem / 18rem) so hero-class surfaces breathe. Radii step from a tight 8px control up to a generous 28px hero card."
             />
           </Reveal>
-          <Reveal stagger={0.03} className="mb-10 space-y-2">
+          <Reveal stagger={0.03} className="mb-16 space-y-3">
             {[1, 2, 3, 4, 6, 8, 12, 16, 24, 32].map((step) => (
               <div key={step} className="flex items-center gap-4">
                 <span className="w-16 shrink-0 font-mono text-xs text-ink-faint">{step * 4}px</span>
@@ -264,7 +274,7 @@ export default function DesignSystemPage() {
               </div>
             ))}
           </Reveal>
-          <Reveal stagger={0.05} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Reveal stagger={0.05} className="grid grid-cols-2 gap-6 sm:grid-cols-4">
             {[
               ["sm", "0.5rem"],
               ["md", "0.75rem"],
@@ -272,7 +282,7 @@ export default function DesignSystemPage() {
               ["xl", "1.75rem"],
             ].map(([name, val]) => (
               <div key={name} className="text-center">
-                <div className={`mx-auto mb-2 h-16 w-16 rounded-${name} border border-border-strong bg-surface`} />
+                <div className={`mx-auto mb-3 h-16 w-16 rounded-${name} border border-border-strong bg-surface`} />
                 <p className="text-sm font-medium text-ink">radius-{name}</p>
                 <p className="font-mono text-xs text-ink-faint">{val}</p>
               </div>
@@ -281,15 +291,15 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ SHADOWS ============ */}
-        <section id="shadows" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="shadows" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel
               eyebrow="Foundation"
               title="Depth"
-              description="Soft, low-opacity, large-blur shadows - depth without a hard edge. xs/sm sit on resting cards; md/lg lift hover states and popovers; xl is reserved for the highest layer (dialogs floating above a scrim)."
+              description="Almost imperceptible shadows - depth from distance, not drama. xs/sm sit on resting cards; md/lg lift hover states and popovers; xl is reserved for the highest layer (dialogs floating above a scrim)."
             />
           </Reveal>
-          <Reveal stagger={0.05} className="grid grid-cols-2 gap-8 sm:grid-cols-5">
+          <Reveal stagger={0.05} className="grid grid-cols-2 gap-10 sm:grid-cols-5">
             {["xs", "sm", "md", "lg", "xl"].map((s) => (
               <div key={s} className="text-center">
                 <div className={`mx-auto mb-3 h-20 w-20 rounded-lg bg-surface shadow-${s}`} />
@@ -300,7 +310,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ MOTION ============ */}
-        <section id="motion" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="motion" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel
               eyebrow="Foundation"
@@ -308,7 +318,7 @@ export default function DesignSystemPage() {
               description="Confident, physics-leaning easing - never linear. Exits run faster than entrances. Every reveal on this page (and every hero this system builds) uses these exact curves, mirrored in lib/motion.ts so GSAP and CSS never drift apart. Scroll back up: the hero and stat cards, the color/type/spacing grids above all used the same Reveal component."
             />
           </Reveal>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-3">
             <Card>
               <CardBody>
                 <p className="text-sm font-semibold text-ink">ease-standard</p>
@@ -340,7 +350,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ BUTTONS ============ */}
-        <section id="buttons" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="buttons" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Buttons" description="The one button component every screen uses. Five variants, four sizes, and full default/hover/focus/active/disabled/loading coverage." />
           </Reveal>
@@ -372,7 +382,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ FORMS ============ */}
-        <section id="forms" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="forms" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Forms" description="Every control shares one focus/hover/disabled/error treatment, so a form never looks assembled from different systems." />
           </Reveal>
@@ -433,7 +443,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ FEEDBACK ============ */}
-        <section id="feedback" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="feedback" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Feedback" description="Status is always encoded in form as well as color - a dot, an icon, a shape - never color alone." />
           </Reveal>
@@ -493,7 +503,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ OVERLAYS ============ */}
-        <section id="overlays" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="overlays" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Overlays" description="Dialog, dropdown menu, and tooltip - each animates in with ease-standard, out with ease-in." />
           </Reveal>
@@ -549,7 +559,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ NAVIGATION ============ */}
-        <section id="nav" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="nav" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Navigation" description="Tabs - the active tab lifts on a surface with a soft shadow, never just an underline." />
           </Reveal>
@@ -572,7 +582,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ DATA ============ */}
-        <section id="data" className="scroll-mt-20 border-t border-border pb-24 pt-16">
+        <section id="data" className="scroll-mt-20 border-t border-border pb-48 pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Data" description="Dense, legible tables - Linear/Notion-grade, not a bare HTML table." />
           </Reveal>
@@ -621,7 +631,7 @@ export default function DesignSystemPage() {
         </section>
 
         {/* ============ LAYOUT ============ */}
-        <section id="layout" className="scroll-mt-20 border-t border-border pt-16">
+        <section id="layout" className="scroll-mt-20 border-t border-border pt-32">
           <Reveal>
             <SectionLabel eyebrow="Components" title="Layout" description="Cards, page headers, avatars, and empty states that teach rather than a blank list." />
           </Reveal>
@@ -665,7 +675,7 @@ export default function DesignSystemPage() {
         </section>
       </main>
 
-      <footer className="border-t border-border py-10 text-center text-sm text-ink-faint">
+      <footer className="border-t border-border py-16 text-center text-sm text-ink-faint">
         <p className="flex items-center justify-center gap-2">
           <Bell className="h-3.5 w-3.5" /> This page is the contract - every later phase is checked against it.
         </p>

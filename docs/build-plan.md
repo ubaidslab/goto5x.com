@@ -2159,6 +2159,53 @@ was restyled yet (Phases 2-8's job); no Radix `Select` (the existing native
 added when a specific screen needs it); the ~9 remaining "goto5x" copy
 occurrences noted above.
 
+### Phase 1 redo (v1.1) — founder-rejected visual direction, corrected
+
+The checkpoint above was **rejected on visual direction**: Plus Jakarta Sans
+read as "friendly startup," not "premium minimal," and the founder ordered a
+redo before Phase 2 could start. Same phase, same checkpoint gate — this is
+not a new phase.
+
+- **Typography** — Plus Jakarta Sans replaced with **Geist** (Vercel's own
+  family, via the `geist` npm package's `next/font/local` export — not
+  available through `next/font/google`) as the display face in
+  `apps/web/app/layout.tsx`. Inter unchanged as the body/UI face. A new
+  `/design-system/type` page presents Geist alongside exactly one
+  alternative (Instrument Sans, tightened) at identical scale/tracking/
+  weight, per the founder's explicit instruction not to swap unilaterally
+  without showing the comparison — Geist is marked chosen, Instrument Sans
+  rejected, with the reasoning written out on the page itself.
+- **Tokens hardened** (`globals.css`) — neutrals rewritten to an
+  ink-on-paper palette (`--color-canvas: #faf9f6`, `--color-ink: #0a0a0a`,
+  real contrast jumps at every step, no accent-tinted grays); the entire
+  type scale rebuilt with bigger clamps (`--text-display` up to
+  `clamp(3.5rem, 2.25rem + 6vw, 7.5rem)`), tighter large-size tracking
+  (-0.02em to -0.04em), and one uniform heading weight (700 everywhere,
+  replacing the prior 600/700 mix); `--spacing-section`/`-lg` doubled
+  (6→12rem, 9→18rem); shadows halved in opacity with larger blur/offset
+  ("distance, not drama").
+- **`/design-system` page rebuilt** to the new tokens — swatches, type
+  labels, and section copy all corrected to match; every section's
+  Tailwind spacing classes doubled to match the token-level whitespace
+  change (the page wasn't breathing before, only its tokens were).
+- **Real proof page**: the founder's brief was explicit that "a design
+  system can't be judged from swatches — the hero is the taste test."
+  `apps/web/app/page.tsx` (the platform's actual marketing homepage route)
+  now has a real hero section — eyosto wordmark in nav, a staggered-entrance
+  GSAP headline (`Reveal` with `stagger`), sub-line, a `Magnetic`-wrapped
+  primary CTA, and a subtle scroll cue.
+- **Bug found and fixed during this pass**: the scroll cue was first built
+  using `Reveal` (GSAP ScrollTrigger) on a `position: fixed` element. On a
+  page that doesn't scroll, ScrollTrigger can never resolve a valid "enters
+  viewport" position for a fixed element, so it stayed at `opacity: 0`
+  forever — invisible in every screenshot until caught. Fixed by rendering
+  it with a plain CSS fade-in instead (`motion-reduce:` variants respect
+  `prefers-reduced-motion`); `Reveal`/`ScrollTrigger` remains correct for
+  in-flow content, just not fixed-position chrome.
+- Verified via Playwright at 1440px desktop and 390px mobile, both
+  no-preference and `prefers-reduced-motion: reduce`, across all three
+  pages (`/`, `/design-system`, `/design-system/type`).
+
 ## Module 25 (Admin Terminal Completion) — built (P0 + P1 + P2)
 
 Founder-directed, not an SRS-FR-driven module — triggered by a completeness
