@@ -273,3 +273,223 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     expect(withdrawal.status).toBe(403);
   });
 });
+
+/**
+ * Module 25 P1 - backend surfaces for the 8 previously API-only admin
+ * pages this phase added a frontend for. Every endpoint below already
+ * existed and was already exercised by its own module's e2e spec (careers:
+ * module22-careers.e2e-spec.ts; growth-programs applications/withdrawals/
+ * clawback: module22-growth-partner-programs.e2e-spec.ts; admin-grant-plan/
+ * promo-codes: plans-pricing.e2e-spec.ts) - this block only closes the
+ * remaining gaps that had NO e2e coverage anywhere before this module: the
+ * Creator content-submission verify/reject queue, category creation, the
+ * supplier-adapter registry's admin CRUD, and the audit-log list endpoint.
+ */
+describe("Admin Completion (e2e) - Module 25 P1", () => {
+  let app: INestApplication;
+  let superuser: PrismaClient;
+
+  beforeAll(async () => {
+    superuser = superuserPrismaForTests();
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await superuser.$disconnect();
+  });
+
+  afterEach(async () => {
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+  });
+
+  async function signup(email: string) {
+    await request(app.getHttpServer())
+      .post("/auth/signup")
+      .send({ agreementAccepted: true, email, password: PASSWORD, businessName: `Business for ${email}` });
+    const login = await request(app.getHttpServer()).post("/auth/login").send({ email, password: PASSWORD });
+    const token = login.body.accessToken as string;
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+    return { token, userId: user.id as string, sellerId: seller.id as string };
+  }
+
+  async function createAndLoginAdmin(email: string): Promise<string> {
+    const bcrypt = await import("bcryptjs");
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    const user = await superuser.user.create({ data: { email, passwordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() } });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const code = authenticator.generate(enroll.body.secret);
+    const verify = await request(app.getHttpServer()).post("/admin/auth/mfa/verify").send({ preAuthToken: login.body.preAuthToken, code });
+    return verify.body.accessToken as string;
+  }
+
+  it("a Creator's content submission is verified (computes and posts a reward, audit-logged) or rejected (pays nothing), and the queue only ever shows pending rows", async () => {
+    const { token, sellerId } = await signup("creator-p1@example.com");
+    const adminToken = await createAndLoginAdmin("creator-p1-admin@example.com");
+
+    const participant = await superuser.programParticipant.create({
+      data: { sellerId, programType: "creator", status: "approved", referralCode: "creator-p1-code" },
+    });
+
+    // Both default to 0 (view-based rewards disabled until the founder sets a real rate/cap) - set a real rate for this test.
+    await request(app.getHttpServer())
+      .put("/admin/settings/values")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ key: "growth.creator_view_reward_per_million_pkr", scopeType: "global", value: 1000 });
+    await request(app.getHttpServer())
+      .put("/admin/settings/values")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ key: "growth.creator_monthly_reward_cap_pkr", scopeType: "global", value: 100000 });
+
+    const submit = await request(app.getHttpServer())
+      .post("/sellers/me/growth-programs/content")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ platform: "youtube", contentUrl: "https://youtube.com/watch?v=abc", reportedViews: 2_000_000 });
+    expect(submit.status).toBe(201);
+
+    const queue = await request(app.getHttpServer())
+      .get("/admin/growth-programs/content-submissions/queue")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(queue.body.some((s: { id: string }) => s.id === submit.body.id)).toBe(true);
+
+    const verify = await request(app.getHttpServer())
+      .post(`/admin/growth-programs/content-submissions/${submit.body.id}/verify`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ notes: "Checked view count via platform analytics" });
+    expect(verify.status).toBe(201);
+    expect(verify.body.status).toBe("verified");
+    expect(Number(verify.body.rewardAmount)).toBeGreaterThan(0);
+
+    const balance = await request(app.getHttpServer())
+      .get(`/admin/sellers/${sellerId}/overview`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(balance.body.wallet.balance).toBe(Number(verify.body.rewardAmount));
+
+    const auditRow = await superuser.adminAuditLog.findFirst({ where: { action: "growth_programs.content_verified", targetId: submit.body.id } });
+    expect(auditRow).not.toBeNull();
+
+    const queueAfter = await request(app.getHttpServer())
+      .get("/admin/growth-programs/content-submissions/queue")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(queueAfter.body.some((s: { id: string }) => s.id === submit.body.id)).toBe(false);
+
+    expect(typeof participant.id).toBe("string");
+  });
+
+  it("an admin creates a product category, which then appears in the public category list", async () => {
+    const adminToken = await createAndLoginAdmin("category-p1-admin@example.com");
+
+    const create = await request(app.getHttpServer())
+      .post("/categories")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Home & Kitchen P1", slug: `home-kitchen-p1-${Date.now()}` });
+    expect(create.status).toBe(201);
+
+    const list = await request(app.getHttpServer()).get("/categories").set("Authorization", `Bearer ${adminToken}`);
+    expect(list.body.some((c: { id: string }) => c.id === create.body.id)).toBe(true);
+  });
+
+  it("an admin registers a supplier adapter, then enables/disables it and edits its config, without a deploy", async () => {
+    const adminToken = await createAndLoginAdmin("adapter-p1-admin@example.com");
+
+    const create = await request(app.getHttpServer())
+      .post("/admin/supplier-adapters")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ adapterType: `custom_p1_${Date.now()}`, displayName: "Custom P1 Supplier" });
+    expect(create.status).toBe(201);
+    expect(create.body.isEnabled).toBe(true);
+
+    const disable = await request(app.getHttpServer())
+      .patch(`/admin/supplier-adapters/${create.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isEnabled: false, config: { apiKey: "test-key" } });
+    expect(disable.status).toBe(200);
+    expect(disable.body.isEnabled).toBe(false);
+    expect(disable.body.config).toEqual({ apiKey: "test-key" });
+
+    const list = await request(app.getHttpServer()).get("/admin/supplier-adapters").set("Authorization", `Bearer ${adminToken}`);
+    expect(list.body.some((a: { id: string }) => a.id === create.body.id)).toBe(true);
+  });
+
+  it("the audit log list endpoint returns recent entries, most recent first, honoring a limit", async () => {
+    const adminToken = await createAndLoginAdmin("auditlist-p1-admin@example.com");
+    const { sellerId } = await signup("auditlist-p1-seller@example.com");
+
+    await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ amount: 100, reason: "audit-log listing test" });
+
+    const list = await request(app.getHttpServer()).get("/admin/audit-logs?limit=5").set("Authorization", `Bearer ${adminToken}`);
+    expect(list.status).toBe(200);
+    expect(list.body.length).toBeGreaterThanOrEqual(1);
+    expect(list.body.length).toBeLessThanOrEqual(5);
+    expect(list.body[0].action).toBe("billing.wallet_manual_adjust");
+  });
+
+  it("the system status endpoint reports db/redis/object-storage reachability and every background queue's job counts", async () => {
+    const adminToken = await createAndLoginAdmin("status-p1-admin@example.com");
+
+    const status = await request(app.getHttpServer()).get("/admin/system-status").set("Authorization", `Bearer ${adminToken}`);
+    expect(status.status).toBe(200);
+    expect(status.body.db).toBe(true);
+    expect(status.body.redis).toBe(true);
+    expect(typeof status.body.objectStorage).toBe("boolean");
+    expect(status.body.backups).toBe("not yet configured");
+    expect(status.body.email.provider).toBe("console");
+    expect(Array.isArray(status.body.queues)).toBe(true);
+    expect(status.body.queues.length).toBeGreaterThanOrEqual(10);
+    for (const queue of status.body.queues) {
+      expect(typeof queue.name).toBe("string");
+      expect(typeof queue.waiting).toBe("number");
+      expect(typeof queue.failed).toBe("number");
+    }
+  });
+
+  it("the notification center reports new pending-queue rows since the admin's last-seen timestamp, and mark-seen clears it", async () => {
+    const { sellerId } = await signup("notif-p1-seller@example.com");
+    const adminToken = await createAndLoginAdmin("notif-p1-admin@example.com");
+
+    await request(app.getHttpServer())
+      .post("/sellers/me/wallet/topup-requests")
+      .set("Authorization", `Bearer ${(await signup("notif-p1-seller2@example.com")).token}`)
+      .send({ amount: 1000 });
+
+    const before = await request(app.getHttpServer()).get("/admin/notifications").set("Authorization", `Bearer ${adminToken}`);
+    expect(before.status).toBe(200);
+    expect(before.body.lastSeenAt).toBeNull();
+    expect(before.body.totalCount).toBeGreaterThanOrEqual(1);
+    expect(before.body.items.some((i: { label: string }) => i.label.includes("wallet top-up"))).toBe(true);
+
+    const markSeen = await request(app.getHttpServer()).post("/admin/notifications/mark-seen").set("Authorization", `Bearer ${adminToken}`);
+    expect(markSeen.status).toBe(201);
+
+    const after = await request(app.getHttpServer()).get("/admin/notifications").set("Authorization", `Bearer ${adminToken}`);
+    expect(after.body.lastSeenAt).not.toBeNull();
+    expect(after.body.totalCount).toBe(0);
+    expect(after.body.items).toHaveLength(0);
+
+    // A NEW pending row created after mark-seen shows up again.
+    await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ amount: 100, reason: "unrelated - just advances audit log, not a queue row" });
+    const { token: laterToken } = await signup("notif-p1-seller3@example.com");
+    await request(app.getHttpServer())
+      .post("/sellers/me/wallet/topup-requests")
+      .set("Authorization", `Bearer ${laterToken}`)
+      .send({ amount: 2000 });
+
+    const afterNewRequest = await request(app.getHttpServer()).get("/admin/notifications").set("Authorization", `Bearer ${adminToken}`);
+    expect(afterNewRequest.body.totalCount).toBeGreaterThanOrEqual(1);
+  });
+});

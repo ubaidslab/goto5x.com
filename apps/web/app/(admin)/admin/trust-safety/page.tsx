@@ -16,6 +16,11 @@ interface BypassAttemptFlag {
   sellerId: string;
   attemptCount: number;
 }
+interface SelfReferralFlag {
+  referrerSellerId: string;
+  referredSellerId: string;
+  matchedSignal: "cnic" | "payment_instrument" | "device_or_ip";
+}
 interface PaymentReviewItem {
   storeId: string;
   bankAccountTitle: string | null;
@@ -37,6 +42,7 @@ export default function AdminTrustSafetyPage() {
   const [pendingForeverRate, setPendingForeverRate] = useState<RateFlag[]>([]);
   const [signupVelocity, setSignupVelocity] = useState<SignupVelocityFlag[]>([]);
   const [bypassAttempts, setBypassAttempts] = useState<BypassAttemptFlag[]>([]);
+  const [selfReferral, setSelfReferral] = useState<SelfReferralFlag[]>([]);
   const [reviewQueue, setReviewQueue] = useState<PaymentReviewItem[]>([]);
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [newVersion, setNewVersion] = useState("");
@@ -62,6 +68,10 @@ export default function AdminTrustSafetyPage() {
     fetch(`${apiBase}/admin/trust-safety/monitors/bypass-attempts`, { headers: authHeaders() })
       .then((r) => r.json())
       .then(setBypassAttempts)
+      .catch(() => {});
+    fetch(`${apiBase}/admin/trust-safety/monitors/self-referral`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then(setSelfReferral)
       .catch(() => {});
     fetch(`${apiBase}/admin/trust-safety/payment-review/queue`, { headers: authHeaders() })
       .then((r) => r.json())
@@ -204,6 +214,26 @@ export default function AdminTrustSafetyPage() {
             <tr key={f.sellerId}>
               <td>{f.sellerId}</td>
               <td>{f.attemptCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2>Self-referral / fake-cluster flags (FR-33.10)</h2>
+      <table border={1} cellPadding={4}>
+        <thead>
+          <tr>
+            <th>Referrer seller</th>
+            <th>Referred seller</th>
+            <th>Matched signal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {selfReferral.map((f, i) => (
+            <tr key={i}>
+              <td>{f.referrerSellerId}</td>
+              <td>{f.referredSellerId}</td>
+              <td>{f.matchedSignal}</td>
             </tr>
           ))}
         </tbody>

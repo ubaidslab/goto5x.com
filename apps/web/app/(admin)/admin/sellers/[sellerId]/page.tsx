@@ -19,7 +19,7 @@ interface SellerOverview {
   stores: { id: string; name: string; slug: string; status: string; verifiedStatus: string; healthScore: number | null }[];
   wallet: { balance: number; currency: string; recentLedger: { id: string; type: string; amount: number; currency: string; createdAt: string; label: string }[] };
   invoices: { id: string; periodStart: string; periodEnd: string; totalAmount: number; status: string }[];
-  programs: { id: string; programType: string; status: string; referralCode: string | null }[];
+  programs: { id: string; programType: string; status: "pending" | "approved" | "rejected" | "suspended" | "terminated"; referralCode: string | null }[];
   trustSafety: {
     riskScore: number | null;
     cancellationRateFlag: { ratePercent: number } | null;
@@ -48,6 +48,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [impersonationSessionId, setImpersonationSessionId] = useState<string | null>(null);
+  const [clawbackAmount, setClawbackAmount] = useState("");
+  const [clawbackNotes, setClawbackNotes] = useState("");
 
   function load() {
     adminApi
@@ -107,6 +109,33 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     if (!impersonationSessionId) return;
     await adminApi.post(`/admin/impersonation/${impersonationSessionId}/end`);
     setImpersonationSessionId(null);
+  }
+
+  async function decideProgramParticipant(participantId: string, action: "suspend" | "terminate") {
+    const notes = window.prompt(`Reason to ${action} this program participation:`);
+    if (!notes) return;
+    try {
+      await adminApi.post(`/admin/growth-programs/applications/${participantId}/${action}`, { notes });
+      load();
+    } catch (err) {
+      alert(err instanceof AdminApiError ? err.message : `Couldn't ${action} this participation.`);
+    }
+  }
+
+  async function clawback() {
+    const amount = Number(clawbackAmount);
+    if (!amount || !clawbackNotes.trim()) {
+      alert("An amount and a reason are both required for a clawback.");
+      return;
+    }
+    try {
+      await adminApi.post(`/admin/growth-programs/withdrawals/sellers/${params.sellerId}/clawback`, { amount, notes: clawbackNotes });
+      setClawbackAmount("");
+      setClawbackNotes("");
+      load();
+    } catch (err) {
+      alert(err instanceof AdminApiError ? err.message : "Couldn't clawback this seller's wallet.");
+    }
   }
 
   if (error) return <main>{error}</main>;
@@ -207,10 +236,26 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       <ul>
         {programs.map((p) => (
           <li key={p.id}>
-            {p.programType}: {p.status} {p.referralCode && `(${p.referralCode})`}
+            {p.programType}: {p.status} {p.referralCode && `(${p.referralCode})`}{" "}
+            {p.status === "approved" && (
+              <>
+                <button onClick={() => decideProgramParticipant(p.id, "suspend")}>Suspend</button>{" "}
+                <button onClick={() => decideProgramParticipant(p.id, "terminate")}>Terminate</button>
+              </>
+            )}
+            {p.status === "suspended" && <button onClick={() => decideProgramParticipant(p.id, "terminate")}>Terminate</button>}
           </li>
         ))}
       </ul>
+      <p>
+        <label>
+          Clawback amount: <input value={clawbackAmount} onChange={(e) => setClawbackAmount(e.target.value)} />
+        </label>{" "}
+        <label>
+          Reason: <input value={clawbackNotes} onChange={(e) => setClawbackNotes(e.target.value)} />
+        </label>{" "}
+        <button onClick={clawback}>Clawback (FR-33.10)</button>
+      </p>
 
       <h2>Trust &amp; Safety</h2>
       <p>Risk score: {trustSafety.riskScore ?? "-"}</p>

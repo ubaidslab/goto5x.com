@@ -381,6 +381,11 @@ model AdminUser {
   userId     String    @unique @map("user_id") @db.Uuid
   role       AdminRole
   mfaEnabled Boolean   @map("mfa_enabled")
+  // Module 25 P1 - the admin notification center's read marker (FR-8.x
+  // completeness). Null means "never opened the notification center" -
+  // every currently-open queue row counts as new, same as any first-run
+  // unread-count convention.
+  lastSeenNotificationsAt DateTime? @map("last_seen_notifications_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id])
 

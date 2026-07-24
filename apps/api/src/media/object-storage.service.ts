@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Readable } from "stream";
@@ -60,6 +60,16 @@ export class ObjectStorageService {
     const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
     const body = await streamToBuffer(result.Body as Readable);
     return { body, contentType: result.ContentType };
+  }
+
+  /** Module 25 (system status page) - a lightweight reachability check, never a full bucket listing (that's O(objects), not something a status page should ever pay for). */
+  async checkReachable(): Promise<boolean> {
+    try {
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   getPublicUrl(key: string): string {

@@ -49,13 +49,43 @@ change.
   existing `@BlockDuringImpersonation()` mechanism (built Module 17) —
   all four now reject with 403 under an impersonation token.
 
-### Not yet built (Module 25 P1/P2, same module, next)
-Frontend pages for eight API-only backend surfaces (growth-programs'
-three queues + reports, careers, the real commission-invoices list,
-supplier adapters, the audit-log viewer, admin-granted-plan/promo-codes,
-category creation, the T&S self-referral monitor); a system status page;
-an admin notification center; bulk actions; splitting `/admin/invoices`
-into its two correctly-named screens.
+## Module 25 (P1/P2) — Admin Terminal Completion, continued
+
+### Added
+- Frontend pages for the eight previously API-only admin surfaces:
+  growth-programs applications/content-submissions/withdrawals queues
+  (`/admin/growth-programs/*`), careers (`/admin/careers` — postings +
+  the full applicant pipeline), a real commission-invoices screen
+  (`/admin/commission-invoices`, correctly split from `/admin/invoices`'s
+  own wallet-top-ups screen), supplier adapters
+  (`/admin/supplier-adapters` — register/enable/disable/reconfigure
+  without a deploy), an audit-log viewer (`/admin/audit-log`, read-only),
+  admin-granted-plan + platform promo codes (added to `/admin/plans`),
+  category creation (`/admin/categories`), and the T&S self-referral
+  monitor panel (added to `/admin/trust-safety`). Every one of these
+  reuses an already-built backend endpoint; suspend/terminate on an
+  approved growth-program participant and a fraud clawback are wired on
+  the seller-360 page instead (the applications queue only ever lists
+  `pending` rows).
+- System status page (`GET admin/system-status`, `/admin/status`) —
+  genuinely new instrumentation: database/Redis/object-storage
+  reachability plus every one of the 12 BullMQ queues' job counts
+  (waiting/active/delayed/failed). Email delivery failures and backups
+  are disclosed stub lines (no real email provider or backup mechanism
+  exists yet in this environment), not faked data.
+- Admin notification center (`GET admin/notifications`, `POST
+  admin/notifications/mark-seen`, new `AdminUser.lastSeenNotificationsAt`
+  column, migration `20260726150000_module25_p1_notification_center`) —
+  diffs new/changed rows across every row-based admin queue since the
+  admin's last-seen timestamp, with a nav-bar badge + dropdown.
+- Bulk actions: checkbox multi-select + "approve/reject selected" on the
+  moderation queue, "verify/reject selected" on wallet top-ups — both
+  reuse the existing per-item endpoint via `Promise.all`, no new bulk
+  backend endpoint.
+- New e2e coverage for two surfaces that had none anywhere before this
+  phase: the Creator content-submission verify/reject queue, and category
+  creation — plus new coverage for the supplier-adapter registry, the
+  audit-log list endpoint, system status, and the notification center.
 
 ## Module 24 — Seller Data Export to Personal Cloud Storage
 

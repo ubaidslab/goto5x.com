@@ -22,6 +22,8 @@ export default function AdminModerationPage() {
   const [queue, setQueue] = useState<QueuedProduct[] | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkNotes, setBulkNotes] = useState("");
 
   function authHeaders(): Record<string, string> {
     const token = localStorage.getItem("adminAccessToken");
@@ -52,6 +54,39 @@ export default function AdminModerationPage() {
     load();
   }
 
+  function toggleSelected(productId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  }
+
+  /** Module 25 P2 - bulk actions reuse the existing per-item decide endpoint (already idempotent, already audit-logged); no new bulk backend endpoint needed. */
+  async function decideSelected(decision: "approve" | "reject") {
+    setError(null);
+    if (decision === "reject" && !bulkNotes.trim()) {
+      setError("A reason is required to reject (the field above) - it's shown to the seller.");
+      return;
+    }
+    const results = await Promise.all(
+      [...selected].map((productId) =>
+        fetch(`${apiBase}/admin/moderation/queue/${productId}/${decision}`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ notes: bulkNotes }),
+        }),
+      ),
+    );
+    if (results.some((r) => !r.ok)) {
+      setError(`Some products couldn't be ${decision === "approve" ? "approved" : "rejected"} - check the queue below.`);
+    }
+    setSelected(new Set());
+    setBulkNotes("");
+    load();
+  }
+
   if (!queue) return <p>Loading...</p>;
 
   return (
@@ -64,37 +99,54 @@ export default function AdminModerationPage() {
       {queue.length === 0 ? (
         <p>The queue is empty.</p>
       ) : (
-        <table border={1} cellPadding={4}>
-          <thead>
-            <tr>
-              <th>Store</th>
-              <th>Product</th>
-              <th>Description</th>
-              <th>Notes</th>
-              <th>Decision</th>
-            </tr>
-          </thead>
-          <tbody>
-            {queue.map((product) => (
-              <tr key={product.id}>
-                <td>{product.store?.name ?? "-"}</td>
-                <td>{product.title}</td>
-                <td>{product.description ?? "-"}</td>
-                <td>
-                  <input
-                    value={notes[product.id] ?? ""}
-                    onChange={(e) => setNotes({ ...notes, [product.id]: e.target.value })}
-                    placeholder="Reviewer notes"
-                  />
-                </td>
-                <td>
-                  <button onClick={() => decide(product.id, "approve")}>Approve</button>{" "}
-                  <button onClick={() => decide(product.id, "reject")}>Reject</button>
-                </td>
+        <>
+          <p>
+            <label>
+              Notes for bulk action: <input value={bulkNotes} onChange={(e) => setBulkNotes(e.target.value)} placeholder="Reviewer notes" />
+            </label>{" "}
+            <button onClick={() => decideSelected("approve")} disabled={selected.size === 0}>
+              Approve selected ({selected.size})
+            </button>{" "}
+            <button onClick={() => decideSelected("reject")} disabled={selected.size === 0}>
+              Reject selected ({selected.size})
+            </button>
+          </p>
+          <table border={1} cellPadding={4}>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Store</th>
+                <th>Product</th>
+                <th>Description</th>
+                <th>Notes</th>
+                <th>Decision</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {queue.map((product) => (
+                <tr key={product.id}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
+                  </td>
+                  <td>{product.store?.name ?? "-"}</td>
+                  <td>{product.title}</td>
+                  <td>{product.description ?? "-"}</td>
+                  <td>
+                    <input
+                      value={notes[product.id] ?? ""}
+                      onChange={(e) => setNotes({ ...notes, [product.id]: e.target.value })}
+                      placeholder="Reviewer notes"
+                    />
+                  </td>
+                  <td>
+                    <button onClick={() => decide(product.id, "approve")}>Approve</button>{" "}
+                    <button onClick={() => decide(product.id, "reject")}>Reject</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </main>
   );

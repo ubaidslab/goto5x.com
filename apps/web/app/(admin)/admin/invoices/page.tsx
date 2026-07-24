@@ -26,6 +26,7 @@ export default function AdminWalletTopUpsPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [requests, setRequests] = useState<TopUpRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   function authHeaders(): Record<string, string> {
     const token = localStorage.getItem("adminAccessToken");
@@ -63,6 +64,28 @@ export default function AdminWalletTopUpsPage() {
     load();
   }
 
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** Module 25 P2 - bulk actions reuse the existing per-item verify/reject endpoints; no new bulk backend endpoint needed. */
+  async function decideSelected(decision: "verify" | "reject") {
+    setError(null);
+    const results = await Promise.all(
+      [...selected].map((id) => fetch(`${apiBase}/admin/wallet-topups/${id}/${decision}`, { method: "POST", headers: authHeaders() })),
+    );
+    if (results.some((r) => !r.ok)) {
+      setError(`Some requests couldn't be ${decision === "verify" ? "verified" : "rejected"} - check their status below.`);
+    }
+    setSelected(new Set());
+    load();
+  }
+
   if (!requests) return <p>Loading...</p>;
 
   return (
@@ -75,9 +98,19 @@ export default function AdminWalletTopUpsPage() {
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}
 
+      <p>
+        <button onClick={() => decideSelected("verify")} disabled={selected.size === 0}>
+          Verify selected ({selected.size})
+        </button>{" "}
+        <button onClick={() => decideSelected("reject")} disabled={selected.size === 0}>
+          Reject selected ({selected.size})
+        </button>
+      </p>
+
       <table border={1} cellPadding={4}>
         <thead>
           <tr>
+            <th></th>
             <th>Owner type</th>
             <th>Owner ID</th>
             <th>Amount</th>
@@ -90,6 +123,9 @@ export default function AdminWalletTopUpsPage() {
         <tbody>
           {requests.map((r) => (
             <tr key={r.id}>
+              <td>
+                {r.status === "pending" && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelected(r.id)} />}
+              </td>
               <td>{r.ownerType}</td>
               <td>{r.ownerId}</td>
               <td>

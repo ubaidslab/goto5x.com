@@ -32,6 +32,11 @@ export default function AdminPlansPage() {
   const [price, setPrice] = useState("0");
   const [seatPrice, setSeatPrice] = useState("");
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly" | "none">("monthly");
+  const [grantSellerId, setGrantSellerId] = useState("");
+  const [grantPlanId, setGrantPlanId] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoDiscountType, setPromoDiscountType] = useState<"percent" | "fixed">("percent");
+  const [promoDiscountValue, setPromoDiscountValue] = useState("0");
 
   function authHeaders(): Record<string, string> {
     const token = localStorage.getItem("adminAccessToken");
@@ -70,6 +75,44 @@ export default function AdminPlansPage() {
     await fetch(`${apiBase}/admin/plans/${planId}/retire`, { method: "POST", headers: authHeaders() });
     load();
   }
+
+  async function grantPlan(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch(`${apiBase}/admin/sellers/${grantSellerId}/plan`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: grantPlanId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.message ?? "Couldn't grant this plan.");
+      return;
+    }
+    setGrantSellerId("");
+    setGrantPlanId("");
+  }
+
+  async function createPromoCode(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch(`${apiBase}/admin/promo-codes`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: promoCode,
+        discountType: promoDiscountType,
+        discountValue: Number(promoDiscountValue),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.message ?? "Couldn't create this promo code.");
+      return;
+    }
+    setPromoCode("");
+    setPromoDiscountValue("0");
+  }
+
+  const allPlans = plans ? [...plans.individual, ...plans.team, ...plans.supplier] : [];
 
   return (
     <main>
@@ -156,6 +199,54 @@ export default function AdminPlansPage() {
           </label>
         </p>
         <button type="submit">Create tier</button>
+      </form>
+
+      <h2>Grant a plan to a seller (FR-8.2)</h2>
+      <p>Comp a plan directly onto a seller's subscription - bypasses billing/checkout.</p>
+      <form onSubmit={grantPlan}>
+        <p>
+          <label>
+            Seller ID: <input value={grantSellerId} onChange={(e) => setGrantSellerId(e.target.value)} required />
+          </label>
+        </p>
+        <p>
+          <label>
+            Plan:{" "}
+            <select value={grantPlanId} onChange={(e) => setGrantPlanId(e.target.value)} required>
+              <option value="">Select a plan...</option>
+              {allPlans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.planGroup})
+                </option>
+              ))}
+            </select>
+          </label>
+        </p>
+        <button type="submit">Grant plan</button>
+      </form>
+
+      <h2>Create a platform promo code (FR-7.9)</h2>
+      <form onSubmit={createPromoCode}>
+        <p>
+          <label>
+            Code: <input value={promoCode} onChange={(e) => setPromoCode(e.target.value)} required />
+          </label>
+        </p>
+        <p>
+          <label>
+            Discount type:{" "}
+            <select value={promoDiscountType} onChange={(e) => setPromoDiscountType(e.target.value as typeof promoDiscountType)}>
+              <option value="percent">percent off</option>
+              <option value="fixed">fixed amount off</option>
+            </select>
+          </label>
+        </p>
+        <p>
+          <label>
+            Discount value: <input type="number" min={0} value={promoDiscountValue} onChange={(e) => setPromoDiscountValue(e.target.value)} required />
+          </label>
+        </p>
+        <button type="submit">Create promo code</button>
       </form>
     </main>
   );

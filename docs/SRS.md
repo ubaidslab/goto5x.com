@@ -3860,11 +3860,10 @@ going forward, per FR-6.28.
   - [x] Every pending-queue count on the admin HOME page (`GET
         admin/overview`) jump-links to its own queue page in one click —
         wallet top-ups, Verified Store applications/re-review, product
-        moderation, T&S payment-review + all five monitor flag types are
-        live today; the three growth-program queues and the careers
-        queue jump-link to pages Module 25's P1 phase still needs to
-        build (disclosed, not silently glossed over — see
-        `docs/build-plan.md`'s Module 25 P0 section)
+        moderation, T&S payment-review + all five monitor flag types, and
+        (as of Module 25 P1) the three growth-program queues and the
+        careers queue too — every jump-link on the HOME page now resolves
+        to a real, built page
   - [x] Global search (`GET admin/search?q=`) finds a seller, store,
         order, and supplier each by a partial substring of its name/
         email/ID — proven by one e2e test per entity type, including a
@@ -3907,18 +3906,69 @@ going forward, per FR-6.28.
         `20260726090000_module25_admin_completion`) — proven by an e2e
         test covering both directions and both rejection cases, plus an
         `admin_audit_logs` row assertion
-  - [ ] **Not yet built (Module 25 P1/P2, same module, sequenced after
-        this P0 checkpoint):** frontend pages for the eight backend
-        surfaces that were API-only (growth-programs' three queues +
-        reports, careers, the real commission-invoices list, supplier
-        adapters, the audit-log viewer, admin-granted-plan/promo-codes,
-        category creation, the T&S self-referral monitor), a system
-        status page (queue depths/job failures/storage/email-failures,
-        with a "backups: not yet configured" stub line until the OPS
-        Security Hardening pass lands), an admin notification center,
-        bulk actions on the highest-volume queues, and splitting
-        `/admin/invoices` back into its two correct screens (wallet
-        top-ups vs. commission invoices)
+  - [x] **Module 25 P1 (frontend for the eight previously API-only
+        surfaces):** growth-programs applications/content-submissions/
+        withdrawals queues (`/admin/growth-programs/*`), careers
+        (`/admin/careers` — postings + the full applicant pipeline, CV/
+        contact details never on a public endpoint), the real commission-
+        invoices list (`/admin/commission-invoices`, correctly split from
+        `/admin/invoices`'s own wallet-top-ups screen — see below),
+        supplier adapters (`/admin/supplier-adapters` — register/enable/
+        disable/reconfigure without a deploy), an audit-log viewer
+        (`/admin/audit-log`, read-only — the table is insert-only by DB
+        grant), admin-granted-plan + platform promo codes (added to
+        `/admin/plans`), category creation (`/admin/categories`), and the
+        T&S self-referral monitor panel (added to the existing
+        `/admin/trust-safety` page). Every one of these reuses an
+        already-built, already-tested backend endpoint — the two genuine
+        gaps that had NO e2e coverage anywhere before this phase (the
+        Creator content-submission verify/reject queue and category
+        creation) are now covered, plus new coverage for the
+        supplier-adapter registry and the audit-log list endpoint.
+        Suspend/terminate on an already-approved growth-program
+        participant, and a fraud clawback, are wired on the seller-360
+        page instead of the applications queue (that queue's
+        `listQueue()` only ever returns `pending` rows, so a non-pending
+        participant is only reachable per-seller).
+  - [x] **Module 25 P1 (system status page):** `GET admin/system-status`
+        (genuinely new instrumentation) reports database/Redis/object-
+        storage reachability and every one of the 12 BullMQ background
+        queues' job counts (waiting/active/delayed/failed) via
+        `getJobCounts()` against each queue's own name — proven by an
+        e2e test asserting all three infra checks and at least 10 queues
+        report numeric counts. Email delivery failures and backups are
+        disclosed stub lines, not faked data: `EmailService` has no real
+        provider integrated yet in this environment (console-log
+        fallback only), and the founder explicitly authorized a
+        "backups: not yet configured" line until the OPS Security
+        Hardening pass lands.
+  - [x] **Module 25 P1 (admin notification center):** a new
+        `AdminUser.lastSeenNotificationsAt` column (migration
+        `20260726150000_module25_p1_notification_center`) plus `GET
+        admin/notifications` diffing every row-based admin queue
+        (wallet top-ups, Verified Store applications, moderation,
+        growth-program applications/content/withdrawals, career
+        applicants) created since that timestamp, and `POST
+        admin/notifications/mark-seen` to clear it — proven by an e2e
+        test showing a pending row created before the admin's first
+        visit counts as new, `mark-seen` zeroes the count, and a
+        genuinely new row afterward shows up again. Deliberately scoped
+        to row-based queues only — the T&S monitor views on the HOME
+        overview are live-computed aggregates with no per-row "created
+        since X" concept, so they stay overview-only counts.
+  - [x] **Module 25 P2 (bulk actions + the `/admin/invoices` split):**
+        checkbox multi-select + "approve/reject selected" on the
+        moderation queue, and "verify/reject selected" on the wallet
+        top-ups queue — both reuse the existing per-item endpoint via
+        `Promise.all` rather than a new bulk backend endpoint (each
+        action was already idempotent and already audit-logged
+        individually, so batching client-side adds no new failure mode).
+        `/admin/invoices` was already correctly the wallet-top-ups screen
+        (Module 20 repurposed that route; the nav already labeled it
+        "Wallet top-ups") — the actual fix was adding the missing
+        `/admin/commission-invoices` screen for `AdminInvoicesController`
+        (mark-paid, waive-commission), which had a working backend but no
+        frontend at all before this phase.
 
 ### 14.9 Media Management
 - [ ] Google Drive import copies files into MinIO; the storefront still serves

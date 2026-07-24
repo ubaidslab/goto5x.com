@@ -2061,7 +2061,7 @@ in isolation, a direct admin revoke (audit-logged), and annual
 re-verification expiry forcing a genuine new application (at the
 Settings-default zero reverification fee).
 
-## Module 25 (Admin Terminal Completion) — P0 built, P1/P2 next
+## Module 25 (Admin Terminal Completion) — built (P0 + P1 + P2)
 
 Founder-directed, not an SRS-FR-driven module — triggered by a completeness
 audit (research-only, no code) evaluating every admin capability against
@@ -2156,20 +2156,101 @@ the wallet-adjust action's both directions plus its two rejection cases
 four newly-decorated endpoints returning 403 under an impersonation
 token.
 
-**Not yet built (P1/P2, same module, founder-approved to continue after
-this P0 checkpoint):** frontend pages for the eight backend surfaces
-that were API-only before this module (growth-programs' three queues +
-reports, careers, the real commission-invoices list, supplier adapters,
-the audit-log viewer, admin-granted-plan/promo-codes, category creation,
-the T&S self-referral monitor); a system status page (queue depths, job
-failures, storage/disk usage, email delivery failures — genuinely new
-backend instrumentation, nothing today exposes BullMQ or disk metrics);
-an admin notification center ("what needs attention since last login" —
-needs a new `AdminUser.lastSeenNotificationsAt` field); bulk actions on
-the highest-volume queues (moderation, wallet top-ups); and splitting
-`/admin/invoices` back into its two correctly-named screens (it's
-currently wired to wallet top-ups, not the commission-invoices endpoint
-its name implies).
+### Module 25 P1/P2 (built, continuation of the same module)
+
+**Frontend for the 8 previously API-only surfaces.** All 8 pages call
+already-built, already-tested backend endpoints (this phase found no new
+FR-level gap to close in them):
+- `apps/web/app/(admin)/admin/growth-programs/applications/page.tsx`,
+  `.../content-submissions/page.tsx`, `.../withdrawals/page.tsx` —
+  three admin queue pages for Module 22's growth-partner-programs
+  backend. The applications page only offers approve/reject
+  (`ProgramApplicationService.listQueue()` returns `pending` rows only —
+  suspend/terminate on an already-approved participant has no queue to
+  render it in, so those two actions were added to the seller-360 page
+  instead, alongside a clawback form using `POST
+  admin/growth-programs/withdrawals/sellers/:sellerId/clawback`).
+- `apps/web/app/(admin)/admin/careers/page.tsx` — job postings CRUD +
+  an expandable per-posting applicant pipeline (status dropdown per
+  applicant, CV link) — applicant PII only ever rendered here.
+- `apps/web/app/(admin)/admin/commission-invoices/page.tsx` — the real
+  commission/group-sponsorship invoice list (`GET admin/invoices`,
+  `AdminInvoicesController` — already existed and was already correct;
+  only the frontend screen was missing) with mark-paid + waive-commission
+  actions. This resolves the founder's "fix the `/admin/invoices`
+  mislabeling" item: `/admin/invoices` (`apps/web/.../admin/invoices/`)
+  was already correctly Module 20's wallet-top-ups screen (the nav
+  already labeled it "Wallet top-ups") — the actual gap was the missing
+  commission-invoices screen, now filled by this new page at a distinct
+  route rather than reusing the `/admin/invoices` path.
+- `apps/web/app/(admin)/admin/supplier-adapters/page.tsx` — list/
+  register/enable-disable/reconfigure (JSON config textarea) against
+  `SupplierAdapterRegistryService`.
+- `apps/web/app/(admin)/admin/audit-log/page.tsx` — read-only list view
+  over `AuditLogService.listRecent()`; no write actions exist to render
+  (the table is insert-only by DB grant).
+- Admin-granted-plan + platform promo codes — added as two new forms to
+  the existing `apps/web/app/(admin)/admin/plans/page.tsx` rather than a
+  new page (`POST admin/sellers/:sellerId/plan`, `POST
+  admin/promo-codes`).
+- `apps/web/app/(admin)/admin/categories/page.tsx` — category list +
+  create form against `categories.controller.ts` (list needs
+  `JwtAuthGuard` not `AdminAuthGuard`, but an admin's JWT satisfies a
+  plain passport-jwt guard the same as any other authenticated user's).
+- T&S self-referral monitor panel — added as a new table section to the
+  existing `apps/web/app/(admin)/admin/trust-safety/page.tsx` (the
+  backend endpoint, `GET admin/trust-safety/monitors/self-referral`,
+  already existed from Module 22 with no UI consumer until now).
+
+**System status page** (`apps/api/src/admin-completion/
+admin-system-status.service.ts` + `.controller.ts`, `GET
+admin/system-status`, `/admin/status`) — genuinely new instrumentation:
+`Promise.all` across a DB `SELECT 1`, a Redis `PING`, a new
+`ObjectStorageService.checkReachable()` (`HeadBucketCommand`, never a
+full bucket listing), and `getJobCounts()` against 12 read-only BullMQ
+`Queue` clients (one per existing scheduler's queue name constant,
+opened in `onModuleInit`/closed in `onModuleDestroy`, same construction
+pattern every scheduler already uses — this service is never a worker).
+Email delivery failures and backups are disclosed stub lines rather than
+fabricated: `EmailService` has no real provider in this environment
+(console-log fallback only, throws for anything else configured), and
+the founder explicitly authorized a "backups: not yet configured" line
+until the OPS Security Hardening pass lands.
+
+**Admin notification center** (`admin-notifications.service.ts` +
+`.controller.ts`, `GET admin/notifications`, `POST
+admin/notifications/mark-seen`) — a new `AdminUser.
+lastSeenNotificationsAt` column (migration
+`20260726150000_module25_p1_notification_center`) plus a diff of every
+row-based admin queue (wallet top-ups, Verified Store applications,
+moderation, growth-program applications/content/withdrawals, career
+applicants) created since that timestamp. Deliberately excludes the T&S
+monitor views the HOME overview already surfaces — those are
+live-computed aggregates with no per-row creation timestamp, so "new
+since last seen" doesn't apply to them. Frontend: a badge + dropdown in
+`apps/web/app/(admin)/admin/layout.tsx`'s shared nav.
+
+**Bulk actions** — checkbox multi-select on the moderation queue
+(`apps/web/app/(admin)/admin/moderation/page.tsx`) and wallet top-ups
+(`apps/web/app/(admin)/admin/invoices/page.tsx`), each with "approve/
+reject selected" or "verify/reject selected" firing `Promise.all` across
+the existing single-item endpoints — no new bulk backend endpoint,
+since each underlying action was already idempotent and already
+audit-logged individually.
+
+Tests: `module25-admin-completion.e2e-spec.ts` gained a new "Module 25
+P1" describe block (10 tests) covering the two surfaces that had NO e2e
+coverage anywhere before this phase (Creator content-submission verify/
+reject including the reward computation and its audit-log row; category
+creation), plus new coverage for the supplier-adapter registry's CRUD,
+the audit-log list endpoint's ordering/limit, the system status
+endpoint's three infra checks + queue-count shape, and the notification
+center's create-then-see / mark-seen-clears-it / new-row-reappears flow.
+Every other endpoint the 8 new pages call was already covered by its own
+module's e2e spec (careers: `module22-careers.e2e-spec.ts`;
+growth-programs applications/withdrawals/clawback:
+`module22-growth-partner-programs.e2e-spec.ts`; admin-grant-plan/
+promo-codes: `plans-pricing.e2e-spec.ts`) and was not re-tested here.
 
 ## Module 24 (Seller Data Export to Personal Cloud Storage) — built
 
