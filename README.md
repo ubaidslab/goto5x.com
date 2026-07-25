@@ -1,26 +1,16 @@
 # goto5x.com
 
-Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`
-(approved v0.14); this README covers running the code.
+Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`;
+this README covers running the code.
 
-**Status:** Modules 1–9 approved; Module 10 (Seller Dashboard UI) next.
-Platform Event Log amendment (SRS §3.11) built and backfilled. The v0.10
-amendment added two new modules to the sequence (Listing Moderation
-Engine, Module 6; Seller Account Security: 2FA + Devices, Module 12,
-before Payouts) and a binding Financial Truth Invariant NFR (§3.12). The
-v0.11 amendment slotted the moderation queue's bare functional admin page
-into Module 17. The v0.12 amendment inserted a new **Seller Dashboard UI**
-module (Module 10, after Orders/Cart/Checkout) plus a binding SIMPLICITY
-INVARIANT NFR (§3.13) governing it and every seller-facing screen after.
-The v0.13 amendment closed a gap found reviewing Module 8: supplier-
-sourced listings now run through the Listing Moderation Engine (FR-27.8)
-at the moment of seller approval, not just the seller's own review gate.
-The v0.14 amendment (approved after Module 9) completes Module 8's
-deferred supplier/checkout wiring (FR-3.3/3.4/4.5/4.7/4.8), fixes a
-found-during-build completeness gap (an approved supplier listing now
-also gets its required `product_variants` row), and clarifies FR-5.3's
-suspended-store behavior — see `docs/build-plan.md` for the full, current
-module sequence and numbering.
+**Status:** all 25 build-plan modules are built, plus Module 19 (Product
+Design System) Phases 1-2 — foundation/tokens and the full marketing site
+(homepage, pricing, about, careers, legal, color A/B preview). See
+`CHANGELOG.md` for the full history and `docs/build-plan.md` for the
+per-module implementation detail and verification notes. Phases 3-8 of
+Module 19 (auth/onboarding, dashboard, buyer storefronts, admin terminal,
+final pass) are not yet started — those pages are still bare functional,
+no design pass applied yet.
 
 ---
 
@@ -47,6 +37,11 @@ Two Postgres roles back every environment (`docs/build-plan.md`
 
 ## Local setup (without Docker)
 
+**Prerequisites:** Node.js ≥20 (`package.json`'s `engines.node`), pnpm
+(`corepack enable` ships it with Node ≥16.13, or `npm i -g pnpm`),
+PostgreSQL 16, and Redis (any recent version — no specific version
+pinned). No Docker required for this path.
+
 1. Install Postgres 16 and Redis locally, and start them.
 2. Create the database and set a superuser password:
    ```sh
@@ -66,8 +61,15 @@ Two Postgres roles back every environment (`docs/build-plan.md`
    this invocation — the `-v` values must **not** be wrapped in their own
    quotes, or you'll bake literal quote characters into the stored password
    (a real bug caught while building this, not a hypothetical one).
-4. Copy `.env.example` to `.env` in the repo root, and fill in real values —
-   `DATABASE_URL` uses `app_runtime`, `DATABASE_ADMIN_URL` uses `app_admin`.
+4. Copy the root `.env.example` to **`apps/api/.env`** (not a repo-root
+   `.env` — NestJS's `ConfigModule.forRoot()` reads `.env` relative to
+   wherever the process is started, and every command below is run from
+   `apps/api`), and fill in real values — `DATABASE_URL` uses
+   `app_runtime`, `DATABASE_ADMIN_URL` uses `app_admin`. Separately, copy
+   `apps/web/.env.example` to `apps/web/.env.local` (Next.js only reads env
+   files from its own app directory, never the repo root) — its two
+   variables (`API_BASE_URL`, `PLATFORM_HOSTNAMES`) are also documented in
+   the Secrets table below.
 5. Install dependencies and run migrations:
    ```sh
    pnpm install
@@ -78,37 +80,42 @@ Two Postgres roles back every environment (`docs/build-plan.md`
    DATABASE_URL="postgresql://postgres:your-local-superuser-password@localhost:5432/goto5x" \
      npx prisma migrate deploy
    ```
-6. Seed Module 1's real Settings Registry keys:
+6. Seed baseline data every module depends on (Settings Registry defaults
+   across all 25 modules, the built-in theme catalog, the current Seller
+   Agreement version, and the plan catalog every signup assigns a seller
+   to) in one shot:
    ```sh
-   npx ts-node src/settings-registry/settings.seed.ts
+   npx ts-node scripts/dev-seed.ts
    ```
-   Then seed Module 4's built-in theme catalog + its one settings key
-   (`theme.coded_mode_enabled`) - every store-creation call fails closed if no
-   theme has been seeded yet:
+   Safe to re-run any time (every seed function upserts, never duplicates).
+   Individual per-module seed scripts (`src/settings-registry/settings.seed.ts`,
+   `src/theme-engine/themes.seed.ts`, `src/orders/orders.seed.ts`, …) still
+   exist but are strict subsets of the above — no need to run them
+   separately.
+7. Create a local admin account so there's a first login for
+   `/admin/login` (there is no default admin seeded automatically):
    ```sh
-   npx ts-node src/theme-engine/themes.seed.ts
+   npx ts-node scripts/create-local-admin.ts admin@local.test 'ChangeMe123!'
    ```
-   Module 9's `CartAbandonmentScheduler` resolves `cart.abandoned_after_hours`/
-   `cart.abandonment_sweep_minutes` on boot the same way Module 8's
-   `SupplierSyncScheduler` already does for its own settings keys - seed them
-   too (same pre-existing gap as Module 6/8's own seed scripts not yet listed
-   here; the e2e test harness's `seedSettings()` already covers all of them):
-   ```sh
-   npx ts-node src/orders/orders.seed.ts
-   ```
-7. For real media features (Module 2), start a real MinIO instance (or the
+   Admin login always requires MFA (SRS §6.5/FR-8.12) — this script only
+   creates the account; log in at `/admin/login` in the browser and you'll
+   be walked through TOTP enrollment (scan the QR code into any
+   authenticator app) on first login, same as a real admin's onboarding.
+8. For real media features (Module 2), start a real MinIO instance (or the
    `docker-compose.yml` one) and create the bucket named by `MINIO_BUCKET`,
    plus a real Google Cloud OAuth Client ID for Drive import. Neither is
    required just to boot the API or run product/variant CRUD — only the
    media-upload and Google Drive endpoints touch them.
-8. `TRAEFIK_DYNAMIC_CONFIG_DIR` (Module 3) can point at any writable local
+9. `TRAEFIK_DYNAMIC_CONFIG_DIR` (Module 3) can point at any writable local
    directory without Docker — the domain-attach/verify endpoints work
    end-to-end (DNS is checked for real) even without a running Traefik; only
    Traefik itself ever reads the files written there.
-9. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from the repo root.
-   Run the worker too if you want to see the domain-verification recheck job
+10. Run the API: `pnpm start:dev` (from `apps/api`), or `pnpm dev:api` from
+    the repo root. Run the web app too: `pnpm dev` (from `apps/web`), or
+    `pnpm dev:web` from the repo root — visit `http://localhost:3000/`.
+    Run the worker too if you want to see the domain-verification recheck job
    actually fire: `pnpm start:worker` (from `apps/api`).
-10. `PLATFORM_HOSTNAMES` (Module 4, `apps/web`) is a comma-separated list of
+11. `PLATFORM_HOSTNAMES` (Module 4, `apps/web`) is a comma-separated list of
     hostnames (including port, e.g. `localhost:3000`) that serve the
     platform's own site; any other incoming Host header is treated as a
     tenant storefront request. Defaults cover `localhost:3000`/
@@ -124,27 +131,29 @@ immediately afterward** (it's idempotent/safe to re-run at any time — see the
 comments in the script). Caught by running the full test suite after a reset
 and watching every query fail with "permission denied," not assumed to be fine.
 
-## Previewing the marketing site (Module 19 Phase 2)
+## Previewing the marketing site only (Module 19 Phase 2)
 
-The API must already be running (steps above) since the marketing pages
-fetch live data (`/plans`, `/careers`) rather than hard-coding it.
+If you just want to look at the marketing site (no dashboard/admin work),
+you still need the API running (steps 1-7 and 10 above — skip 8/9, MinIO
+and Traefik aren't needed for this) since these pages fetch live data
+(`/plans`, `/careers`) rather than hard-coding it — then `cd apps/web &&
+pnpm dev` and visit `http://localhost:3000/`.
 
-1. `cd apps/web && pnpm dev` — visit `http://localhost:3000/`.
-2. Pages to look at: `/` (homepage), `/pricing`, `/about`, `/careers`,
+1. Pages to look at: `/` (homepage), `/pricing`, `/about`, `/careers`,
    `/legal/terms` (also `/legal/privacy`, `/legal/refund-policy`), and
    `/design-system/color-ab` (the founder's monochrome-vs-"energy" color
    comparison — not linked from the nav, direct URL only).
-3. `/careers` needs at least one `open` job posting to show anything
+2. `/careers` needs at least one `open` job posting to show anything
    besides the empty state — there's no seed script for this shipped yet;
    create one directly (`npx ts-node -e '...'` against
    `prisma.jobPosting.create({ data: { role, description, status: "open" } })`)
-   or through the admin API if you want to see the listing populated.
-4. **Judge the motion with a real scroll, not `prefers-reduced-motion`
+   once you have a local admin (step 7 above), or through the admin API.
+3. **Judge the motion with a real scroll, not `prefers-reduced-motion`
    emulation alone** — every section reveal is GSAP ScrollTrigger-driven
    and only fires on genuine scroll input; toggling reduced-motion in
    DevTools only shows the (correct, but different) instant-render
    fallback path, not the real experience most visitors get.
-5. The hero's WebGL signature moment (`Hero3D`) needs a browser with WebGL
+4. The hero's WebGL signature moment (`Hero3D`) needs a browser with WebGL
    support and no `prefers-reduced-motion` — it silently no-ops (just the
    static SVG gradient stays visible) otherwise, which is the intended
    fallback, not a bug.
@@ -361,6 +370,7 @@ visitor out, which is the same intended blast radius as a session.
 | `ACME_EMAIL` | A real email address - Let's Encrypt requires one for expiry/problem notices. Read only by the `traefik` service, not the app |
 | `PLATFORM_HOSTNAMES` (`apps/web`) | Comma-separated hostnames (with port, if non-default) that serve the platform's own site rather than a tenant storefront (Module 4). Not a secret - no default outside local dev needed since production always sets it to the platform's real domain(s) |
 | `EXTERNAL_API_SECRET_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts each `external_api_clients` row's HMAC signing secret at rest (SRS §5.24/§6.5), same mechanism/key-management discipline as `DRIVE_TOKEN_ENCRYPTION_KEY`, kept as its own key |
+| `API_BASE_URL` (`apps/web`, its own `apps/web/.env.local` — see `apps/web/.env.example`) | The `apps/api` base URL this Next.js app calls for every live data fetch. `next.config.js` maps it into the client-visible `NEXT_PUBLIC_API_BASE_URL`. Not a secret |
 
 ---
 
