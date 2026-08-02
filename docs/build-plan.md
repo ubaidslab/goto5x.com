@@ -2886,5 +2886,104 @@ exercised end-to-end in an actual browser.
 
 ---
 
+## v0.29 slotting decision — Order Verification, Orders Command Center,
+and Inventory Management become three new sibling modules, in this order:
+**Module 26 (Order Verification Channel Adapter, §5.37)** → **Module 27
+(Orders Command Center, §5.38)** → **Module 28 (Inventory Management,
+§5.39)**
+
+Reasoning:
+
+1. **Order Verification (Module 26) is the largest and most structurally
+   independent of the three** — new models (`OrderVerification`,
+   `SellerVerificationEmail`), a new encryption key, a new adapter
+   interface with three implementations, and a real extension to the
+   Financial Truth Invariant (§3.12) that every later module touching
+   order state must respect. It goes first both because it's the
+   founder's stated priority and because Modules 27/28 are easier to
+   reason about once the "what counts as confirmed" surface is settled —
+   building Command Center's bucket aggregation before Order Verification
+   existed would mean redefining "awaiting-verification" as a bucket
+   after the fact instead of designing it in from the start.
+2. **Orders Command Center (Module 27) depends on Module 26 only for one
+   new bucket label** (awaiting-verification) **and one new channel
+   label** (prepaid-received) **— everything else it reads already
+   exists** (`OrderStatus`, `OrderItemFulfillmentStatus`, the supplier
+   fulfillment checklist from Modules 8/9). Sequencing it right after
+   Module 26 means its bucket list is correct from day one rather than
+   needing a follow-up migration once verification landed.
+3. **Inventory Management (Module 28) is fully independent of both** — no
+   shared code with either, reuses only already-built mechanisms
+   (`stockQuantity`, existing oversell protection, Module 15's CSV import,
+   Module 24's Data Export bundle). It's last because it's genuinely
+   separable and, like Data Export was relative to Modules 22/23,
+   the natural "quick win" to build whenever schedule pressure favors
+   one — not because it matters less.
+4. **All three ship bare-functional UI now, per the founder's explicit
+   instruction** — premium visual treatment for all three is deferred to
+   Module 19's dashboard design phase (Phase 4), the same "functional
+   first, designed later" posture every module since the design system's
+   founder-approval has followed. Module 27's backing aggregation
+   endpoint is the one piece of this trio explicitly called out to ship
+   now even though its frontend polish waits — the founder's own framing
+   ("the data exists since Module 9, the consolidated screen doesn't").
+5. **New standing process rule, effective this module onward (founder-
+   directed):** each module auto-pushes to `origin` the moment it is
+   genuinely push-ready — tests green, typecheck/build clean, its own
+   §14 checklist verified — without waiting for a separate push
+   instruction. `main` stays the single source of truth and must remain
+   fresh-clone-runnable at all times; nothing ships half-done or with a
+   failing suite.
+
+### Module 26 (Order Verification Channel Adapter) — scope summary
+`docs/SRS.md` §5.37, FR-37.1-37.9. New Prisma models: `OrderVerification`
+(one row per order that needs verification — channel, OTP hash, expiry,
+attempt count, status) and `SellerVerificationEmail` (a seller's connected
+SMTP sender accounts, 1-5 per seller, credentials AES-256-GCM-encrypted
+under a new `SMTP_CREDENTIAL_ENCRYPTION_KEY`, daily send-count tracking for
+the rotation/cap logic). New `VerificationChannelAdapter` interface
+(mirrors `TopUpAdapter`/`TitleVerificationAdapter`'s established one-
+interface-per-integration-point shape) with three v1.0 implementations:
+`WhatsAppOtpAdapter` (manual/link-assisted `wa.me` deep link),
+`EmailOtpAdapter` (seller's own rotating SMTP senders), and
+`PrepaidConfirmationAdapter` (manual "mark deposit received," mirroring
+`OrdersService.markAsPaid()`'s existing shape). New Settings Registry keys
+(`orders.verification_channel` — `store` scope — plus OTP TTL/cooldown/
+retry-cap/daily-send-cap, all `global` defaults with `store` overrides
+where the SRS specifies). Extends (never duplicates) the Financial Truth
+Invariant: a store with verification enabled gates its orders' `confirmed`
+transition on verification success, exactly as it already gates on
+payment. Seller-facing UI: a Settings sub-screen for channel selection,
+connected-email management, and the message template editor — bare
+functional, no design pass.
+
+### Module 27 (Orders Command Center) — scope summary
+`docs/SRS.md` §5.38, FR-38.1-38.3. One new read-only aggregation endpoint
+(`OrdersOverviewService`) computing live bucketed counts (pending,
+awaiting-verification, prepaid-received, awaiting-tracking, shipped,
+delivered, cancelled/returned) plus the existing supplier fulfillment
+checklist, entirely derived from state Modules 8/9/26 already track — no
+new Prisma model, no new source of truth. Bare functional frontend reuses
+the existing `/stores/:id/orders` route, each bucket count linking into
+the existing filtered order list; premium treatment deferred to Module 19
+Phase 4.
+
+### Module 28 (Inventory Management) — scope summary
+`docs/SRS.md` §5.39, FR-39.1-39.7. New `StockAdjustment` model (append-
+only: seller-account user, timestamp, before/after quantity, required
+reason) — the only new schema in this module. New Settings Registry key
+(`inventory.low_stock_threshold`, `store` scope). Bulk stock edits reuse
+Module 15's existing CSV import machinery in a stock-only mode; the
+inventory export reuses Module 24's `SellerDataExport` bundle via one new
+`inventoryCsvKey` column, under FR-36.5's existing non-substitution
+statement. No change to Module 9's checkout-time oversell-protection
+decrement logic — this module is a read/adjust surface over the existing
+`stockQuantity` field, never a second stock-mutation path. New dedicated
+`/stores/:id/inventory` seller page (bare functional) + nav item, distinct
+from the existing Products catalog page. **No third-party AI integration
+anywhere in this module** (FR-39.7) — documented roadmap note only.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

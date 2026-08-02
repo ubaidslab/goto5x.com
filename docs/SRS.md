@@ -1,7 +1,7 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.27 (Build-phase amendment)
-**Date:** 2026-07-19
+**Version:** 0.29 (Build-phase amendment)
+**Date:** 2026-08-02
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -298,6 +298,47 @@ three already-built mechanisms (CSV export, PDF generation, the Google
 Drive integration) end to end, explicitly **not** a substitute for the
 platform's own off-box backup NFR (§6), which stays binding regardless of
 whether a given seller has Drive connected.
+
+**v0.29 (new sections, build TBD — see build-plan.md for slotting) — new
+§5.37/§14.37 Order Verification Channel Adapter, §5.38/§14.38 Orders
+Command Center, and §5.39/§14.39 Inventory Management (founder-requested,
+competitive-gap-driven — Shopify ships none of the three):** Order
+Verification (§5.37) is the headline item: a per-store Verification
+Channel Adapter (§3.5's established pattern — one interface, swappable
+implementations) with three v1.0 channels a seller picks between —
+WhatsApp OTP (manual/link-assisted in v1.0, interface designed for a
+future automated WhatsApp Business API adapter), Email OTP (sent from the
+seller's own connected SMTP account, never the platform's, credentials
+encrypted at rest the same way as the existing Drive refresh token/CNIC
+identity fields), and Prepaid Confirmation (a small advance the seller
+collects directly, same Direct Seller Collection trust model as
+everything else — the platform never touches it). An order placed against
+a store with verification enabled is held out of every sale count exactly
+the way an unpaid order already is (§3.12's Financial Truth Invariant is
+extended, not duplicated — verification becomes an additional gate on the
+same `confirmed` transition, not a second source of truth). OTP handling
+(TTL, rate limit, retry cap, single-use, per-email daily send cap with
+rotation across up to five connected sender addresses) is fully
+Settings-Registry-driven, never hard-coded. Orders Command Center (§5.38)
+adds one new read — a bucketed order-state aggregation (pending,
+awaiting-verification, prepaid-received, awaiting-tracking, shipped,
+delivered, cancelled/returned) plus the supplier fulfillment checklist —
+computed entirely from state Module 9 already tracks (`OrderStatus`,
+`OrderItemFulfillmentStatus`, this amendment's new verification status);
+no new source of truth, purely a derived, Simplicity-Invariant-governed
+view. Inventory Management (§5.39) is a dedicated stock screen — levels,
+low-stock alerts (Settings-driven threshold), bulk edits reusing the
+existing CSV import machinery (FR-18.1/18.3), and a new append-only stock-
+adjustment log (who/when/why) — reusing `stockQuantity` and the existing
+oversell-protection logic verbatim (no change to checkout's stock-decrement
+path). An inventory CSV becomes a new artifact in the existing Data Export
+bundle (§5.36), under the same explicit non-substitution statement
+(FR-36.5) as every other export artifact. **Explicitly deferred, roadmap-
+only, not built in v1.0:** automated WhatsApp/SMS API-based verification
+(FR-37.9) and any third-party AI (ChatGPT/Claude-class) integration
+anywhere in inventory or elsewhere (FR-39.7) — the latter is withheld
+until a dedicated AI-integration/data-liability policy exists, not because
+of any technical gap.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -953,6 +994,14 @@ built the same way: never as a one-off, hard-coded connection.
 - **Disbursement Adapter:** v1.0's manual adapter and a future API-based adapter
   both implement the same interface so the payout queue/ledger/notification logic
   never changes when the disbursement mechanism does (FR-6.11, §5.6b).
+- **Verification Channel Adapter (new, v0.29):** a single interface each order-
+  verification channel (WhatsApp OTP, Email OTP, Prepaid Confirmation)
+  implements, so the checkout/order-confirmation logic (§5.37) never
+  branches on which channel a given store picked. v1.0 ships three
+  implementations, all either manual/link-assisted or seller-credential-
+  based; a future automated WhatsApp Business API or SMS gateway adapter
+  plugs in later with zero change to the orchestrating order-verification
+  logic, same as every adapter above.
 - **v0.15 pivot note:** both patterns above remain specified exactly as written,
   for the **dormant "Platform-Collected Payments" mode** (§5.6d) — v1.0 ships
   under **Direct Seller Collection** (§5.6c) instead, which needs neither a
@@ -3101,6 +3150,201 @@ storage integration.
   FR must never be read, marketed, or relied upon internally as satisfying
   that NFR.
 
+### 5.37 Order Verification Channel Adapter (new, v0.29 — founder-requested
+competitive edge: no mainstream platform, including Shopify, ships buyer-
+intent order verification; fake/prank COD orders and refused-at-the-door
+deliveries are Pakistani sellers' single largest operational pain point)
+A per-store, seller-selected mechanism confirming a **real, reachable buyer
+actually placed and wants** an order, independent of and prior to payment.
+This is deliberately not a payment-verification concept — Direct Seller
+Collection (§5.6c) means most orders are COD or a direct bank/wallet
+transfer the platform never sees — it is a **buyer-intent** gate, built the
+same swappable-adapter way as every other integration point (§3.5's new
+Verification Channel Adapter).
+
+- FR-37.1: **Per-store channel selection.** A Settings Registry key
+  (`orders.verification_channel`, `store` scope, one of `none` /
+  `whatsapp_otp` / `email_otp` / `prepaid_confirmation`, default `none`)
+  lets each seller opt into exactly one channel per store — never
+  mandatory, never multiple channels simultaneously for the same store (a
+  seller wanting to switch channels changes this one setting; in-flight
+  verifications on the old channel are unaffected). `none` is a fully
+  supported, first-class choice — a seller who trusts their own judgment,
+  or whose buyer base is loyal enough not to need this, pays no UX cost.
+- FR-37.2: **WhatsApp OTP channel.** v1.0 is manual/link-assisted: the
+  system generates the OTP and a pre-filled `wa.me` deep link (buyer's
+  WhatsApp number + the seller's message template with the OTP
+  interpolated in); the seller's own dashboard surfaces a "send via
+  WhatsApp" action that opens the link in their own connected WhatsApp
+  (personal or Business app) for them to tap-send — the platform never
+  sends the WhatsApp message itself in v1.0. Built behind the Verification
+  Channel Adapter interface (§3.5) specifically so a real WhatsApp
+  Business API integration (automated send, delivery receipts) can replace
+  this implementation later with **zero change** to checkout, the OTP
+  generation/verification logic, or the Financial Truth Invariant tie-in
+  below — documented explicitly as future work (FR-37.9), not a v1.0 gap
+  glossed over.
+- FR-37.3: **Email OTP channel, sent from the seller's own SMTP.** The
+  seller connects their own SMTP credentials (host/port/username/
+  password or app-password) via a new dashboard connection flow — the
+  same "seller connects their own third-party credential" shape as the
+  existing Google Drive connection (§3.3/FR-9.1). Credentials are
+  encrypted at rest (AES-256-GCM, application-layer, mirroring
+  `drive-token-crypto.util.ts`'s existing pattern, under a new,
+  independently-rotatable `SMTP_CREDENTIAL_ENCRYPTION_KEY` — never the
+  same key as `DRIVE_TOKEN_ENCRYPTION_KEY`, same one-key-per-purpose
+  discipline as `EXTERNAL_API_SECRET_ENCRYPTION_KEY`), **never logged,
+  and never returned by any API response** (same discipline as FR-30.1's
+  CNIC handling and the Drive refresh token). OTP emails are sent through
+  the seller's own connected account specifically so **the platform's own
+  email-sending reputation/deliverability is never spent on this** — an
+  abusive or careless seller can only damage their own account's standing,
+  never the platform's shared sending domain.
+  - A seller may connect **1 to 5** sender email accounts. When more than
+    one is connected, sends rotate across them (round-robin, skipping any
+    account currently at its daily cap) — this exists purely to raise the
+    effective daily ceiling for a high-volume store, not to obscure which
+    account sent what (every `OrderVerification` row records exactly which
+    connected sender address was used).
+  - **Daily per-email send cap:** a Settings Registry value
+    (`orders.verification_email_daily_send_cap`, default **450**,
+    `store`-overridable) tracked per connected sender address, resetting
+    on a rolling 24-hour window; a send attempt against a capped-out
+    account is rejected (falling through to the next rotation candidate,
+    or a clear "all connected senders are at today's limit" error if none
+    remain) — never silently dropped.
+- FR-37.4: **Prepaid Confirmation channel.** A small advance amount (an
+  amount the seller sets, e.g. a flat Rs 100/200) the buyer pays **directly
+  to the seller** by whatever method that store's existing payment
+  instructions already specify (bank transfer/JazzCash/Easypaisa) — the
+  platform never processes, holds, or sees this money, identical trust
+  model to every other Direct Seller Collection payment. v1.0 is a manual
+  "seller marks deposit received" action on the order (the exact same
+  human-in-the-loop confirmation shape `OrdersService.markAsPaid()`
+  already established, not a new pattern) — the deposit's own possible
+  future automation (matching an incoming bank/wallet notification) is out
+  of scope for v1.0, same "manual first, adapter allows automation later"
+  posture as the other two channels.
+- FR-37.5: **OTP rules (channels 37.2/37.3 only — 37.4 has no OTP).** All
+  Settings-Registry-driven, never hard-coded:
+  - **Time-limited:** `orders.verification_otp_ttl_minutes` (default 10,
+    validated 5-60) — an expired OTP is rejected with a clear "expired,
+    request a new one" response, never silently treated as still valid.
+  - **Rate-limited:** `orders.verification_otp_resend_cooldown_seconds`
+    (default 60) — a resend request inside the cooldown is rejected, not
+    silently queued or double-sent (same "explicit rejection over silent
+    duplication" precedent as FR-36.1's export rate limit).
+  - **Retry-capped:** `orders.verification_otp_max_attempts` (default 5) —
+    exceeding this many wrong-code submissions against the same OTP marks
+    that verification attempt `failed` and requires an explicit fresh OTP
+    request, not an infinite guess loop.
+  - **Single-use:** an OTP is invalidated the instant it's either
+    successfully verified or superseded by a newer one for the same order
+    — never re-checkable after either event.
+  - OTPs are stored hashed (never plaintext, same discipline as password/
+    security-token storage elsewhere in this SRS), compared via a
+    constant-time check.
+- FR-37.6: **Seller-editable message template.** Each store may customize
+  the OTP message's surrounding text (a free-text template with an
+  `{{otp}}` token the system interpolates at send time, plus optional
+  store-name/order-number tokens) — never a platform-wide fixed string.
+  Applies to both the WhatsApp deep-link message (FR-37.2) and the email
+  body (FR-37.3).
+- FR-37.7: **Financial Truth Invariant tie-in (binding, extends §3.12,
+  does not duplicate it).** For a store with `orders.verification_channel`
+  set to anything other than `none`, an order is held in a
+  not-yet-confirmed state — excluded from every sale count, total, and
+  `platform_events` row exactly as an unpaid order already is under
+  §3.12 — **until verification succeeds**. Verification succeeding is a
+  precondition alongside (not a replacement for) the existing
+  `markAsPaid()`/mark-as-paid confirmation path; a store with
+  verification `none` is entirely unaffected and behaves exactly as
+  today. This is one invariant with one additional gate, never a second,
+  parallel definition of "confirmed."
+- FR-37.8: **Buyer-provided checkout fields.** Every order collects
+  buyer email, WhatsApp number, and delivery location (already collected
+  today via the existing shipping-address flow) plus any additional
+  fields a seller marks required for their store (a small, seller-
+  configurable field set — not an open-ended form builder). These are the
+  fields the verification channels above act on (WhatsApp number for
+  FR-37.2, email for FR-37.3).
+- FR-37.9: **Explicit roadmap note, not built in v1.0.** Automated,
+  API-based WhatsApp Business or SMS-gateway verification is the
+  documented next step behind the same Verification Channel Adapter
+  (§3.5) — no redesign required when it's built, per the adapter pattern's
+  whole purpose.
+
+### 5.38 Orders Command Center (new, v0.29 — the underlying data has
+existed since Module 9; this section is the first consolidated read over
+it, governed by the SIMPLICITY INVARIANT, §3.13)
+- FR-38.1: **Bucketed order-state aggregation.** One endpoint returning
+  live counts across: pending, awaiting-verification (§5.37's new gate),
+  prepaid-received (§5.37.4's channel, awaiting fulfillment), awaiting-
+  tracking (confirmed, no tracking uploaded yet), shipped, delivered,
+  cancelled/returned — plus the existing supplier fulfillment checklist
+  (Module 8/9). Every bucket is a **derived** read computed from
+  `OrderStatus`, `OrderItemFulfillmentStatus`, and this amendment's new
+  verification status — no new source of truth, no count computed a
+  second, looser way elsewhere (same cross-cutting discipline §3.12
+  already requires of every money-adjacent read).
+- FR-38.2: **"What needs my attention," at a glance.** Each bucket count
+  is a live filter into the existing order list (FR-17.x) — clicking
+  "awaiting-verification: 4" shows exactly those 4 orders, never a
+  separate, differently-filtered list. No action requires more than two
+  clicks from this screen, per the Seller Dashboard UI module's existing
+  SIMPLICITY INVARIANT precedent (§3.13).
+- FR-38.3: **Slotting note.** The backing aggregation endpoint (FR-38.1)
+  ships now (see `docs/build-plan.md` for the module number); its bare
+  functional frontend surface reuses the existing Orders page route — a
+  premium visual treatment is deferred to Module 19's dashboard design
+  phase (Phase 4), same "bare functional now, designed later" posture
+  every other module in this SRS has followed since the design system was
+  founder-approved.
+
+### 5.39 Inventory Management (new, v0.29 — a dedicated screen; no new
+stock-tracking concept, reuses `stockQuantity` and the existing oversell-
+protection logic verbatim)
+- FR-39.1: **Dedicated stock screen.** Stock levels across every product
+  and variant in a store, in one place — distinct from the Products
+  catalog-editing screen (FR-2.x), which stays focused on listing content,
+  not day-to-day stock operations.
+- FR-39.2: **Low-stock alerts.** A per-store Settings Registry threshold
+  (`inventory.low_stock_threshold`, default 5, `store`-overridable) flags
+  any variant at or below it — a visible badge/filter on this screen, not
+  a new notification-channel build (reuses the existing Module 25
+  admin-notification-center precedent's "surface it where the relevant
+  person already looks" principle, applied seller-side).
+- FR-39.3: **Bulk stock edits via CSV.** Reuses the existing CSV import
+  machinery (FR-18.1/FR-18.3) in a stock-only mode (SKU + new quantity
+  columns) — no new import engine, no new file-parsing code path.
+- FR-39.4: **Manual stock adjustments with an adjustment log.** A single-
+  row stock change (increment/decrement/set-to) is always recorded in a
+  new, append-only log — who (which seller-account user), when, the
+  before/after quantity, and a required reason string. Never silently
+  overwritten or editable after the fact, same append-only-history
+  discipline as `AdminAuditLog`/`PlatformEvent` elsewhere in this SRS,
+  scoped to the seller's own store rather than the admin side.
+- FR-39.5: **Reuses oversell protection verbatim.** This screen is a
+  read/adjust surface over the existing `stockQuantity` field and Module
+  9's existing checkout-time oversell-protection decrement logic — no
+  change to that logic, no second code path that could decrement stock
+  differently than checkout already does.
+- FR-39.6: **Inventory export, as a new Data Export artifact.** A new
+  optional CSV (current stock levels across all products/variants) added
+  to the existing Seller Data Export bundle (§5.36) — the seller's own
+  Google Drive backup convenience, delivered exactly the way FR-36.3
+  already delivers the products/orders/customers CSVs. **Explicitly
+  reaffirmed (not a new rule): this is not a replacement for the
+  platform's own off-box database backups (§6)** — FR-36.5's exact
+  non-substitution statement applies unchanged to this new artifact.
+- FR-39.7: **No third-party AI integration — explicit roadmap-only note,
+  not a gap.** No ChatGPT/Claude-class (or any third-party LLM) feature is
+  built anywhere in inventory management, or elsewhere, in v1.0. This is
+  withheld deliberately until a dedicated AI-integration and data-
+  liability policy exists (what seller/buyer data, if any, could ever be
+  sent to a third-party model, under what consent and retention terms) —
+  revisited post-launch, not blocked on any technical dependency.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -3353,6 +3597,7 @@ mode's eventual reactivation.
 | 20 | **Product Feed API token leak or abuse (new in v0.6)** — a leaked seller token could expose product data beyond intended use, or be scraped at volume | Tokens are seller-scoped (never platform-wide), revocable at any time from the dashboard (FR-24.10), rate-limited like every other public API surface, and the feed is read-only and limited to fields already public on the storefront — no data exposure beyond what a buyer could already see |
 | 21 | **Seller under-reporting/non-remittance of commission (new, v0.15 — Direct Seller Collection's central new risk, effectively replacing Risk 6):** since the platform never touches buyer money, it has no independent way to confirm a sale happened or that a marked-paid order was reported honestly — a seller could simply never mark an order paid, or falsely mark it cancelled, to avoid the commission invoice | Every storefront order is recorded regardless of later status (Financial Truth Invariant, §3.12); cancellation-rate and pending-forever-rate monitors (FR-6.19) feed Trust & Safety risk views (§5.29) for admin review; non-payment past a grace period auto-suspends the store (FR-6.18) — the platform's only enforcement lever without held funds; the versioned Seller Agreement (FR-29.1/FR-29.2) makes deliberate under-reporting an explicit, indemnified breach, not an ambiguous gray area |
 | 22 | **Manual invoice-payment verification is a human-in-the-loop process (v0.15)** — admin fatigue or error confirming a seller's off-platform commission payment could delay a legitimate un-suspension or wrongly clear a non-payment | Invoice status changes are audit-logged (FR-8.9) and visible to the seller through the full lifecycle, same transparency discipline as the dormant mode's payout status flow (FR-6.12); a future phase can add automated bank-statement matching behind the same Payment Adapter interface (§3.5) with no change to the invoicing/suspension logic |
+| 23 | **Order verification abuse (new, v0.29)** — a bad actor could hammer the OTP-send endpoint against arbitrary phone numbers/emails to run up a seller's own SMTP/WhatsApp usage (or a third party's inbox, as harassment), or brute-force a 6-digit OTP given enough attempts | Rate-limited resends (FR-37.5, one cooldown-gated send per order at a time), a hard per-OTP retry cap (default 5) that fails the attempt rather than allowing unlimited guesses, single-use + time-limited codes, and a daily per-sender-email cap (default 450, FR-37.3) bounding the worst case even if the cooldown is somehow raced — the same layered-limits posture already applied to every other OTP/token surface in this SRS (e.g. password reset, admin MFA) |
 
 ---
 
@@ -4813,6 +5058,70 @@ going forward, per FR-6.28.
       forces `processExport()` against a nonexistent export ID and asserts
       the call resolves (not rejects), then asserts
       `triggerRenewalExport()` for the same seller also resolves cleanly.
+
+### 14.37 Order Verification Channel Adapter (new, v0.29, not yet built)
+- [ ] A store with `orders.verification_channel` set to `none` behaves
+      identically to today — no verification step, no schema-visible
+      change to that store's order flow (FR-37.1).
+- [ ] For a store with `email_otp` selected: an order stays out of every
+      sale count/total until the correct OTP is submitted, proven by an
+      e2e test asserting the order is absent from the seller's order
+      totals, admin real-time analytics, and any `platform_events` row
+      pre-verification, then present in all three post-verification
+      (FR-37.7, extends §3.12's existing test precedent — never a second,
+      looser "confirmed" definition).
+- [ ] An expired OTP, a wrong OTP beyond the retry cap, and a resend
+      inside the cooldown window are each rejected with a distinct, clear
+      response — never silently accepted or silently queued (FR-37.5).
+- [ ] SMTP credentials are encrypted at rest under
+      `SMTP_CREDENTIAL_ENCRYPTION_KEY` and never appear in any API
+      response or log line, proven the same way as the existing Drive-
+      token/CNIC tests (serialize the connection object, assert the raw
+      credential string is absent).
+- [ ] A sender email at its daily cap is skipped by the rotation logic in
+      favor of another connected, uncapped sender; with all connected
+      senders capped, the send attempt is rejected with a clear error, not
+      silently dropped (FR-37.3).
+- [ ] The WhatsApp OTP channel generates a correct, seller-template-
+      interpolated `wa.me` deep link and does not attempt to send anything
+      itself (FR-37.2) — proven by asserting no outbound network call is
+      made for this channel, only the link/token pair is returned.
+- [ ] The Prepaid Confirmation channel's "mark deposit received" action
+      is available only to the store's own seller account (never a buyer-
+      facing or public endpoint) and follows the same audit trail
+      precedent as `markAsPaid()` (FR-37.4).
+
+### 14.38 Orders Command Center (new, v0.29, not yet built)
+- [ ] The bucketed-count endpoint's totals sum to the store's total order
+      count with zero orders double-counted or dropped across buckets
+      (FR-38.1) — proven by an e2e test seeding one order in each bucket
+      state and asserting both the per-bucket counts and their sum.
+- [ ] Each bucket's count matches the count returned by filtering the
+      existing order-list endpoint on the equivalent status — i.e. the
+      aggregation is provably a derived read, never a second source of
+      truth that could drift from the list it summarizes (FR-38.1).
+
+### 14.39 Inventory Management (new, v0.29, not yet built)
+- [ ] A manual stock adjustment writes exactly one adjustment-log row
+      (user, timestamp, before/after quantity, reason) and that row is
+      never editable or deletable via any endpoint (FR-39.4) — proven by
+      an e2e test attempting to modify/delete a log row and asserting
+      rejection.
+- [ ] A bulk CSV stock edit updates only `stockQuantity`, never any other
+      product/variant field, and reuses the existing import job/error-
+      reporting shape (FR-39.3) rather than a new, parallel import path —
+      proven by diffing untouched fields before/after.
+- [ ] Checkout's existing oversell-protection decrement behavior is
+      provably unchanged after this module — the existing Module 9
+      oversell e2e test(s) still pass unmodified, and no new code path in
+      this module decrements stock outside that existing logic (FR-39.5).
+- [ ] The low-stock threshold is Settings-Registry-driven per store
+      (FR-39.2), proven by an e2e test changing the threshold and
+      asserting a variant crosses in/out of the flagged set accordingly.
+- [ ] The new inventory CSV export artifact follows the exact same
+      private, ownership-checked download path as every other Data Export
+      artifact (FR-39.6, reaffirms FR-36.5) — no new, less-guarded read
+      path introduced for this one file type.
 
 ---
 

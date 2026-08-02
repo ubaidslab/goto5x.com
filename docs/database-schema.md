@@ -1202,6 +1202,73 @@ measurably slow.
 
 ---
 
+## v0.29 amendment (§5.37-5.39) — Order Verification, Command Center, Inventory
+Orders Command Center (§5.38) adds no new table — its bucketed counts are a
+derived read over `orders`/`order_items` (below) and this section's
+`order_verifications`. Documented here ahead of the modules actually
+building them (Modules 26/28 — see `docs/build-plan.md`'s v0.29 slotting
+decision), same "amend first" precedent as every schema addition in this
+document.
+
+### `order_verifications` (tenant — planned Module 26, FR-37.1-37.8)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| order_id | uuid FK -> orders, unique | one verification attempt-set per order |
+| channel | enum(`whatsapp_otp`,`email_otp`,`prepaid_confirmation`) | snapshot of the store's channel at order time - a later channel change never rewrites history |
+| status | enum(`pending`,`verified`,`failed`,`expired`) | |
+| otp_hash | text, nullable | hashed, never plaintext (FR-37.5); null for `prepaid_confirmation`, which has no OTP |
+| otp_expires_at | timestamptz, nullable | |
+| attempt_count | integer, default 0 | incremented per wrong-code submission; `failed` once it exceeds the Settings-Registry retry cap (FR-37.5) |
+| sender_email_id | uuid FK -> seller_verification_emails, nullable | which connected sender sent this OTP (email_otp only) - the rotation-decision record, not just an FK for convenience |
+| verified_at | timestamptz, nullable | |
+| created_at / updated_at | timestamptz | |
+
+Index: `(order_id)` unique. RLS scoped like `orders` (join through
+`order_id -> orders.store_id`).
+
+### `seller_verification_emails` (tenant, seller-scoped — planned Module 26, FR-37.3)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| seller_id | uuid FK -> sellers | 1-5 rows per seller (app-layer enforced, not a DB constraint - mirrors other small-fixed-range limits elsewhere in this schema) |
+| email_address | text | the "from" address OTP emails are sent as |
+| smtp_host / smtp_port / smtp_username | text / integer / text | |
+| smtp_password_encrypted | text | AES-256-GCM, packed `iv:authTag:ciphertext` (identical format to `google_drive_connections.refresh_token_encrypted`), under a new, independently-rotatable `SMTP_CREDENTIAL_ENCRYPTION_KEY` - never the same key as the Drive token |
+| daily_send_count | integer, default 0 | reset on a rolling 24h window (FR-37.3) |
+| daily_send_count_reset_at | timestamptz | |
+| status | enum(`active`,`revoked`) | |
+| connected_at | timestamptz | |
+
+Never returned by any API response with `smtp_password_encrypted`
+populated - every read path selects an explicit safe-column set, same
+discipline as `google_drive_connections`.
+
+### `stock_adjustments` (tenant — planned Module 28, FR-39.4)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| store_id | uuid FK -> stores | |
+| product_variant_id | uuid FK -> product_variants | |
+| adjusted_by_user_id | uuid FK -> users | which seller-account user made the change |
+| quantity_before / quantity_after | integer | |
+| reason | text, required | never nullable - FR-39.4 requires a reason on every row |
+| created_at | timestamptz | |
+
+Append-only: no `UPDATE`/`DELETE` grant for `app_runtime` on this table,
+same immutability mechanism as `admin_audit_logs`/`user_security_events`
+(SRS FR-8.9), applied here at the seller-facing tier instead of the admin
+tier.
+
+### `seller_data_exports.inventory_csv_key` (new column — planned Module 28, FR-39.6)
+One additional nullable column on the existing `seller_data_exports` table
+(built Module 24) — the inventory CSV artifact, delivered through the
+exact same private, ownership-checked download path as
+`products_csv_key`/`orders_csv_key`/`customers_csv_key`/`summary_pdf_key`.
+No new table.
+
+---
+
 ## v1.1-ahead tables (documented now, not built in v1.0)
 
 ### `return_requests` (tenant — FR-22.3)
