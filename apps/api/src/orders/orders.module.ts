@@ -4,6 +4,7 @@ import { CustomersModule } from "../customers/customers.module";
 import { EventsModule } from "../events/events.module";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { EmailService } from "../notifications/email.service";
+import { OrderVerificationModule } from "../order-verification/order-verification.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { StorefrontModule } from "../storefront/storefront.module";
 import { StoreSettingsModule } from "../store-settings/store-settings.module";
@@ -31,6 +32,7 @@ import { OrdersService } from "./orders.service";
     TrustSafetyModule,
     CustomersModule,
     InvoicesModule,
+    OrderVerificationModule,
   ],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [

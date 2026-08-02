@@ -104,6 +104,14 @@ class EnvironmentVariables {
   // as its own key so all three secrets rotate independently.
   @IsString()
   EXTERNAL_API_SECRET_ENCRYPTION_KEY!: string;
+
+  // Module 26 (SRS §5.37/FR-37.3) - encrypts a seller's connected SMTP
+  // password at rest, same AES-256-GCM mechanism/key-management discipline
+  // as DRIVE_TOKEN_ENCRYPTION_KEY/IDENTITY_ENCRYPTION_KEY/
+  // EXTERNAL_API_SECRET_ENCRYPTION_KEY, kept as its own key so all four
+  // secrets rotate independently.
+  @IsString()
+  SMTP_CREDENTIAL_ENCRYPTION_KEY!: string;
 }
 
 /**
@@ -138,6 +146,11 @@ export function validateEnv(config: Record<string, unknown>) {
   if (Buffer.from(validated.EXTERNAL_API_SECRET_ENCRYPTION_KEY, "base64").length !== 32) {
     throw new Error(
       "Invalid environment configuration:\nEXTERNAL_API_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
+    );
+  }
+  if (Buffer.from(validated.SMTP_CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nSMTP_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

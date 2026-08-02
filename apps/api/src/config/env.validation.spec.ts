@@ -27,6 +27,7 @@ describe("validateEnv", () => {
     IDENTITY_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
     IDENTITY_FINGERPRINT_HMAC_SECRET: "identity-fingerprint-test-secret",
     EXTERNAL_API_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString("base64"),
+    SMTP_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString("base64"),
   };
 
   it("passes through a fully-populated, valid config", () => {

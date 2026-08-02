@@ -4,6 +4,7 @@ import { OrderSource } from "@prisma/client";
 import { CustomersService } from "../customers/customers.service";
 import { InvoicePdfService } from "../invoices/invoice-pdf.service";
 import { EmailService } from "../notifications/email.service";
+import { OrderVerificationService } from "../order-verification/order-verification.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { DiscountCodesService } from "../store-settings/discount-codes.service";
@@ -31,6 +32,7 @@ interface PlaceOrderParams {
   storeId: string;
   currency: string;
   buyerEmail: string;
+  buyerWhatsapp: string | null;
   items: { productId: string; variantId: string; quantity: number }[];
   shippingAddress: ShippingAddressLike;
   discountCode?: string;
@@ -58,6 +60,7 @@ export class CheckoutService {
     private readonly sellerIdentity: SellerIdentityService,
     private readonly customers: CustomersService,
     private readonly invoicePdf: InvoicePdfService,
+    private readonly orderVerification: OrderVerificationService,
   ) {}
 
   async checkout(dto: CheckoutDto) {
@@ -73,6 +76,7 @@ export class CheckoutService {
       storeId: store.id,
       currency: store.currency,
       buyerEmail: cart.buyerEmail,
+      buyerWhatsapp: dto.buyerWhatsapp ?? null,
       items,
       shippingAddress: dto.shippingAddress,
       discountCode: dto.discountCode,
@@ -111,6 +115,7 @@ export class CheckoutService {
       storeId: store.id,
       currency: store.currency,
       buyerEmail: dto.buyerEmail,
+      buyerWhatsapp: dto.buyerWhatsapp ?? null,
       items: dto.items,
       shippingAddress: dto.shippingAddress,
       discountCode: dto.discountCode,
@@ -202,6 +207,11 @@ export class CheckoutService {
         );
       }
 
+      // Module 26 (SRS §5.37/FR-37.1) - same "store readiness" gate as the
+      // three checks above: a store whose Email OTP channel has no
+      // connected sender must not accept a checkout it can never verify.
+      await this.orderVerification.assertChannelReady(store.sellerId, params.storeId);
+
       const { shippingAmount, taxAmount, totalAmount } = computeOrderTotals({
         items: priced.map((i) => ({
           unitPrice: i.unitPrice,
@@ -234,6 +244,7 @@ export class CheckoutService {
             storeId: params.storeId,
             customerId: customer.id,
             buyerEmail: params.buyerEmail,
+            buyerWhatsapp: params.buyerWhatsapp,
             statusLookupToken: randomBytes(24).toString("hex"),
             shippingAddress: params.shippingAddress as unknown as object,
             status: "pending",
@@ -269,6 +280,19 @@ export class CheckoutService {
         });
 
         return created;
+      });
+
+      // Module 26 (SRS §5.37/FR-37.1) - creates the pending OrderVerification
+      // row (the Financial Truth Invariant gate OrdersService.markAsPaid()
+      // checks) and sends the first OTP, if this store has a channel
+      // configured. A no-op when the store's channel is "none".
+      await this.orderVerification.createForOrder({
+        storeId: params.storeId,
+        sellerId: store.sellerId,
+        orderId: order.id,
+        storeName: store.name,
+        buyerEmail: params.buyerEmail,
+        buyerWhatsapp: params.buyerWhatsapp,
       });
 
       // FR-19.1 - rendered once, right after the order that owns it exists,

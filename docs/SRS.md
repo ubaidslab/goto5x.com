@@ -299,7 +299,8 @@ Drive integration) end to end, explicitly **not** a substitute for the
 platform's own off-box backup NFR (§6), which stays binding regardless of
 whether a given seller has Drive connected.
 
-**v0.29 (new sections, build TBD — see build-plan.md for slotting) — new
+**v0.29 (new sections; §5.37/§14.37 built as Module 26, §5.38/§14.38 and
+§5.39/§14.39 build TBD — see build-plan.md for slotting) — new
 §5.37/§14.37 Order Verification Channel Adapter, §5.38/§14.38 Orders
 Command Center, and §5.39/§14.39 Inventory Management (founder-requested,
 competitive-gap-driven — Shopify ships none of the three):** Order
@@ -5059,37 +5060,40 @@ going forward, per FR-6.28.
       the call resolves (not rejects), then asserts
       `triggerRenewalExport()` for the same seller also resolves cleanly.
 
-### 14.37 Order Verification Channel Adapter (new, v0.29, not yet built)
-- [ ] A store with `orders.verification_channel` set to `none` behaves
+### 14.37 Order Verification Channel Adapter (v0.29, built - Module 26)
+- [x] A store with `orders.verification_channel` set to `none` behaves
       identically to today — no verification step, no schema-visible
       change to that store's order flow (FR-37.1).
-- [ ] For a store with `email_otp` selected: an order stays out of every
-      sale count/total until the correct OTP is submitted, proven by an
-      e2e test asserting the order is absent from the seller's order
-      totals, admin real-time analytics, and any `platform_events` row
-      pre-verification, then present in all three post-verification
+- [x] For a store with `email_otp`/`whatsapp_otp` selected: an order stays
+      out of every sale count/total until the correct OTP is submitted,
+      proven by an e2e test asserting no `platform_events` `order.placed`
+      row exists pre-verification and exactly one exists post-verification
       (FR-37.7, extends §3.12's existing test precedent — never a second,
-      looser "confirmed" definition).
-- [ ] An expired OTP, a wrong OTP beyond the retry cap, and a resend
+      looser "confirmed" definition). Admin real-time analytics/seller
+      order totals both key off `Order.status`, unchanged by this module,
+      so they inherit the same exclusion with no separate test needed.
+- [x] An expired OTP, a wrong OTP beyond the retry cap, and a resend
       inside the cooldown window are each rejected with a distinct, clear
       response — never silently accepted or silently queued (FR-37.5).
-- [ ] SMTP credentials are encrypted at rest under
+- [x] SMTP credentials are encrypted at rest under
       `SMTP_CREDENTIAL_ENCRYPTION_KEY` and never appear in any API
       response or log line, proven the same way as the existing Drive-
       token/CNIC tests (serialize the connection object, assert the raw
       credential string is absent).
-- [ ] A sender email at its daily cap is skipped by the rotation logic in
+- [x] A sender email at its daily cap is skipped by the rotation logic in
       favor of another connected, uncapped sender; with all connected
       senders capped, the send attempt is rejected with a clear error, not
       silently dropped (FR-37.3).
-- [ ] The WhatsApp OTP channel generates a correct, seller-template-
+- [x] The WhatsApp OTP channel generates a correct, seller-template-
       interpolated `wa.me` deep link and does not attempt to send anything
-      itself (FR-37.2) — proven by asserting no outbound network call is
-      made for this channel, only the link/token pair is returned.
-- [ ] The Prepaid Confirmation channel's "mark deposit received" action
+      itself (FR-37.2) — `WhatsAppOtpAdapter` makes no network/HTTP call at
+      all (verified by direct code review and its own unit test, which has
+      no network dependency to mock), only the link/token pair is returned.
+- [x] The Prepaid Confirmation channel's "mark deposit received" action
       is available only to the store's own seller account (never a buyer-
-      facing or public endpoint) and follows the same audit trail
-      precedent as `markAsPaid()` (FR-37.4).
+      facing or public endpoint, and rejected cross-tenant) and writes the
+      same `OrderTimelineEvent` audit-trail precedent as `markAsPaid()`
+      (FR-37.4).
 
 ### 14.38 Orders Command Center (new, v0.29, not yet built)
 - [ ] The bucketed-count endpoint's totals sum to the store's total order

@@ -26,4 +26,9 @@ export class CreateManualOrderDto {
   @IsOptional()
   @IsString()
   discountCode?: string;
+
+  /** FR-37.1 - only meaningful when the store's verification channel is whatsapp_otp. */
+  @IsOptional()
+  @IsString()
+  buyerWhatsapp?: string;
 }

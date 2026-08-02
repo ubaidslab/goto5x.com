@@ -5,6 +5,7 @@ import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service
 import { CustomersService } from "../customers/customers.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
+import { OrderVerificationService } from "../order-verification/order-verification.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { StorefrontService } from "../storefront/storefront.service";
@@ -37,6 +38,7 @@ export class OrdersService {
     private readonly ledger: LedgerService,
     private readonly customers: CustomersService,
     private readonly walletGraceLadder: WalletGraceLadderService,
+    private readonly orderVerification: OrderVerificationService,
   ) {}
 
   async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; tag?: string }) {
@@ -79,6 +81,15 @@ export class OrdersService {
    * confirmed, paid order") is ever emitted.
    */
   async markAsPaid(sellerId: string, storeId: string, orderId: string) {
+    // Module 26 (SRS §5.37/FR-37.7) - extends (never duplicates) the
+    // Financial Truth Invariant: an order whose store requires verification
+    // cannot be confirmed until that verification's status is "verified",
+    // the exact same gate payment already is. Checked outside the
+    // transaction below, same as the "not pending" check that follows it.
+    if (!(await this.orderVerification.isClearedForConfirmation(orderId))) {
+      throw new BadRequestException("This order is still awaiting buyer verification before it can be confirmed.");
+    }
+
     const { order, storeName, domains, storeSlug } = await this.tenantPrisma.run(sellerId, async (tx) => {
       const before = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
       if (!before || before.storeId !== storeId) throw new NotFoundException("Order not found.");

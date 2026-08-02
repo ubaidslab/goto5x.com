@@ -344,6 +344,7 @@ model Seller {
   payoutRequests              PayoutRequest[]
   verifiedStoreApplications   VerifiedStoreApplication[]
   dataExports                 SellerDataExport[]
+  verificationEmails          SellerVerificationEmail[]
 
   @@map("sellers")
 }
@@ -377,10 +378,10 @@ enum SellerLifecycleStatus {
 }
 
 model AdminUser {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @unique @map("user_id") @db.Uuid
-  role       AdminRole
-  mfaEnabled Boolean   @map("mfa_enabled")
+  id                      String    @id @default(uuid()) @db.Uuid
+  userId                  String    @unique @map("user_id") @db.Uuid
+  role                    AdminRole
+  mfaEnabled              Boolean   @map("mfa_enabled")
   // Module 25 P1 - the admin notification center's read marker (FR-8.x
   // completeness). Null means "never opened the notification center" -
   // every currently-open queue row counts as new, same as any first-run
@@ -488,6 +489,8 @@ model Store {
   logoMedia                 MediaAsset?                @relation("StoreLogo", fields: [logoMediaId], references: [id])
   healthScoreHistory        StoreHealthScoreHistory[]
   verifiedStoreApplications VerifiedStoreApplication[]
+  stockAdjustments          StockAdjustment[]
+  orderVerifications        OrderVerification[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -879,8 +882,9 @@ model ProductVariant {
   stockQuantity  Int      @default(0) @map("stock_quantity")
   attributes     Json     @default("{}")
 
-  product    Product     @relation(fields: [productId], references: [id])
-  orderItems OrderItem[]
+  product          Product           @relation(fields: [productId], references: [id])
+  orderItems       OrderItem[]
+  stockAdjustments StockAdjustment[]
 
   @@index([productId], name: "idx_variants_product_id")
   @@map("product_variants")
@@ -1462,6 +1466,10 @@ model Cart {
   id               String     @id @default(uuid()) @db.Uuid
   storeId          String     @map("store_id") @db.Uuid
   buyerEmail       String     @map("buyer_email")
+  // Module 26 (SRS §5.37/FR-37.8) - collected at checkout for stores that
+  // need it (the WhatsApp OTP verification channel); optional since most
+  // stores never require it.
+  buyerWhatsapp    String?    @map("buyer_whatsapp")
   sessionToken     String     @unique @map("session_token")
   items            Json       @default("[]")
   status           CartStatus @default(active)
@@ -1488,6 +1496,9 @@ model Order {
   customerId        String?     @map("customer_id") @db.Uuid
   buyerId           String?     @map("buyer_id") @db.Uuid
   buyerEmail        String      @map("buyer_email")
+  // Module 26 (SRS §5.37/FR-37.8) - same optional-unless-the-store-needs-it
+  // field as Cart.buyerWhatsapp, carried forward at checkout.
+  buyerWhatsapp     String?     @map("buyer_whatsapp")
   statusLookupToken String      @unique @map("status_lookup_token")
   shippingAddress   Json        @map("shipping_address")
   status            OrderStatus @default(pending)
@@ -1514,6 +1525,10 @@ model Order {
   payments       Payment[]
   ledgerEntries  LedgerEntry[]
   reviews        ProductReview[]
+  // Module 26 (SRS §5.37) - present only for a store with
+  // orders.verification_channel != "none" at order-placement time; absent
+  // entirely means "this order never needed verification," not "pending."
+  verification   OrderVerification?
 
   @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
   @@index([discountCodeId], name: "idx_orders_discount_code")
@@ -1637,6 +1652,108 @@ model OrderItem {
   @@index([supplierId, fulfillmentStatus, createdAt], name: "idx_order_items_supplier_status")
   @@index([orderId], name: "idx_order_items_order_id")
   @@map("order_items")
+}
+
+enum OrderVerificationChannel {
+  whatsapp_otp
+  email_otp
+  prepaid_confirmation
+}
+
+enum OrderVerificationStatus {
+  pending
+  verified
+  failed
+  expired
+}
+
+// Module 26 (SRS §5.37, FR-37.1-37.8) - one row per order placed against a
+// store with orders.verification_channel != "none". `channel` is a snapshot
+// of the store's setting at order-placement time - a seller changing
+// channels later never rewrites an in-flight verification's history.
+// Extends (never duplicates) the Financial Truth Invariant (§3.12): the
+// order-confirmation path checks this row's status the same way it already
+// checks payment - one additional gate, not a second "confirmed" concept.
+model OrderVerification {
+  id            String                   @id @default(uuid()) @db.Uuid
+  // Denormalized from the order at creation time - same "every tenant-
+  // scoped child table carries its own store_id for RLS" convention as
+  // order_notes/order_timeline_events/tracking_updates, not a join-through-
+  // order policy.
+  storeId       String                   @map("store_id") @db.Uuid
+  orderId       String                   @unique @map("order_id") @db.Uuid
+  channel       OrderVerificationChannel
+  status        OrderVerificationStatus  @default(pending)
+  // Hashed, never plaintext (FR-37.5) - null for prepaid_confirmation,
+  // which has no OTP at all.
+  otpHash       String?                  @map("otp_hash")
+  otpExpiresAt  DateTime?                @map("otp_expires_at") @db.Timestamptz
+  attemptCount  Int                      @default(0) @map("attempt_count")
+  // Which connected sender rotation picked for this OTP (email_otp only) -
+  // the actual rotation-decision record, not just a convenience FK.
+  senderEmailId String?                  @map("sender_email_id") @db.Uuid
+  verifiedAt    DateTime?                @map("verified_at") @db.Timestamptz
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+
+  store       Store                    @relation(fields: [storeId], references: [id])
+  order       Order                    @relation(fields: [orderId], references: [id])
+  senderEmail SellerVerificationEmail? @relation(fields: [senderEmailId], references: [id])
+
+  @@map("order_verifications")
+}
+
+enum SellerVerificationEmailStatus {
+  active
+  revoked
+}
+
+// Module 26 (SRS §5.37, FR-37.3) - a seller's own connected SMTP sender
+// account for the Email OTP channel. 1-5 rows per seller (app-layer
+// enforced - a small fixed-range limit, same precedent as elsewhere in
+// this schema rather than a DB constraint). Credentials are encrypted at
+// rest under SMTP_CREDENTIAL_ENCRYPTION_KEY, packed iv:authTag:ciphertext -
+// identical format to google_drive_connections.refresh_token_encrypted,
+// but its own independently-rotatable key.
+model SellerVerificationEmail {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  sellerId              String                        @map("seller_id") @db.Uuid
+  emailAddress          String                        @map("email_address")
+  smtpHost              String                        @map("smtp_host")
+  smtpPort              Int                           @map("smtp_port")
+  smtpUsername          String                        @map("smtp_username")
+  smtpPasswordEncrypted String                        @map("smtp_password_encrypted")
+  dailySendCount        Int                           @default(0) @map("daily_send_count")
+  dailySendCountResetAt DateTime                      @default(now()) @map("daily_send_count_reset_at") @db.Timestamptz
+  status                SellerVerificationEmailStatus @default(active)
+  connectedAt           DateTime                      @default(now()) @map("connected_at") @db.Timestamptz
+
+  seller        Seller              @relation(fields: [sellerId], references: [id])
+  verifications OrderVerification[]
+
+  @@index([sellerId, status], name: "idx_seller_verification_emails_seller_status")
+  @@map("seller_verification_emails")
+}
+
+// Module 28 (SRS §5.39, FR-39.4) - append-only stock-change history, seller-
+// facing tier equivalent of admin_audit_logs' immutability (no UPDATE/DELETE
+// grant for app_runtime on this table).
+model StockAdjustment {
+  id               String   @id @default(uuid()) @db.Uuid
+  storeId          String   @map("store_id") @db.Uuid
+  productVariantId String   @map("product_variant_id") @db.Uuid
+  adjustedByUserId String   @map("adjusted_by_user_id") @db.Uuid
+  quantityBefore   Int      @map("quantity_before")
+  quantityAfter    Int      @map("quantity_after")
+  reason           String
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  store   Store          @relation(fields: [storeId], references: [id])
+  variant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([storeId, createdAt], name: "idx_stock_adjustments_store_created")
+  @@index([productVariantId], name: "idx_stock_adjustments_variant")
+  @@map("stock_adjustments")
 }
 
 // FR-17.2 - never surfaced on any buyer-facing query.
@@ -2093,6 +2210,11 @@ model SellerDataExport {
   productsCsvKey  String?                   @map("products_csv_key")
   ordersCsvKey    String?                   @map("orders_csv_key")
   customersCsvKey String?                   @map("customers_csv_key")
+  // Module 28 (SRS §5.39/FR-39.6) - current stock levels across the
+  // seller's products/variants, delivered through the exact same private
+  // download path as every other artifact here (FR-36.5's non-substitution
+  // statement applies unchanged).
+  inventoryCsvKey String?                   @map("inventory_csv_key")
   summaryPdfKey   String?                   @map("summary_pdf_key")
   failureReason   String?                   @map("failure_reason")
   createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz

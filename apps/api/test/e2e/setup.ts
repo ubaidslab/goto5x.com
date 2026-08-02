@@ -15,6 +15,7 @@ import { seedGrowthProgramsSettings } from "../../src/growth-programs/growth-pro
 import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
 import { seedMessagingSettings } from "../../src/messaging/messaging.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
+import { seedOrderVerificationSettings } from "../../src/orders/order-verification.seed";
 import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
 import {
   seedModule1Settings,
@@ -96,6 +97,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedModerationSettings(prisma);
   await seedSupplierSettings(prisma);
   await seedOrdersSettings(prisma);
+  await seedOrderVerificationSettings(prisma);
   await seedBillingSettings(prisma);
   await seedWalletSettings(prisma);
   await seedTrustSafetySettings(prisma);

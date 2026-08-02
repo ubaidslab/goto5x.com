@@ -7,6 +7,63 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 26 (Order Verification Channel Adapter)
+
+SRS §5.37, FR-37.1-37.9. Founder-requested competitive gap: Shopify ships
+no order-verification mechanism at all, and fake/return orders are
+Pakistani sellers' #1 pain point. A seller can now require buyers to
+confirm an order before it counts as a sale.
+
+### Added
+- New `VerificationChannelAdapter` interface (mirrors `TopUpAdapter`/
+  `TitleVerificationAdapter`'s one-interface-per-integration-point shape)
+  with three v1.0 implementations a seller picks between, per store:
+  `WhatsAppOtpAdapter` (manual/link-assisted `wa.me` deep link — v1.0 never
+  sends anything itself, interface leaves room for a future automated
+  WhatsApp Business API adapter), `EmailOtpAdapter` (sent through the
+  seller's own connected SMTP account via `nodemailer`, never the
+  platform's `EmailService`), and `PrepaidConfirmationAdapter` (a manual
+  "mark deposit received" action, the same human-in-the-loop shape as
+  `OrdersService.markAsPaid()`).
+- New Prisma models: `OrderVerification` (one row per order that needs
+  verification — channel snapshot, hashed OTP, expiry, attempt count,
+  status) and `SellerVerificationEmail` (a seller's 1-5 connected SMTP
+  senders, credentials AES-256-GCM-encrypted under a new
+  `SMTP_CREDENTIAL_ENCRYPTION_KEY`, with daily send-count tracking for
+  rotation once one sender hits its cap).
+- Extends (never duplicates) the Financial Truth Invariant (§3.12): a
+  store with verification enabled gates its orders' `pending` →
+  `confirmed` transition on verification success, exactly as it already
+  gates on payment — `OrdersService.markAsPaid()` now checks
+  `OrderVerificationService.isClearedForConfirmation()` first.
+  `CheckoutService.placeOrder()` also gains a pre-checkout "store
+  readiness" gate (same style as the existing payment-instructions/CNIC/
+  publish checks): an Email OTP store with no connected sender can't
+  accept a checkout it could never verify.
+- OTP handling — 6-digit codes, SHA-256 hashed (never stored in plaintext),
+  time-limited, retry-capped, single-use, with a rate-limited resend — is
+  fully Settings-Registry-driven (`orders.verification_channel` at `store`
+  scope, plus OTP TTL/cooldown/retry-cap/daily-send-cap), never
+  hard-coded. The seller's own resend action deliberately bypasses the
+  resend cooldown (that cooldown rate-limits buyer-triggered resends, not
+  a seller fetching the wa.me link they need to send manually).
+- Seller-facing bare-functional UI (`/stores/:id/order-verification`):
+  channel selection, OTP message template editor, and connected-sender-
+  email management (connect/revoke) — no design pass yet, per the
+  founder's own instruction for this feature.
+- Buyer-facing public endpoints (`/storefront/order-verification/:token/
+  verify` and `/resend`), gated by the same unguessable
+  `statusLookupToken` as the existing order-status lookup.
+
+### Fixed
+- `env.validation.spec.ts`'s base fixture was missing the new
+  `SMTP_CREDENTIAL_ENCRYPTION_KEY` field, failing 7 unrelated tests.
+- `billing.e2e-spec.ts` backdated ledger entries by a fixed "35 days ago"
+  to land in "last calendar month" — silently wrong whenever today's
+  day-of-month made 35 days undershoot past all of last month (e.g. early
+  in a month following a 31-day one). Replaced with a date-safe
+  `date_trunc('month', NOW() - INTERVAL '1 month') + INTERVAL '15 days'`.
+
 ## Module 19 (Product Design System) — Phase 1 of 8: foundation
 
 Platform name is now official — **eyosto**. Founder-directed 8-phase

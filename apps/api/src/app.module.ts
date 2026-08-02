@@ -28,6 +28,7 @@ import { MaintenanceModeMiddleware } from "./messaging/maintenance-mode.middlewa
 import { MediaModule } from "./media/media.module";
 import { MessagingModule } from "./messaging/messaging.module";
 import { ModerationModule } from "./moderation/moderation.module";
+import { OrderVerificationModule } from "./order-verification/order-verification.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PlansModule } from "./plans/plans.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -72,6 +73,7 @@ import { VerificationModule } from "./verification/verification.module";
     DiscoveryModule,
     StorefrontModule,
     OrdersModule,
+    OrderVerificationModule,
     CustomersModule,
     ReviewsModule,
     DataPortabilityModule,

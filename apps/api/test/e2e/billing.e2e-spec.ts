@@ -145,7 +145,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     // Backdate the ledger entries into "last month" so the generator's
     // previous-calendar-month window picks them up.
     await superuser.$executeRawUnsafe(
-      `UPDATE ledger_entries SET created_at = NOW() - INTERVAL '35 days' WHERE seller_id = $1::uuid`,
+      `UPDATE ledger_entries SET created_at = date_trunc('month', NOW() - INTERVAL '1 month') + INTERVAL '15 days' WHERE seller_id = $1::uuid`,
       sellerId,
     );
 
@@ -170,7 +170,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     const { token, storeId, sellerId } = await signupLoginAndCreateStore("invoice-overdue@example.com", "invoice-overdue-store");
     await createPaidOrder(token, storeId, 1000);
     await superuser.$executeRawUnsafe(
-      `UPDATE ledger_entries SET created_at = NOW() - INTERVAL '35 days' WHERE seller_id = $1::uuid`,
+      `UPDATE ledger_entries SET created_at = date_trunc('month', NOW() - INTERVAL '1 month') + INTERVAL '15 days' WHERE seller_id = $1::uuid`,
       sellerId,
     );
 
@@ -224,7 +224,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     const a = await signupLoginAndCreateStore("invoice-tenant-a@example.com", "invoice-tenant-a-store");
     const b = await signupLoginAndCreateStore("invoice-tenant-b@example.com", "invoice-tenant-b-store");
     await createPaidOrder(a.token, a.storeId, 1000);
-    await superuser.$executeRawUnsafe(`UPDATE ledger_entries SET created_at = NOW() - INTERVAL '35 days' WHERE seller_id = $1::uuid`, a.sellerId);
+    await superuser.$executeRawUnsafe(`UPDATE ledger_entries SET created_at = date_trunc('month', NOW() - INTERVAL '1 month') + INTERVAL '15 days' WHERE seller_id = $1::uuid`, a.sellerId);
 
     const invoicesService = app.get(InvoicesService);
     await invoicesService.generateMonthlyInvoices();

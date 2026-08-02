@@ -35,6 +35,7 @@ export const navItems: NavItem[] = [
   { label: "Wallet", href: (id) => `/stores/${id}/wallet`, builtInModule10: true },
   { label: "Store Health", href: (id) => `/stores/${id}/health`, builtInModule10: true },
   { label: "Verified Store", href: (id) => `/stores/${id}/verification`, builtInModule10: true },
+  { label: "Order Verification", href: (id) => `/stores/${id}/order-verification`, builtInModule10: false },
   { label: "Plans & Billing", href: (id) => `/stores/${id}/billing`, builtInModule10: true },
   { label: "Marketing", href: (id) => `/stores/${id}/marketing`, builtInModule10: true },
   { label: "Theme", href: (id) => `/stores/${id}/customizer`, builtInModule10: false },
