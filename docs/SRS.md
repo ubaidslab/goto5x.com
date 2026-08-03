@@ -343,8 +343,9 @@ until a dedicated AI-integration/data-liability policy exists, not because
 of any technical gap.
 
 **v0.30 (new sections; §5.38/§14.38's tracking-timeline extension built as
-part of Module 27, §5.40/§14.40 built as Module 29, §5.41/§14.41,
-§5.42/§14.42 build TBD — see build-plan.md for slotting) — extends §5.38/§14.38 Orders Command
+part of Module 27, §5.40/§14.40 built as Module 29, §5.41/§14.41 built as
+Module 30, §5.42/§14.42 build TBD — see build-plan.md for slotting) —
+extends §5.38/§14.38 Orders Command
 Center with a public/seller tracking timeline, and adds §5.40/§14.40
 Delivery-Time Badges, §5.41/§14.41 WhatsApp Semi-Automation, and
 §5.42/§14.42 Automated Profit & Loss Engine (founder-requested,
@@ -5543,18 +5544,20 @@ going forward, per FR-6.28.
       whole card (FR-40.3) — `resolveDeliveryBadge()` (apps/web) independently
       renders the delivery-window line and the countries line.
 
-### 14.41 WhatsApp Semi-Automation (new, v0.30, not yet built)
-- [ ] Each of the three generated deep links (order confirmation, shipping
+### 14.41 WhatsApp Semi-Automation (built, Module 30, v0.31 build order)
+- [x] Each of the three generated deep links (order confirmation, shipping
       update, abandoned-cart recovery) resolves to a correct `wa.me` URL —
       digits-only buyer number, correctly URL-encoded, seller-editable
       template text interpolated with the right order/tracking/cart
       details for that trigger (FR-41.1/41.3) — proven by an e2e test per
       trigger asserting the decoded link content.
-- [ ] `Cart.buyerWhatsapp`, when provided at cart creation, round-trips
+- [x] `Cart.buyerWhatsapp`, when provided at cart creation, round-trips
       correctly into the abandoned-cart list's recovery-link generation; a
       cart with none provided is still listed but has no recovery action
-      (FR-41.2).
-- [ ] No message is ever sent by the platform itself — every one of the
+      (FR-41.2) — proven end-to-end via `POST /storefront/cart` through to
+      the abandoned-cart list's `hasWhatsapp` flag and a 400 on that cart's
+      recovery-link endpoint.
+- [x] No message is ever sent by the platform itself — every one of the
       three triggers only ever returns a link for the seller to open and
       send manually, proven the same way §14.37 proved the WhatsApp OTP
       channel never makes an outbound network call itself (FR-41.1).

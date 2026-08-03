@@ -58,6 +58,7 @@ interface ShippingAddress {
 interface Order {
   id: string;
   buyerEmail: string;
+  buyerWhatsapp: string | null;
   status: OrderStatus;
   source: "storefront" | "manual";
   shippingAddress: ShippingAddress;
@@ -99,6 +100,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [trackingByItem, setTrackingByItem] = useState<Record<string, { trackingId: string; carrier: string }>>({});
+  const [sendingWhatsapp, setSendingWhatsapp] = useState<"confirmation" | "shipping" | null>(null);
 
   function load() {
     api
@@ -188,6 +190,20 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
     }
   }
 
+  async function sendWhatsApp(kind: "confirmation" | "shipping") {
+    setError(null);
+    setSendingWhatsapp(kind);
+    try {
+      const path = kind === "confirmation" ? "confirmation-link" : "shipping-update-link";
+      const { deepLink } = await api.get<{ deepLink: string }>(`/stores/${params.storeId}/whatsapp/orders/${params.orderId}/${path}`);
+      window.open(deepLink, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't generate that WhatsApp message.");
+    } finally {
+      setSendingWhatsapp(null);
+    }
+  }
+
   async function markDelivered(itemId: string) {
     setError(null);
     try {
@@ -221,11 +237,23 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
               <Badge tone={statusTone[order.status]}>{order.status === "pending" ? "awaiting payment" : order.status}</Badge>
               <span className="text-xs text-ink-muted">{order.source === "manual" ? "Manually created" : "Placed on storefront"}</span>
             </div>
-            {order.status === "pending" && (
-              <Button loading={markingPaid} onClick={markAsPaid}>
-                Mark as paid
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {order.buyerWhatsapp && ["confirmed", "shipped", "delivered", "completed"].includes(order.status) && (
+                <Button variant="secondary" loading={sendingWhatsapp === "confirmation"} onClick={() => sendWhatsApp("confirmation")}>
+                  Send WhatsApp confirmation
+                </Button>
+              )}
+              {order.buyerWhatsapp && ["shipped", "delivered", "completed"].includes(order.status) && (
+                <Button variant="secondary" loading={sendingWhatsapp === "shipping"} onClick={() => sendWhatsApp("shipping")}>
+                  Send shipping update
+                </Button>
+              )}
+              {order.status === "pending" && (
+                <Button loading={markingPaid} onClick={markAsPaid}>
+                  Mark as paid
+                </Button>
+              )}
+            </div>
           </CardBody>
         </Card>
 

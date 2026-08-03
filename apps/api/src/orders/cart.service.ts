@@ -34,6 +34,7 @@ export class CartService {
       data: {
         storeId: store.id,
         buyerEmail: dto.buyerEmail,
+        buyerWhatsapp: dto.buyerWhatsapp ?? null,
         sessionToken: randomBytes(32).toString("hex"),
         items: dto.items as unknown as object,
       },

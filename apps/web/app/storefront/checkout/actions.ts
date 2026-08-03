@@ -28,11 +28,12 @@ function extractError(body: { message?: string | string[] }, fallback: string): 
   return typeof body.message === "string" ? body.message : Array.isArray(body.message) ? body.message.join(", ") : fallback;
 }
 
-/** FR-15.1 - the one and only point a server-side cart row is created. */
+/** FR-15.1 - the one and only point a server-side cart row is created. FR-41.2 (Module 30) - buyerWhatsapp is optional here too, alongside buyerEmail. */
 export async function createCartSession(
   hostname: string,
   buyerEmail: string,
   items: LocalCartItem[],
+  buyerWhatsapp?: string,
 ): Promise<{ ok: true; sessionToken: string } | ApiError> {
   const res = await fetch(`${process.env.API_BASE_URL}/storefront/cart`, {
     method: "POST",
@@ -40,6 +41,7 @@ export async function createCartSession(
     body: JSON.stringify({
       hostname,
       buyerEmail,
+      buyerWhatsapp: buyerWhatsapp || undefined,
       items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity })),
     }),
   });

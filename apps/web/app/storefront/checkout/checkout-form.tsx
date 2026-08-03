@@ -18,6 +18,7 @@ export function CheckoutForm({ hostname, currency, theme }: { hostname: string; 
   const [items, setItems] = useState<LocalCartItem[] | null>(null);
   const [step, setStep] = useState<"email" | "shipping">("email");
   const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [address, setAddress] = useState<ShippingAddressInput>({
     fullName: "",
@@ -55,7 +56,7 @@ export function CheckoutForm({ hostname, currency, theme }: { hostname: string; 
     e.preventDefault();
     setSubmitting(true);
     setError(null);
-    const result = await createCartSession(hostname, email, items ?? []);
+    const result = await createCartSession(hostname, email, items ?? [], whatsapp.trim() || undefined);
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
@@ -102,6 +103,16 @@ export function CheckoutForm({ hostname, currency, theme }: { hostname: string; 
               onChange={(e) => setEmail(e.target.value)}
               style={inputStyle}
               placeholder="you@example.com"
+            />
+          </label>
+          <label style={labelStyle}>
+            WhatsApp number (optional)
+            <input
+              type="tel"
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)}
+              style={inputStyle}
+              placeholder="03001234567"
             />
           </label>
           {error && <p style={{ color: "#b91c1c", fontSize: 14 }}>{error}</p>}

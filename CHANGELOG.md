@@ -7,6 +7,43 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 30 (WhatsApp Semi-Automation)
+
+SRS §5.41, FR-41.1-41.4. Three seller-clicked WhatsApp deep-link generators
+reusing existing machinery end-to-end - the `wa.me` construction from
+Module 26's WhatsAppOtpAdapter, order/tracking state from Modules 9/27, and
+abandoned-cart flagging from Module 9/15.2. v1.0 never sends anything
+itself; every endpoint returns a link the seller taps to send from their
+own connected WhatsApp app. Fully automated WhatsApp Business API sending
+stays a documented roadmap note (FR-41.4), not built now.
+
+### Fixed
+- Closed a gap flagged when FR-41.2 was first written: `Cart.buyerWhatsapp`
+  (the column has existed since Module 26) was never wired to capture -
+  `POST /storefront/cart` now accepts it as an optional field alongside
+  the required `buyerEmail`, at the same email-first step, matching FR-15.1's
+  one-step design.
+
+### Added
+- `WhatsAppMessagingService` (new `whatsapp-messaging` module):
+  `generateOrderConfirmationLink()` (available once an order is confirmed),
+  `generateShippingUpdateLink()` (available once tracking is uploaded, using
+  the same `TrackingUpdate` rows Module 27's timeline reads), and
+  `generateCartRecoveryLink()` (available once a cart is flagged
+  `abandoned`) - each requires a captured WhatsApp number and returns 400
+  with a clear message otherwise, never inventing one.
+- Three new Settings-Registry templates (`whatsapp.order_confirmation_template`,
+  `whatsapp.shipping_update_template`, `whatsapp.cart_recovery_template`),
+  seller-editable per store, with `{{order_number}}`/`{{store_name}}`/
+  `{{total}}`/`{{tracking_id}}`/`{{item_summary}}`-style placeholders.
+- `listAbandonedCarts()` backs a new `hasWhatsapp` flag so the seller-facing
+  list can show which carts are actually actionable.
+- Two new buttons on the order-detail page ("Send WhatsApp confirmation" /
+  "Send shipping update", gated on order status + a captured number) and a
+  new dedicated `/stores/[storeId]/whatsapp` abandoned-cart recovery screen.
+- Storefront checkout's email-first step now has an optional WhatsApp
+  number field, wired through to the new cart-capture path.
+
 ## Module 29 (Delivery-Time Badges)
 
 SRS §5.40, FR-40.1-40.3. A buyer-trust storefront surface for supplier-

@@ -45,6 +45,7 @@ import { TenancyModule } from "./tenancy/tenancy.module";
 import { ThemeEngineModule } from "./theme-engine/theme-engine.module";
 import { TrustSafetyModule } from "./trust-safety/trust-safety.module";
 import { VerificationModule } from "./verification/verification.module";
+import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging.module";
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { VerificationModule } from "./verification/verification.module";
     MessagingModule,
     ImpersonationModule,
     InventoryModule,
+    WhatsAppMessagingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
