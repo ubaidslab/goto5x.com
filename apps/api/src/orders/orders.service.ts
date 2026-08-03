@@ -12,7 +12,9 @@ import { StorefrontService } from "../storefront/storefront.service";
 import { PrintifyAdapter } from "../suppliers/printify/printify.adapter";
 import { EditOrderDto } from "./dto/edit-order.dto";
 import { round2 } from "./money.util";
+import { computeOrderTimeline } from "./order-timeline.util";
 import { computeOrderTotals } from "./order-totals.util";
+import { OrderBucket, orderBucketWhereClause } from "./orders-overview.service";
 
 const EDITABLE_STATUSES: OrderStatus[] = ["pending", "confirmed"];
 
@@ -41,7 +43,13 @@ export class OrdersService {
     private readonly orderVerification: OrderVerificationService,
   ) {}
 
-  async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; tag?: string }) {
+  /**
+   * `bucket` (SRS §5.38/FR-38.2) reuses the exact same predicate the
+   * Command Center's own counts are built from (`orderBucketWhereClause`)
+   * - clicking a bucket count is provably the same filter, never a
+   * separately-maintained one that could drift.
+   */
+  async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; bucket?: OrderBucket; tag?: string }) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
@@ -49,6 +57,7 @@ export class OrdersService {
         where: {
           storeId,
           ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.bucket ? orderBucketWhereClause(filters.bucket) : {}),
           ...(filters.tag ? { tags: { has: filters.tag } } : {}),
         },
         include: { items: true },
@@ -69,7 +78,13 @@ export class OrdersService {
         },
       });
       if (!order || order.storeId !== storeId) throw new NotFoundException("Order not found.");
-      return order;
+      // SRS §5.38/FR-38.5 - the same computed source the buyer's public
+      // order-status page renders (OrderStatusLookupService.lookup()).
+      const timeline = computeOrderTimeline(
+        order,
+        order.timelineEvents.filter((e) => e.eventType === "status_changed"),
+      );
+      return { ...order, timeline };
     });
   }
 

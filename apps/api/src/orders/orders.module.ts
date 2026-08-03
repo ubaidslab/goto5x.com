@@ -18,6 +18,7 @@ import { CheckoutService } from "./checkout.service";
 import { OrderPricingService } from "./order-pricing.service";
 import { OrderStatusLookupController } from "./order-status-lookup.controller";
 import { OrderStatusLookupService } from "./order-status-lookup.service";
+import { OrdersOverviewService } from "./orders-overview.service";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
@@ -41,6 +42,7 @@ import { OrdersService } from "./orders.service";
     OrderPricingService,
     OrderStatusLookupService,
     OrdersService,
+    OrdersOverviewService,
     CartAbandonmentScheduler,
     EmailService,
   ],

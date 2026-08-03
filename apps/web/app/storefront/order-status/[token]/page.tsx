@@ -34,6 +34,28 @@ export default async function OrderStatusPage({ params }: { params: { token: str
         </p>
         <p>Placed {new Date(order.placedAt).toLocaleString()}</p>
 
+        <h2>Order timeline</h2>
+        <ol style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          {order.timeline.map((stage) => (
+            <li key={stage.stage} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: stage.completedAt ? "#16a34a" : "#d1d5db",
+                  flexShrink: 0,
+                }}
+                aria-hidden
+              />
+              <span style={{ fontWeight: stage.completedAt ? 600 : 400 }}>{stage.label}</span>
+              {stage.completedAt && (
+                <span style={{ color: "#6b7280", fontSize: 13 }}>{new Date(stage.completedAt).toLocaleString()}</span>
+              )}
+            </li>
+          ))}
+        </ol>
+
         <h2>Items</h2>
         <ul>
           {order.items.map((item, i) => (

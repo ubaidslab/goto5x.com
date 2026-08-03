@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { computeOrderTimeline } from "./order-timeline.util";
 
 /**
  * FR-5.4 - buyers have no accounts (guest checkout), so this is their only
@@ -19,7 +20,10 @@ export class OrderStatusLookupService {
   async lookup(token: string) {
     const order = await this.prismaAdmin.order.findUnique({
       where: { statusLookupToken: token },
-      include: { items: { include: { trackingUpdates: true, product: { select: { title: true } } } } },
+      include: {
+        items: { include: { trackingUpdates: true, product: { select: { title: true } } } },
+        timelineEvents: { where: { eventType: "status_changed" }, orderBy: { createdAt: "asc" } },
+      },
     });
     if (!order) throw new NotFoundException("Order not found.");
 
@@ -36,6 +40,9 @@ export class OrderStatusLookupService {
     return {
       status: order.status,
       placedAt: order.placedAt,
+      // SRS §5.38/FR-38.5 - the same computed source the seller's own
+      // order-detail view renders (OrdersService.getOne()).
+      timeline: computeOrderTimeline(order, order.timelineEvents),
       currency: order.currency,
       // FR-19.1 - available from the buyer order-status page; null if
       // rendering failed at placement time (best-effort, never blocks the order).

@@ -12,6 +12,7 @@ import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
 import { EditOrderDto } from "./dto/edit-order.dto";
 import { UpdateOrderTagsDto } from "./dto/update-order-tags.dto";
 import { UploadTrackingDto } from "./dto/upload-tracking.dto";
+import { OrderBucket, OrdersOverviewService } from "./orders-overview.service";
 import { OrdersService } from "./orders.service";
 
 @Controller("stores/:storeId/orders")
@@ -20,16 +21,24 @@ export class OrdersController {
   constructor(
     private readonly orders: OrdersService,
     private readonly checkout: CheckoutService,
+    private readonly overview: OrdersOverviewService,
   ) {}
+
+  /** SRS §5.38/FR-38.1 - the Orders Command Center's bucketed counts. Registered before ":orderId" so it isn't shadowed by that param route. */
+  @Get("overview")
+  getOverview(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
+    return this.overview.getOverview(sellerId, storeId);
+  }
 
   @Get()
   list(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
     @Query("status") status?: OrderStatus,
+    @Query("bucket") bucket?: OrderBucket,
     @Query("tag") tag?: string,
   ) {
-    return this.orders.list(sellerId, storeId, { status, tag });
+    return this.orders.list(sellerId, storeId, { status, bucket, tag });
   }
 
   @Get(":orderId")

@@ -41,6 +41,11 @@ interface OrderTimelineEvent {
   eventType: string;
   createdAt: string;
 }
+interface OrderTimelineStage {
+  stage: "placed" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  label: string;
+  completedAt: string | null;
+}
 interface ShippingAddress {
   fullName: string;
   line1: string;
@@ -66,6 +71,7 @@ interface Order {
   items: OrderItem[];
   notes: OrderNote[];
   timelineEvents: OrderTimelineEvent[];
+  timeline: OrderTimelineStage[];
 }
 interface ProductLookup {
   id: string;
@@ -220,6 +226,21 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                 Mark as paid
               </Button>
             )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Order timeline" description="The same timeline the buyer sees on their order-status page." />
+          <CardBody>
+            <ol className="space-y-2">
+              {order.timeline.map((stage) => (
+                <li key={stage.stage} className="flex items-center gap-2 text-sm">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${stage.completedAt ? "bg-success" : "bg-border"}`} aria-hidden />
+                  <span className={stage.completedAt ? "font-medium text-ink" : "text-ink-muted"}>{stage.label}</span>
+                  {stage.completedAt && <span className="text-xs text-ink-muted">{new Date(stage.completedAt).toLocaleString()}</span>}
+                </li>
+              ))}
+            </ol>
           </CardBody>
         </Card>
 

@@ -7,6 +7,67 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## v0.30 — Tracking Timeline, Delivery-Time Badges, WhatsApp Semi-Automation, Automated P&L Engine (SRS amendment ahead of Module 27)
+
+Founder-requested: four features layered onto the already-planned Module 27
+(Orders Command Center), slotted 27 → 28 (unchanged) → 29 → 30 → 31. See
+`docs/build-plan.md`'s "v0.30 slotting decision" for the full reasoning.
+
+### Added
+- SRS §5.38 extended with FR-38.4 (role-based tracking upload, reaffirmed
+  not rebuilt), FR-38.5 (public+seller computed status timeline), FR-38.6
+  (Financial Truth Invariant reaffirmed for the Command Center).
+- New §5.40 Delivery-Time Badges (FR-40.1-40.3).
+- New §5.41 WhatsApp Semi-Automation (FR-41.1-41.4).
+- New §5.42 Automated Profit & Loss Engine (FR-42.1-42.7).
+- New risk register row 24: misleading profit figures from incomplete/
+  dishonest seller-entered cost data — mitigation is to never silently
+  treat a missing cost as zero and to visibly flag incomplete profit
+  figures.
+
+## Module 27 (Orders Command Center + Tracking Timeline)
+
+SRS §5.38, FR-38.1-38.6. A single screen surfacing exactly what a seller
+needs to act on next, plus a computed order-status timeline shared,
+byte-for-byte, between the seller's own order-detail view and the buyer's
+public order-status page.
+
+### Added
+- `OrdersOverviewService.getOverview()` — bucketed order counts (pending,
+  awaiting verification, prepaid received, awaiting tracking, shipped,
+  delivered, cancelled/returned) plus a supplier-items-awaiting-fulfillment
+  count, backing a new `GET /stores/:storeId/orders/overview` endpoint.
+- `orderBucketWhereClause(bucket)` — the single Prisma `where` clause each
+  bucket's count AND its list-filter click-through both use, so "the count
+  says 3" and "the filtered list has 3 rows" can never disagree (FR-38.2)
+  by construction, not just by convention.
+- `computeOrderTimeline()` — a pure function deriving a `placed → confirmed
+  → shipped → delivered` (or `placed → cancelled`) timeline from existing
+  `OrderTimelineEvent` rows, called identically by the public
+  `OrderStatusLookupService` and the seller-facing `OrdersService.getOne()`
+  — the same computation, never a second stored copy, so the two surfaces
+  can never show different timelines for the same order (FR-38.5).
+- Seller dashboard: bucket-count cards above the orders list (click to
+  filter), an order-timeline card on the order-detail page, and a matching
+  timeline stepper on the public buyer-facing order-status page.
+- Role-based tracking upload (seller for self-fulfilled items, supplier for
+  supplier-fulfilled items) reaffirmed via new e2e coverage — the
+  underlying `OrdersService.uploadTracking()` / `SupplierOrdersService.
+  uploadTracking()` methods already existed correctly since Modules 8/9 and
+  were not modified.
+
+### Verified
+- Bucket-sum invariant: every bucket count sums to the store's total order
+  count, with zero orders double-counted or dropped.
+- Bucket click-through returns exactly the orders counted in that bucket.
+- Timeline advances correctly across pay → track → deliver, and the public
+  view's timeline exactly equals the seller view's timeline for the same
+  order.
+- A supplier cannot upload tracking for another supplier's order item
+  (cross-supplier upload → 404; owning supplier's upload → 201).
+- A pending/awaiting-verification order is visible on the Command Center
+  but never counted as a confirmed sale (Financial Truth Invariant).
+
 ## Module 26 (Order Verification Channel Adapter)
 
 SRS §5.37, FR-37.1-37.9. Founder-requested competitive gap: Shopify ships

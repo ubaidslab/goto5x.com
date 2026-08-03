@@ -299,8 +299,9 @@ Drive integration) end to end, explicitly **not** a substitute for the
 platform's own off-box backup NFR (§6), which stays binding regardless of
 whether a given seller has Drive connected.
 
-**v0.29 (new sections; §5.37/§14.37 built as Module 26, §5.38/§14.38 and
-§5.39/§14.39 build TBD — see build-plan.md for slotting) — new
+**v0.29 (new sections; §5.37/§14.37 built as Module 26, §5.38/§14.38 built
+as Module 27 (v0.30 extended it with the tracking timeline), §5.39/§14.39
+build TBD — see build-plan.md for slotting) — new
 §5.37/§14.37 Order Verification Channel Adapter, §5.38/§14.38 Orders
 Command Center, and §5.39/§14.39 Inventory Management (founder-requested,
 competitive-gap-driven — Shopify ships none of the three):** Order
@@ -341,12 +342,14 @@ anywhere in inventory or elsewhere (FR-39.7) — the latter is withheld
 until a dedicated AI-integration/data-liability policy exists, not because
 of any technical gap.
 
-**v0.30 (new sections; build TBD — see build-plan.md for slotting) —
-extends §5.38/§14.38 Orders Command Center with a public/seller tracking
-timeline, and adds §5.40/§14.40 Delivery-Time Badges, §5.41/§14.41
-WhatsApp Semi-Automation, and §5.42/§14.42 Automated Profit & Loss Engine
-(founder-requested, competitive-gap-driven):** The Orders Command Center
-extension (§5.38) is the smallest of the four in practice — role-based
+**v0.30 (new sections; §5.38/§14.38's tracking-timeline extension built as
+part of Module 27, §5.40/§14.40, §5.41/§14.41, §5.42/§14.42 build TBD —
+see build-plan.md for slotting) — extends §5.38/§14.38 Orders Command
+Center with a public/seller tracking timeline, and adds §5.40/§14.40
+Delivery-Time Badges, §5.41/§14.41 WhatsApp Semi-Automation, and
+§5.42/§14.42 Automated Profit & Loss Engine (founder-requested,
+competitive-gap-driven):** The Orders Command Center extension (§5.38) is
+the smallest of the four in practice — role-based
 tracking upload (seller for self-fulfilled items, supplier for their own,
 ownership-checked) has existed correctly since Module 8/9; the actual gap
 is that the public order-status page and the seller's own order-detail
@@ -5258,25 +5261,25 @@ going forward, per FR-6.28.
       same `OrderTimelineEvent` audit-trail precedent as `markAsPaid()`
       (FR-37.4).
 
-### 14.38 Orders Command Center (new, v0.29, not yet built)
-- [ ] The bucketed-count endpoint's totals sum to the store's total order
+### 14.38 Orders Command Center (built, Module 27, v0.30)
+- [x] The bucketed-count endpoint's totals sum to the store's total order
       count with zero orders double-counted or dropped across buckets
       (FR-38.1) — proven by an e2e test seeding one order in each bucket
       state and asserting both the per-bucket counts and their sum.
-- [ ] Each bucket's count matches the count returned by filtering the
+- [x] Each bucket's count matches the count returned by filtering the
       existing order-list endpoint on the equivalent status — i.e. the
       aggregation is provably a derived read, never a second source of
       truth that could drift from the list it summarizes (FR-38.1).
-- [ ] Tracking upload remains role-correctly gated after this module ships
+- [x] Tracking upload remains role-correctly gated after this module ships
       — a supplier still cannot upload tracking for another supplier's (or
       a self-fulfilled) item, and a seller's own upload endpoint is
       unchanged (FR-38.4) — proven by the existing Module 8/9 role-
       isolation e2e test(s) still passing unmodified.
-- [ ] The public order-status page and the seller's order-detail view
+- [x] The public order-status page and the seller's order-detail view
       render an identical timeline for the same order — same completed
       stages, same timestamps — proven by an e2e test hitting both
       surfaces for one order and diffing the timeline data (FR-38.5).
-- [ ] A `pending`/`awaiting-verification`/`prepaid-received` order is
+- [x] A `pending`/`awaiting-verification`/`prepaid-received` order is
       visible on the Command Center but contributes zero to any confirmed-
       sale count anywhere on the platform (FR-38.6) — proven by the same
       style of before/after `platform_events`/order-total assertion

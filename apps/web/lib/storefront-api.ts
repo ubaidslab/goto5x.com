@@ -179,9 +179,16 @@ export interface PublicOrderItem {
   trackingUpdates: PublicOrderTrackingUpdate[];
 }
 
+export interface OrderTimelineStage {
+  stage: "placed" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  label: string;
+  completedAt: string | null;
+}
+
 export interface PublicOrderStatus {
   status: "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
   placedAt: string;
+  timeline: OrderTimelineStage[];
   currency: string;
   invoicePdfUrl: string | null;
   totalAmount: string;
