@@ -89,6 +89,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client (test files import PrismaClient directly)
+        run: pnpm --filter @goto5x/api prisma:generate
 
       - name: Bootstrap app_runtime/app_admin roles (once per fresh database)
         env:
