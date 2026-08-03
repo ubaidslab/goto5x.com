@@ -16,6 +16,10 @@ import { DATA_EXPORT_JOB_NAME, DATA_EXPORT_QUEUE_NAME } from "./data-export.queu
 const PRODUCT_HEADER = ["Store", "Product ID", "Title", "Status", "Created At"];
 const ORDER_HEADER = ["Store", "Order ID", "Placed At", "Status", "Currency", "Total Amount"];
 const CUSTOMER_HEADER = ["Store", "Customer ID", "Email", "Name", "Orders Count", "Total Spent", "Created At"];
+// Module 28 (SRS §5.39, FR-39.6) - current stock levels, a point-in-time
+// snapshot rather than a period-filtered artifact like the three above
+// (there is no "stock created within this period" concept).
+const INVENTORY_HEADER = ["Store", "Product ID", "Product Title", "Variant ID", "SKU", "Stock Quantity"];
 
 /**
  * Module 24 security fix (v0.28): export bundles contain customer PII, so
@@ -38,12 +42,16 @@ interface BundleFile {
   key: string;
 }
 
-type DownloadFileParam = "products" | "orders" | "customers" | "summary";
+type DownloadFileParam = "products" | "orders" | "customers" | "inventory" | "summary";
 
-const DOWNLOAD_FILES: Record<DownloadFileParam, { column: "productsCsvKey" | "ordersCsvKey" | "customersCsvKey" | "summaryPdfKey"; filename: string; contentType: string }> = {
+const DOWNLOAD_FILES: Record<
+  DownloadFileParam,
+  { column: "productsCsvKey" | "ordersCsvKey" | "customersCsvKey" | "inventoryCsvKey" | "summaryPdfKey"; filename: string; contentType: string }
+> = {
   products: { column: "productsCsvKey", filename: "products.csv", contentType: "text/csv" },
   orders: { column: "ordersCsvKey", filename: "orders.csv", contentType: "text/csv" },
   customers: { column: "customersCsvKey", filename: "customers.csv", contentType: "text/csv" },
+  inventory: { column: "inventoryCsvKey", filename: "inventory.csv", contentType: "text/csv" },
   summary: { column: "summaryPdfKey", filename: "summary.pdf", contentType: "application/pdf" },
 };
 
@@ -138,6 +146,7 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
       hasProductsCsv: r.productsCsvKey !== null,
       hasOrdersCsv: r.ordersCsvKey !== null,
       hasCustomersCsv: r.customersCsvKey !== null,
+      hasInventoryCsv: r.inventoryCsvKey !== null,
       hasSummaryPdf: r.summaryPdfKey !== null,
     }));
   }
@@ -228,6 +237,7 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
           productsCsvKey: bundle.productsCsvKey,
           ordersCsvKey: bundle.ordersCsvKey,
           customersCsvKey: bundle.customersCsvKey,
+          inventoryCsvKey: bundle.inventoryCsvKey,
           summaryPdfKey,
         },
       });
@@ -277,18 +287,38 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     ]);
     const customersCsv = toCsv(CUSTOMER_HEADER, customerRows);
 
+    // Module 28 (FR-39.6) - a point-in-time snapshot of every variant's
+    // current stock level, not filtered to the period (there's no
+    // "created within this period" concept for a live quantity).
+    const variants = await this.prismaAdmin.productVariant.findMany({
+      where: { storeId: { in: storeIds } },
+      include: { product: { select: { title: true } } },
+    });
+    const inventoryRows = variants.map((v) => [
+      storeNameById.get(v.storeId) ?? "",
+      v.productId,
+      v.product.title,
+      v.id,
+      v.sku,
+      v.stockQuantity,
+    ]);
+    const inventoryCsv = toCsv(INVENTORY_HEADER, inventoryRows);
+
     const timestamp = Date.now();
     const productsCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/products-${timestamp}.csv`;
     const ordersCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/orders-${timestamp}.csv`;
     const customersCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/customers-${timestamp}.csv`;
+    const inventoryCsvKey = `${PRIVATE_EXPORT_PREFIX}/sellers/${sellerId}/exports/inventory-${timestamp}.csv`;
     await this.objectStorage.putObject(productsCsvKey, Buffer.from(productsCsv, "utf-8"), "text/csv");
     await this.objectStorage.putObject(ordersCsvKey, Buffer.from(ordersCsv, "utf-8"), "text/csv");
     await this.objectStorage.putObject(customersCsvKey, Buffer.from(customersCsv, "utf-8"), "text/csv");
+    await this.objectStorage.putObject(inventoryCsvKey, Buffer.from(inventoryCsv, "utf-8"), "text/csv");
 
     return {
       productsCsvKey,
       ordersCsvKey,
       customersCsvKey,
+      inventoryCsvKey,
       productCount: products.length,
       orderCount: orders.length,
       customerCount: customers.length,
@@ -298,6 +328,7 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
         { filename: "products.csv", mimeType: "text/csv", buffer: Buffer.from(productsCsv, "utf-8"), key: productsCsvKey },
         { filename: "orders.csv", mimeType: "text/csv", buffer: Buffer.from(ordersCsv, "utf-8"), key: ordersCsvKey },
         { filename: "customers.csv", mimeType: "text/csv", buffer: Buffer.from(customersCsv, "utf-8"), key: customersCsvKey },
+        { filename: "inventory.csv", mimeType: "text/csv", buffer: Buffer.from(inventoryCsv, "utf-8"), key: inventoryCsvKey },
       ] as BundleFile[],
     };
   }

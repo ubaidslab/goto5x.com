@@ -10,7 +10,9 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { JwtAccessPayload } from "../common/types";
 import { CsvExportService } from "./csv-export.service";
 import { ImportJobsService } from "./import-jobs.service";
 
@@ -34,6 +36,22 @@ export class DataPortabilityController {
   ) {
     if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file").');
     return this.importJobs.createImportJob(sellerId, storeId, {
+      buffer: file.buffer,
+      originalname: file.originalname,
+    });
+  }
+
+  /** FR-39.3 - stock-only bulk edit (SKU + new Quantity columns), same job/error-report machinery as above. */
+  @Post("stock-import-jobs")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async createStockImportJob(
+    @CurrentSellerId() sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("storeId") storeId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file").');
+    return this.importJobs.createStockImportJob(sellerId, storeId, user.sub, {
       buffer: file.buffer,
       originalname: file.originalname,
     });

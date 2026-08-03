@@ -13,6 +13,7 @@ import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
 import { seedGrowthProgramsSettings } from "../../src/growth-programs/growth-programs.seed";
 import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
+import { seedInventorySettings } from "../../src/inventory/inventory.seed";
 import { seedMessagingSettings } from "../../src/messaging/messaging.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import { seedOrderVerificationSettings } from "../../src/orders/order-verification.seed";
@@ -112,6 +113,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedStoreHealthSettings(prisma);
   await seedVerificationSettings(prisma);
   await seedDataExportSettings(prisma);
+  await seedInventorySettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
   // across every module needs at least one seeded theme to exist (Module 4
   // auto-assigns a default theme in StoresService.create()) - seeded

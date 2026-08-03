@@ -301,7 +301,7 @@ whether a given seller has Drive connected.
 
 **v0.29 (new sections; §5.37/§14.37 built as Module 26, §5.38/§14.38 built
 as Module 27 (v0.30 extended it with the tracking timeline), §5.39/§14.39
-build TBD — see build-plan.md for slotting) — new
+built as Module 28) — new
 §5.37/§14.37 Order Verification Channel Adapter, §5.38/§14.38 Orders
 Command Center, and §5.39/§14.39 Inventory Management (founder-requested,
 competitive-gap-driven — Shopify ships none of the three):** Order
@@ -5505,24 +5505,24 @@ going forward, per FR-6.28.
       style of before/after `platform_events`/order-total assertion
       §14.37 already established, applied to this new read surface.
 
-### 14.39 Inventory Management (new, v0.29, not yet built)
-- [ ] A manual stock adjustment writes exactly one adjustment-log row
+### 14.39 Inventory Management (built, Module 28, v0.31)
+- [x] A manual stock adjustment writes exactly one adjustment-log row
       (user, timestamp, before/after quantity, reason) and that row is
       never editable or deletable via any endpoint (FR-39.4) — proven by
       an e2e test attempting to modify/delete a log row and asserting
-      rejection.
-- [ ] A bulk CSV stock edit updates only `stockQuantity`, never any other
+      rejection (404, no such route exists at all).
+- [x] A bulk CSV stock edit updates only `stockQuantity`, never any other
       product/variant field, and reuses the existing import job/error-
       reporting shape (FR-39.3) rather than a new, parallel import path —
-      proven by diffing untouched fields before/after.
-- [ ] Checkout's existing oversell-protection decrement behavior is
+      proven by diffing untouched fields (e.g. `price`) before/after.
+- [x] Checkout's existing oversell-protection decrement behavior is
       provably unchanged after this module — the existing Module 9
       oversell e2e test(s) still pass unmodified, and no new code path in
       this module decrements stock outside that existing logic (FR-39.5).
-- [ ] The low-stock threshold is Settings-Registry-driven per store
+- [x] The low-stock threshold is Settings-Registry-driven per store
       (FR-39.2), proven by an e2e test changing the threshold and
       asserting a variant crosses in/out of the flagged set accordingly.
-- [ ] The new inventory CSV export artifact follows the exact same
+- [x] The new inventory CSV export artifact follows the exact same
       private, ownership-checked download path as every other Data Export
       artifact (FR-39.6, reaffirms FR-36.5) — no new, less-guarded read
       path introduced for this one file type.

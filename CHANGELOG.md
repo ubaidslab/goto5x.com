@@ -7,6 +7,59 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## v0.31 — Built-in Email Verification, Shopify Migration, Cost-Savings Calculator, Public Store Badges, Emotional/Retention Layer, Community & Belonging (SRS amendment ahead of Modules 32-37)
+
+Founder-requested: six new feature areas, slotted 32 → 33 → 34 → 35 → 36 →
+37 after the already-approved Modules 29-31. See `docs/build-plan.md`'s "v0.31
+slotting decision" for the full reasoning, including the deliberate deviation
+of building a single shared `BadgeEvaluationService` (Module 35) consumed by
+both the public storefront badges (§5.46) and the private dashboard
+achievement badges (§5.47/Module 36).
+
+### Added
+- New §5.43 Built-in Email Verification Service (FR-43.1-43.6) — a 4th,
+  platform-hosted verification channel option alongside the existing
+  WhatsApp OTP/seller-SMTP Email OTP/Prepaid Confirmation, plan-quota-gated,
+  designed with a documented extraction seam for a future standalone SaaS.
+- New §5.44 One-Click Shopify Migration (FR-44.1-44.5), extending the
+  existing CSV import engine into a guided multi-entity flow.
+- New §5.45 Cost-Savings Calculator (FR-45.1-45.3), a Settings-Registry-
+  driven marketing-site widget.
+- New §5.46 Public Store Badges (FR-46.1-46.5) and §5.47 Emotional/
+  Retention Layer (FR-47.1-47.6, dashboard achievement badges + milestone
+  celebrations) sharing one Badge Evaluation Engine.
+- New §5.48 Community & Belonging (FR-48.1-48.5) — success-story
+  submissions, admin curation, opt-in Featured Sellers surface.
+- Four new risk register rows (25-28).
+- Platform stays English-only in v1.0 (no Urdu/Hinglish); i18n-readiness
+  reaffirmed as intact for a future rebuild.
+
+## Module 28 (Inventory Management)
+
+SRS §5.39, FR-39.2-39.6. A dedicated stock-levels-and-adjustments surface,
+distinct from the Products catalog screen, reusing the existing import-job
+machinery for bulk CSV stock edits rather than a new import engine.
+
+### Added
+- `InventoryService.listInventory()` — per-variant stock quantity + a
+  Settings-Registry-driven (`inventory.low_stock_threshold`, default 5)
+  `isLowStock` flag, backing `GET /stores/:storeId/inventory`.
+- `InventoryService.adjustStock()` — manual increment/decrement/set
+  adjustment, writing an append-only `StockAdjustment` log row (user,
+  timestamp, before/after quantity, reason); no endpoint edits or deletes
+  a log row, and the table `REVOKE`s `UPDATE`/`DELETE` at the Postgres role
+  level as a second, independent backstop.
+- A new `stock_import` `ImportJobType`, reusing Module 15's
+  `ProductImportService`/`ImportJobsService`/BullMQ worker machinery in a
+  narrower mode (SKU + Quantity columns only — never price/title/etc.),
+  via a new `POST /stores/:storeId/stock-import-jobs` endpoint.
+- Module 24's Data Export bundle extended with a new `inventoryCsvKey`
+  artifact, following the same private, ownership-checked download path as
+  every other export file.
+- New dashboard screen `/stores/[storeId]/inventory` (stock list, low-stock
+  filter, expandable per-variant adjustment form + history) and a "Bulk
+  update stock" upload card added to the existing Import & export page.
+
 ## v0.30 — Tracking Timeline, Delivery-Time Badges, WhatsApp Semi-Automation, Automated P&L Engine (SRS amendment ahead of Module 27)
 
 Founder-requested: four features layered onto the already-planned Module 27

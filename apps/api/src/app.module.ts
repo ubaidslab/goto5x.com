@@ -24,6 +24,7 @@ import { GrowthProgramsModule } from "./growth-programs/growth-programs.module";
 import { GuardrailsModule } from "./guardrails/guardrails.module";
 import { HealthModule } from "./health/health.module";
 import { ImpersonationModule } from "./impersonation/impersonation.module";
+import { InventoryModule } from "./inventory/inventory.module";
 import { MaintenanceModeMiddleware } from "./messaging/maintenance-mode.middleware";
 import { MediaModule } from "./media/media.module";
 import { MessagingModule } from "./messaging/messaging.module";
@@ -94,6 +95,7 @@ import { VerificationModule } from "./verification/verification.module";
     ContentPagesModule,
     MessagingModule,
     ImpersonationModule,
+    InventoryModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

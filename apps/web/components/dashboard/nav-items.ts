@@ -24,6 +24,7 @@ export const navItems: NavItem[] = [
   { label: "Orders", href: (id) => `/stores/${id}/orders`, builtInModule10: true },
   { label: "Customers", href: (id) => `/stores/${id}/customers`, builtInModule10: true },
   { label: "Products", href: (id) => `/stores/${id}/products`, builtInModule10: true },
+  { label: "Inventory", href: (id) => `/stores/${id}/inventory`, builtInModule10: false },
   { label: "Reviews", href: (id) => `/stores/${id}/reviews`, builtInModule10: true },
   { label: "Collections", href: (id) => `/stores/${id}/collections`, builtInModule10: false },
   { label: "Discounts", href: (id) => `/stores/${id}/discounts`, builtInModule10: true },

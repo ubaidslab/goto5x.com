@@ -7,7 +7,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, api } from "@/lib/dashboard-api";
 
-type ImportJobType = "product_import" | "product_export" | "order_export";
+type ImportJobType = "product_import" | "product_export" | "order_export" | "stock_import";
 type ImportJobStatus = "pending" | "processing" | "completed" | "failed";
 
 interface RowError {
@@ -36,9 +36,11 @@ const statusTone: Record<ImportJobStatus, "neutral" | "success" | "warning" | "d
 export default function DataPortabilityPage({ params }: { params: { storeId: string } }) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadingStock, setUploadingStock] = useState(false);
   const [exporting, setExporting] = useState<"products" | "orders" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const stockFileInputRef = useRef<HTMLInputElement>(null);
 
   function loadJobs() {
     api
@@ -64,6 +66,24 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleStockUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploadingStock(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      await api.upload(`/stores/${params.storeId}/stock-import-jobs`, formData);
+      loadJobs();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't upload that file.");
+    } finally {
+      setUploadingStock(false);
+      if (stockFileInputRef.current) stockFileInputRef.current.value = "";
     }
   }
 
@@ -102,6 +122,29 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
         </Card>
 
         <Card>
+          <CardHeader
+            title="Bulk update stock"
+            description="A CSV with just SKU and Quantity columns - updates stock levels only, never price/title/etc."
+          />
+          <CardBody>
+            <input
+              ref={stockFileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleStockUpload}
+              className="hidden"
+              id="stock-import-csv-input"
+            />
+            <Button variant="secondary" loading={uploadingStock} onClick={() => stockFileInputRef.current?.click()}>
+              Upload stock CSV
+            </Button>
+            <a href={`/stores/${params.storeId}/inventory`} className="ml-4 text-sm text-accent hover:underline">
+              Manage individual levels &amp; adjustment history &rarr;
+            </a>
+          </CardBody>
+        </Card>
+
+        <Card>
           <CardHeader title="Export your data" description="For your own records, or to move to another platform." />
           <CardBody className="flex gap-3">
             <Button variant="secondary" loading={exporting === "products"} onClick={() => runExport("products")}>
@@ -124,14 +167,20 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="text-sm font-medium text-ink">
-                        {job.type === "product_import" ? "Product import" : job.type === "product_export" ? "Product export" : "Order export"}
+                        {job.type === "product_import"
+                          ? "Product import"
+                          : job.type === "product_export"
+                            ? "Product export"
+                            : job.type === "stock_import"
+                              ? "Bulk stock update"
+                              : "Order export"}
                       </p>
                       <p className="mt-0.5 text-xs text-ink-muted">{new Date(job.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       {job.status === "completed" && (
                         <a href={job.fileUrl} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
-                          {job.type === "product_import" ? "View source file" : "Download"}
+                          {job.type === "product_import" || job.type === "stock_import" ? "View source file" : "Download"}
                         </a>
                       )}
                       <Badge tone={statusTone[job.status]}>{job.status}</Badge>

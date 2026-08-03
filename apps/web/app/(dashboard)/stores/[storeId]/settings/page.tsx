@@ -55,13 +55,15 @@ interface DataExportRow {
   hasProductsCsv: boolean;
   hasOrdersCsv: boolean;
   hasCustomersCsv: boolean;
+  hasInventoryCsv: boolean;
   hasSummaryPdf: boolean;
 }
 
-const EXPORT_FILE_LABELS: { file: "products" | "orders" | "customers" | "summary"; label: string; flag: keyof DataExportRow }[] = [
+const EXPORT_FILE_LABELS: { file: "products" | "orders" | "customers" | "inventory" | "summary"; label: string; flag: keyof DataExportRow }[] = [
   { file: "products", label: "Products", flag: "hasProductsCsv" },
   { file: "orders", label: "Orders", flag: "hasOrdersCsv" },
   { file: "customers", label: "Customers", flag: "hasCustomersCsv" },
+  { file: "inventory", label: "Inventory", flag: "hasInventoryCsv" },
   { file: "summary", label: "Summary", flag: "hasSummaryPdf" },
 ];
 

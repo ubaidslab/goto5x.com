@@ -6,6 +6,7 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { csvHeader, parseCsv } from "./csv.util";
 import { parseProductImportCsv, RowError } from "./product-import.util";
+import { parseStockImportCsv } from "./stock-import.util";
 
 /**
  * FR-18.1/18.2 - the worker-invoked half of product CSV import. Runs with no
@@ -27,9 +28,13 @@ export class ProductImportService {
     private readonly variants: ProductVariantsService,
   ) {}
 
-  async process(importJobId: string): Promise<void> {
+  async process(importJobId: string, createdByUserId?: string): Promise<void> {
     const job = await this.prismaAdmin.importJob.findUniqueOrThrow({ where: { id: importJobId } });
     await this.prismaAdmin.importJob.update({ where: { id: importJobId }, data: { status: "processing" } });
+
+    if (job.type === "stock_import") {
+      return this.processStockImport(job, createdByUserId);
+    }
 
     const rowErrors: RowError[] = [];
     let unmappedFields: string[] = [];
@@ -91,6 +96,79 @@ export class ProductImportService {
       this.logger.error(`Import job ${importJobId} failed: ${(err as Error).message}`);
       await this.prismaAdmin.importJob.update({
         where: { id: importJobId },
+        data: {
+          status: "failed",
+          unmappedFields,
+          errorLog: [...rowErrors, { row: 0, message: (err as Error).message }] as unknown as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * FR-39.3 - stock-only mode: matches each row's SKU against this store's
+   * variants and, for every match, writes the new `stockQuantity` plus an
+   * append-only `StockAdjustment` row (FR-39.4's discipline, same as a
+   * manual single-row edit) attributed to the uploading user. A SKU that
+   * doesn't match any variant is reported as a row error, never silently
+   * ignored; an unchanged quantity (new === current) is skipped without an
+   * adjustment-log entry, since nothing actually changed.
+   */
+  private async processStockImport(job: { id: string; storeId: string; fileUrl: string }, createdByUserId?: string): Promise<void> {
+    const rowErrors: RowError[] = [];
+    let unmappedFields: string[] = [];
+
+    try {
+      const store = await this.prismaAdmin.store.findUniqueOrThrow({
+        where: { id: job.storeId },
+        select: { sellerId: true },
+      });
+      if (!createdByUserId) throw new Error("Stock import job is missing the uploading user's id.");
+
+      const csvText = await (await fetch(job.fileUrl)).text();
+      const rows = parseCsv(csvText);
+      const header = csvHeader(csvText);
+      const parsed = parseStockImportCsv(rows, header);
+      unmappedFields = parsed.unmappedFields;
+      rowErrors.push(...parsed.rowErrors);
+
+      await this.tenantPrisma.run(store.sellerId, async (tx) => {
+        for (const update of parsed.updates) {
+          const variant = await tx.productVariant.findFirst({ where: { storeId: job.storeId, sku: update.sku } });
+          if (!variant) {
+            rowErrors.push({ row: update.row, message: `No variant with SKU "${update.sku}" in this store - skipped.` });
+            continue;
+          }
+          if (variant.stockQuantity === update.quantity) continue;
+
+          await tx.productVariant.update({ where: { id: variant.id }, data: { stockQuantity: update.quantity } });
+          await tx.stockAdjustment.create({
+            data: {
+              storeId: job.storeId,
+              productVariantId: variant.id,
+              adjustedByUserId: createdByUserId,
+              quantityBefore: variant.stockQuantity,
+              quantityAfter: update.quantity,
+              reason: `Bulk CSV import (job ${job.id})`,
+            },
+          });
+        }
+      });
+
+      await this.prismaAdmin.importJob.update({
+        where: { id: job.id },
+        data: {
+          status: "completed",
+          unmappedFields,
+          errorLog: rowErrors as unknown as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Stock import job ${job.id} failed: ${(err as Error).message}`);
+      await this.prismaAdmin.importJob.update({
+        where: { id: job.id },
         data: {
           status: "failed",
           unmappedFields,

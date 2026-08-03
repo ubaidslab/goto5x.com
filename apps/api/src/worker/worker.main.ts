@@ -152,7 +152,7 @@ async function main() {
   // storage/DB outage).
   const productImportWorker = new Worker(
     PRODUCT_IMPORT_QUEUE_NAME,
-    async (job) => productImport.process(job.data.importJobId as string),
+    async (job) => productImport.process(job.data.importJobId as string, job.data.createdByUserId as string | undefined),
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 

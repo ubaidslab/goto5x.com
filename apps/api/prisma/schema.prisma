@@ -1593,6 +1593,10 @@ enum ImportJobType {
   product_import
   product_export
   order_export
+  // Module 28 (SRS §5.39/FR-39.3) - a bulk stock-quantity-only edit,
+  // reusing this same job/error-report machinery in a narrower mode
+  // (SKU + new quantity columns only, never touching price/title/etc.).
+  stock_import
 }
 
 enum ImportJobStatus {
