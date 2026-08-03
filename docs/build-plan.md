@@ -3071,5 +3071,129 @@ blocking them later.
 
 ---
 
+## v0.31 slotting decision — Built-in Email Verification, Shopify
+Migration, Cost-Savings Calculator, Trust & Achievement Badges,
+Emotional & Retention Layer, Community & Belonging
+
+Six founder-requested acquisition/retention features, slotted **after**
+the already-approved Modules 28-31 (Inventory, Delivery-Time Badges,
+WhatsApp Semi-Automation, P&L Engine — unchanged). Reasoning:
+
+1. **None of the six have a hard blocking dependency on 28-31** — they
+   extend Module 26 (verification), Module 15 (CSV import), Module 14
+   (plans/pricing), Module 23 (Store Health Score), Module 33/22 (growth
+   programs), and Module 9's confirmed-sale data, all already built. They
+   could technically slot earlier, but 28-31 were already founder-
+   approved and queued before this request — no reason to leapfrog work
+   already in flight.
+2. **Module 32 (Built-in Email Verification) first among the six** —
+   smallest, most self-contained: a fourth adapter implementation inside
+   an interface that already exists (§5.37), no new UI surface beyond an
+   existing settings screen.
+3. **Module 33 (Shopify Migration) second, deliberately after 28** —
+   both Module 28's stock-only CSV bulk-edit (FR-39.3) and this module
+   extend the *same* underlying CSV import engine (Module 15). Building
+   the narrower extension (28) first, then the far larger one (Shopify's
+   multi-entity format), means the second extension inherits a stable,
+   already-proven-in-production import path rather than two extensions
+   landing on the same engine simultaneously.
+4. **Module 34 (Cost-Savings Calculator) third** — a self-contained
+   marketing-site widget over Settings Registry data; zero dependency on
+   anything else in this batch, a good low-risk "quick win" once the
+   backend-heavy Modules 32/33 are done.
+5. **Module 35 (Trust & Achievement Badge Engine + public badges)
+   fourth, deliberately built as its own module rather than folded into
+   the retention layer** — because §5.47's private dashboard achievement
+   badges (originally listed as part of the founder's item #4) are
+   architected to reuse the *same* `BadgeEvaluationService` this module
+   builds for public storefront badges (originally item #6). Building
+   one shared engine once, with two thin consumers, is the correct
+   sequencing even though it reorders the founder's own numbering —
+   flagged explicitly here rather than silently reordered.
+6. **Module 36 (Emotional & Retention Layer) fifth** — depends on
+   Module 35's badge engine for its own private achievement badges
+   (FR-47.4); the onboarding-reframe and milestone-celebration halves of
+   this module have no such dependency and could theoretically ship
+   earlier, but are kept together as one module per the founder's
+   original framing (one cohesive "retention layer").
+7. **Module 37 (Community & Belonging) last** — explicitly the
+   founder's own "long-term retention/scaling" framing, and its
+   Featured Sellers surface optionally references Module 35's public
+   badges (§5.48 FR-48.3) — sequenced after that dependency exists.
+
+**Build order: 28 → 29 → 30 → 31 → 32 → 33 → 34 → 35 → 36 → 37.** Same
+standing rhythm throughout: SRS amendment first (done, v0.31), build-plan
+updated (this section), commit/push docs, then build → verify → push
+automatically per module. Bare-functional UI throughout — premium
+redesign is a later, separate design phase. Platform stays English-only
+in v1.0 (no Urdu/Hinglish); §3.9's i18n-readiness discipline (translation-
+key/locale layer, no hard-coded strings) stays binding regardless, so this
+is a scope decision, not a technical regression.
+
+### Module 32 (Built-in Email Verification Service) — scope summary
+`docs/SRS.md` §5.43, FR-43.1-43.5. New `PlatformEmailOtpAdapter`
+implementing the existing `VerificationChannelAdapter` interface (§5.37)
+— a fourth per-store channel choice alongside WhatsApp OTP, seller-SMTP
+Email OTP, and Prepaid Confirmation. New `EmailServiceProvider` interface
+(one concrete implementation over the platform's existing `EmailService`)
+as the documented future-SaaS-extraction seam. New Settings Registry key
+(`verification.platform_email.monthly_quota`, per plan tier) plus a new
+per-seller monthly-counter model (reset each billing period, same
+discipline as Module 20's existing counters). No change to WhatsApp OTP
+or seller-SMTP Email OTP — both remain fully first-class.
+
+### Module 33 (One-Click Shopify Migration) — scope summary
+`docs/SRS.md` §5.44, FR-44.1-44.6. Extends Module 15's `ImportJob` engine
+(FR-18.1/18.3) with new Shopify-format CSV parsers (products+variants+
+images, customers, orders) and a guided upload → mapping-preview →
+validation-preview → import → per-row-error-report flow. Reuses the
+existing Moderation Engine (§5.27) and plan-limit gates verbatim — no
+migration-specific bypass path. Imported orders are written directly in
+their final historical status, excluded from the Orders Command Center's
+action-needed buckets and from commission calculation. Direct Shopify API
+connect (OAuth/live sync) is a documented roadmap note, not built in v1.0.
+
+### Module 34 (Cost-Savings Calculator) — scope summary
+`docs/SRS.md` §5.45, FR-45.1-45.4. New marketing-site widget (homepage
+and/or `/pricing`), public, no auth. New Settings Registry keys for every
+comparison figure (Shopify plan tiers/fees, typical-app-cost estimate,
+eyosto's own plan fee/commission) — admin-editable, never hard-coded.
+Output always carries a visible "estimated" disclaimer.
+
+### Module 35 (Trust & Achievement Badge Engine + Public Store Badges) — scope summary
+`docs/SRS.md` §5.46, FR-46.1-46.5. New `BadgeEvaluationService` — a
+single derived-read engine (no new source of truth) computing earned,
+auto-revocable badges from existing Store Health Score (§5.34),
+fulfillment-speed, order-volume, and tenure data, against new Settings-
+Registry-driven thresholds (`badges.*`). Public storefront rendering
+(product/store pages + checkout) reuses the existing Verified Store
+badge's (§5.35) placement precedent. Distinct from Module 29's
+logistics-only Delivery-Time Badges. This engine is the shared dependency
+Module 36's private dashboard badges are built on.
+
+### Module 36 (Emotional & Retention Layer) — scope summary
+`docs/SRS.md` §5.47, FR-47.1-47.5. Onboarding wizard (existing FR-20.1
+progress state) reframed presentation-wise as a guided tour with a
+completion celebration — no new backend model. New Settings-Registry-
+driven milestone thresholds (`milestones.*`) plus a new append-only
+milestone-event model (fires once per store per threshold, only on
+`confirmed`+ orders — Financial Truth Invariant reaffirmed). Private
+dashboard achievement badges built on Module 35's `BadgeEvaluationService`
+— a distinct, seller-only badge set never rendered publicly. Existing
+dashboard personalization (themes/wallpapers) reaffirmed as part of the
+same ownership feeling, not rebuilt.
+
+### Module 37 (Community & Belonging) — scope summary
+`docs/SRS.md` §5.48, FR-48.1-48.5. New seller success-story submission
+flow (dashboard) + admin curation queue (reuses Module 25's admin-queue UI
+precedent and §5.27/§5.33's submit → moderate → publish shape). New
+opt-in Featured Sellers public surface, optionally cross-referencing
+Module 35's public badges and Module 22's existing Growth & Partner
+Programs (Ambassador/Teams) infrastructure. No PII beyond seller-published
+storefront content is ever surfaced. Richer community features (forums,
+seller-to-seller messaging) are an explicit roadmap note, not v1.0 scope.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

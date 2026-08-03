@@ -1,6 +1,6 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.30 (Build-phase amendment)
+**Version:** 0.31 (Build-phase amendment)
 **Date:** 2026-08-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -381,6 +381,53 @@ roadmap-only:** automated Facebook/TikTok ad-account API sync and
 automated local-courier-API cost sync — v1.0's manual/CSV ad-spend entry
 point is designed so a future ad-spend source can plug in without
 reworking the aggregation, but no such integration exists yet.
+
+**v0.31 (new sections; build TBD — see build-plan.md for slotting) — adds
+§5.43/§14.43 Built-in Email Verification Service, §5.44/§14.44 One-Click
+Shopify Migration, §5.45/§14.45 Cost-Savings Calculator, §5.46/§14.46
+Seller Trust & Achievement Badge Engine, §5.47/§14.47 Emotional &
+Retention Layer, and §5.48/§14.48 Community & Belonging (founder-requested,
+acquisition/retention-driven). Platform stays English-only in v1.0 (no
+Urdu/Hinglish) — §3.9's i18n-readiness discipline (no hard-coded UI
+strings/date/currency formatting outside a translation-key/locale layer)
+stays binding regardless, so a future locale is content work, not a
+rewrite:** The Built-in Email Verification Service (§5.43) is a fourth
+option inside §5.37's existing Verification Channel Adapter — a
+platform-hosted send path requiring zero seller setup, plan-quota-gated,
+architected behind a new `EmailServiceProvider` interface specifically so
+it can be extracted into a standalone SaaS later without touching any
+caller (same adapter-extraction discipline as §3.5) — and explicitly
+documented as a convenience default, never the sole verification path,
+given v1.0 platform email has no SPF/DKIM/DMARC alignment or sender-
+reputation warming yet. One-Click Shopify Migration (§5.44) extends the
+existing CSV import engine (FR-18.1/18.3) with Shopify-format parsers for
+products/variants/images, customers, and orders, plus a guided
+mapping/preview/error-report flow — no new import engine, and every
+imported product still passes the existing Moderation Engine (§5.27)
+exactly like a manually-created one. The Cost-Savings Calculator (§5.45)
+is a marketing-site widget computing estimated annual savings
+(eyosto's plan fee + 1% commission vs. Shopify's subscription + fees) from
+every comparison figure as admin-editable Settings Registry data, never
+hard-coded, always labeled as an estimate. The Seller Trust & Achievement
+Badge Engine (§5.46) is one shared, Settings-Registry-threshold-driven
+evaluation engine computing earned, auto-revocable badges from data this
+SRS already tracks (Store Health Score §5.34, fulfillment speed, order
+volume, tenure) — badges are derived, never seller-settable — with two
+consumers: this section's own public storefront badges (buyer trust,
+distinct from §5.40's logistics-only Delivery-Time Badges) and §5.47's
+private dashboard achievement badges (same engine, a different badge set,
+seller-facing only). The Emotional & Retention Layer (§5.47) reframes the
+existing onboarding wizard (FR-20.1) as a guided, encouraging tour with a
+completion celebration, adds once-per-threshold milestone celebrations
+computed from confirmed-sale data only (§3.12's Financial Truth Invariant
+reaffirmed, not duplicated), and builds its private achievement badges on
+§5.46's engine. Community & Belonging (§5.48) is a deliberately lean v1.0
+foundation — seller-submitted success stories, admin curation (reusing
+§5.27/§5.33's existing submit → moderate → publish shape), and an opt-in
+Featured Sellers surface tying into the already-built §5.33 Growth &
+Partner Programs (Ambassador/Teams) infrastructure — richer community
+features (forums, seller-to-seller messaging) are an explicit roadmap
+note, not a v1.0 gap.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -3511,6 +3558,175 @@ v1.0, no paid third-party integration required)
   actually built, not because of any schema gap (FR-42.6 already leaves
   room for them).
 
+### 5.43 Built-in Email Verification Service (new, v0.31 — a fourth
+option inside §5.37's existing Verification Channel Adapter, alongside
+WhatsApp OTP, Email OTP via the seller's own SMTP, and Prepaid
+Confirmation; a zero-setup platform-hosted convenience default)
+- FR-43.1: **`PlatformEmailOtpAdapter`.** A new implementation of the
+  same `VerificationChannelAdapter` interface (§5.37) a seller can pick
+  per store — no seller SMTP credentials, no seller WhatsApp API key,
+  works immediately.
+- FR-43.2: **`EmailServiceProvider` abstraction.** Sends route through a
+  new interface (initially one concrete implementation on top of the
+  platform's existing `EmailService`/`EMAIL_PROVIDER`), architected —
+  same adapter-extraction discipline as §3.5 — so it can be pulled out
+  into a standalone SaaS later without any caller (this OTP path, or any
+  future transactional-email use) changing. The extraction seam itself
+  is documented in `docs/architecture.md`.
+- FR-43.3: **Plan-based monthly quota.** A Settings-Registry-driven
+  quota (`verification.platform_email.monthly_quota`, per plan tier),
+  enforced via a per-seller monthly counter reset at each billing-period
+  boundary (same reset discipline as Module 20's existing counters).
+  Sending at quota returns a graceful "quota reached — connect your own
+  SMTP or upgrade" message to the seller, never a silent failure.
+- FR-43.4: **Deliverability honesty, documented not just coded.**
+  Platform-sent email has no SPF/DKIM/DMARC alignment or sender-
+  reputation warming at v1.0 launch (§6 NFRs cross-reference this); the
+  verification-channel settings screen discloses that WhatsApp OTP and a
+  seller's own connected SMTP remain the recommended first-class
+  channels — this service is a convenience default, never the sole path
+  a seller is forced into.
+- FR-43.5: **Quota visibility.** Remaining/consumed quota is shown on
+  the same settings screen as the other three channels — no separate
+  ledger UI, reusing Module 20's "show what's left, plainly" pattern.
+
+### 5.44 One-Click Shopify Migration (new, v0.31 — extends the existing
+CSV import engine, FR-18.1/FR-18.3, into a guided multi-entity migration
+flow; the highest-priority acquisition feature, killing the "switching
+is hard" objection)
+- FR-44.1: **Reuses the existing `ImportJob` engine.** New Shopify-export
+  CSV parsers (products+variants+images, customers, orders) plug into
+  the same import job/error-report machinery Module 15 already built —
+  no new import engine, no new file-handling code path.
+- FR-44.2: **Guided flow.** Upload → field-mapping preview (auto-mapped
+  where Shopify's column names match the platform's, manual mapping for
+  the rest, unmapped fields surfaced explicitly rather than silently
+  dropped) → per-row validation preview → import execution → a per-row
+  error/skip report (same shape as FR-18.3's existing report).
+- FR-44.3: **Moderation applies unchanged.** Every imported product
+  passes the existing Moderation Engine (§5.27) exactly as a manually
+  created product would — a bulk migration is never a way to bypass
+  banned/restricted-keyword screening.
+- FR-44.4: **Plan limits apply unchanged.** Whatever caps a seller's plan
+  already enforces (product count, etc.) apply identically to migrated
+  data; a migration that would exceed a limit is blocked/truncated with
+  a clear message, never silently allowed to overrun.
+- FR-44.5: **Imported orders are historical record only.** Already-
+  fulfilled Shopify orders are created directly in their final status —
+  never run through the live checkout/payment flow — and are explicitly
+  excluded from the Orders Command Center's (§5.38) action-needed
+  buckets and from platform commission calculation (they were not
+  platform-facilitated sales).
+- FR-44.6: **Explicitly deferred, roadmap-only:** a direct Shopify API
+  connect (OAuth, live/ongoing sync). v1.0 is upload-based only.
+
+### 5.45 Cost-Savings Calculator (new, v0.31 — an interactive marketing-
+site conversion tool, homepage/pricing)
+- FR-45.1: **Interactive, public, no auth required.** A seller enters
+  monthly order volume and average order value (or monthly sales
+  directly); the calculator outputs estimated annual savings comparing
+  eyosto's cost (plan fee + 1% commission) against Shopify's (subscription
+  tier + transaction/card-processing fees + a typical-app-cost estimate).
+- FR-45.2: **Every comparison figure is Settings Registry data.** Shopify
+  plan tiers/pricing, transaction fee %, typical-app-cost estimate, and
+  eyosto's own plan fees/commission % are all admin-editable settings,
+  never hard-coded in frontend or backend code — a pricing change
+  (either platform's) is a data update, not a deploy.
+- FR-45.3: **Honest "estimate" framing.** Output is clearly labeled
+  "Estimated savings" with a visible disclaimer that figures are based
+  on typical/average costs, not a guarantee.
+- FR-45.4: **Placement.** Embedded on the homepage and/or `/pricing`
+  page; bare-functional in v1.0 per the standing premium-redesign-later
+  rule.
+
+### 5.46 Seller Trust & Achievement Badge Engine (new, v0.31 — public
+storefront badges, distinct from §5.40's logistics-only Delivery-Time
+Badges; a shared evaluation engine also consumed by §5.47's private
+dashboard badges)
+- FR-46.1: **Settings-Registry-driven thresholds.** Every badge type
+  (e.g. `badges.top_rated.min_avg_rating`,
+  `badges.fast_shipper.max_avg_fulfillment_hours`,
+  `badges.high_volume.min_order_count`,
+  `badges.established.min_tenure_days`) has its threshold as admin-
+  editable Settings data — no hard-coded threshold anywhere in
+  badge-evaluation code.
+- FR-46.2: **Derived read, no new source of truth.** A single
+  `BadgeEvaluationService` computes a store's current earned badges
+  entirely from data this SRS already tracks — Store Health Score
+  (§5.34), fulfillment-speed data from existing `OrderItem`/tracking
+  timestamps, order-volume counts, store/seller tenure — same
+  Simplicity-Invariant-governed derived-read discipline as the Orders
+  Command Center (§5.38).
+- FR-46.3: **Auto-revocable, never seller-settable.** Badges are
+  recomputed on the same recompute cadence as Store Health Score and are
+  revoked the instant underlying criteria lapse — never a one-time award
+  that outlives the performance that earned it. No endpoint lets a
+  seller claim, request, or otherwise set a badge directly; it is always
+  derived.
+- FR-46.4: **Storefront + checkout rendering.** Public badges render on
+  storefront product/store pages and at checkout, reusing the existing
+  Verified Store badge's (§5.35) established placement/rendering
+  precedent.
+- FR-46.5: **Shared engine, two consumers.** §5.47's private dashboard
+  achievement badges are built on this same `BadgeEvaluationService` —
+  one evaluation engine with two independent badge sets and rendering
+  surfaces, never two parallel badge systems.
+
+### 5.47 Emotional & Retention Layer (new, v0.31 — celebratory onboarding,
+milestone celebrations, private dashboard achievement badges; reuses
+§5.46's Badge Evaluation Engine)
+- FR-47.1: **Celebratory onboarding.** The existing onboarding wizard
+  (FR-20.1's progress tracking) is reframed presentation-wise as a
+  guided, encouraging tour with a completion-celebration screen — a
+  presentation-layer change over already-existing progress state, no new
+  backend model.
+- FR-47.2: **Milestone celebrations.** Settings-Registry-driven
+  thresholds (`milestones.order_count_thresholds`,
+  `milestones.sales_amount_thresholds`, etc.) trigger an in-dashboard
+  celebratory moment the first time a store crosses each one, computed
+  from the same confirmed-sale data the Financial Truth Invariant
+  already governs (§3.12) — only `confirmed`+ orders ever count toward
+  any milestone.
+- FR-47.3: **Fires exactly once per threshold.** An append-only
+  milestone-event record (same immutable-history discipline as
+  `PlatformEvent`/`AdminAuditLog`) prevents a threshold from
+  re-celebrating on every subsequent qualifying order.
+- FR-47.4: **Private dashboard achievement badges.** Built on §5.46's
+  `BadgeEvaluationService`, a distinct badge set from the public
+  storefront badges, seller-facing only — never rendered on the public
+  storefront.
+- FR-47.5: **Dashboard personalization tie-in.** The already-built
+  dashboard personalization (themes/wallpapers) is reaffirmed, not
+  rebuilt, as part of the same "this is MY store" ownership feeling this
+  layer is designed around.
+
+### 5.48 Community & Belonging (new, v0.31 — a deliberately lean v1.0
+foundation: success-story submissions + admin curation + a simple
+Featured Sellers surface; ties into the existing §5.33 Growth & Partner
+Programs / Ambassador-Teams infrastructure)
+- FR-48.1: **Success-story submissions.** A seller submits a story (free
+  text + optional store link) from their dashboard; never public until
+  admin-approved — the same submit → moderate → publish shape as §5.27's
+  Listing Moderation Engine and §5.33's existing growth-program
+  submission queues, not new machinery.
+- FR-48.2: **Admin curation queue.** Reuses the existing admin-queue UI
+  precedent (Module 25) for approve/reject; only approved stories are
+  ever publicly visible.
+- FR-48.3: **Featured Sellers surface, opt-in only.** A public page
+  showing admin-approved success stories plus, optionally, stores
+  holding §5.46 public badges — inclusion always requires the seller's
+  own submission or an explicit opt-in flag, never automatic inclusion
+  from data alone.
+- FR-48.4: **No PII beyond what the seller has published.** Same
+  PII-discipline precedent as every other public surface in this SRS
+  (e.g. the Product Feed API's FR-24.10 "only fields already public") —
+  nothing beyond store name and already-public storefront content is
+  ever surfaced.
+- FR-48.5: **Explicitly deferred, roadmap-only:** richer community
+  features (seller forums, seller-to-seller messaging, comments/
+  reactions) — v1.0 is submission + curation + a featured surface only,
+  an explicit scope cut, not a gap.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -3765,6 +3981,10 @@ mode's eventual reactivation.
 | 22 | **Manual invoice-payment verification is a human-in-the-loop process (v0.15)** — admin fatigue or error confirming a seller's off-platform commission payment could delay a legitimate un-suspension or wrongly clear a non-payment | Invoice status changes are audit-logged (FR-8.9) and visible to the seller through the full lifecycle, same transparency discipline as the dormant mode's payout status flow (FR-6.12); a future phase can add automated bank-statement matching behind the same Payment Adapter interface (§3.5) with no change to the invoicing/suspension logic |
 | 23 | **Order verification abuse (new, v0.29)** — a bad actor could hammer the OTP-send endpoint against arbitrary phone numbers/emails to run up a seller's own SMTP/WhatsApp usage (or a third party's inbox, as harassment), or brute-force a 6-digit OTP given enough attempts | Rate-limited resends (FR-37.5, one cooldown-gated send per order at a time), a hard per-OTP retry cap (default 5) that fails the attempt rather than allowing unlimited guesses, single-use + time-limited codes, and a daily per-sender-email cap (default 450, FR-37.3) bounding the worst case even if the cooldown is somehow raced — the same layered-limits posture already applied to every other OTP/token surface in this SRS (e.g. password reset, admin MFA) |
 | 24 | **Misleading profit figures from incomplete or dishonest seller-entered cost data (new, v0.30)** — the P&L Engine (§5.42) trusts seller-entered product base costs and ad-spend; a seller who never enters a cost, enters it wrong, or under-reports ad spend gets an inflated net-profit figure with nothing to contradict it (the platform has no independent source for a seller's true product cost or ad spend, unlike revenue/commission which it computes itself) | Never silently treat a missing cost as zero — FR-42.2 requires every profit figure touching an un-costed variant to be visibly flagged incomplete, not quietly wrong; this is a seller-facing decision-support tool, not an attested financial statement, and is documented as such rather than treated as a data-integrity guarantee the platform can enforce |
+| 25 | **Platform email deliverability (new, v0.31)** — the Built-in Email Verification Service (§5.43) sends from platform-controlled infrastructure with no SPF/DKIM/DMARC alignment or sender-reputation warming at v1.0 launch; a buyer's mail provider could silently spam-folder or reject platform-sent OTP emails, blocking legitimate order verification | Documented explicitly as a convenience default, never the sole verification path (FR-43.4) — WhatsApp OTP and seller-connected SMTP remain the recommended first-class channels; SPF/DKIM/DMARC setup and reputation warming are a pre-default-promotion prerequisite tracked as follow-up work, not solved by this amendment |
+| 26 | **Shopify-migration bulk moderation bypass attempt (new, v0.31)** — a bad actor could try using the Shopify migration's bulk-upload path to slip banned-keyword/restricted-category products past moderation faster than one-by-one manual entry would allow | FR-44.3 reaffirms (not rebuilds) the existing Moderation Engine (§5.27) runs identically per imported row — no migration-specific bypass code path exists; §14.44 explicitly re-proves this against an imported row, not just a manually created one |
+| 27 | **Cost-Savings Calculator going stale (new, v0.31)** — Shopify's own pricing/fees change over time; if the admin-editable comparison figures (FR-45.2) aren't periodically reviewed, the calculator could quietly understate/overstate real savings while still looking authoritative | Figures are Settings Registry data specifically so a correction is a data update, not a deploy (FR-45.2), and the "estimate" disclaimer (FR-45.3) sets buyer/seller expectations correctly even if a figure drifts — but this is a genuine ongoing-maintenance risk, not one the architecture alone can fully close; flagged here so it gets a periodic admin review cadence rather than being treated as solved |
+| 28 | **Badge threshold flapping (new, v0.31)** — a store hovering exactly at a §5.46 badge threshold could rapidly gain/lose that badge across successive recomputes, looking unstable to buyers rather than genuinely earning/losing trust status | Accepted v1.0 limitation, documented rather than silently present: badges recompute on the same cadence as Store Health Score (§5.34), no faster; a future hysteresis band (e.g. require crossing by a margin, or holding for N consecutive recomputes, before flipping) is a roadmap note, not built in v1.0 |
 
 ---
 
@@ -5355,6 +5575,87 @@ going forward, per FR-6.28.
 - [ ] RLS denies cross-tenant access to another seller's cost/profit data
       at the database level, independent of the app layer (FR-42.5) — same
       proof style as every other tenant-isolation test in this SRS.
+
+### 14.43 Built-in Email Verification Service (new, v0.31, not yet built)
+- [ ] A seller under quota can send a platform-email OTP successfully;
+      the same seller at quota gets the "quota reached" message, never a
+      silent failure or an unbounded send (FR-43.3) — proven by an e2e
+      test driving the counter to its limit.
+- [ ] The monthly counter resets at the billing-period boundary, proven
+      by an e2e test asserting a send succeeds again after a simulated
+      period rollover (FR-43.3).
+- [ ] No caller references the concrete `EmailServiceProvider`
+      implementation directly — grepped/reviewed to confirm every call
+      site goes through the interface, proving the extraction seam is
+      real, not aspirational (FR-43.2).
+- [ ] WhatsApp OTP and seller-SMTP remain fully functional and equally
+      selectable regardless of platform-email quota state (FR-43.4) —
+      proven by an e2e test exercising all three channels independently.
+
+### 14.44 One-Click Shopify Migration (new, v0.31, not yet built)
+- [ ] A Shopify-format products/variants/images CSV, a customers CSV,
+      and an orders CSV each round-trip through the guided flow into
+      correct platform records, proven by an e2e test with a small fixed
+      fixture file per entity (FR-44.1/44.2).
+- [ ] A column present in the Shopify export but not auto-mapped is
+      surfaced in the mapping step, never silently dropped (FR-44.2).
+- [ ] A product row containing a banned keyword is blocked by the
+      existing Moderation Engine exactly as a manual submission would be
+      — proven by re-running §14.27's moderation e2e assertion style
+      against an imported row (FR-44.3).
+- [ ] Imported orders never appear in the Orders Command Center's
+      action-needed buckets and never contribute to commission-owed
+      totals — proven by a before/after `platform_events`/commission
+      assertion, same style as §14.37/§14.38 (FR-44.5).
+
+### 14.45 Cost-Savings Calculator (new, v0.31, not yet built)
+- [ ] Calculator output matches a hand-computed expected value for a set
+      of known inputs (FR-45.1).
+- [ ] Every comparison figure used in the computation is read from
+      Settings Registry, not a hard-coded constant — proven by changing
+      a setting value and asserting the output changes accordingly
+      (FR-45.2).
+- [ ] The "estimated" disclaimer is present in every render of the
+      output (FR-45.3).
+
+### 14.46 Seller Trust & Achievement Badge Engine (new, v0.31, not yet built)
+- [ ] A badge appears the moment a store's underlying metric crosses its
+      Settings-driven threshold, and disappears the moment it drops back
+      below — proven by an e2e test mutating the underlying data and
+      re-evaluating (FR-46.2/46.3).
+- [ ] No endpoint allows a seller to directly set/claim a badge — proven
+      by attempting a direct write and asserting rejection (FR-46.3).
+- [ ] Changing a badge's Settings-Registry threshold changes eligibility
+      without a code change (FR-46.1).
+- [ ] §5.47's private dashboard badges and this section's public
+      storefront badges are proven to share one evaluation code path
+      (not two parallel implementations that could drift) — same
+      shared-predicate-by-construction discipline as §14.38's bucket/
+      list-filter proof (FR-46.5).
+
+### 14.47 Emotional & Retention Layer (new, v0.31, not yet built)
+- [ ] A milestone celebrates exactly once per store per threshold, even
+      across multiple subsequent qualifying orders — proven by an e2e
+      test placing several orders past a threshold and asserting a
+      single celebration event (FR-47.3).
+- [ ] Only `confirmed`+ orders count toward any milestone threshold — a
+      pending/cancelled order contributes zero, same Financial Truth
+      Invariant proof style as §14.37/§14.38/§14.42 (FR-47.2).
+- [ ] Private dashboard achievement badges never appear on any public
+      storefront-facing endpoint or page (FR-47.4).
+
+### 14.48 Community & Belonging (new, v0.31, not yet built)
+- [ ] A submitted success story is never visible on the public Featured
+      Sellers surface until an admin approves it — proven by an e2e test
+      checking the public endpoint before and after approval (FR-48.1/
+      48.2).
+- [ ] A store never appears on the Featured Sellers surface without its
+      own submission or an explicit opt-in flag, even if it holds every
+      public badge — proven by an e2e test asserting a high-badge,
+      non-opted-in store is absent (FR-48.3).
+- [ ] No field beyond store name and already-public storefront content
+      is present in the Featured Sellers API response — proven by a
+      response-shape assertion (FR-48.4).
 
 ---
 
