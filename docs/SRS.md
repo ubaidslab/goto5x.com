@@ -1,7 +1,7 @@
 # goto5x.com — Software Requirements Specification (SRS)
 
-**Version:** 0.29 (Build-phase amendment)
-**Date:** 2026-08-02
+**Version:** 0.30 (Build-phase amendment)
+**Date:** 2026-08-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -340,6 +340,44 @@ only, not built in v1.0:** automated WhatsApp/SMS API-based verification
 anywhere in inventory or elsewhere (FR-39.7) — the latter is withheld
 until a dedicated AI-integration/data-liability policy exists, not because
 of any technical gap.
+
+**v0.30 (new sections; build TBD — see build-plan.md for slotting) —
+extends §5.38/§14.38 Orders Command Center with a public/seller tracking
+timeline, and adds §5.40/§14.40 Delivery-Time Badges, §5.41/§14.41
+WhatsApp Semi-Automation, and §5.42/§14.42 Automated Profit & Loss Engine
+(founder-requested, competitive-gap-driven):** The Orders Command Center
+extension (§5.38) is the smallest of the four in practice — role-based
+tracking upload (seller for self-fulfilled items, supplier for their own,
+ownership-checked) has existed correctly since Module 8/9; the actual gap
+is that the public order-status page and the seller's own order-detail
+view only ever showed a flat status string, never a placed → confirmed →
+shipped → delivered timeline. This amendment adds that one computed,
+derived-from-existing-state timeline to both surfaces — no new upload
+path, no new source of truth. Delivery-Time Badges (§5.40) is similarly
+smaller than it first appears: Module 8's per-listing delivery-estimate
+and supported-countries data is already computed and attached to every
+storefront product payload (`supplierShipping`) — it has simply never
+been rendered; this amendment is close to pure frontend. WhatsApp
+Semi-Automation (§5.41) generates a ready-to-send `wa.me` deep link (reusing
+§5.37's WhatsApp Otp Adapter's exact link-construction pattern) for three
+seller-triggered moments — order confirmation, shipping/tracking update,
+and abandoned-cart recovery — with seller-editable message templates
+(Settings Registry, same pattern as FR-37.6); abandoned carts (flagged
+since Module 9/15.2 but never surfaced to any seller) get their first
+seller-facing list. **Explicitly deferred, roadmap-only:** a fully
+automated WhatsApp Business API send sequence (paid, Meta-gated) — v1.0 is
+always a seller-clicked, one-message-at-a-time send, never a background
+push. The Automated Profit & Loss Engine (§5.42) is the one genuinely new
+financial-data surface: seller-entered per-variant base cost, optional
+per-order courier/handling costs, and manual/CSV ad-spend entries per
+period are subtracted from the revenue/commission/discount/shipping/tax
+data every order already carries (§3.12's Financial Truth Invariant
+applies unchanged — only `confirmed`+ orders are ever counted) to compute
+true net profit, per order and per period. **Explicitly deferred,
+roadmap-only:** automated Facebook/TikTok ad-account API sync and
+automated local-courier-API cost sync — v1.0's manual/CSV ad-spend entry
+point is designed so a future ad-spend source can plug in without
+reworking the aggregation, but no such integration exists yet.
 
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
@@ -3301,6 +3339,33 @@ it, governed by the SIMPLICITY INVARIANT, §3.13)
   phase (Phase 4), same "bare functional now, designed later" posture
   every other module in this SRS has followed since the design system was
   founder-approved.
+- FR-38.4: **(new, v0.30) Role-based tracking upload — reaffirmed, not
+  rebuilt.** Both upload paths already exist and are already correctly
+  scoped: the seller uploads tracking for a self-fulfilled item
+  (`OrdersService.uploadTracking`), and a supplier uploads tracking only
+  for their own supplier-fulfilled items, ownership-checked against
+  `OrderItem.supplierId` (`SupplierOrdersService.uploadTracking`). This
+  amendment reuses both verbatim — no new upload endpoint, no change to
+  either method's authorization check.
+- FR-38.5: **(new, v0.30) Public + seller status timeline.** The buyer's
+  public order-status page (`storefront/order-status/:token`, reached via
+  the same unguessable `statusLookupToken` as today — no account, no
+  change to that access model) and the seller's own order-detail view both
+  render a **placed → confirmed → shipped → delivered** timeline (plus a
+  cancelled state where applicable), each completed stage carrying its
+  timestamp. The timeline is a **derived, computed** read over
+  `Order.status`, `Order.placedAt`, `OrderTimelineEvent` rows, and
+  `TrackingUpdate` (courier + tracking ID already stored per item since
+  Module 9) — no new "timeline" table, no second copy of state that could
+  drift from `Order.status` itself.
+- FR-38.6: **(new, v0.30) The Financial Truth Invariant governs every
+  count on this screen, unchanged.** An order sitting in `pending`,
+  `awaiting-verification`, or `prepaid-received` is visible on the Command
+  Center (so the seller knows to act on it) but is never counted toward
+  any confirmed-sale total anywhere — on this screen, in seller order
+  totals, or in admin real-time analytics. This is a reaffirmation of
+  §3.12/§5.37's existing invariant applied to a new read surface, not a
+  new rule.
 
 ### 5.39 Inventory Management (new, v0.29 — a dedicated screen; no new
 stock-tracking concept, reuses `stockQuantity` and the existing oversell-
@@ -3345,6 +3410,103 @@ protection logic verbatim)
   liability policy exists (what seller/buyer data, if any, could ever be
   sent to a third-party model, under what consent and retention terms) —
   revisited post-launch, not blocked on any technical dependency.
+
+### 5.40 Delivery-Time Badges (new, v0.30 — buyer-trust surface for
+supplier-sourced items; the underlying data has existed since Module 8,
+this is the first time it's ever shown to a buyer)
+- FR-40.1: **Storefront badge, supplier-sourced items only.** A product
+  card (search/collection/discovery grids) and a product detail page show
+  a small badge — "Ships in X-Y days" and "Delivers to: …" — sourced from
+  `SupplierListing.estimatedDeliveryMinDays`/`estimatedDeliveryMaxDays`/
+  `supportedCountries`, already computed per-request into
+  `StorefrontService`'s existing `supplierShipping` payload field (never a
+  new query, never cached stale).
+- FR-40.2: **Self-fulfilled items show nothing.** A product with no
+  supplier listing behind it (`supplierShipping` is `null`) renders no
+  badge at all — never a placeholder, never a default estimate invented
+  for it.
+- FR-40.3: **Hidden, not broken, when data is incomplete.** A supplier
+  listing missing either delivery-estimate field or an empty
+  `supportedCountries` array suppresses only the affected badge line, not
+  the whole card/page.
+
+### 5.41 WhatsApp Semi-Automation (new, v0.30 — free v1.0 seller-clicked
+message generation, reusing §5.37's WhatsApp OTP Adapter's exact `wa.me`
+deep-link construction; full Business API automation explicitly deferred)
+- FR-41.1: **Three trigger points, one seller-clicked send each.** A
+  ready-to-send WhatsApp deep link (buyer's WhatsApp number + a seller-
+  editable, Settings-Registry-driven message template with order/tracking/
+  cart details interpolated in) is generated on demand for: (a) order
+  confirmation, from the seller's order-detail view once an order is
+  `confirmed`; (b) a shipping/tracking update, from the same view once
+  tracking is uploaded (FR-38.4's existing upload path, untouched); (c)
+  abandoned-cart recovery, from a new seller-facing list of this store's
+  `abandoned` carts (Module 9/15.2's existing flagging — write-only until
+  now). Every send is a seller click that opens `wa.me` in their own
+  WhatsApp — v1.0 never sends anything itself, same "manual/link-assisted"
+  posture as FR-37.2.
+- FR-41.2: **Abandoned-cart recovery requires a captured buyer WhatsApp
+  number.** `Cart.buyerWhatsapp` (column added in Module 26's migration
+  batch, never wired to capture) is now populated at cart-creation time,
+  optionally, alongside the existing required `buyerEmail` — a cart with
+  no WhatsApp number captured is still listed (so the seller sees it) but
+  has no recovery-link action available.
+- FR-41.3: **Seller-editable templates per trigger, Settings-Registry-
+  driven.** `whatsapp.order_confirmation_template`,
+  `whatsapp.shipping_update_template`, and `whatsapp.cart_recovery_template`
+  (`store`/`global` scope, same precedence pattern as every other
+  Settings-Registry-driven template in this SRS) — never hard-coded
+  message copy.
+- FR-41.4: **Explicitly deferred, roadmap-only, not built in v1.0:** a
+  fully automated WhatsApp Business API send sequence (paid, Meta-gated,
+  requiring a verified business phone number and template pre-approval) —
+  the seller-clicked deep-link shape is deliberately chosen so this
+  remains a pure addition later, never a rework of the message-generation
+  logic itself.
+
+### 5.42 Automated Profit & Loss Engine (new, v0.30 — the one genuinely
+new financial-data surface in this amendment; slotted after Inventory
+Management since it reads cost data that lives naturally near it; free
+v1.0, no paid third-party integration required)
+- FR-42.1: **Seller-entered cost inputs.** A per-product-variant base cost
+  (COGS, optional — a variant with no cost entered is visibly flagged as
+  such everywhere its profit would otherwise be computed, never silently
+  treated as zero), optional per-order courier/handling costs, and
+  manual or CSV-imported ad-spend entries scoped to a date period (reusing
+  the existing CSV import machinery's shape, FR-18.1/18.3 — no new parser).
+- FR-42.2: **True net profit, per order.** For every `confirmed`+ order:
+  `revenue (Order.totalAmount − Order.taxAmount, the same tax-exclusion
+  convention §5.6c's commission accrual already uses) − commission_accrued
+  (from the existing `LedgerEntry`, never recomputed a second way) −
+  Order.discountAmount − Σ(variant base cost × quantity) − courier/handling
+  costs`. An order with any line item missing a base cost shows its profit
+  figure as incomplete/flagged, never a number that silently understates
+  the true cost.
+- FR-42.3: **True net profit, per period.** The same per-order figures
+  summed across a seller-chosen date range, minus every ad-spend entry
+  whose period overlaps that range — one clear revenue-vs-net-profit
+  comparison, the headline view of this module.
+- FR-42.4: **The Financial Truth Invariant applies unchanged.** Only
+  `confirmed`+ orders are ever included in any revenue, commission, or
+  profit figure on this screen — a `pending`/`awaiting-verification` order
+  contributes exactly nothing, the same rule §3.12 already enforces
+  everywhere else money is shown.
+- FR-42.5: **Tenant-isolated cost data.** Every cost input (variant base
+  cost, per-order courier/handling, ad-spend entries) is scoped to the
+  seller's own store via the same RLS discipline (§3.2) as every other
+  tenant-owned table — a seller can never see or influence another
+  seller's cost/profit figures.
+- FR-42.6: **Ad-spend input designed as a clean extension point, not an
+  adapter build.** v1.0 ships exactly one ad-spend entry path (manual
+  form + CSV import) behind a narrow internal interface a future
+  automated source (Facebook/TikTok Ads API) can implement without
+  reworking the period-aggregation logic — unlike §3.5's Adapter pattern,
+  this is a documented seam, not a second implementation shipped now.
+- FR-42.7: **Explicitly deferred, roadmap-only, not built in v1.0:**
+  automated Facebook/TikTok ad-account API sync and automated local-
+  courier-API cost sync — both withheld until those integrations are
+  actually built, not because of any schema gap (FR-42.6 already leaves
+  room for them).
 
 ---
 
@@ -3599,6 +3761,7 @@ mode's eventual reactivation.
 | 21 | **Seller under-reporting/non-remittance of commission (new, v0.15 — Direct Seller Collection's central new risk, effectively replacing Risk 6):** since the platform never touches buyer money, it has no independent way to confirm a sale happened or that a marked-paid order was reported honestly — a seller could simply never mark an order paid, or falsely mark it cancelled, to avoid the commission invoice | Every storefront order is recorded regardless of later status (Financial Truth Invariant, §3.12); cancellation-rate and pending-forever-rate monitors (FR-6.19) feed Trust & Safety risk views (§5.29) for admin review; non-payment past a grace period auto-suspends the store (FR-6.18) — the platform's only enforcement lever without held funds; the versioned Seller Agreement (FR-29.1/FR-29.2) makes deliberate under-reporting an explicit, indemnified breach, not an ambiguous gray area |
 | 22 | **Manual invoice-payment verification is a human-in-the-loop process (v0.15)** — admin fatigue or error confirming a seller's off-platform commission payment could delay a legitimate un-suspension or wrongly clear a non-payment | Invoice status changes are audit-logged (FR-8.9) and visible to the seller through the full lifecycle, same transparency discipline as the dormant mode's payout status flow (FR-6.12); a future phase can add automated bank-statement matching behind the same Payment Adapter interface (§3.5) with no change to the invoicing/suspension logic |
 | 23 | **Order verification abuse (new, v0.29)** — a bad actor could hammer the OTP-send endpoint against arbitrary phone numbers/emails to run up a seller's own SMTP/WhatsApp usage (or a third party's inbox, as harassment), or brute-force a 6-digit OTP given enough attempts | Rate-limited resends (FR-37.5, one cooldown-gated send per order at a time), a hard per-OTP retry cap (default 5) that fails the attempt rather than allowing unlimited guesses, single-use + time-limited codes, and a daily per-sender-email cap (default 450, FR-37.3) bounding the worst case even if the cooldown is somehow raced — the same layered-limits posture already applied to every other OTP/token surface in this SRS (e.g. password reset, admin MFA) |
+| 24 | **Misleading profit figures from incomplete or dishonest seller-entered cost data (new, v0.30)** — the P&L Engine (§5.42) trusts seller-entered product base costs and ad-spend; a seller who never enters a cost, enters it wrong, or under-reports ad spend gets an inflated net-profit figure with nothing to contradict it (the platform has no independent source for a seller's true product cost or ad spend, unlike revenue/commission which it computes itself) | Never silently treat a missing cost as zero — FR-42.2 requires every profit figure touching an un-costed variant to be visibly flagged incomplete, not quietly wrong; this is a seller-facing decision-support tool, not an attested financial statement, and is documented as such rather than treated as a data-integrity guarantee the platform can enforce |
 
 ---
 
@@ -5104,6 +5267,20 @@ going forward, per FR-6.28.
       existing order-list endpoint on the equivalent status — i.e. the
       aggregation is provably a derived read, never a second source of
       truth that could drift from the list it summarizes (FR-38.1).
+- [ ] Tracking upload remains role-correctly gated after this module ships
+      — a supplier still cannot upload tracking for another supplier's (or
+      a self-fulfilled) item, and a seller's own upload endpoint is
+      unchanged (FR-38.4) — proven by the existing Module 8/9 role-
+      isolation e2e test(s) still passing unmodified.
+- [ ] The public order-status page and the seller's order-detail view
+      render an identical timeline for the same order — same completed
+      stages, same timestamps — proven by an e2e test hitting both
+      surfaces for one order and diffing the timeline data (FR-38.5).
+- [ ] A `pending`/`awaiting-verification`/`prepaid-received` order is
+      visible on the Command Center but contributes zero to any confirmed-
+      sale count anywhere on the platform (FR-38.6) — proven by the same
+      style of before/after `platform_events`/order-total assertion
+      §14.37 already established, applied to this new read surface.
 
 ### 14.39 Inventory Management (new, v0.29, not yet built)
 - [ ] A manual stock adjustment writes exactly one adjustment-log row
@@ -5126,6 +5303,55 @@ going forward, per FR-6.28.
       private, ownership-checked download path as every other Data Export
       artifact (FR-39.6, reaffirms FR-36.5) — no new, less-guarded read
       path introduced for this one file type.
+
+### 14.40 Delivery-Time Badges (new, v0.30, not yet built)
+- [ ] A supplier-sourced product's card and detail page both render the
+      badge with the exact `estimatedDeliveryMinDays`/`MaxDays`/
+      `supportedCountries` values currently on its `SupplierListing` row
+      (FR-40.1) — proven by an e2e/component test asserting the rendered
+      text matches a seeded listing, then changing the listing and
+      asserting the badge updates (never cached stale).
+- [ ] A self-fulfilled product (no supplier listing) renders no badge at
+      all, on both surfaces (FR-40.2).
+- [ ] A supplier listing with a missing delivery-estimate field or an
+      empty `supportedCountries` array suppresses only that line, not the
+      whole card (FR-40.3).
+
+### 14.41 WhatsApp Semi-Automation (new, v0.30, not yet built)
+- [ ] Each of the three generated deep links (order confirmation, shipping
+      update, abandoned-cart recovery) resolves to a correct `wa.me` URL —
+      digits-only buyer number, correctly URL-encoded, seller-editable
+      template text interpolated with the right order/tracking/cart
+      details for that trigger (FR-41.1/41.3) — proven by an e2e test per
+      trigger asserting the decoded link content.
+- [ ] `Cart.buyerWhatsapp`, when provided at cart creation, round-trips
+      correctly into the abandoned-cart list's recovery-link generation; a
+      cart with none provided is still listed but has no recovery action
+      (FR-41.2).
+- [ ] No message is ever sent by the platform itself — every one of the
+      three triggers only ever returns a link for the seller to open and
+      send manually, proven the same way §14.37 proved the WhatsApp OTP
+      channel never makes an outbound network call itself (FR-41.1).
+
+### 14.42 Automated Profit & Loss Engine (new, v0.30, not yet built)
+- [ ] Per-order net profit is arithmetically correct across a mixed cart
+      (self-fulfilled + supplier-fulfilled items), a partial discount, and
+      a non-zero tax rate — proven by an e2e test with a hand-computed
+      expected profit figure compared against the engine's output
+      (FR-42.2).
+- [ ] Per-period net profit correctly sums only orders actually placed
+      within the period and only ad-spend entries whose period overlaps
+      it — proven by an e2e test with orders/ad-spend entries straddling a
+      period boundary (FR-42.3).
+- [ ] A `pending`/unconfirmed order contributes exactly zero to any
+      revenue, commission, or profit figure (FR-42.4) — same before/after
+      assertion style as §14.37/§14.38.
+- [ ] A variant with no base cost entered causes its order's profit figure
+      to render as visibly incomplete/flagged, never a number that quietly
+      excludes that cost as if it were zero (FR-42.1/42.2).
+- [ ] RLS denies cross-tenant access to another seller's cost/profit data
+      at the database level, independent of the app layer (FR-42.5) — same
+      proof style as every other tenant-isolation test in this SRS.
 
 ---
 

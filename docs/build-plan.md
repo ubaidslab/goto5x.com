@@ -2983,6 +2983,92 @@ decrement logic — this module is a read/adjust surface over the existing
 from the existing Products catalog page. **No third-party AI integration
 anywhere in this module** (FR-39.7) — documented roadmap note only.
 
+## v0.30 slotting decision — Tracking Timeline, Delivery-Time Badges,
+WhatsApp Semi-Automation, Automated P&L Engine
+
+1. **Module 27 absorbs the tracking-timeline ask rather than spawning a
+   new module.** Investigated before writing the SRS amendment: role-
+   based tracking upload (seller for self-fulfilled, supplier for their
+   own, ownership-checked) has been fully correct since Module 8/9 — no
+   rework needed there. The actual gap is that the public order-status
+   page and the seller's order-detail view only ever showed a flat status
+   string, never a stage timeline. Since Module 27 already owns the
+   Command Center's order-state read surface, the timeline (§5.38's new
+   FR-38.4-38.6) is the same kind of derived read and belongs in the same
+   module, built from the same data.
+2. **Delivery-Time Badges (Module 29) is nearly pure frontend.** Module
+   8's delivery-estimate/supported-countries data is already computed
+   per-request into `StorefrontService`'s `supplierShipping` payload
+   field — it has simply never been rendered. No dependency on 27 or 28;
+   slotted right after Inventory to keep momentum with a fast, low-risk
+   module between two heavier builds.
+3. **WhatsApp Semi-Automation (Module 30) depends on Module 27's tracking
+   surface** (for the shipping-update trigger) and reuses Module 9/15.2's
+   existing abandoned-cart flagging (write-only until now — this module
+   gives it its first seller-facing list) and §5.37's WhatsApp OTP
+   Adapter's exact `wa.me` link-construction pattern. One schema gap
+   closed in passing: `Cart.buyerWhatsapp` was added in Module 26's
+   migration batch but never wired to capture — it's needed now for
+   cart-recovery messages.
+4. **The Automated P&L Engine (Module 31) is placed last, after Inventory,
+   per explicit founder instruction** — it reads cost data that lives
+   naturally near inventory, and benefits from every other module's
+   revenue/commission/discount data already being in place. It's the one
+   genuinely new financial-data surface among the four; the other three
+   are closer to "surface data/machinery that already exists."
+5. **Build order: 27 (expanded) → 28 (unchanged) → 29 → 30 → 31.** Same
+   standing rhythm as v0.29: SRS amendment first (done), build-plan
+   updated (this section), commit/push docs, then build → verify → push
+   automatically per module, never half-done or with a failing suite.
+
+### Module 27 (Orders Command Center + Tracking Timeline) — scope summary
+`docs/SRS.md` §5.38, FR-38.1-38.6. Bucketed order-state aggregation
+(`OrdersOverviewService`) as originally planned in v0.29 — no change to
+that scope. New in v0.30: a computed `placed → confirmed → shipped →
+delivered` (+ cancelled) timeline derived from `Order.status`/
+`Order.placedAt`/`OrderTimelineEvent`/`TrackingUpdate` — no new table,
+no new upload path (both seller- and supplier-side `uploadTracking`
+methods are reused verbatim). Rendered on both the public
+`storefront/order-status/:token` page and the seller's order-detail view
+from the same computed source, so the two surfaces can never drift.
+
+### Module 29 (Delivery-Time Badges) — scope summary
+`docs/SRS.md` §5.40, FR-40.1-40.3. No new schema, no new backend read —
+`StorefrontService`'s existing `supplierShipping` field is already
+attached to every product payload. Adds badge rendering to the storefront
+product card and product detail page, shown only when `supplierShipping`
+is present and its fields are populated.
+
+### Module 30 (WhatsApp Semi-Automation) — scope summary
+`docs/SRS.md` §5.41, FR-41.1-41.4. `Cart.buyerWhatsapp` wired to capture
+at cart creation (schema column already existed, unused since Module 26).
+New Settings Registry keys for three seller-editable message templates
+(`whatsapp.order_confirmation_template`, `whatsapp.shipping_update_template`,
+`whatsapp.cart_recovery_template`, `store`/`global` scope). New service
+generating on-demand `wa.me` deep links (reusing §5.37's WhatsApp OTP
+Adapter's link-construction pattern, generalized beyond a single `{{otp}}`
+token) for three seller-clicked triggers: order confirmation, shipping/
+tracking update, and abandoned-cart recovery. New seller-facing abandoned-
+carts list (first-ever surface over Module 9/15.2's existing flagging).
+**Explicitly deferred:** automated WhatsApp Business API sequences
+(paid, Meta-gated) — documented roadmap note only.
+
+### Module 31 (Automated Profit & Loss Engine) — scope summary
+`docs/SRS.md` §5.42, FR-42.1-42.7. New: `ProductVariant` base-cost field
+(optional, un-costed variants visibly flagged rather than treated as
+zero), optional per-order courier/handling cost fields on `Order`, and a
+new `AdSpendEntry` model (manual/CSV, period-scoped, tenant-isolated).
+New `ProfitLossService` computing per-order and per-period true net profit
+from existing revenue/commission (`LedgerEntry`)/discount/shipping/tax
+data minus these seller-entered costs — reuses `computeOrderTotals()`'s
+existing conventions rather than reimplementing subtotal math. Financial
+Truth Invariant applies unchanged: only `confirmed`+ orders ever count.
+Ad-spend entry is a documented extension point (not a full Adapter-
+pattern build) for a future automated ad-account API sync. **Explicitly
+deferred:** automated Facebook/TikTok ad-account API sync and automated
+local-courier-API cost sync — both roadmap notes only, no schema gap
+blocking them later.
+
 ---
 
 *Update this document as each module is approved and built — it is the running
