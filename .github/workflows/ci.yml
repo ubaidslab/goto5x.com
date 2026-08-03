@@ -92,6 +92,16 @@ jobs:
       - name: Generate Prisma client (test files import PrismaClient directly)
         run: pnpm --filter @goto5x/api prisma:generate
 
+      # InvoicePdfService (Module 15/24) renders PDFs via a real headless
+      # Chromium (Playwright), not a mock - matches this project's stated
+      # "genuine infrastructure over mocks" preference (see
+      # test/e2e/s3-test-server.ts's own comment for the same principle
+      # applied to object storage below). Installed with --with-deps so the
+      # system libraries headless Chromium needs (fonts, mesa, etc.) are
+      # present on the bare runner too.
+      - name: Install Playwright Chromium + system dependencies (PDF generation)
+        run: pnpm --filter @goto5x/api exec playwright install --with-deps chromium
+
       - name: Bootstrap app_runtime/app_admin roles (once per fresh database)
         env:
           PGPASSWORD: ci-superuser-password
@@ -109,7 +119,14 @@ jobs:
 
       - name: Write apps/api/.env.test
         run: |
-          cat > apps/api/.env.test <<'EOF'
+          # InvoicePdfService.renderPdfBuffer() overrides Playwright's
+          # executablePath explicitly (its own fallback,
+          # `/opt/pw-browsers/chromium`, only resolves on developer sandboxes
+          # that happen to symlink it there - a plain CI runner has no such
+          # symlink). Ask Playwright's own API where it actually installed
+          # Chromium on THIS runner rather than guessing a path/version.
+          CHROMIUM_PATH=$(pnpm --filter @goto5x/api exec node -e "console.log(require('playwright').chromium.executablePath())")
+          cat > apps/api/.env.test <<EOF
           NODE_ENV=test
           PORT=3000
           DATABASE_URL=postgresql://app_runtime:ci-runtime-password@localhost:5432/goto5x?schema=public
@@ -123,6 +140,7 @@ jobs:
           EMAIL_PROVIDER=console
           EMAIL_FROM_ADDRESS=no-reply@goto5x.com
           APP_BASE_URL=http://localhost:3001
+          PLAYWRIGHT_CHROMIUM_PATH=$CHROMIUM_PATH
           MINIO_ENDPOINT=http://localhost:4569
           MINIO_ROOT_USER=S3RVER
           MINIO_ROOT_PASSWORD=S3RVER
