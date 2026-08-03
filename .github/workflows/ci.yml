@@ -136,9 +136,18 @@ jobs:
           IDENTITY_ENCRYPTION_KEY=hPVvBmwP4FUPhlWoIzKOyj1FZ1UBu0N+AbNgZoVNsPk=
           IDENTITY_FINGERPRINT_HMAC_SECRET=ci-test-identity-fingerprint-hmac-secret
           EXTERNAL_API_SECRET_ENCRYPTION_KEY=UBSQp73iyfU/LUU+gFQ69pB9C2Gw1Tg1RVqSmuM/FdE=
+          SMTP_CREDENTIAL_ENCRYPTION_KEY=4NqGx0iUuAW/T+K88NSUB7b8pFHLXhUqVsVvzuyi6Qk=
           EOF
 
       - name: E2E tests (real Postgres + Redis - the cross-tenant/RLS release gate)
+        # 38 spec files rebuild the full Nest DI graph in a single
+        # --runInBand process; V8's default old-space ceiling on this
+        # runner (~2GB) was observed to OOM-crash mid-suite (FATAL ERROR:
+        # JavaScript heap out of memory) once the suite actually got far
+        # enough to run for real - raised explicitly rather than relying
+        # on the runner's auto-detected default.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm test:api:e2e
 
   dependency-audit:
