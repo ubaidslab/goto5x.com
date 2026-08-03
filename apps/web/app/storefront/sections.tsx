@@ -1,5 +1,6 @@
 import { PublicProduct, PublicStore } from "../../lib/storefront-api";
 import { ResolvedThemeSettings } from "../../lib/theme-presets";
+import { DeliveryBadge } from "./delivery-badge";
 
 export function HeroSection({ store, theme }: { store: PublicStore; theme: ResolvedThemeSettings }) {
   return (
@@ -34,6 +35,7 @@ export function FeaturedProductsSection({ products, theme }: { products: PublicP
               )}
               <h3>{product.title}</h3>
               {product.variants[0] && <p>{product.variants[0].price}</p>}
+              <DeliveryBadge supplierShipping={product.supplierShipping} theme={theme} />
             </a>
           ))}
         </div>

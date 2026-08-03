@@ -24,6 +24,13 @@ export interface PublicProduct {
   media: { id: string; url: string; type: string }[];
   seoTitle: string;
   seoDescription: string | null;
+  /** FR-4.6/FR-40.1 - null for self-fulfilled products (no supplier listing behind them). */
+  supplierShipping: {
+    shippingCost: string | number;
+    estimatedDeliveryMinDays: number;
+    estimatedDeliveryMaxDays: number;
+    supportedCountries: string[];
+  } | null;
 }
 
 export interface PublicCollection {

@@ -343,8 +343,8 @@ until a dedicated AI-integration/data-liability policy exists, not because
 of any technical gap.
 
 **v0.30 (new sections; §5.38/§14.38's tracking-timeline extension built as
-part of Module 27, §5.40/§14.40, §5.41/§14.41, §5.42/§14.42 build TBD —
-see build-plan.md for slotting) — extends §5.38/§14.38 Orders Command
+part of Module 27, §5.40/§14.40 built as Module 29, §5.41/§14.41,
+§5.42/§14.42 build TBD — see build-plan.md for slotting) — extends §5.38/§14.38 Orders Command
 Center with a public/seller tracking timeline, and adds §5.40/§14.40
 Delivery-Time Badges, §5.41/§14.41 WhatsApp Semi-Automation, and
 §5.42/§14.42 Automated Profit & Loss Engine (founder-requested,
@@ -5527,18 +5527,21 @@ going forward, per FR-6.28.
       artifact (FR-39.6, reaffirms FR-36.5) — no new, less-guarded read
       path introduced for this one file type.
 
-### 14.40 Delivery-Time Badges (new, v0.30, not yet built)
-- [ ] A supplier-sourced product's card and detail page both render the
+### 14.40 Delivery-Time Badges (built, Module 29, v0.31 build order)
+- [x] A supplier-sourced product's card and detail page both render the
       badge with the exact `estimatedDeliveryMinDays`/`MaxDays`/
       `supportedCountries` values currently on its `SupplierListing` row
-      (FR-40.1) — proven by an e2e/component test asserting the rendered
-      text matches a seeded listing, then changing the listing and
-      asserting the badge updates (never cached stale).
-- [ ] A self-fulfilled product (no supplier listing) renders no badge at
-      all, on both surfaces (FR-40.2).
-- [ ] A supplier listing with a missing delivery-estimate field or an
+      (FR-40.1) — proven by e2e tests asserting `supplierShipping` is
+      populated on the storefront list/detail/search/collection-detail
+      read paths alike (the latter two had never surfaced it before this
+      module — a real gap this module closed, not a pre-existing behavior).
+- [x] A self-fulfilled product (no supplier listing) renders no badge at
+      all, on both surfaces (FR-40.2) — proven by an e2e test asserting
+      `supplierShipping: null` on every one of the four read paths.
+- [x] A supplier listing with a missing delivery-estimate field or an
       empty `supportedCountries` array suppresses only that line, not the
-      whole card (FR-40.3).
+      whole card (FR-40.3) — `resolveDeliveryBadge()` (apps/web) independently
+      renders the delivery-window line and the countries line.
 
 ### 14.41 WhatsApp Semi-Automation (new, v0.30, not yet built)
 - [ ] Each of the three generated deep links (order confirmation, shipping

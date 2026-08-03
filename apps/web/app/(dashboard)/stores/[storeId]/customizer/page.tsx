@@ -86,6 +86,11 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
             media: [],
             seoTitle: p.seoTitle ?? p.title,
             seoDescription: p.seoDescription ?? null,
+            // This preview pulls from the seller-side products API, not the
+            // storefront read path that actually computes supplier
+            // transparency (Module 8/29) - null is the correct "no data
+            // fetched for this" value here, not a misrepresentation.
+            supplierShipping: null,
           })),
         ),
       )

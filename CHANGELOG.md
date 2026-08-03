@@ -7,6 +7,28 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 29 (Delivery-Time Badges)
+
+SRS §5.40, FR-40.1-40.3. A buyer-trust storefront surface for supplier-
+sourced items, reusing Module 8's existing per-request `supplierShipping`
+transparency payload — no new data collected or computed.
+
+### Fixed
+- `StorefrontService.search()` and `.getCollection()` never populated
+  `supplierShipping` (only `listProducts()`/`getProduct()` did) — a real
+  pre-existing gap relative to FR-40.1's "search/collection/discovery
+  grids" requirement, closed here rather than carried forward.
+
+### Added
+- `PublicProduct.supplierShipping` now typed on the web app (was silently
+  untyped/unused before); `resolveDeliveryBadge()`/`<DeliveryBadge>`
+  (`apps/web/app/storefront/delivery-badge.tsx`) render "Ships in X-Y
+  days"/"Delivers to: …" — null for self-fulfilled products, and each line
+  suppressed independently if its own data is incomplete, never the whole
+  badge.
+- Wired into the shared `FeaturedProductsSection` grid (home/search/
+  collection pages all use it) and the product detail page.
+
 ## v0.31 — Built-in Email Verification, Shopify Migration, Cost-Savings Calculator, Public Store Badges, Emotional/Retention Layer, Community & Belonging (SRS amendment ahead of Modules 32-37)
 
 Founder-requested: six new feature areas, slotted 32 → 33 → 34 → 35 → 36 →

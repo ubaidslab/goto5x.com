@@ -5,6 +5,7 @@ import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-prese
 import { ComingSoonPage, PasswordGate } from "../../access-gates";
 import { resolveAccess } from "../../access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { DeliveryBadge } from "../../delivery-badge";
 import { AddToCartForm } from "./add-to-cart-form";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
           ))}
         </div>
         {product.description && <p>{product.description}</p>}
+        <DeliveryBadge supplierShipping={product.supplierShipping} theme={theme} />
         <div style={{ marginTop: 16 }}>
           <AddToCartForm
             hostname={host}

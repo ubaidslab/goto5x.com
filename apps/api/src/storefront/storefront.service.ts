@@ -307,12 +307,13 @@ export class StorefrontService {
       include: { variants: true, media: true },
     });
     const byId = new Map(products.map((p) => [p.id, p]));
+    const transparencyByProductId = await this.batchSupplierTransparency(products.map((p) => p.id));
     // Preserve the ranked/ordered id list from the raw query - findMany()
     // does not guarantee result order matches `id: { in: [...] }`.
     return rankedIds
       .map((r) => byId.get(r.id))
       .filter((p): p is NonNullable<typeof p> => Boolean(p))
-      .map((product) => this.toPublicProduct(product, store));
+      .map((product) => this.toPublicProduct(product, store, transparencyByProductId.get(product.id)));
   }
 
   async listCollections(hostname: string, unlockToken?: string) {
@@ -340,15 +341,17 @@ export class StorefrontService {
     if (!collection || collection.storeId !== store.id || !collection.isActive) {
       throw new NotFoundException("Collection not found.");
     }
+    const visibleProducts = collection.products.filter(
+      (cp) =>
+        cp.product.status === "active" &&
+        (PUBLIC_MODERATION_STATUSES as readonly string[]).includes(cp.product.moderationStatus),
+    );
+    const transparencyByProductId = await this.batchSupplierTransparency(visibleProducts.map((cp) => cp.product.id));
     return {
       ...this.toPublicCollection(collection, store),
-      products: collection.products
-        .filter(
-          (cp) =>
-            cp.product.status === "active" &&
-            (PUBLIC_MODERATION_STATUSES as readonly string[]).includes(cp.product.moderationStatus),
-        )
-        .map((cp) => this.toPublicProduct(cp.product, store)),
+      products: visibleProducts.map((cp) =>
+        this.toPublicProduct(cp.product, store, transparencyByProductId.get(cp.product.id)),
+      ),
     };
   }
 
