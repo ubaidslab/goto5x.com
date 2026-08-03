@@ -7,6 +7,58 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Built-in Store Templates (v0.31 design phase)
+
+SRS §5.1 FR-1.1/FR-1.9/FR-1.10, docs/architecture.md's Template Package
+Spec. First deliverable of the design phase (post feature-complete
+Modules 1-31): four genuinely distinct, hand-designed built-in templates
+replacing the original three structurally-only-distinct placeholders, a
+"Start from blank" option, storefront branding, and THE ISOLATION RULE
+enforced three separate ways.
+
+### Added
+- Four built-in templates - **Editorial** (serif display type, generous
+  whitespace, lifestyle photography; free), **Studio** (geometric/grotesque
+  sans, bold color-blocking; premium), **Market** (dense grid, utilitarian,
+  many-SKU scanning; premium), **Atelier** (monochrome, minimal, restrained
+  accent; free) - each its own section-component set under
+  `apps/web/app/storefront/templates/`, selected via `registry.ts`'s
+  name -> component-set mapping. The storefront page and the customizer's
+  live preview both call the same registry function, so preview always
+  matches published output by construction.
+- **"Start from blank"** (free) - every section hidden by default; the
+  seller composes from scratch using the same bounded customizer, not a
+  different/freer system. A real free-form page-builder stays FR-1.6's
+  Phase 2 coded-mode escape hatch, deliberately still deferred.
+- **Storefront branding mark** ("Powered by eyosto") - mandatory on Free
+  (the platform's own free organic marketing), removable only on a paid
+  plan. New `BrandingModule`/`BrandingService`, two independent Settings
+  Registry keys (`branding.powered_by_removable`, plan-scoped capability;
+  `branding.powered_by_hidden`, store-scoped preference) so a downgrade to
+  Free always reverts to showing the mark regardless of what the seller
+  previously chose. Resolved server-side into `GET /storefront/store`'s
+  `poweredByVisible` field - never left to the client to decide.
+- `Theme.sortOrder` - deliberate, non-alphabetical default-assignment and
+  picker-listing order (fixes a latent bug: with 3 free-tier theme rows
+  now, alphabetical ordering would have silently made "Start from blank"
+  the accidental default for every new store).
+- **THE ISOLATION RULE**, enforced three ways: (1) structural - cart/
+  checkout/order-status/wallet/verification components live entirely
+  outside the templates directory, never imported by it; (2) static -
+  `scripts/check-template-isolation.js`, wired into CI, fails the build if
+  any template file imports that functional code (verified against a
+  deliberately-introduced violation before being removed); (3) runtime - a
+  template-invariance e2e suite running the full money path (mixed cart,
+  discount, tax, mark-as-paid) once per template + blank, asserting order
+  totals, ledger commission, wallet balance delta, P&L figures, and the
+  confirmed outcome are byte-identical across all five runs.
+
+### Fixed
+- `themes.seed.ts`'s `create()`/`update()` upserts now actually rename/
+  retier existing rows on rerun (previously `update: {}` was a no-op,
+  which would have silently left stale names on an already-seeded dev
+  database).
+
 ## Module 31 (Automated Profit & Loss Engine)
 
 SRS §5.42, FR-42.1-42.7. Free v1.0 financial engine showing TRUE NET

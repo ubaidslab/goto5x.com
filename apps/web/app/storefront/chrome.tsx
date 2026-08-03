@@ -127,11 +127,38 @@ export function SiteHeader({
   );
 }
 
-export function SiteFooter({ navigation, theme }: { navigation: PublicNavigation; theme: ResolvedThemeSettings }) {
-  if (navigation.footer.length === 0) return null;
+/**
+ * Templates module (v0.31 design phase) - the "Powered by eyosto" mark.
+ * Lives in this shared chrome component, never inside a template package,
+ * so no template's own code can suppress it - `poweredByVisible` is
+ * resolved server-side (StorefrontService.getStorePublic()) and is the
+ * only thing that ever hides it.
+ */
+function PoweredByMark() {
+  return (
+    <p style={{ marginTop: 12, fontSize: 12, opacity: 0.6 }}>
+      Powered by{" "}
+      <a href="https://eyosto.com" style={{ color: "inherit" }}>
+        eyosto
+      </a>
+    </p>
+  );
+}
+
+export function SiteFooter({
+  navigation,
+  theme,
+  poweredByVisible = true,
+}: {
+  navigation: PublicNavigation;
+  theme: ResolvedThemeSettings;
+  poweredByVisible?: boolean;
+}) {
+  if (navigation.footer.length === 0 && !poweredByVisible) return null;
   return (
     <footer style={{ padding: "24px", borderTop: "1px solid #e5e7eb", background: theme.colors.background }}>
-      <NavItems items={navigation.footer} theme={theme} />
+      {navigation.footer.length > 0 && <NavItems items={navigation.footer} theme={theme} />}
+      {poweredByVisible && <PoweredByMark />}
     </footer>
   );
 }

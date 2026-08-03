@@ -24,7 +24,7 @@ export default async function StorefrontCollectionPage({ params }: { params: { c
   const store = await fetchStorefrontStore(host);
   if (!store) notFound();
 
-  const theme = resolveThemeSettings(store.theme?.name ?? "Classic", store.theme?.settings as ThemeSettings | undefined);
+  const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
 
   const access = resolveAccess(store);
   if (access.gated && access.reason === "coming_soon") return <ComingSoonPage store={store} theme={theme} />;
@@ -50,7 +50,7 @@ export default async function StorefrontCollectionPage({ params }: { params: { c
         </div>
         <FeaturedProductsSection products={collection.products} theme={theme} />
       </main>
-      <SiteFooter navigation={navigation} theme={theme} />
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
     </>
   );

@@ -935,11 +935,12 @@ model GoogleDriveConnection {
 }
 
 // Module 4 (Theme Engine & Storefront Rendering). Global catalog - every
-// seller reads the same rows. `tier` is descriptive/future-proofing only in
-// v1.0: SRS §14.1's checklist requires every v1.0 template be selectable at
-// store creation regardless of plan (no gating enforced yet - that's Module
-// 11/14's job to wire to real plan state, same "off for every seller in
-// v1.0" precedent as `theme.coded_mode_enabled` below).
+// seller reads the same rows. `tier`'s premium gate is now enforced
+// (StoreThemeSettingsService.update(), theme.premium_tier_enabled - Module
+// 18's FR-24.5 fix). Templates module (v0.31 design phase) - 4 named,
+// visually distinct built-in templates (Editorial/Studio/Market/Atelier)
+// plus a 5th "Start from blank" utility option, replacing the original 3
+// structurally-only-distinct placeholders.
 model Theme {
   id              String    @id @default(uuid()) @db.Uuid
   name            String
@@ -947,6 +948,12 @@ model Theme {
   previewImageUrl String?   @map("preview_image_url")
   version         String    @default("1.0.0")
   isActive        Boolean   @default(true) @map("is_active")
+  // Deliberate display/default-assignment order (StoresService.create()'s
+  // auto-assigned default, ThemesService.listSelectable()'s picker order) -
+  // never alphabetical, which would silently make "Start from blank" the
+  // accidental default for every new store once it sorts before some
+  // template names.
+  sortOrder Int @default(0) @map("sort_order")
 
   storeThemeSettings StoreThemeSettings[]
   entitlements       TemplateEntitlement[]

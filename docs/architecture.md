@@ -298,6 +298,62 @@ never special-cases one template's implementation against another's**, and a
 template misbehaving can never reach outside its own render boundary into the
 dashboard or a different template.
 
+**Built-in templates (v0.31 design phase — built, not just spec'd):** the
+three original structurally-only-distinct placeholder themes are replaced by
+four genuinely distinct, hand-designed built-in templates — **Editorial**
+(serif display type, generous whitespace, lifestyle photography treatment;
+free tier), **Studio** (geometric/grotesque sans, bold color-blocking,
+confident large type; premium tier), **Market** (denser grid, utilitarian,
+optimized for scanning many SKUs; premium tier), and **Atelier** (monochrome,
+minimal, restrained single accent, apple.com discipline; free tier) — plus a
+fifth **"Start from blank"** option (free tier): every section starts hidden
+and the seller composes from scratch using the same bounded customizer, never
+a different or freer system. A genuine free-form page-builder (arbitrary
+blocks/columns/coded layouts) stays FR-1.6's Phase 2 coded-mode escape hatch,
+deliberately still deferred — "blank" is an empty starting state within the
+existing bounded token set, not that builder brought forward early.
+
+**THE ISOLATION RULE, made concrete:** template choice and all customization
+affect **presentation only** — a template package may touch section content/
+layout/order, colors, fonts, and logo on the home/product/category/collection
+pages, plus (on cart/checkout only) the same cosmetic color tokens those
+pages already inherited before this pass. It may never touch cart/checkout
+DOM structure or field set, form validation, which API endpoints get called,
+or order/payment/commission/verification/wallet logic. This is enforced three
+ways, not just documented:
+
+1. **Structural** — `CartContents`, `CheckoutForm`, order-status, wallet, and
+   verification screens are fixed system components living entirely outside
+   `apps/web/app/storefront/templates/`; no template file imports them, only
+   the shared chrome (header/footer/announcement bar) wraps around them.
+2. **Static, mechanical** — `scripts/check-template-isolation.js` scans every
+   file under the templates directory for a relative import resolving into
+   `cart/`, `checkout/`, `order-status/`, the dashboard's wallet/order-
+   verification/orders/P&L screens, or the API's `orders`/`billing`/`order-
+   verification` modules, and fails CI's typecheck job if one is found — a
+   backstop against a future template accidentally reaching outside its
+   boundary, not just a code-review convention.
+3. **Runtime-proven** — a dedicated template-invariance e2e suite
+   (`test/e2e/templates-isolation.e2e-spec.ts`) runs the full money path
+   (mixed self/supplier cart, discount, tax, mark-as-paid) once per built-in
+   template + "Start from blank", then asserts order totals, the ledger
+   commission entry, the wallet balance delta (`WalletService.getBalance()`
+   derives balance from `LedgerEntry` rows — a real per-order debit, correctly
+   identical across every template), the confirmed/verification outcome, and
+   the resulting P&L figures are byte-identical across all five runs.
+
+**Storefront branding ("Powered by eyosto"):** a small mark in the shared
+`SiteFooter` — never inside a template package, so no template can suppress
+it itself — mandatory on the Free plan (the platform's own free organic
+marketing) and removable only once a paid plan grants the capability.
+Deliberately two independent Settings Registry keys rather than one:
+`branding.powered_by_removable` (plan-scoped capability, off by default, on
+for every paid individual/team tier) and `branding.powered_by_hidden`
+(store-scoped seller preference). `BrandingService.getVisibility()` ANDs
+both and is the only place that ever decides visibility — a seller who hides
+the mark, then downgrades to Free, reverts to it showing automatically,
+proven by e2e test rather than left as an assumption.
+
 **Staging (SRS §3.7):** not pictured above to keep the diagram readable, but staging
 is a second instance of this entire box (`App`, `Worker`, `Redis`, `Postgres`,
 `MinIO` — a separate Docker Compose project with its own containers and volumes)

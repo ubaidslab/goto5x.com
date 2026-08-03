@@ -26,7 +26,7 @@ import {
 } from "../../src/settings-registry/settings.seed";
 import { seedStoreHealthSettings } from "../../src/store-health/store-health.seed";
 import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
-import { seedBuiltInThemes, seedModule4Settings } from "../../src/theme-engine/themes.seed";
+import { seedBuiltInThemes, seedModule4Settings, seedTemplatesBrandingSettings } from "../../src/theme-engine/themes.seed";
 import { seedSellerAgreementV1, seedTrustSafetySettings } from "../../src/trust-safety/trust-safety.seed";
 import { seedVerificationSettings } from "../../src/verification/verification.seed";
 
@@ -130,6 +130,9 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   // Free (individual, tier 0) plan (FR-7.1/7.3); that row must exist before
   // any test signs a seller up.
   await seedPlansData(prisma);
+  // Templates module (v0.31 design phase) - depends on the paid plan rows
+  // seedPlansData() just (re)created, so it must run after them.
+  await seedTemplatesBrandingSettings(prisma);
 }
 
 /**

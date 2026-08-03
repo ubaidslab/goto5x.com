@@ -6,6 +6,7 @@ import { AdminCompletionModule } from "./admin-completion/admin-completion.modul
 import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
+import { BrandingModule } from "./branding/branding.module";
 import { CareersModule } from "./careers/careers.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { ContentPagesModule } from "./content-pages/content-pages.module";
@@ -100,6 +101,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     InventoryModule,
     WhatsAppMessagingModule,
     PnLModule,
+    BrandingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

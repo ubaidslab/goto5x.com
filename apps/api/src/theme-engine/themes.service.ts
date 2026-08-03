@@ -33,7 +33,7 @@ export class ThemesService {
   async listSelectable(sellerId: string) {
     const themes = await this.prisma.theme.findMany({
       where: { isActive: true },
-      orderBy: { name: "asc" },
+      orderBy: { sortOrder: "asc" },
     });
     const entitlements = await this.tenantPrisma.run(sellerId, (tx) =>
       tx.templateEntitlement.findMany({ where: { revokedAt: null } }),

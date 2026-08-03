@@ -69,11 +69,11 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
     return verify.body.accessToken;
   }
 
-  it("GET /themes lists the three seeded built-in themes", async () => {
+  it("GET /themes lists the five seeded built-in templates", async () => {
     const { token } = await signupLoginAndCreateStore("themes-list@example.com", "themes-list-store");
     const res = await request(app.getHttpServer()).get("/themes").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.map((t: any) => t.name).sort()).toEqual(["Classic", "Minimal", "Modern"]);
+    expect(res.body.map((t: any) => t.name).sort()).toEqual(["Atelier", "Editorial", "Market", "Start from blank", "Studio"]);
   });
 
   it("a new store is auto-assigned a default (free) theme at creation", async () => {
@@ -82,13 +82,13 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
       .get(`/stores/${storeId}/theme-settings`)
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.theme.name).toBe("Classic");
+    expect(res.body.theme.name).toBe("Editorial");
     expect(res.body.theme.tier).toBe("free");
   });
 
   it("the customizer persists theme/settings changes, and they're read back exactly (FR-1.2/FR-1.3)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("themes-persist@example.com", "themes-persist-store");
-    // Module 18 (FR-24.5) - "Modern" is `premium` tier, now actually gated by
+    // Module 18 (FR-24.5) - "Studio" is `premium` tier, now actually gated by
     // theme.premium_tier_enabled (previously unenforced, per this file's own
     // "v1.0 default" tests below) - enable it globally so this test still
     // exercises what it's actually testing (settings persistence), not the
@@ -100,7 +100,7 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
       .send({ key: "theme.premium_tier_enabled", scopeType: "global", value: true });
 
     const themes = await request(app.getHttpServer()).get("/themes").set("Authorization", `Bearer ${token}`);
-    const modernTheme = themes.body.find((t: any) => t.name === "Modern");
+    const modernTheme = themes.body.find((t: any) => t.name === "Studio");
 
     const newSettings = {
       colors: { primary: "#ff0000", background: "#000000", text: "#ffffff" },
@@ -180,7 +180,7 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
     });
     const storeA = await superuser.store.create({ data: { sellerId: sellerA.id, name: "DB Store A", slug: "themes-db-store-a" } });
     await superuser.store.create({ data: { sellerId: sellerB.id, name: "DB Store B", slug: "themes-db-store-b" } });
-    const theme = await superuser.theme.findFirstOrThrow({ where: { name: "Classic" } });
+    const theme = await superuser.theme.findFirstOrThrow({ where: { name: "Editorial" } });
     await superuser.storeThemeSettings.create({ data: { storeId: storeA.id, themeId: theme.id } });
 
     const runtime = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });

@@ -4,6 +4,7 @@ import { JwtService } from "@nestjs/jwt";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { BrandingService } from "../branding/branding.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { resolveSeoFallback } from "./seo-fallback.util";
 
@@ -43,6 +44,7 @@ export class StorefrontService {
     private readonly settings: SettingsService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly branding: BrandingService,
   ) {}
 
   /**
@@ -165,6 +167,11 @@ export class StorefrontService {
       seoDescription: store.seoDescription,
       fallbackName: store.name,
     });
+    // Templates module (v0.31 design phase) - resolved server-side, never
+    // left to the client to decide, since this is a monetization/plan-tier
+    // gate (FR: mandatory on Free, removable only once a paid plan grants
+    // it), not a cosmetic preference.
+    const poweredByVisible = await this.branding.getVisibleForStorefront(store.id);
 
     return {
       id: store.id,
@@ -183,6 +190,7 @@ export class StorefrontService {
       // web app's fetch), so a revocation/expiry disappears the badge with
       // no propagation delay beyond normal page-render freshness.
       verified: store.verifiedStatus === "verified",
+      poweredByVisible,
       theme: store.themeSettings
         ? {
             name: store.themeSettings.theme.name,

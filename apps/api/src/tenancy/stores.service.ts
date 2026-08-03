@@ -53,7 +53,7 @@ export class StoresService {
       // transaction is already running under.
       const defaultTheme = await tx.theme.findFirst({
         where: { tier: "free", isActive: true },
-        orderBy: { name: "asc" },
+        orderBy: { sortOrder: "asc" },
       });
       if (!defaultTheme) {
         // Deliberately fails loudly rather than silently creating a store

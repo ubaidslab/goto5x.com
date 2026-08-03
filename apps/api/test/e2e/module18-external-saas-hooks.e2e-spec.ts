@@ -244,7 +244,7 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
 
       // Premium-tier gate is off by default (v1.0) - confirm the Free-Plan
       // seller genuinely cannot select an ordinary premium theme.
-      const premiumTheme = await superuser.theme.findFirstOrThrow({ where: { name: "Modern" } });
+      const premiumTheme = await superuser.theme.findFirstOrThrow({ where: { name: "Studio" } });
       const rejectedPremium = await request(app.getHttpServer())
         .patch(`/stores/${seller.storeId}/theme-settings`)
         .set("Authorization", `Bearer ${seller.token}`)

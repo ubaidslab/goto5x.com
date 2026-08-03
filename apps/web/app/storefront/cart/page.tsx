@@ -16,7 +16,7 @@ export default async function StorefrontCartPage() {
   const store = await fetchStorefrontStore(host);
   if (!store) notFound();
 
-  const theme = resolveThemeSettings(store.theme?.name ?? "Classic", store.theme?.settings as ThemeSettings | undefined);
+  const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
   const navigation = await fetchStorefrontNavigation(host);
 
   return (
@@ -27,7 +27,7 @@ export default async function StorefrontCartPage() {
         <h1>Your cart</h1>
         <CartContents hostname={host} currency={store.currency} theme={theme} />
       </main>
-      <SiteFooter navigation={navigation} theme={theme} />
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
     </>
   );

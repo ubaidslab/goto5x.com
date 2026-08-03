@@ -5,7 +5,7 @@ import { resolveThemeSettings, ThemeSettings } from "../../lib/theme-presets";
 import { ComingSoonPage, PasswordGate } from "./access-gates";
 import { resolveAccess } from "./access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "./chrome";
-import { AboutSection, FaqSection, FeaturedProductsSection, HeroSection, NewsletterSection } from "./sections";
+import { getTemplateSections } from "./templates/registry";
 
 // The Host header is different on every request (a different tenant per
 // hostname) - this page can never be statically rendered/cached at build
@@ -24,7 +24,8 @@ export default async function StorefrontHomePage() {
   const store = await fetchStorefrontStore(host);
   if (!store) notFound();
 
-  const theme = resolveThemeSettings(store.theme?.name ?? "Classic", store.theme?.settings as ThemeSettings | undefined);
+  const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
+  const sections = getTemplateSections(store.theme?.name ?? "Editorial");
 
   const access = resolveAccess(store);
   if (access.gated && access.reason === "coming_soon") return <ComingSoonPage store={store} theme={theme} />;
@@ -47,21 +48,21 @@ export default async function StorefrontHomePage() {
           .map((section) => {
             switch (section.id) {
               case "hero":
-                return <HeroSection key={section.id} store={store} theme={theme} />;
+                return <sections.Hero key={section.id} store={store} theme={theme} />;
               case "featured_products":
-                return <FeaturedProductsSection key={section.id} products={products ?? []} theme={theme} />;
+                return <sections.FeaturedProducts key={section.id} products={products ?? []} theme={theme} />;
               case "about":
-                return <AboutSection key={section.id} store={store} theme={theme} />;
+                return <sections.About key={section.id} store={store} theme={theme} />;
               case "newsletter":
-                return <NewsletterSection key={section.id} theme={theme} />;
+                return <sections.Newsletter key={section.id} theme={theme} />;
               case "faq":
-                return <FaqSection key={section.id} theme={theme} items={theme.faqItems} />;
+                return <sections.Faq key={section.id} theme={theme} items={theme.faqItems} />;
               default:
                 return null;
             }
           })}
       </main>
-      <SiteFooter navigation={navigation} theme={theme} />
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
     </>
   );

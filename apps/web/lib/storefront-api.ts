@@ -11,6 +11,8 @@ export interface PublicStore {
   logoUrl: string | null;
   /** Module 23 (SRS §5.35, FR-35.4) - the Verified Store Program's live badge flag. */
   verified: boolean;
+  /** Templates module (v0.31 design phase) - server-resolved; mandatory on Free, removable only on a paid plan (branding.powered_by_removable/hidden). */
+  poweredByVisible: boolean;
   theme: { name: string; settings: Record<string, unknown> } | null;
 }
 

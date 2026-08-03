@@ -31,6 +31,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Check template isolation boundary (Templates module, THE ISOLATION RULE)
+        run: node scripts/check-template-isolation.js
       - name: Generate Prisma client (needed for apps/api types)
         run: pnpm --filter @goto5x/api prisma:generate
       - name: Typecheck apps/api

@@ -18,7 +18,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
   const [store, order] = await Promise.all([fetchStorefrontStore(host), fetchStorefrontOrderStatus(params.token)]);
   if (!store || !order) notFound();
 
-  const theme = resolveThemeSettings(store.theme?.name ?? "Classic", store.theme?.settings as ThemeSettings | undefined);
+  const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
   const navigation = await fetchStorefrontNavigation(host);
   const address = order.shippingAddress;
 
@@ -122,7 +122,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
         <h2>Leave a review</h2>
         <ReviewForm token={params.token} items={order.items.map((i) => ({ productId: i.productId, productTitle: i.productTitle }))} />
       </main>
-      <SiteFooter navigation={navigation} theme={theme} />
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
     </>
   );

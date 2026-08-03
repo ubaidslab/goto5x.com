@@ -37,7 +37,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
   const store = await fetchStorefrontStore(host);
   if (!store) notFound();
 
-  const theme = resolveThemeSettings(store.theme?.name ?? "Classic", store.theme?.settings as ThemeSettings | undefined);
+  const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
 
   const access = resolveAccess(store);
   if (access.gated && access.reason === "coming_soon") return <ComingSoonPage store={store} theme={theme} />;
@@ -108,7 +108,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
           Rating: {product.averageRating} ({product.reviewCount} reviews)
         </p>
       </main>
-      <SiteFooter navigation={navigation} theme={theme} />
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
     </>
   );

@@ -20,7 +20,7 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
   const [store, order] = await Promise.all([fetchStorefrontStore(host), fetchStorefrontOrderStatus(params.token)]);
   if (!store || !order) notFound();
 
-  const theme = resolveThemeSettings(store.theme?.name ?? "Classic", store.theme?.settings as ThemeSettings | undefined);
+  const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
   const navigation = await fetchStorefrontNavigation(host);
 
   return (
@@ -93,7 +93,7 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
           .
         </p>
       </main>
-      <SiteFooter navigation={navigation} theme={theme} />
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
     </>
   );

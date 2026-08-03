@@ -1385,7 +1385,12 @@ audit log — one purpose-built role, not the start of a general framework.
   remains gated on founder-delivered branding assets not yet received (the
   same Module 18/Module 4 dependency `docs/build-plan.md` already flags; the
   three built-in Module 4 themes are structurally, not yet visually, at this
-  bar).
+  bar). **Superseded, v0.31 design phase:** the three placeholder themes are
+  replaced by **four genuinely distinct, hand-designed built-in templates —
+  Editorial, Studio, Market, Atelier** (docs/architecture.md's Template
+  Package Spec has each one's visual direction) — bare-functional-but-real
+  for this pass, full premium visual/motion polish (the apple.com/horizonx.so
+  bar above) still pending the founder's Figma-involved design phase.
 - FR-1.2: The visual customizer's **v1.0 scope** is: colors, fonts, logo/banner
   images, and section show/hide + reorder — no code required. **Animation/motion
   preset customization is Phase 3** (FR-1.7), not v1.0.
@@ -1424,6 +1429,33 @@ audit log — one purpose-built role, not the start of a general framework.
   founder's separate Template Store SaaS. Full detail — including the Template
   Install/License API — is specified in §5.24a, since it's a full integration hook,
   not a one-line FR.
+- FR-1.9 (new, v0.31 design phase): **"Start from blank" option.** A fifth
+  entry alongside the four built-in templates (FR-1.1) — every section
+  starts hidden and the seller composes their storefront from scratch using
+  the exact same bounded customizer (FR-1.2), never a different or freer
+  system. Positioned honestly: this is not the free-form page-builder FR-1.6
+  reserves for Phase 2 — it's the existing section catalog at its emptiest
+  starting state, still a genuine "more editable than Shopify" claim since
+  every seller (on any template or blank) can freely use every section type
+  from day one, unlike a theme-locked competitor.
+- FR-1.10 (new, v0.31 design phase): **Storefront branding mark.** A small
+  "Powered by eyosto" mark in the storefront's shared footer chrome —
+  **mandatory on the Free plan** (the platform's own free organic
+  marketing), **removable only once a paid plan grants the capability**.
+  Resolved server-side (never left to the client), via two independent
+  Settings Registry keys so a downgrade to Free always reverts to showing
+  it regardless of the seller's stored preference — see docs/architecture.md's
+  Template Package Spec section for the exact mechanism.
+- **THE ISOLATION RULE (new, v0.31 design phase, binding on FR-1.1/1.2/1.9
+  onward):** template selection and all customization affect presentation
+  only. Cart, checkout, orders, payments, verification, wallet, and every
+  functional button/action must behave and compute identically no matter
+  which template is active or how heavily a store is customized — editing
+  design can never touch functional logic. Enforced three ways (structural
+  component boundary, a static CI import-check, and a template-invariance
+  e2e proving byte-identical order totals/commission/wallet-delta/P&L across
+  every template) — full detail in docs/architecture.md's Template Package
+  Spec section, tested in §14.1's checklist below.
 
 ### 5.2 Seller Admin Dashboard
 - FR-2.1: Product/catalog CRUD, variants, inventory tracking.
@@ -4135,6 +4167,29 @@ next module starts. Each item is written to be testable, not aspirational.
 - [ ] Premium-templates showcase links out to the Template Store correctly, and
       its absence/unreachability never blocks selecting a built-in free template
       (FR-24.1, FR-24.2)
+- [x] **Four built-in templates + "Start from blank" (v0.31 design phase,
+      FR-1.1/FR-1.9):** Editorial/Studio/Market/Atelier are genuinely
+      distinct hand-designed section-component sets (typography, spacing,
+      color), selected by theme name via a shared registry so the
+      customizer's live preview and the real storefront resolve identically
+      by construction; "Start from blank" seeds every section hidden.
+- [x] **Storefront branding mark (FR-1.10):** mandatory (shown, unremovable)
+      on the Free plan; a paid plan can hide it; downgrading to Free reverts
+      it to shown even though the stored preference is untouched — proven by
+      e2e (`branding.e2e-spec.ts`), including cross-tenant isolation on the
+      preference itself.
+- [x] **THE ISOLATION RULE, proven three ways:** (1) structural — cart/
+      checkout/order-status/wallet/verification components live entirely
+      outside the templates directory; (2) static — `scripts/check-template-
+      isolation.js` fails CI if any template file imports that functional
+      code (verified to actually catch a deliberately-introduced violation
+      before being removed); (3) runtime — a template-invariance e2e
+      (`templates-isolation.e2e-spec.ts`) runs the full money path (mixed
+      cart, discount, tax, mark-as-paid) once per template + blank and
+      asserts order totals, ledger commission, wallet balance delta (a real
+      per-order debit — `WalletService.getBalance()` derives balance from
+      `LedgerEntry` rows), P&L figures, and the confirmed outcome are
+      byte-identical across all five runs.
 
 ### 14.2 Seller Admin Dashboard
 - [ ] Product CRUD, variants, and inventory tracking work correctly (FR-2.1)

@@ -1,10 +1,16 @@
 /**
- * FR-1.1/FR-1.2 (v1.0) - three structurally distinct built-in templates
- * (different default section ordering/color scheme), not three fully
- * bespoke hand-designed visual templates. True premium-bar visual design
- * is gated on branding assets not yet delivered (see
- * apps/api/src/theme-engine/themes.seed.ts's doc comment) - disclosed
- * transparently, not silently substituted for the real thing.
+ * FR-1.1/FR-1.2 - four genuinely distinct, hand-designed built-in
+ * templates (Editorial/Studio/Market/Atelier - see docs/architecture.md's
+ * Template Package Spec) plus a "Start from blank" utility option (empty
+ * section list; the seller composes from scratch using the same bounded
+ * customizer, never a different/freer system - FR-1.6's coded-mode escape
+ * hatch is the actual free-form builder, deliberately still deferred).
+ *
+ * Colors here are each template's default palette; the real visual
+ * distinctiveness (typography, spacing, imagery treatment) lives in each
+ * template's own section-component set (apps/web/app/storefront/templates/)
+ * - see that directory's registry.ts for the name -> component-set mapping
+ * this file's presets are paired with.
  *
  * A bounded token set only (SRS Risk Register #10): colors + a fixed list
  * of section ids or a customizer would become an open-ended visual builder.
@@ -61,8 +67,10 @@ export interface ResolvedThemeSettings {
 }
 
 const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSection[] }> = {
-  Classic: {
-    colors: { primary: "#1d4ed8", background: "#ffffff", text: "#111827" },
+  // Editorial - serif display type, generous whitespace, lifestyle
+  // photography treatment. Default free template (sortOrder 0).
+  Editorial: {
+    colors: { primary: "#9a3412", background: "#fdfaf6", text: "#1c1917" },
     sections: [
       { id: "hero", visible: true },
       { id: "featured_products", visible: true },
@@ -70,7 +78,9 @@ const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSectio
       { id: "newsletter", visible: true },
     ],
   },
-  Modern: {
+  // Studio - geometric/grotesque sans, bold color-blocking, confident
+  // large type. Premium template.
+  Studio: {
     colors: { primary: "#db2777", background: "#0f172a", text: "#f8fafc" },
     sections: [
       { id: "featured_products", visible: true },
@@ -79,7 +89,20 @@ const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSectio
       { id: "about", visible: false },
     ],
   },
-  Minimal: {
+  // Market - denser grid, utilitarian, optimized for scanning many SKUs.
+  // Premium template.
+  Market: {
+    colors: { primary: "#15803d", background: "#f7f7f5", text: "#18181b" },
+    sections: [
+      { id: "featured_products", visible: true },
+      { id: "hero", visible: true },
+      { id: "about", visible: false },
+      { id: "newsletter", visible: false },
+    ],
+  },
+  // Atelier - monochrome, minimal, restrained single accent (apple.com
+  // discipline). Free template.
+  Atelier: {
     colors: { primary: "#111827", background: "#fafafa", text: "#111827" },
     sections: [
       { id: "hero", visible: true },
@@ -88,12 +111,19 @@ const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSectio
       { id: "newsletter", visible: false },
     ],
   },
+  // Start from blank - every section starts hidden; the seller composes
+  // from scratch using the same bounded customizer. Deliberately empty,
+  // not a smaller version of another template's layout.
+  "Start from blank": {
+    colors: { primary: "#111827", background: "#ffffff", text: "#111827" },
+    sections: [],
+  },
 };
 
 export const ALL_SECTION_IDS: SectionId[] = ["hero", "featured_products", "about", "newsletter", "faq"];
 
 export function resolveThemeSettings(themeName: string, overrides: ThemeSettings | null | undefined): ResolvedThemeSettings {
-  const preset = THEME_PRESETS[themeName] ?? THEME_PRESETS.Classic;
+  const preset = THEME_PRESETS[themeName] ?? THEME_PRESETS.Editorial;
   return {
     colors: { ...preset.colors, ...(overrides?.colors ?? {}) },
     sections: overrides?.sections && overrides.sections.length > 0 ? overrides.sections : preset.sections,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { PublicProduct, PublicStore } from "@/lib/storefront-api";
 import { FaqItem, resolveThemeSettings, SectionId, ThemeSettings } from "@/lib/theme-presets";
-import { AboutSection, FaqSection, FeaturedProductsSection, HeroSection, NewsletterSection } from "@/app/storefront/sections";
+import { getTemplateSections } from "@/app/storefront/templates/registry";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -50,6 +50,30 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [showcaseUrl, setShowcaseUrl] = useState<string | null>(null);
+  const [branding, setBranding] = useState<{ removable: boolean; hidden: boolean; visible: boolean } | null>(null);
+  const [savingBranding, setSavingBranding] = useState(false);
+
+  function loadBranding() {
+    api
+      .get<{ removable: boolean; hidden: boolean; visible: boolean }>(`/stores/${params.storeId}/branding`)
+      .then(setBranding)
+      .catch(() => setBranding(null));
+  }
+
+  async function toggleBranding(hidden: boolean) {
+    setError(null);
+    setSavingBranding(true);
+    try {
+      const updated = await api.patch<{ removable: boolean; hidden: boolean; visible: boolean }>(`/stores/${params.storeId}/branding`, { hidden });
+      setBranding(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't update your storefront branding.");
+    } finally {
+      setSavingBranding(false);
+    }
+  }
+
+  useEffect(loadBranding, [params.storeId]);
 
   useEffect(() => {
     api.get<Theme[]>("/themes").then(setThemes).catch(() => {});
@@ -97,8 +121,9 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
       .catch(() => {});
   }, [params.storeId]);
 
-  const themeName = themes.find((t) => t.id === themeId)?.name ?? "Classic";
+  const themeName = themes.find((t) => t.id === themeId)?.name ?? "Editorial";
   const resolved = resolveThemeSettings(themeName, settings);
+  const sections = getTemplateSections(themeName);
 
   function moveSection(index: number, direction: -1 | 1) {
     const current = resolved.sections.slice();
@@ -171,6 +196,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     seoDescription: null,
     logoUrl: null,
     verified: false,
+    poweredByVisible: branding?.visible ?? true,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
   };
 
@@ -214,6 +240,30 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
               </CardBody>
             </Card>
           )}
+
+          <Card>
+            <CardHeader title="Storefront branding" description="The 'Powered by eyosto' mark shown on your storefront." />
+            <CardBody className="space-y-3">
+              {branding && (
+                <>
+                  <label className="flex items-center gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={branding.hidden}
+                      disabled={!branding.removable || savingBranding}
+                      onChange={(e) => toggleBranding(e.target.checked)}
+                    />
+                    Hide the &quot;Powered by eyosto&quot; mark
+                  </label>
+                  {!branding.removable && (
+                    <p className="text-xs text-ink-muted">
+                      Mandatory on the Free plan. Upgrade to a paid plan to remove it.
+                    </p>
+                  )}
+                </>
+              )}
+            </CardBody>
+          </Card>
 
           <Card>
             <CardHeader title="Colors" />
@@ -329,15 +379,15 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
             .map((section) => {
               switch (section.id) {
                 case "hero":
-                  return <HeroSection key={section.id} store={previewStore} theme={resolved} />;
+                  return <sections.Hero key={section.id} store={previewStore} theme={resolved} />;
                 case "featured_products":
-                  return <FeaturedProductsSection key={section.id} products={products} theme={resolved} />;
+                  return <sections.FeaturedProducts key={section.id} products={products} theme={resolved} />;
                 case "about":
-                  return <AboutSection key={section.id} store={previewStore} theme={resolved} />;
+                  return <sections.About key={section.id} store={previewStore} theme={resolved} />;
                 case "newsletter":
-                  return <NewsletterSection key={section.id} theme={resolved} />;
+                  return <sections.Newsletter key={section.id} theme={resolved} />;
                 case "faq":
-                  return <FaqSection key={section.id} theme={resolved} items={resolved.faqItems} />;
+                  return <sections.Faq key={section.id} theme={resolved} items={resolved.faqItems} />;
                 default:
                   return null;
               }

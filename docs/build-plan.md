@@ -3195,5 +3195,26 @@ seller-to-seller messaging) are an explicit roadmap note, not v1.0 scope.
 
 ---
 
+## Design phase — Built-in Store Templates (built, v0.31)
+
+First deliverable of the design phase, which begins now that Modules 1-31
+(feature-complete v1.0) are all built and CI-green. `docs/SRS.md` §5.1
+FR-1.1/FR-1.9/FR-1.10; docs/architecture.md's Template Package Spec. Four
+hand-designed built-in templates (Editorial/Studio/Market/Atelier)
+replace the original three structurally-only-distinct placeholders, a
+"Start from blank" option, and a mandatory-on-Free/removable-on-paid
+storefront branding mark. THE ISOLATION RULE (template/customization
+affects presentation only, never functional logic) is enforced
+structurally, by a static CI check, and by a template-invariance e2e
+proving byte-identical order totals/commission/wallet-delta/P&L across
+every template. Bare-functional-but-real visual design for this pass —
+premium visual/motion polish is the founder's own later Figma-involved
+pass, per the phased design-phase order already agreed (design system →
+marketing → auth/onboarding → dashboard core → dashboard rest → buyer
+surfaces → admin → final pass); this templates work is part of that
+design-system foundation.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

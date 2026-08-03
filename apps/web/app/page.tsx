@@ -242,7 +242,7 @@ export default function Home() {
             description="Every built-in theme is its own real layout. Pick one, customize your tokens, publish - no code required."
           />
           <Reveal delay={0.15} className="mt-12 flex flex-wrap justify-center gap-6">
-            {["Classic", "Studio", "Market"].map((theme) => (
+            {["Editorial", "Studio", "Market", "Atelier"].map((theme) => (
               <div key={theme} className="w-56 rounded-xl border border-border bg-surface p-6 shadow-xs">
                 <div className="h-32 rounded-lg bg-canvas" />
                 <p className="mt-4 text-sm font-medium text-ink">{theme}</p>
