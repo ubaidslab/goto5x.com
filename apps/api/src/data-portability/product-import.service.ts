@@ -4,6 +4,7 @@ import { ProductVariantsService } from "../catalog/product-variants.service";
 import { ProductsService } from "../catalog/products.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { parseAdSpendImportCsv } from "./ad-spend-import.util";
 import { csvHeader, parseCsv } from "./csv.util";
 import { parseProductImportCsv, RowError } from "./product-import.util";
 import { parseStockImportCsv } from "./stock-import.util";
@@ -34,6 +35,9 @@ export class ProductImportService {
 
     if (job.type === "stock_import") {
       return this.processStockImport(job, createdByUserId);
+    }
+    if (job.type === "ad_spend_import") {
+      return this.processAdSpendImport(job);
     }
 
     const rowErrors: RowError[] = [];
@@ -167,6 +171,66 @@ export class ProductImportService {
       });
     } catch (err) {
       this.logger.error(`Stock import job ${job.id} failed: ${(err as Error).message}`);
+      await this.prismaAdmin.importJob.update({
+        where: { id: job.id },
+        data: {
+          status: "failed",
+          unmappedFields,
+          errorLog: [...rowErrors, { row: 0, message: (err as Error).message }] as unknown as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * Module 31 (SRS §5.42/FR-42.1) - creates one AdSpendEntry per valid row,
+   * `source: "csv_import"` (FR-42.6's documented extension seam). A
+   * malformed row is reported and skipped, never fails the whole import.
+   */
+  private async processAdSpendImport(job: { id: string; storeId: string; fileUrl: string }): Promise<void> {
+    const rowErrors: RowError[] = [];
+    let unmappedFields: string[] = [];
+
+    try {
+      const store = await this.prismaAdmin.store.findUniqueOrThrow({
+        where: { id: job.storeId },
+        select: { sellerId: true },
+      });
+
+      const csvText = await (await fetch(job.fileUrl)).text();
+      const rows = parseCsv(csvText);
+      const header = csvHeader(csvText);
+      const parsed = parseAdSpendImportCsv(rows, header);
+      unmappedFields = parsed.unmappedFields;
+      rowErrors.push(...parsed.rowErrors);
+
+      await this.tenantPrisma.run(store.sellerId, async (tx) => {
+        for (const entry of parsed.entries) {
+          await tx.adSpendEntry.create({
+            data: {
+              storeId: job.storeId,
+              periodStart: new Date(entry.periodStart),
+              periodEnd: new Date(entry.periodEnd),
+              amount: entry.amount,
+              source: "csv_import",
+              note: entry.note ?? null,
+            },
+          });
+        }
+      });
+
+      await this.prismaAdmin.importJob.update({
+        where: { id: job.id },
+        data: {
+          status: "completed",
+          unmappedFields,
+          errorLog: rowErrors as unknown as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Ad-spend import job ${job.id} failed: ${(err as Error).message}`);
       await this.prismaAdmin.importJob.update({
         where: { id: job.id },
         data: {

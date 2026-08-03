@@ -344,7 +344,7 @@ of any technical gap.
 
 **v0.30 (new sections; §5.38/§14.38's tracking-timeline extension built as
 part of Module 27, §5.40/§14.40 built as Module 29, §5.41/§14.41 built as
-Module 30, §5.42/§14.42 build TBD — see build-plan.md for slotting) —
+Module 30, §5.42/§14.42 built as Module 31) —
 extends §5.38/§14.38 Orders Command
 Center with a public/seller tracking timeline, and adds §5.40/§14.40
 Delivery-Time Badges, §5.41/§14.41 WhatsApp Semi-Automation, and
@@ -3529,10 +3529,20 @@ v1.0, no paid third-party integration required)
   `revenue (Order.totalAmount − Order.taxAmount, the same tax-exclusion
   convention §5.6c's commission accrual already uses) − commission_accrued
   (from the existing `LedgerEntry`, never recomputed a second way) −
-  Order.discountAmount − Σ(variant base cost × quantity) − courier/handling
-  costs`. An order with any line item missing a base cost shows its profit
-  figure as incomplete/flagged, never a number that silently understates
-  the true cost.
+  Σ(variant base cost × quantity) − courier/handling costs`. **Build-time
+  correction:** an earlier draft of this formula also subtracted
+  `Order.discountAmount` a second time here. `computeOrderTotals()`
+  (§5.6/order-totals.util.ts) already nets the discount out of
+  `totalAmount` before shipping/tax are added
+  (`taxableAmount = subtotal − discountAmount`), so `totalAmount −
+  taxAmount` is already post-discount revenue — subtracting
+  `discountAmount` again would have silently understated every discounted
+  order's revenue and profit by the discount amount a second time. Fixed
+  before ship; locked in by an explicit regression test
+  (`pnl.util.spec.ts`, "never double-counts the discount already netted
+  into totalAmount"). An order with any line item missing a base cost
+  shows its profit figure as incomplete/flagged, never a number that
+  silently understates the true cost.
 - FR-42.3: **True net profit, per period.** The same per-order figures
   summed across a seller-chosen date range, minus every ad-spend entry
   whose period overlaps that range — one clear revenue-vs-net-profit
@@ -5562,23 +5572,26 @@ going forward, per FR-6.28.
       send manually, proven the same way §14.37 proved the WhatsApp OTP
       channel never makes an outbound network call itself (FR-41.1).
 
-### 14.42 Automated Profit & Loss Engine (new, v0.30, not yet built)
-- [ ] Per-order net profit is arithmetically correct across a mixed cart
+### 14.42 Automated Profit & Loss Engine (built, Module 31, v0.30)
+- [x] Per-order net profit is arithmetically correct across a mixed cart
       (self-fulfilled + supplier-fulfilled items), a partial discount, and
       a non-zero tax rate — proven by an e2e test with a hand-computed
       expected profit figure compared against the engine's output
-      (FR-42.2).
-- [ ] Per-period net profit correctly sums only orders actually placed
+      (FR-42.2), including a dedicated regression test proving the
+      discount is never subtracted twice (see FR-42.2's build-time
+      correction note).
+- [x] Per-period net profit correctly sums only orders actually placed
       within the period and only ad-spend entries whose period overlaps
       it — proven by an e2e test with orders/ad-spend entries straddling a
       period boundary (FR-42.3).
-- [ ] A `pending`/unconfirmed order contributes exactly zero to any
+- [x] A `pending`/unconfirmed order contributes exactly zero to any
       revenue, commission, or profit figure (FR-42.4) — same before/after
-      assertion style as §14.37/§14.38.
-- [ ] A variant with no base cost entered causes its order's profit figure
+      assertion style as §14.37/§14.38, proven both for the single-order
+      lookup (400) and period aggregation (zeros).
+- [x] A variant with no base cost entered causes its order's profit figure
       to render as visibly incomplete/flagged, never a number that quietly
       excludes that cost as if it were zero (FR-42.1/42.2).
-- [ ] RLS denies cross-tenant access to another seller's cost/profit data
+- [x] RLS denies cross-tenant access to another seller's cost/profit data
       at the database level, independent of the app layer (FR-42.5) — same
       proof style as every other tenant-isolation test in this SRS.
 

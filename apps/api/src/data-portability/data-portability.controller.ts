@@ -57,6 +57,21 @@ export class DataPortabilityController {
     });
   }
 
+  /** Module 31 (SRS §5.42/FR-42.1) - ad-spend-only import (PeriodStart/PeriodEnd/Amount columns), same job/error-report machinery as above. */
+  @Post("ad-spend-import-jobs")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async createAdSpendImportJob(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file").');
+    return this.importJobs.createAdSpendImportJob(sellerId, storeId, {
+      buffer: file.buffer,
+      originalname: file.originalname,
+    });
+  }
+
   @Get("import-jobs")
   list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.importJobs.list(sellerId, storeId);

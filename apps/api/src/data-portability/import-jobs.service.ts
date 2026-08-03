@@ -74,6 +74,24 @@ export class ImportJobsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** Module 31 (SRS §5.42/FR-42.1) - reuses this exact job/queue/error-report machinery in a "PeriodStart/PeriodEnd/Amount" mode, creating AdSpendEntry rows. */
+  async createAdSpendImportJob(sellerId: string, storeId: string, file: { buffer: Buffer; originalname: string }) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+
+      const key = `stores/${storeId}/imports/ad-spend-${Date.now()}-${file.originalname}`;
+      const fileUrl = await this.objectStorage.putObject(key, file.buffer, "text/csv");
+
+      const job = await tx.importJob.create({
+        data: { storeId, type: "ad_spend_import", status: "pending", fileUrl },
+      });
+
+      await this.queue!.add("process", { importJobId: job.id });
+      return job;
+    });
+  }
+
   async list(sellerId: string, storeId: string, type?: ImportJobType) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });

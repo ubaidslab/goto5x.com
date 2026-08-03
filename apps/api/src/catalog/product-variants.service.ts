@@ -26,6 +26,7 @@ export class ProductVariantsService {
           compareAtPrice: dto.compareAtPrice,
           stockQuantity: dto.stockQuantity ?? 0,
           attributes: (dto.attributes ?? {}) as Prisma.InputJsonValue,
+          baseCost: dto.baseCost,
         },
       });
     });

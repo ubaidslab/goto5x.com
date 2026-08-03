@@ -10,6 +10,7 @@ import { CheckoutService } from "./checkout.service";
 import { AddOrderNoteDto } from "./dto/add-order-note.dto";
 import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
 import { EditOrderDto } from "./dto/edit-order.dto";
+import { UpdateOrderCostsDto } from "./dto/update-order-costs.dto";
 import { UpdateOrderTagsDto } from "./dto/update-order-tags.dto";
 import { UploadTrackingDto } from "./dto/upload-tracking.dto";
 import { OrderBucket, OrdersOverviewService } from "./orders-overview.service";
@@ -87,6 +88,16 @@ export class OrdersController {
     @Body() dto: UpdateOrderTagsDto,
   ) {
     return this.orders.updateTags(sellerId, storeId, orderId, dto.tags);
+  }
+
+  @Patch(":orderId/costs")
+  updateCosts(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Param("orderId") orderId: string,
+    @Body() dto: UpdateOrderCostsDto,
+  ) {
+    return this.orders.updateCosts(sellerId, storeId, orderId, dto);
   }
 
   @Patch(":orderId")

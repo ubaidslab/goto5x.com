@@ -67,12 +67,23 @@ interface Order {
   discountAmount: string;
   totalAmount: string;
   currency: string;
+  courierCost: string | null;
+  handlingCost: string | null;
   tags: string[];
   placedAt: string;
   items: OrderItem[];
   notes: OrderNote[];
   timelineEvents: OrderTimelineEvent[];
   timeline: OrderTimelineStage[];
+}
+interface OrderProfit {
+  revenue: number;
+  commission: number;
+  cogs: number;
+  courierCost: number;
+  handlingCost: number;
+  netProfit: number;
+  incomplete: boolean;
 }
 interface ProductLookup {
   id: string;
@@ -101,6 +112,10 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   const [addingNote, setAddingNote] = useState(false);
   const [trackingByItem, setTrackingByItem] = useState<Record<string, { trackingId: string; carrier: string }>>({});
   const [sendingWhatsapp, setSendingWhatsapp] = useState<"confirmation" | "shipping" | null>(null);
+  const [courierCostInput, setCourierCostInput] = useState("");
+  const [handlingCostInput, setHandlingCostInput] = useState("");
+  const [savingCosts, setSavingCosts] = useState(false);
+  const [profit, setProfit] = useState<OrderProfit | null>(null);
 
   function load() {
     api
@@ -108,11 +123,23 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
       .then((o) => {
         setOrder(o);
         setTagsInput(o.tags.join(", "));
+        setCourierCostInput(o.courierCost ?? "");
+        setHandlingCostInput(o.handlingCost ?? "");
       })
       .catch(() => setOrder(null));
   }
 
+  function loadProfit() {
+    api
+      .get<OrderProfit>(`/stores/${params.storeId}/pnl/orders/${params.orderId}`)
+      .then(setProfit)
+      .catch(() => setProfit(null));
+  }
+
   useEffect(load, [params.storeId, params.orderId]);
+  useEffect(() => {
+    if (order && ["confirmed", "shipped", "delivered", "completed"].includes(order.status)) loadProfit();
+  }, [params.storeId, params.orderId, order?.status]);
   useEffect(() => {
     api
       .get<ProductLookup[]>(`/stores/${params.storeId}/products`)
@@ -201,6 +228,23 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
       setError(err instanceof ApiError ? err.message : "Couldn't generate that WhatsApp message.");
     } finally {
       setSendingWhatsapp(null);
+    }
+  }
+
+  async function saveCosts() {
+    setError(null);
+    setSavingCosts(true);
+    try {
+      await api.patch(`/stores/${params.storeId}/orders/${params.orderId}/costs`, {
+        courierCost: courierCostInput === "" ? undefined : Number(courierCostInput),
+        handlingCost: handlingCostInput === "" ? undefined : Number(handlingCostInput),
+      });
+      load();
+      loadProfit();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save those costs.");
+    } finally {
+      setSavingCosts(false);
     }
   }
 
@@ -359,6 +403,55 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
             </div>
           </CardBody>
         </Card>
+
+        {["confirmed", "shipped", "delivered", "completed"].includes(order.status) && (
+          <Card>
+            <CardHeader title="Costs & profit" description="What Shopify doesn't show you - true net profit for this order." />
+            <CardBody>
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Courier cost (Rs)">
+                  <Input type="number" min={0} value={courierCostInput} onChange={(e) => setCourierCostInput(e.target.value)} />
+                </Field>
+                <Field label="Handling cost (Rs)">
+                  <Input type="number" min={0} value={handlingCostInput} onChange={(e) => setHandlingCostInput(e.target.value)} />
+                </Field>
+                <Button variant="secondary" loading={savingCosts} onClick={saveCosts}>
+                  Save costs
+                </Button>
+              </div>
+
+              {profit && (
+                <div className="mt-4 space-y-1.5 border-t border-border pt-4 text-sm">
+                  {profit.incomplete && (
+                    <p className="mb-2 text-xs text-warning">
+                      A variant on this order has no base cost entered - cost of goods is understated below.
+                    </p>
+                  )}
+                  <div className="flex justify-between text-ink-muted">
+                    <span>Revenue</span>
+                    <span className="text-ink">Rs {profit.revenue.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-ink-muted">
+                    <span>Commission</span>
+                    <span className="text-ink">- Rs {profit.commission.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-ink-muted">
+                    <span>Cost of goods</span>
+                    <span className="text-ink">- Rs {profit.cogs.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-ink-muted">
+                    <span>Courier + handling</span>
+                    <span className="text-ink">- Rs {(profit.courierCost + profit.handlingCost).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border pt-1.5 font-medium text-ink">
+                    <span>Net profit</span>
+                    <span>Rs {profit.netProfit.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        )}
 
         <Card>
           <CardHeader title="Shipping address" />

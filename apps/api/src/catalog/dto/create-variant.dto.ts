@@ -22,4 +22,10 @@ export class CreateVariantDto {
   @IsOptional()
   @IsObject()
   attributes?: Record<string, unknown>;
+
+  /** Module 31 (SRS §5.42/FR-42.1) - optional COGS input for the P&L engine. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseCost?: number;
 }

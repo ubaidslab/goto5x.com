@@ -7,6 +7,51 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 31 (Automated Profit & Loss Engine)
+
+SRS §5.42, FR-42.1-42.7. Free v1.0 financial engine showing TRUE NET
+PROFIT (not just revenue, unlike Shopify) - per order and per period,
+computed from data the platform already holds (revenue, commission,
+shipping, tax) minus seller-entered costs (product base cost, per-order
+courier/handling, period ad spend). Financial Truth Invariant (§3.12)
+applies unchanged: only `confirmed`+ orders ever count.
+
+### Fixed
+- **Build-time correction to FR-42.2's own formula.** The original spec
+  text said to subtract `Order.discountAmount` from `totalAmount -
+  taxAmount` when computing revenue. `computeOrderTotals()` already nets
+  the discount out of `totalAmount` before shipping/tax are added
+  (`taxableAmount = subtotal - discountAmount`), so subtracting it again
+  would have silently understated every discounted order's revenue and
+  profit by the discount amount a second time. Caught before ship,
+  corrected in both the SRS text and the implementation, and locked in by
+  an explicit regression test (`pnl.util.spec.ts`).
+
+### Added
+- Schema: `ProductVariant.baseCost` (optional COGS input - null, never 0,
+  when unset, so an un-costed variant is always visibly flagged rather
+  than silently treated as free), `Order.courierCost`/`handlingCost`
+  (optional per-order costs), and a new tenant-isolated `AdSpendEntry`
+  model (manual or CSV-imported, period-scoped).
+- `PnLService`: `getOrderProfit()` (per-order true net profit, 400s for
+  any order not yet `confirmed`+), `getPeriodProfit()` (sums confirmed+
+  orders placed in a date range minus ad-spend entries whose period
+  overlaps it - overlap, not containment, so a split-period entry counts
+  in full rather than being pro-rated), and ad-spend CRUD.
+- Ad-spend CSV import reuses Module 15/28's exact `ImportJob`/queue/
+  error-report machinery via a third `ImportJobType` branch
+  (`ad_spend_import`) - no new import engine.
+- `AdSpendEntry.source` (`manual`/`csv_import`) is a documented extension
+  point for a future Facebook/TikTok ad-spend API source value - that
+  automated integration stays a roadmap note, not built now.
+- New `/stores/[storeId]/pnl` dashboard screen: period selector, revenue
+  vs. net profit shown side by side (the headline differentiator), full
+  cost breakdown, an "incomplete" warning when any order in the period
+  has an un-costed variant, and the ad-spend list/entry form/CSV upload.
+  Order-detail page gained a "Costs & profit" section (courier/handling
+  cost inputs plus that order's own profit breakdown, shown once
+  confirmed+).
+
 ## Module 30 (WhatsApp Semi-Automation)
 
 SRS §5.41, FR-41.1-41.4. Three seller-clicked WhatsApp deep-link generators

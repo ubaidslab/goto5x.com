@@ -206,6 +206,18 @@ export class OrdersService {
     });
   }
 
+  /** Module 31 (SRS §5.42/FR-42.1) - optional per-order courier/handling cost inputs for the P&L engine; either field left undefined is untouched, not reset to null. */
+  async updateCosts(sellerId: string, storeId: string, orderId: string, dto: { courierCost?: number; handlingCost?: number }) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order || order.storeId !== storeId) throw new NotFoundException("Order not found.");
+      return tx.order.update({
+        where: { id: orderId },
+        data: { courierCost: dto.courierCost, handlingCost: dto.handlingCost },
+      });
+    });
+  }
+
   /**
    * FR-17.5 - "Basic order editing": existing line-item quantities and the
    * shipping address only, and only while `pending`/`confirmed`. Stock is
