@@ -430,6 +430,64 @@ Partner Programs (Ambassador/Teams) infrastructure — richer community
 features (forums, seller-to-seller messaging) are an explicit roadmap
 note, not a v1.0 gap.
 
+**v0.32 (new sections; build TBD — see build-plan.md for slotting) — adds
+§5.49/§14.49 Gift Cards, §5.50/§14.50 Customer Segments, §5.51/§14.51
+Email Campaigns, §5.52/§14.52 Staff Accounts (plan-tier), §5.53/§14.53
+Admin Email Section, and §5.54/§14.54 Advanced Granular Admin Control
+(founder-requested "Pre-Launch Enhancements" batch — built BEFORE the
+design phase resumes so these new features don't force a UI redesign
+later). Gift Cards (§5.49) mirrors §5.7's `DiscountCode` store-scoped
+unique-code pattern plus a wallet-ledger-style derived balance (redemptions
+are an append-only ledger, balance is always re-derivable, never a bare
+mutable column) and is explicitly subject to §3.12's Financial Truth
+Invariant — a gift card's balance activates only once its purchase order
+is confirmed/paid, exactly like every other revenue-bearing event in this
+SRS. Customer Segments (§5.50) adds no new source of truth — segments are
+saved filter criteria evaluated live against `Customer.ordersCount`/
+`totalSpent`/`lastOrderAt` (already tracked since FR-13.x), with location
+derived from the customer's most recent order's shipping address (no new
+column) since buyer accounts don't exist in v1.0. Email Campaigns (§5.51)
+sends to one segment via the seller's own connected SMTP — reusing
+Module 26's exact `SellerVerificationEmail` credential record and AES-
+256-GCM encryption utility rather than a second credential store — gated
+by a new plan-tier numeric Settings Registry quota (same resolution
+pattern as `catalog.product_limit`), and ships this codebase's **first**
+unsubscribe mechanism (none existed before this amendment). **Staff
+Accounts (§5.52) is a deliberate, founder-directed reversal of a
+previously repeated deferral, not a silent contradiction:** SRS v0.6
+(§ near line 494), §4 User Roles, and §10's Phase 3 bullet each
+previously stated seller staff sub-accounts remain "Phase 3+, reaffirmed"
+— this amendment pulls seller staff accounts forward into v1.0 as a
+plan-tier differentiator at the founder's explicit request; all three
+prior deferral statements are marked superseded in place (not deleted)
+so the SRS's own decision history stays intact. The "general admin
+sub-role/permissions system" half of that same original deferral remains
+deferred — §5.53/§5.54 extend admin capability through existing/new
+admin-scoped mechanisms, not a new generic permissions framework. Admin
+Email Section (§5.53) is UZEYN's own unified inbox — admin-global (no
+RLS, same category as `AdminAuditLog`/`ImpersonationSession`), SMTP+IMAP
+credentials encrypted at rest under their own independent key (same
+"rotates independently" convention `SMTP_CREDENTIAL_ENCRYPTION_KEY`
+already established), no AI in v1.0 (roadmap note only, §5.22) — the
+founder replies personally. Advanced Granular Admin Control (§5.54) adds
+four narrow, audit-logged admin actions (block a seller's new-listing
+ability, instant single-product takedown via a new `admin_removed`
+moderation state, supplier-listed-product block/approve through the
+existing moderation queue, and per-seller feature-flag override) — closing
+the exact gap `seller-lifecycle.service.ts`'s own doc comment already
+disclosed, additive to (not a replacement for) the existing
+`SellerLifecycleStatus` ladder (§5.29). **Roadmap-only notes added to
+§5.22** (not built, documented so v1.0's schema isn't redesigned later):
+sell-on-social/marketplaces, sell-in-AI-chats, B2B catalogs, POS/
+in-person selling, multi-currency selling, storefront translation,
+headless commerce, AI-assisted store design, and AI-assisted email
+(covering both §5.51's campaigns and §5.53's admin inbox). Also:
+`docs/launch-runbook.md` gains a founder-ops section on business email
+setup for the UZEYN domain (Cloudflare Email Routing + Gmail "send as" as
+the v1 approach, self-hosted Mailcow/Mailu noted as a later option) —
+operational documentation, not application code, so it carries no FR
+number.**
+
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
 supplier adapter/plugin interface, hold-graduation mechanism, shared-identity hook
@@ -493,6 +551,11 @@ cut decision, without resolving them unilaterally.
   an FAQ accordion section type, and richer footer content blocks.
 - **Confirmed, not pulled forward:** seller staff sub-accounts / admin sub-roles
   remain Phase 3, exactly as already documented — reaffirmed, not expanded.
+  **Superseded by v0.32/§5.52:** seller staff sub-accounts specifically were
+  later pulled forward into v1.0 as a plan-tier differentiator, at the
+  founder's explicit direction — this v0.6 statement is preserved for
+  decision-history purposes, not deleted. The "general admin sub-role/
+  permissions system" half of this statement remains deferred.
 - **Two new risks** (19–20) for the SaaS hooks' license/entitlement and API-token
   attack surfaces; several small consistency fixes (see §12, and the completeness
   audit delivered alongside this revision).
@@ -1358,6 +1421,12 @@ this revision, not pulled forward**: a single "platform admin" role with no
 internal separation is itself a security concern at scale (§6.5), but
 building a whole scoped-permissions framework is out of scope until the
 platform has more than one admin/support person to actually scope roles for.
+**Superseded by v0.32/§5.52 for seller staff sub-accounts specifically:**
+at the founder's explicit direction, seller staff sub-accounts were pulled
+forward into v1.0 as a plan-tier differentiator (coarse, explicit,
+auditable scopes — not the generic framework this paragraph continues to
+defer). The general admin sub-role/permissions system half of this
+paragraph remains Phase 3+, unchanged.
 **Reviewer is a deliberate, narrow exception to that deferral, not a reversal
 of it:** it exists because the Listing Moderation Engine (§5.27) is a
 launch-blocking legal-safety requirement that specifically needs a
@@ -2293,6 +2362,41 @@ ships, and so v1.0's schema doesn't need to be redesigned to accommodate them.
   so a future mobile build doesn't have to re-litigate the auth/API
   approach, same "documented ahead of time" purpose as every other entry
   in this section.
+- FR-22.11: **Sell on social/marketplaces** (roadmap note only, v0.32) —
+  syndicating storefront listings to social/marketplace channels. No
+  schema/architecture change implied by this entry.
+- FR-22.12: **Sell in AI chats** (roadmap note only, v0.32) — transacting
+  through third-party AI chat/agent surfaces. Not built; documented so a
+  future integration doesn't require redesigning the checkout/order
+  model.
+- FR-22.13: **B2B catalogs** (roadmap note only, v0.32) — tiered/
+  wholesale pricing and bulk-order flows for business buyers, distinct
+  from the existing consumer storefront.
+- FR-22.14: **POS / in-person selling** (roadmap note only, v0.32) — a
+  point-of-sale surface reusing the existing order/inventory model for
+  in-person transactions.
+- FR-22.15: **Multi-currency selling** (roadmap note only, v0.32) — the
+  schema is already currency-ready (§3's currency-ready schema decision,
+  v0.4); this entry is the storefront/checkout multi-currency
+  presentation layer, not yet built.
+- FR-22.16: **Storefront translation** (roadmap note only, v0.32) —
+  §3.9's i18n-readiness discipline (no hard-coded UI strings/date/
+  currency formatting outside a translation-key/locale layer) is already
+  binding for exactly this reason; this entry is the actual locale
+  content work, not a schema change.
+- FR-22.17: **Headless commerce** (roadmap note only, v0.32) — a public,
+  versioned storefront-data API for a seller's own custom frontend,
+  distinct from §5.24's Product Feed API (which is for external
+  marketplaces, not custom storefronts).
+- FR-22.18: **AI-assisted store design** (roadmap note only, v0.32) — AI
+  generation/suggestion inside the theme customizer (§5.4), distinct from
+  and additive to the existing coded-theme escape hatch (FR-1.6).
+- FR-22.19: **AI-assisted email** (roadmap note only, v0.32) — AI
+  drafting/suggestion for both §5.51's Email Campaigns and §5.53's Admin
+  Email Section; both sections explicitly ship with no AI in v1.0
+  (FR-51.5, FR-53.4) so this entry exists precisely to avoid
+  re-litigating either section's architecture when AI assist is added
+  later.
 
 ### 5.23 Business Guard-Rails & Platform Economics
 Every threshold below is a Settings Registry entry, not a hard-coded constant.
@@ -3770,6 +3874,230 @@ Programs / Ambassador-Teams infrastructure)
   reactions) — v1.0 is submission + curation + a featured surface only,
   an explicit scope cut, not a gap.
 
+### 5.49 Gift Cards (new, v0.32 — purchasable + seller-issued store gift
+cards, redeemable at checkout with partial redemption; reuses §5.7's
+`DiscountCode` code pattern and the wallet's ledger-derived-balance
+discipline)
+- FR-49.1: **`GiftCard` model, store-scoped unique code.** Mirrors
+  `DiscountCode`'s `@@unique([storeId, code])` pattern exactly; carries an
+  `initialValue`, optional `expiresAt`, and `isActive` flag (same
+  optional-expiry/active-flag shape `DiscountCode` already has).
+- FR-49.2: **Two issuance paths.** Buyer-purchased (a real checkout
+  transaction) and seller-issued (a dashboard action, e.g. goodwill/store
+  credit) both create a `GiftCard` row; only the buyer-purchased path is a
+  revenue event — a seller-issued card never contributes to revenue,
+  commission, or any Financial Truth aggregate.
+- FR-49.3: **Financial Truth Invariant applies (§3.12).** A
+  buyer-purchased gift card's balance activates only once its purchase
+  order reaches `confirmed`+ status; a `pending` gift-card order
+  contributes exactly zero to any revenue/commission aggregate, and the
+  code is unusable for redemption until paid — proven the same
+  before/after assertion style as every other Financial-Truth-gated flow
+  in this SRS.
+- FR-49.4: **Ledger-derived balance, not a bare mutable column.** Each
+  redemption creates an append-only `GiftCardRedemption` row (amount,
+  order id, timestamp); current balance is always `initialValue` minus
+  the sum of redemptions — the same derived-balance discipline
+  `WalletService.getBalance()` already established, so balance is always
+  re-auditable from history, never a number that can drift from its own
+  ledger.
+- FR-49.5: **Order settlement interaction.** A redeemed amount reduces
+  the buyer's amount-due at checkout (`Order.giftCardAmount`, alongside
+  the existing `discountAmount`), but the order still follows the
+  existing Direct Seller Collection confirm/mark-as-paid flow (§5.6c) for
+  any remaining balance; even a gift-card-fully-covered order requires an
+  explicit seller confirmation before it counts toward commission/revenue
+  — never auto-confirmed.
+- FR-49.6: **Partial redemption across multiple orders.** A redemption
+  cannot exceed the card's remaining balance (validated at redemption
+  time); a card may be redeemed across several separate orders until
+  exhausted or expired/deactivated.
+- FR-49.7: **Tenant-isolated.** `GiftCard`/`GiftCardRedemption` are
+  `store_id`-keyed with `ENABLE`+`FORCE ROW LEVEL SECURITY` and the same
+  seller-ownership-checked RLS policy pattern as every other tenant table.
+
+### 5.50 Customer Segments (new, v0.32 — saved segments over existing CRM
+customer data; foundation for §5.51 Email Campaigns)
+- FR-50.1: **`CustomerSegment` model, store-scoped.** A name plus
+  structured filter criteria (JSON — min/max order count, min/max total
+  spent, last-order-before/after, location), never a free-text query.
+- FR-50.2: **Derived membership, no new source of truth.** A segment's
+  member list is always computed live from `Customer.ordersCount`/
+  `totalSpent`/`lastOrderAt` (already tracked since FR-13.x) — same
+  Simplicity-Invariant derived-read discipline as Store Health Score
+  (§5.34) and the Orders Command Center (§5.38); never a separately
+  maintained membership list that can go stale.
+- FR-50.3: **Location, derived — explicit scope choice, not a gap.**
+  `Customer` has no location column; the location filter is derived from
+  the customer's most recent order's shipping address (city/country) at
+  segment-evaluation time. This is disclosed as the only location signal
+  that exists, since buyer accounts don't exist in v1.0 (§4) — no new
+  `Customer` column added for this.
+- FR-50.4: **Always current.** A segment recomputes on every view/use
+  (e.g. selected as an Email Campaign audience) — never a snapshot frozen
+  at creation time.
+- FR-50.5: **Standard CRUD + tenant isolation.** Create/edit/delete/
+  preview-member-count from a seller-dashboard screen; RLS-isolated like
+  every other seller-scoped table.
+- FR-50.6: **The only interface §5.51 consumes.** Email Campaigns reads a
+  segment's resolved, non-unsubscribed member list — it never queries
+  `Customer` directly.
+
+### 5.51 Email Campaigns (new, v0.32 — basic campaigns/newsletters to a
+saved segment via the seller's own SMTP; reuses Module 26's connected-
+sender machinery; no AI)
+- FR-51.1: **Sends via the seller's own connected SMTP.** Reuses the
+  exact connected-sender record and AES-256-GCM credential encryption
+  Module 26 already built for verification email
+  (`SellerVerificationEmail` + `smtp-credential-crypto.util.ts`) rather
+  than a second credential-storage mechanism; a campaign targets exactly
+  one saved segment (§5.50).
+- FR-51.2: **Monthly send quota, plan-tier gated.** A new numeric
+  Settings Registry key (`email_campaigns.monthly_send_limit`,
+  `allowedScopes` including `plan`) resolved via the exact
+  `SubscriptionsService.getPlanContext(sellerId)` →
+  `settings.resolve<number>()` pattern `catalog.product_limit` already
+  established (`ProductsService.create()`) — a send that would exceed
+  the seller's remaining monthly quota is blocked entirely before any
+  email leaves, never partially sent.
+- FR-51.3: **Unsubscribe handling — the first such mechanism in this
+  codebase.** Every campaign email carries a unique per-recipient
+  unsubscribe link; an unsubscribed `Customer` (store-scoped) is
+  permanently excluded from every future campaign to that store
+  regardless of which segment they'd otherwise match — checked at send
+  time, not only at list-build time.
+- FR-51.4: **Honest deliverability note, in the composer UI itself.**
+  Because v1.0 sends through the seller's own SMTP credentials (no
+  platform-level SPF/DKIM/DMARC alignment or sender-reputation warming —
+  same disclosed limitation as §5.43's platform email), the campaign
+  composer states plainly that deliverability depends on the seller's own
+  email provider's reputation and sending limits — never an implied
+  inbox-placement guarantee.
+- FR-51.5: **No AI — explicit scope cut.** Campaign content (subject +
+  body) is composed entirely by the seller; no generation, subject-line
+  suggestion, or send-time optimization. AI email-assist is a
+  roadmap-only note (§5.22), not a v1.0 gap.
+- FR-51.6: **Background job, not a synchronous send.** A campaign send
+  runs on the existing BullMQ infrastructure (same precedent as CSV
+  import/export and §5.36's data export) so a large segment never blocks
+  the request/response cycle.
+- FR-51.7: **Send history via the existing Platform Event Log (§14.23).**
+  No new logging mechanism — every campaign send is an event on the
+  cross-cutting log already required of every module from Module 3
+  onward.
+
+### 5.52 Staff Accounts, plan-tier (new, v0.32 — pulls the previously
+Phase-3-deferred staff-sub-account concept forward as a paid-plan
+differentiator, at the founder's explicit direction)
+- FR-52.1: **Explicit, documented reversal — not a silent
+  contradiction.** SRS v0.6's changelog note, §4 User Roles, and §10's
+  Phase 3 bullet each previously stated seller staff sub-accounts remain
+  "Phase 3+, reaffirmed." This amendment pulls seller staff accounts
+  forward into v1.0; all three statements are marked **superseded by
+  v0.32/§5.52** in place, not deleted, preserving the SRS's own decision
+  history. The separate "general admin sub-role/permissions system" half
+  of that same original deferral remains deferred — §5.53/§5.54 extend
+  admin capability through existing/new admin-scoped mechanisms, not a
+  new generic permissions framework.
+- FR-52.2: **`StaffAccount` model, coarse role-based scopes.** Seller-
+  owned, carrying a fixed set of explicit permission scopes (e.g.
+  `orders`, `catalog`, `discounts`, `customers`) — `billing`/`payment-
+  instructions`/`wallet`/`plan` are never assignable to a staff scope,
+  owner-only always. Same "coarse, explicit, auditable scopes" discipline
+  as the platform's own 3-value `AdminRole` enum, not a fully generic
+  permissions framework (that ambition stays deferred per FR-52.1).
+- FR-52.3: **Scoped session, modeled on impersonation's shape.** A staff
+  login issues a JWT carrying a `staffAccountId` and its scopes (same
+  additive-field pattern as `JwtAccessPayload`'s existing
+  `impersonatingAdminUserId`/`impersonationSessionId`), with an opt-in,
+  scope-checking route decorator mirroring `@BlockDuringImpersonation()`'s
+  pattern — a new, purpose-built mechanism following impersonation's
+  proven shape, not a repurposing of impersonation itself.
+- FR-52.4: **Audit-logged via the Platform Event Log.** Every write a
+  staff session performs is tagged with its `staffAccountId` and recorded
+  to the existing Platform Event Log (§14.23) — the seller-side
+  equivalent of how `AdminAuditLog` tags admin/impersonation actions;
+  `AdminAuditLog` itself stays reserved for platform-admin actions only.
+- FR-52.5: **Plan-tier numeric limit, Settings-Registry-driven.** A new
+  `staff.max_accounts` key (numeric, `allowedScopes` including `plan`)
+  resolved via the identical `getPlanContext(sellerId)` pattern as
+  FR-51.2/`catalog.product_limit` — creating a staff account beyond the
+  seller's plan limit is blocked with the same "your plan's limit has
+  been reached" pattern already established.
+- FR-52.6: **Zero on Free.** The Free plan's default is zero staff
+  accounts (owner-only) — staff accounts are a paid-tier differentiator
+  from day one, never available on Free.
+
+### 5.53 Admin Email Section (new, v0.32 — UZEYN's own unified inbox in
+the admin terminal; admin-global, not tenant-scoped)
+- FR-53.1: **`AdminEmailAccount` model, admin-global.** Same "no RLS,
+  gated by `AdminAuthGuard`, inherently precedes tenant context" category
+  as `AdminAuditLog`/`ImpersonationSession` — this is the founder's own
+  inbox, not a seller-facing feature.
+- FR-53.2: **SMTP+IMAP credentials, encrypted at rest under their own
+  independent key.** Mirrors `SellerVerificationEmail`'s AES-256-GCM
+  `iv:authTag:ciphertext` encryption utility, keyed by a new
+  `ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY` env var — same "rotates
+  independently" convention the SMTP credential key already established
+  relative to the Drive token key.
+- FR-53.3: **Unified read/reply across multiple linked accounts.**
+  IMAP fetch on demand/poll merges all linked accounts (e.g. support@,
+  helpdesk@) into a single inbox list; a reply sends via that specific
+  account's own SMTP credentials — the founder replies personally as
+  themself from the correct address, never a generic platform sender.
+- FR-53.4: **No AI in v1.0 — explicit scope cut, not a gap.** No
+  summarization, suggested replies, or auto-triage. AI-assist for this
+  section is a roadmap-only note (§5.22), documented now so the schema
+  isn't redesigned later to add it.
+- FR-53.5: **Every link/unlink audit-logged.** Linked accounts are
+  admin-manageable (add/remove/test-connection) from a new admin terminal
+  section; every change calls the existing `AuditLogService.record()` —
+  this is a genuine admin action on an admin-scoped resource, distinct
+  from Staff Accounts' seller-side Platform-Event-Log logging (FR-52.4).
+
+### 5.54 Advanced Granular Admin Control (new, v0.32 — four narrow,
+audit-logged admin actions beyond the existing suspend/ban ladder;
+closes the gap `seller-lifecycle.service.ts`'s own doc comment already
+disclosed)
+- FR-54.1: **Block a seller from listing new products.** A new
+  admin-settable per-seller Settings Registry flag
+  (`catalog.listing_blocked`, `scopeType: "seller"`) — the seller-scope
+  plumbing already exists in `PUT /admin/settings/values` per §3.8's
+  precedence but had no exercised call site before this section — checked
+  at product-creation time alongside the existing `catalog.product_limit`
+  check. Does not affect the seller's already-listed products.
+- FR-54.2: **Instant single-product suspend/remove.** Extends
+  `ModerationStatus` (currently `not_required | pending | approved |
+  rejected`, with no takedown state for an already-approved product) with
+  a new `admin_removed` value; an admin can move any product straight to
+  `admin_removed` regardless of its current status, immediately excluded
+  by the same storefront-visibility WHERE clause the existing moderation
+  filter already uses — no new visibility mechanism, one more value in an
+  existing gate.
+- FR-54.3: **Supplier-listed product block/approve.** Reuses the existing
+  Moderation Queue (§5.27/Module 6) exactly as already built —
+  supplier-sourced products already flow through the same
+  `moderationStatus` gate (the supplier-listing moderation gap closed
+  after Module 8); this section adds no new queue, only surfaces
+  block/approve actions against supplier-attributed products from the
+  admin terminal's product-detail view.
+- FR-54.4: **Disable a specific feature per seller.** Generalizes
+  FR-54.1's pattern: any existing boolean/numeric Settings Registry key
+  that gates a feature can be admin-overridden at `seller` scope from the
+  admin terminal's Seller 360 page (Module 25) — no new mechanism,
+  exercising the Settings Registry's existing seller-scope precedence at
+  the UI layer for the first time.
+- FR-54.5: **Every action audit-logged with before/after values.** All
+  four controls above call `AuditLogService.record()` with the
+  seller/product id as target and the before/after state — same
+  insert-only, no-UPDATE/DELETE-grant discipline as every other admin
+  action.
+- FR-54.6: **Additive to, not a replacement for, the existing
+  `SellerLifecycleStatus` ladder** (§5.29's active → warned → restricted
+  → suspended → banned). These are narrower, single-purpose controls (one
+  seller's listing ability, one product, one feature) rather than a full
+  account-level escalation.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -3967,8 +4295,10 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
   shipping zones/weight-based rates, advanced discounts (auto-apply, BOGO,
   scheduled sales).
 - **Phase 3:** Advanced theme customizer (animation presets, AI-assisted design),
-  deeper analytics, **admin sub-roles/seller staff accounts (reaffirmed here, not
-  pulled forward into any earlier phase)**.
+  deeper analytics, **admin sub-roles (reaffirmed here, not pulled forward
+  into any earlier phase)**. Seller staff accounts, previously listed here
+  too, were **superseded by v0.32/§5.52** — pulled forward into v1.0 as a
+  plan-tier differentiator at the founder's explicit direction.
 - **Phase 4:** Multi-VPS scale-out, international payment gateways, mobile apps
   (consuming the existing API per the mobile-readiness NFR, §6), **region-sharded
   deployments** (per-region DB/stack + a global admin aggregation view — §3.6
@@ -5730,6 +6060,96 @@ going forward, per FR-6.28.
 - [ ] No field beyond store name and already-public storefront content
       is present in the Featured Sellers API response — proven by a
       response-shape assertion (FR-48.4).
+
+### 14.49 Gift Cards (new, v0.32, not yet built)
+- [ ] A `pending`/unpaid gift-card purchase order contributes zero to any
+      revenue/commission aggregate and its code is unusable for
+      redemption, exactly like every other Financial-Truth-gated flow —
+      proven by a before/after assertion mirroring §14.37/§14.38's style
+      (FR-49.3).
+- [ ] A partial redemption reduces the card's derived balance by exactly
+      the redeemed amount, re-derivable from the sum of
+      `GiftCardRedemption` rows, never a bare column that can drift —
+      proven by redeeming across two separate orders and recomputing
+      balance from history (FR-49.4/49.6).
+- [ ] A redemption that would exceed the card's remaining balance is
+      rejected (FR-49.6).
+- [ ] A gift-card-fully-covered order still requires an explicit seller
+      confirmation before it counts toward commission/revenue — never
+      auto-confirmed (FR-49.5).
+- [ ] RLS denies cross-tenant access to another store's gift cards/
+      redemptions at the database level, independent of the app layer
+      (FR-49.7) — same proof style as every other tenant-isolation test
+      in this SRS.
+
+### 14.50 Customer Segments (new, v0.32, not yet built)
+- [ ] A segment's member list matches a hand-computed expected set for a
+      fixture of customers with known order counts/spend/last-order
+      dates (FR-50.1/50.2).
+- [ ] Adding a new qualifying order changes segment membership on the
+      next view without any explicit recompute step — proven by mutating
+      underlying `Customer` data and re-querying the segment (FR-50.4).
+- [ ] The location filter correctly derives from each customer's most
+      recent order's shipping address (FR-50.3).
+- [ ] RLS denies cross-tenant access to another store's segments/
+      customers (FR-50.5).
+
+### 14.51 Email Campaigns (new, v0.32, not yet built)
+- [ ] A seller at their plan's monthly send quota is blocked from
+      sending, never partially sent — proven by an e2e test driving the
+      counter to its limit (FR-51.2).
+- [ ] An unsubscribed customer is excluded from a campaign send even
+      when they match the target segment's filter criteria — proven by
+      unsubscribing a matching customer and asserting they receive
+      nothing on the next send (FR-51.3).
+- [ ] The unsubscribe link in a sent campaign email actually unsubscribes
+      that customer for future sends to that store (FR-51.3).
+- [ ] The deliverability note renders on every view of the campaign
+      composer (FR-51.4).
+- [ ] A campaign send is dispatched as a background job, not
+      synchronously in the request/response cycle (FR-51.6).
+
+### 14.52 Staff Accounts, plan-tier (new, v0.32, not yet built)
+- [ ] A staff session scoped to e.g. `orders` cannot access a
+      `billing`/`wallet`/`plan` route, proven by an e2e test asserting a
+      403 on an out-of-scope route with a valid staff JWT (FR-52.2/52.3).
+- [ ] A seller at their plan's staff-account limit is blocked from
+      creating another staff account, with the same
+      "plan's limit has been reached" message style as
+      `catalog.product_limit` (FR-52.5).
+- [ ] Every write a staff session performs is recorded to the Platform
+      Event Log tagged with its `staffAccountId` (FR-52.4).
+- [ ] A Free-plan seller has zero staff-account capacity by default
+      (FR-52.6).
+
+### 14.53 Admin Email Section (new, v0.32, not yet built)
+- [ ] Linked SMTP+IMAP credentials are stored encrypted at rest and never
+      appear in plaintext in any API response or log (FR-53.2).
+- [ ] The unified inbox correctly merges messages from two or more linked
+      accounts into one list (FR-53.3).
+- [ ] A reply sent from the unified inbox uses the originating account's
+      own SMTP credentials, not a shared/default sender (FR-53.3).
+- [ ] Every link/unlink action is recorded in `AdminAuditLog` with
+      before/after values (FR-53.5).
+
+### 14.54 Advanced Granular Admin Control (new, v0.32, not yet built)
+- [ ] A seller flagged `catalog.listing_blocked` cannot create a new
+      product (403/400, existing products unaffected), proven by an e2e
+      test asserting the flag blocks creation but not existing listing
+      visibility (FR-54.1).
+- [ ] An admin can move an `approved` product straight to `admin_removed`
+      and it immediately disappears from storefront visibility — proven
+      by a before/after storefront-query assertion (FR-54.2).
+- [ ] A supplier-listed product can be blocked/approved from the admin
+      terminal via the existing moderation queue mechanism, with no new
+      queue introduced (FR-54.3).
+- [ ] An admin-overridden seller-scope Settings Registry value takes
+      precedence over the plan/global default for that one seller only —
+      proven by asserting a second seller on the same plan is unaffected
+      (FR-54.4, exercising §3.8's seller > plan precedence for the first
+      time at the UI layer).
+- [ ] All four controls above produce an `AdminAuditLog` row with
+      before/after values (FR-54.5).
 
 ---
 

@@ -287,3 +287,47 @@ explicit founder decision:
 
 Once every item above is checked, the platform is ready to open signups to
 real sellers.
+
+## 10. Business email setup for the platform's own domain
+
+Founder-ops documentation, not application code — the platform needs
+professional-looking sender/receive addresses (`support@`, `hello@`,
+`billing@`, etc.) on its own domain before launch. This is unrelated to
+Module 26/34's seller-facing SMTP verification/campaign infrastructure —
+it's purely the founder's own day-to-day email.
+
+**v1 approach (recommended, free): Cloudflare Email Routing + Gmail
+"send as".**
+1. Point the domain's MX records at Cloudflare (requires the domain's
+   nameservers to already be on Cloudflare, or delegate just the MX/TXT
+   records if using a different DNS host for everything else).
+2. In the Cloudflare dashboard, **Email → Email Routing**, create
+   unlimited custom addresses (`support@`, `founder@`, `helpdesk@`, etc.)
+   each forwarding to the founder's existing personal Gmail inbox — free,
+   no mailbox to host or maintain.
+3. In Gmail, **Settings → Accounts → Send mail as**, add each forwarded
+   address so replies go out *from* the correct `@` address instead of
+   the personal Gmail address — Gmail's SMTP relay handles the outbound
+   leg, Cloudflare handles the inbound leg. No separate mail server to
+   run or patch.
+4. This is exactly the account shape §5.53's Admin Email Section (Module
+   36) is built to link — once Module 36 ships, these same addresses can
+   be connected via IMAP/app-password for the unified admin inbox instead
+   of (or alongside) plain Gmail forwarding.
+
+**Later option: self-hosted (Mailcow or Mailu).** A full self-hosted mail
+stack gives the founder direct IMAP/SMTP control (no Google dependency,
+unlimited real mailboxes rather than forward-only addresses) at the cost
+of running and maintaining a mail server (deliverability reputation
+management, spam filtering, TLS/DKIM/DMARC/SPF configuration, ongoing
+patching) — worth revisiting once email volume or a specific Gmail
+limitation (e.g. needing true separate mailboxes rather than a shared
+forwarding inbox) makes the operational cost worthwhile. Not needed for
+v1 launch.
+
+- [ ] MX records pointed at Cloudflare Email Routing.
+- [ ] Needed addresses created and forwarding correctly (test each with a
+      real inbound email).
+- [ ] Gmail "send as" configured and verified for each address.
+- [ ] SPF/DKIM/DMARC records confirmed correct for the domain (Cloudflare
+      Email Routing's own setup guide covers the required records).

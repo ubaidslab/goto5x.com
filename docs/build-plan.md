@@ -3081,27 +3081,27 @@ WhatsApp Semi-Automation, P&L Engine — unchanged). Reasoning:
 
 1. **None of the six have a hard blocking dependency on 28-31** — they
    extend Module 26 (verification), Module 15 (CSV import), Module 14
-   (plans/pricing), Module 23 (Store Health Score), Module 33/22 (growth
+   (plans/pricing), Module 23 (Store Health Score), Module 39/22 (growth
    programs), and Module 9's confirmed-sale data, all already built. They
    could technically slot earlier, but 28-31 were already founder-
    approved and queued before this request — no reason to leapfrog work
    already in flight.
-2. **Module 32 (Built-in Email Verification) first among the six** —
+2. **Module 38 (Built-in Email Verification) first among the six** —
    smallest, most self-contained: a fourth adapter implementation inside
    an interface that already exists (§5.37), no new UI surface beyond an
    existing settings screen.
-3. **Module 33 (Shopify Migration) second, deliberately after 28** —
+3. **Module 39 (Shopify Migration) second, deliberately after 28** —
    both Module 28's stock-only CSV bulk-edit (FR-39.3) and this module
    extend the *same* underlying CSV import engine (Module 15). Building
    the narrower extension (28) first, then the far larger one (Shopify's
    multi-entity format), means the second extension inherits a stable,
    already-proven-in-production import path rather than two extensions
    landing on the same engine simultaneously.
-4. **Module 34 (Cost-Savings Calculator) third** — a self-contained
+4. **Module 40 (Cost-Savings Calculator) third** — a self-contained
    marketing-site widget over Settings Registry data; zero dependency on
    anything else in this batch, a good low-risk "quick win" once the
    backend-heavy Modules 32/33 are done.
-5. **Module 35 (Trust & Achievement Badge Engine + public badges)
+5. **Module 41 (Trust & Achievement Badge Engine + public badges)
    fourth, deliberately built as its own module rather than folded into
    the retention layer** — because §5.47's private dashboard achievement
    badges (originally listed as part of the founder's item #4) are
@@ -3110,27 +3110,31 @@ WhatsApp Semi-Automation, P&L Engine — unchanged). Reasoning:
    one shared engine once, with two thin consumers, is the correct
    sequencing even though it reorders the founder's own numbering —
    flagged explicitly here rather than silently reordered.
-6. **Module 36 (Emotional & Retention Layer) fifth** — depends on
-   Module 35's badge engine for its own private achievement badges
+6. **Module 42 (Emotional & Retention Layer) fifth** — depends on
+   Module 41's badge engine for its own private achievement badges
    (FR-47.4); the onboarding-reframe and milestone-celebration halves of
    this module have no such dependency and could theoretically ship
    earlier, but are kept together as one module per the founder's
    original framing (one cohesive "retention layer").
-7. **Module 37 (Community & Belonging) last** — explicitly the
+7. **Module 43 (Community & Belonging) last** — explicitly the
    founder's own "long-term retention/scaling" framing, and its
-   Featured Sellers surface optionally references Module 35's public
+   Featured Sellers surface optionally references Module 41's public
    badges (§5.48 FR-48.3) — sequenced after that dependency exists.
 
-**Build order: 28 → 29 → 30 → 31 → 32 → 33 → 34 → 35 → 36 → 37.** Same
-standing rhythm throughout: SRS amendment first (done, v0.31), build-plan
-updated (this section), commit/push docs, then build → verify → push
-automatically per module. Bare-functional UI throughout — premium
-redesign is a later, separate design phase. Platform stays English-only
-in v1.0 (no Urdu/Hinglish); §3.9's i18n-readiness discipline (translation-
-key/locale layer, no hard-coded strings) stays binding regardless, so this
-is a scope decision, not a technical regression.
+**Build order: 28 → 29 → 30 → 31 → 38 → 39 → 40 → 41 → 42 → 43.** (Module
+numbers 38-43 per the v0.32 slotting decision below, which inserts the
+founder's Pre-Launch Enhancements batch as Modules 32-37 ahead of this
+batch — this batch's own internal ordering/reasoning below is otherwise
+unchanged from when it was numbered 32-37.) Same standing rhythm
+throughout: SRS amendment first (done, v0.31), build-plan updated (this
+section), commit/push docs, then build → verify → push automatically per
+module. Bare-functional UI throughout — premium redesign is a later,
+separate design phase. Platform stays English-only in v1.0 (no
+Urdu/Hinglish); §3.9's i18n-readiness discipline (translation-key/locale
+layer, no hard-coded strings) stays binding regardless, so this is a
+scope decision, not a technical regression.
 
-### Module 32 (Built-in Email Verification Service) — scope summary
+### Module 38 (Built-in Email Verification Service) — scope summary
 `docs/SRS.md` §5.43, FR-43.1-43.5. New `PlatformEmailOtpAdapter`
 implementing the existing `VerificationChannelAdapter` interface (§5.37)
 — a fourth per-store channel choice alongside WhatsApp OTP, seller-SMTP
@@ -3142,7 +3146,7 @@ per-seller monthly-counter model (reset each billing period, same
 discipline as Module 20's existing counters). No change to WhatsApp OTP
 or seller-SMTP Email OTP — both remain fully first-class.
 
-### Module 33 (One-Click Shopify Migration) — scope summary
+### Module 39 (One-Click Shopify Migration) — scope summary
 `docs/SRS.md` §5.44, FR-44.1-44.6. Extends Module 15's `ImportJob` engine
 (FR-18.1/18.3) with new Shopify-format CSV parsers (products+variants+
 images, customers, orders) and a guided upload → mapping-preview →
@@ -3153,14 +3157,14 @@ their final historical status, excluded from the Orders Command Center's
 action-needed buckets and from commission calculation. Direct Shopify API
 connect (OAuth/live sync) is a documented roadmap note, not built in v1.0.
 
-### Module 34 (Cost-Savings Calculator) — scope summary
+### Module 40 (Cost-Savings Calculator) — scope summary
 `docs/SRS.md` §5.45, FR-45.1-45.4. New marketing-site widget (homepage
 and/or `/pricing`), public, no auth. New Settings Registry keys for every
 comparison figure (Shopify plan tiers/fees, typical-app-cost estimate,
 eyosto's own plan fee/commission) — admin-editable, never hard-coded.
 Output always carries a visible "estimated" disclaimer.
 
-### Module 35 (Trust & Achievement Badge Engine + Public Store Badges) — scope summary
+### Module 41 (Trust & Achievement Badge Engine + Public Store Badges) — scope summary
 `docs/SRS.md` §5.46, FR-46.1-46.5. New `BadgeEvaluationService` — a
 single derived-read engine (no new source of truth) computing earned,
 auto-revocable badges from existing Store Health Score (§5.34),
@@ -3169,26 +3173,26 @@ Registry-driven thresholds (`badges.*`). Public storefront rendering
 (product/store pages + checkout) reuses the existing Verified Store
 badge's (§5.35) placement precedent. Distinct from Module 29's
 logistics-only Delivery-Time Badges. This engine is the shared dependency
-Module 36's private dashboard badges are built on.
+Module 42's private dashboard badges are built on.
 
-### Module 36 (Emotional & Retention Layer) — scope summary
+### Module 42 (Emotional & Retention Layer) — scope summary
 `docs/SRS.md` §5.47, FR-47.1-47.5. Onboarding wizard (existing FR-20.1
 progress state) reframed presentation-wise as a guided tour with a
 completion celebration — no new backend model. New Settings-Registry-
 driven milestone thresholds (`milestones.*`) plus a new append-only
 milestone-event model (fires once per store per threshold, only on
 `confirmed`+ orders — Financial Truth Invariant reaffirmed). Private
-dashboard achievement badges built on Module 35's `BadgeEvaluationService`
+dashboard achievement badges built on Module 41's `BadgeEvaluationService`
 — a distinct, seller-only badge set never rendered publicly. Existing
 dashboard personalization (themes/wallpapers) reaffirmed as part of the
 same ownership feeling, not rebuilt.
 
-### Module 37 (Community & Belonging) — scope summary
+### Module 43 (Community & Belonging) — scope summary
 `docs/SRS.md` §5.48, FR-48.1-48.5. New seller success-story submission
 flow (dashboard) + admin curation queue (reuses Module 25's admin-queue UI
 precedent and §5.27/§5.33's submit → moderate → publish shape). New
 opt-in Featured Sellers public surface, optionally cross-referencing
-Module 35's public badges and Module 22's existing Growth & Partner
+Module 41's public badges and Module 22's existing Growth & Partner
 Programs (Ambassador/Teams) infrastructure. No PII beyond seller-published
 storefront content is ever surfaced. Richer community features (forums,
 seller-to-seller messaging) are an explicit roadmap note, not v1.0 scope.
@@ -3213,6 +3217,151 @@ pass, per the phased design-phase order already agreed (design system →
 marketing → auth/onboarding → dashboard core → dashboard rest → buyer
 surfaces → admin → final pass); this templates work is part of that
 design-system foundation.
+
+---
+
+## v0.32 slotting decision — Gift Cards, Customer Segments, Email
+Campaigns, Staff Accounts, Admin Email Section, Advanced Granular Admin
+Control ("Pre-Launch Enhancements" batch)
+
+The founder's explicit instruction after approving Templates: resume
+FEATURE work before the design phase resumes (so new features don't force
+a UI redesign later), then a deep audit, then the design phase. This
+batch is slotted as **Modules 32-37 — ahead of** the already-SRS'd v0.31
+batch (Built-in Email Verification/Shopify Migration/Cost Calculator/
+Badges/Retention/Community), which shifts to **Modules 38-43** (renumbered
+above; those six features' own SRS §5.43-5.48 section numbers are
+unchanged — only their build-slot label moved, per this project's
+additive-only numbering discipline). Reasoning:
+
+1. **Build order matches the founder's own listed order exactly** — it
+   already respects the one real dependency (§5.51 Email Campaigns reads
+   segments from §5.50 Customer Segments; Customer Segments has no
+   dependency on Gift Cards, so Gift Cards' position ahead of it is
+   arbitrary-but-harmless, kept in the founder's given order rather than
+   reordered for no reason).
+2. **Module 32 (Gift Cards) first** — self-contained, extends existing
+   `DiscountCode`/wallet-ledger patterns already built (Module 7/Module
+   20); no dependency on anything else in this batch.
+3. **Module 33 (Customer Segments) second, before Module 34** — Email
+   Campaigns' only real dependency in this batch; segments must exist
+   before a campaign can target one.
+4. **Module 34 (Email Campaigns) third** — depends on Module 33; reuses
+   Module 26's connected-SMTP machinery (already built), so no new
+   credential-storage mechanism is introduced.
+5. **Module 35 (Staff Accounts) fourth** — self-contained relative to
+   32-34; deliberately built as its own module rather than folded into
+   Module 37's admin-control work, since it's seller-side (a plan-tier
+   feature staff log into) while Module 37 is entirely admin-terminal-
+   side — different actors, different surfaces, no shared code between
+   them beyond the general audit-logging discipline both already follow.
+6. **Module 36 (Admin Email Section) fifth** — self-contained (admin-
+   global, no seller-facing surface); ordered before Module 37 only
+   because it's the smaller of the two remaining admin-terminal features.
+7. **Module 37 (Advanced Granular Admin Control) last** — the largest
+   admin-terminal surface in this batch (four distinct controls); no
+   dependency on 32-36, sequenced last simply as the biggest remaining
+   piece.
+
+**Build order: 32 → 33 → 34 → 35 → 36 → 37 → 38 → 39 → 40 → 41 → 42 → 43.**
+Same standing rhythm throughout: SRS amendment first (done, v0.32),
+build-plan updated (this section), commit/push docs, then build → verify
+→ real-CI-green → docs → commit/push → report, repeated once per module.
+Bare-functional UI throughout — premium redesign remains the later,
+separate design phase (which resumes once Modules 32-43 and the deep
+audit are complete).
+
+### Module 32 (Gift Cards) — scope summary
+`docs/SRS.md` §5.49, FR-49.1-49.7. New `GiftCard` (mirrors
+`DiscountCode`'s store-scoped unique-code pattern, `initialValue` +
+optional `expiresAt`/`isActive`) and `GiftCardRedemption` (append-only,
+derived-balance discipline mirroring `WalletService.getBalance()`)
+models + RLS. Purchase path is Financial-Truth-gated (balance activates
+only once the purchase order is `confirmed`+); seller-issued path never
+touches revenue/commission. Checkout gains a redemption step
+(`Order.giftCardAmount` alongside existing `discountAmount`), still
+routed through the existing Direct Seller Collection confirm/mark-as-paid
+flow (§5.6c) for any remaining balance.
+
+### Module 33 (Customer Segments) — scope summary
+`docs/SRS.md` §5.50, FR-50.1-50.6. New `CustomerSegment` model (name +
+structured JSON filter criteria) + RLS. No new source of truth — member
+lists are derived live from `Customer.ordersCount`/`totalSpent`/
+`lastOrderAt` (existing since FR-13.x); location derived from each
+customer's most recent order's shipping address (no new `Customer`
+column). Seller-dashboard CRUD screen with a live member-count preview.
+
+### Module 34 (Email Campaigns) — scope summary
+`docs/SRS.md` §5.51, FR-51.1-51.7. Depends on Module 33. Reuses Module
+26's `SellerVerificationEmail` connected-sender record and
+`smtp-credential-crypto.util.ts` encryption utility for sending — no new
+credential store. New plan-tier numeric Settings Registry key
+(`email_campaigns.monthly_send_limit`), resolved via the same
+`getPlanContext(sellerId)` pattern `catalog.product_limit` already
+established. New unsubscribe mechanism (first in this codebase) — a
+per-recipient unsubscribe link + a store-scoped suppression flag on
+`Customer`, checked at send time. Campaign sends run as a background job
+(existing BullMQ infra) and are logged to the existing Platform Event Log
+(§14.23). No AI (composer is seller-authored only); the composer UI
+carries an explicit, honest deliverability disclaimer.
+
+### Module 35 (Staff Accounts, plan-tier) — scope summary
+`docs/SRS.md` §5.52, FR-52.1-52.6. New `StaffAccount` model with a fixed
+set of coarse, explicit permission scopes (never `billing`/`payment-
+instructions`/`wallet`/`plan`). JWT/session shape modeled on
+impersonation's existing `impersonatingAdminUserId`/
+`impersonationSessionId` additive-field pattern (a new, purpose-built
+mechanism, not a repurposing of impersonation itself), with a scope-
+checking route decorator mirroring `@BlockDuringImpersonation()`. New
+plan-tier numeric Settings Registry key (`staff.max_accounts`), same
+resolution pattern as Module 34's send quota and the existing
+`catalog.product_limit`. Every staff write is tagged and logged to the
+Platform Event Log (§14.23) — deliberately not `AdminAuditLog`, which
+stays reserved for platform-admin actions. Free plan defaults to zero
+staff accounts.
+
+### Module 36 (Admin Email Section) — scope summary
+`docs/SRS.md` §5.53, FR-53.1-53.5. New `AdminEmailAccount` model,
+admin-global (no RLS, same category as `AdminAuditLog`/
+`ImpersonationSession`). SMTP+IMAP credentials encrypted at rest under a
+new, independent `ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY` (mirrors the
+existing SMTP credential AES-256-GCM utility, rotated independently per
+the established convention). New admin terminal section: link/unlink
+accounts (audit-logged via the existing `AuditLogService`), unified
+inbox merging linked accounts, reply via the originating account's own
+SMTP credentials. No AI (founder replies personally) — AI-assist is a
+roadmap-only note (§5.22 FR-22.19).
+
+### Module 37 (Advanced Granular Admin Control) — scope summary
+`docs/SRS.md` §5.54, FR-54.1-54.6. Four narrow, audit-logged admin
+controls, all reusing existing mechanisms rather than introducing new
+ones: (1) block a seller's new-product-listing ability via a new
+seller-scope Settings Registry flag (`catalog.listing_blocked`) — the
+seller-scope plumbing already existed in `PUT /admin/settings/values`
+but had no exercised call site before this module; (2) instant
+single-product takedown via a new `admin_removed` `ModerationStatus`
+value, filtered by the same storefront-visibility WHERE clause already in
+place; (3) supplier-listed-product block/approve via the existing
+Moderation Queue (§5.27/Module 6), no new queue; (4) per-seller
+feature-flag override via the Settings Registry's existing seller-scope
+precedence, surfaced from the Seller 360 page (Module 25). All four call
+the existing `AuditLogService.record()` with before/after values.
+Additive to, not a replacement for, the existing `SellerLifecycleStatus`
+ladder (§5.29).
+
+---
+
+## UZEYN rename (dedicated commit, end of this batch)
+
+Full rename pass — `goto5x`/`eyosto` → **UZEYN** — across repo, docs,
+code, and storefront branding ("Managed by UZEYN"). Slotted as its own
+commit immediately after Module 43, before the deep audit and the design
+phase resume, so it never tangles with feature-work diffs. `uzeyn.com`
+business email setup (Cloudflare Email Routing + Gmail "send as" for v1,
+self-hosted Mailcow/Mailu noted as a later option) is documented as a new
+section in `docs/launch-runbook.md` — founder-ops documentation, not
+application code, so it ships alongside this commit but is not itself a
+code change.
 
 ---
 
