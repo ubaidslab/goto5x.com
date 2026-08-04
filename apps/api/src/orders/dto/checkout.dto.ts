@@ -17,6 +17,11 @@ export class CheckoutDto {
   @IsString()
   discountCode?: string;
 
+  /** FR-49.6 - at most one gift card per checkout in v1.0. */
+  @IsOptional()
+  @IsString()
+  giftCardCode?: string;
+
   /** FR-37.1 - only meaningful when the store's verification channel is whatsapp_otp. */
   @IsOptional()
   @IsString()

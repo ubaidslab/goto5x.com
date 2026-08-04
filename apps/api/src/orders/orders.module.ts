@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { BillingModule } from "../billing/billing.module";
 import { CustomersModule } from "../customers/customers.module";
 import { EventsModule } from "../events/events.module";
+import { GiftCardsModule } from "../gift-cards/gift-cards.module";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { EmailService } from "../notifications/email.service";
 import { OrderVerificationModule } from "../order-verification/order-verification.module";
@@ -34,6 +35,7 @@ import { OrdersService } from "./orders.service";
     CustomersModule,
     InvoicesModule,
     OrderVerificationModule,
+    GiftCardsModule,
   ],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [

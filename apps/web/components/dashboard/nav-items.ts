@@ -28,6 +28,7 @@ export const navItems: NavItem[] = [
   { label: "Reviews", href: (id) => `/stores/${id}/reviews`, builtInModule10: true },
   { label: "Collections", href: (id) => `/stores/${id}/collections`, builtInModule10: false },
   { label: "Discounts", href: (id) => `/stores/${id}/discounts`, builtInModule10: true },
+  { label: "Gift Cards", href: (id) => `/stores/${id}/gift-cards`, builtInModule10: false },
   { label: "Shipping & tax", href: (id) => `/stores/${id}/shipping-tax`, builtInModule10: true },
   { label: "Navigation", href: (id) => `/stores/${id}/navigation`, builtInModule10: false },
   { label: "Suppliers", href: (id) => `/stores/${id}/suppliers`, builtInModule10: true, conditional: true },

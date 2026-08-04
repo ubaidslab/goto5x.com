@@ -7,6 +7,40 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 32: Gift Cards
+
+SRS §5.49/§14.49, FR-49.1-49.7. Purchasable and seller-issued store gift
+cards, redeemable at checkout with partial redemption and a
+ledger-derived balance. First module of the "Pre-Launch Enhancements"
+batch (v0.32), built before the design phase resumes.
+
+### Added
+- `GiftCard`/`GiftCardRedemption` models (new `gift_cards`/
+  `gift_card_redemptions` tables, RLS-isolated) - mirrors `DiscountCode`'s
+  store-scoped unique-code pattern; balance is atomically guarded on
+  redemption (same idiom as `DiscountCode.usageCount`) and always
+  reconcilable against `initialValue - sum(redemptions)`.
+- Two issuance paths: buyer-purchased (`POST /storefront/gift-cards/purchase`,
+  public, creates a `pending_payment` card) and seller-issued
+  (`POST /stores/:storeId/gift-cards`, active immediately, never a
+  revenue event).
+- **Financial Truth Invariant applies**: a buyer-purchased card is
+  unusable at checkout until the seller confirms payment
+  (`POST /stores/:storeId/gift-cards/:id/confirm-paid`) - the sole path
+  from `pending_payment` to `active`.
+- Checkout redemption (`giftCardCode` on `POST /storefront/checkout`/manual
+  orders) - a new `Order.giftCardAmount` field reduces the buyer's
+  amount-due without touching `totalAmount` or `computeOrderTotals()`'s
+  tax/shipping math, so commission continues to accrue on the full order
+  total exactly as before. Reservation/release mirrors the existing
+  supplier-stock reservation discipline if order creation fails after a
+  redemption was reserved.
+- Seller dashboard screen (`/stores/:storeId/gift-cards`) - issue, list,
+  confirm payment.
+- e2e coverage: issuance, Financial-Truth-gated purchase confirmation,
+  partial redemption across two orders with commission verified
+  unaffected, RLS tenant isolation, duplicate-code rejection.
+
 ## Built-in Store Templates (v0.31 design phase)
 
 SRS §5.1 FR-1.1/FR-1.9/FR-1.10, docs/architecture.md's Template Package

@@ -21,6 +21,7 @@ import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
 import { ExternalApiModule } from "./external-api/external-api.module";
+import { GiftCardsModule } from "./gift-cards/gift-cards.module";
 import { GrowthProgramsModule } from "./growth-programs/growth-programs.module";
 import { GuardrailsModule } from "./guardrails/guardrails.module";
 import { HealthModule } from "./health/health.module";
@@ -102,6 +103,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     WhatsAppMessagingModule,
     PnLModule,
     BrandingModule,
+    GiftCardsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

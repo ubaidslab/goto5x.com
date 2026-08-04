@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { OrderSource } from "@prisma/client";
 import { CustomersService } from "../customers/customers.service";
+import { GiftCardsService } from "../gift-cards/gift-cards.service";
 import { InvoicePdfService } from "../invoices/invoice-pdf.service";
 import { EmailService } from "../notifications/email.service";
 import { OrderVerificationService } from "../order-verification/order-verification.service";
@@ -36,6 +37,7 @@ interface PlaceOrderParams {
   items: { productId: string; variantId: string; quantity: number }[];
   shippingAddress: ShippingAddressLike;
   discountCode?: string;
+  giftCardCode?: string;
   source: OrderSource;
 }
 
@@ -56,6 +58,7 @@ export class CheckoutService {
     private readonly pricing: OrderPricingService,
     private readonly supplierListings: SupplierListingsService,
     private readonly discountCodes: DiscountCodesService,
+    private readonly giftCards: GiftCardsService,
     private readonly email: EmailService,
     private readonly sellerIdentity: SellerIdentityService,
     private readonly customers: CustomersService,
@@ -80,6 +83,7 @@ export class CheckoutService {
       items,
       shippingAddress: dto.shippingAddress,
       discountCode: dto.discountCode,
+      giftCardCode: dto.giftCardCode,
       source: "storefront",
     });
 
@@ -119,6 +123,7 @@ export class CheckoutService {
       items: dto.items,
       shippingAddress: dto.shippingAddress,
       discountCode: dto.discountCode,
+      giftCardCode: dto.giftCardCode,
       source: "manual",
     });
 
@@ -145,6 +150,10 @@ export class CheckoutService {
     }
 
     const reserved = await this.reserveSupplierStock(priced);
+    // Declared outside the try block (unlike discountAmount/discountCodeId
+    // below) so the catch handler can release a reservation that outlived
+    // the order it was meant for - see the release call in catch.
+    let giftCardReservation: { giftCardId: string; amount: number } | null = null;
 
     try {
       const subtotalBeforeDiscount = round2(priced.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0));
@@ -227,6 +236,19 @@ export class CheckoutService {
         taxInclusive: taxSettings.taxInclusive,
       });
 
+      // FR-49.5/49.6 - a payment reduction against the already-computed
+      // total, never a price discount (unlike discountAmount above, it
+      // plays no part in computeOrderTotals()'s tax/shipping math).
+      // Reserved here (same pre-transaction timing as the discount code
+      // above) so the redemption row itself can reference the order id
+      // once it exists, inside the transaction below; released in the
+      // catch block if order creation fails for any other reason, same
+      // discipline as releaseSupplierStock.
+      if (params.giftCardCode) {
+        giftCardReservation = await this.giftCards.validateAndReserve(params.storeId, params.giftCardCode, totalAmount);
+      }
+      const giftCardAmount = giftCardReservation?.amount ?? 0;
+
       const order = await this.prismaAdmin.$transaction(async (tx) => {
         // FR-13.1 - applies uniformly regardless of order source (storefront
         // or manual/FR-17.1): the same customer record is created/matched
@@ -251,6 +273,7 @@ export class CheckoutService {
             source: params.source,
             discountCodeId,
             discountAmount,
+            giftCardAmount,
             shippingAmount,
             taxAmount,
             totalAmount,
@@ -270,6 +293,12 @@ export class CheckoutService {
           include: { items: true },
         });
 
+        // FR-49.4 - the append-only redemption ledger row, created only
+        // once the order it belongs to actually exists.
+        if (giftCardReservation) {
+          await this.giftCards.recordRedemption(tx, params.storeId, giftCardReservation.giftCardId, created.id, giftCardReservation.amount);
+        }
+
         await tx.orderTimelineEvent.create({
           data: {
             storeId: params.storeId,
@@ -281,6 +310,11 @@ export class CheckoutService {
 
         return created;
       });
+      // Once the transaction above commits, the redemption row is real and
+      // permanent - anything that fails from here on (invoice PDF, etc.)
+      // must never trigger a release of a reservation that no longer
+      // exists as a "reservation" at all, only as a committed redemption.
+      giftCardReservation = null;
 
       // Module 26 (SRS §5.37/FR-37.1) - creates the pending OrderVerification
       // row (the Financial Truth Invariant gate OrdersService.markAsPaid()
@@ -324,8 +358,12 @@ export class CheckoutService {
       return { order: { ...order, invoicePdfUrl }, paymentInstructions };
     } catch (err) {
       // A rejected order (invalid/expired discount, DB error) must never
-      // leave supplier stock decremented for an order that was never created.
+      // leave supplier stock decremented - or a gift card balance
+      // debited - for an order that was never created.
       await this.releaseSupplierStock(reserved);
+      if (giftCardReservation) {
+        await this.giftCards.releaseReservation(giftCardReservation.giftCardId, giftCardReservation.amount);
+      }
       throw err;
     }
   }

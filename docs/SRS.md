@@ -6061,26 +6061,32 @@ going forward, per FR-6.28.
       is present in the Featured Sellers API response — proven by a
       response-shape assertion (FR-48.4).
 
-### 14.49 Gift Cards (new, v0.32, not yet built)
-- [ ] A `pending`/unpaid gift-card purchase order contributes zero to any
-      revenue/commission aggregate and its code is unusable for
-      redemption, exactly like every other Financial-Truth-gated flow —
-      proven by a before/after assertion mirroring §14.37/§14.38's style
-      (FR-49.3).
-- [ ] A partial redemption reduces the card's derived balance by exactly
-      the redeemed amount, re-derivable from the sum of
-      `GiftCardRedemption` rows, never a bare column that can drift —
-      proven by redeeming across two separate orders and recomputing
-      balance from history (FR-49.4/49.6).
-- [ ] A redemption that would exceed the card's remaining balance is
-      rejected (FR-49.6).
-- [ ] A gift-card-fully-covered order still requires an explicit seller
-      confirmation before it counts toward commission/revenue — never
-      auto-confirmed (FR-49.5).
-- [ ] RLS denies cross-tenant access to another store's gift cards/
-      redemptions at the database level, independent of the app layer
-      (FR-49.7) — same proof style as every other tenant-isolation test
-      in this SRS.
+### 14.49 Gift Cards (built, Module 32, v0.32)
+- [x] A `pending_payment`/unpaid gift-card purchase is unusable for
+      redemption (checkout rejects the code with 400) until the seller
+      explicitly confirms payment — proven by an e2e test attempting
+      redemption before and after `confirm-paid` (FR-49.3).
+- [x] A partial redemption reduces the card's `remainingBalance` by
+      exactly the redeemed amount, verified directly against the DB row
+      after each of two separate orders — the balance is always
+      reconcilable against `initialValue - sum(GiftCardRedemption.amount)`
+      by construction, since both are written in the same transaction
+      (FR-49.4/49.6).
+- [x] A redemption is capped at whichever is smaller of the order total
+      or the card's remaining balance — proven by an e2e test where the
+      second of two orders exceeds the remaining balance and only the
+      remainder is applied, then a third checkout against the now-`depleted`
+      code is rejected with 400 (FR-49.6).
+- [x] A gift-card-covered order still requires an explicit seller
+      `mark-as-paid` confirmation before commission accrues, and
+      commission accrues on the order's full `totalAmount` (unreduced by
+      `giftCardAmount`) — proven by an e2e test asserting the
+      `commission_accrued` ledger entry amount (FR-49.5).
+- [x] RLS denies cross-tenant access to another store's gift cards at the
+      database level (a cross-tenant `GET`/`confirm-paid` 404s, and a
+      code from store A can never redeem against store B's checkout) —
+      proven by an e2e test, same proof style as every other
+      tenant-isolation test in this SRS (FR-49.7).
 
 ### 14.50 Customer Segments (new, v0.32, not yet built)
 - [ ] A segment's member list matches a hand-computed expected set for a

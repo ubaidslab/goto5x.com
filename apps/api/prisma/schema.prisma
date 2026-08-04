@@ -492,6 +492,7 @@ model Store {
   stockAdjustments          StockAdjustment[]
   orderVerifications        OrderVerification[]
   adSpendEntries            AdSpendEntry[]
+  giftCards                 GiftCard[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -747,6 +748,83 @@ model DiscountCode {
 
   @@unique([storeId, code], name: "uniq_discount_code_store")
   @@map("discount_codes")
+}
+
+enum GiftCardSource {
+  buyer_purchase
+  seller_issued
+}
+
+// Module 32 (SRS §5.49/FR-49.3) - `pending_payment` is the only status a
+// `buyer_purchase` card is ever created in (the Financial Truth Invariant
+// gate - a code in this status is unusable at checkout); `seller_issued`
+// cards are created directly as `active` (never a revenue event). `active`
+// is the only redeemable status; `depleted` is set the instant
+// remainingBalance reaches zero (informational - a zero-balance card is
+// already unredeemable on its own).
+enum GiftCardStatus {
+  pending_payment
+  active
+  depleted
+  expired
+  cancelled
+}
+
+// Module 32 (SRS §5.49, FR-49.1-49.7) - store-scoped, unique-coded, mirrors
+// `DiscountCode`'s shape. `remainingBalance` is the atomically-guarded
+// source of truth for the redemption race (same "the constraint is the
+// source of truth" idiom as `DiscountCode.usageCount` and
+// `SupplierListing.decrementStock()`) - always reconcilable against
+// `initialValue - sum(giftCardRedemptions.amount)` by construction, since
+// both are updated in the same transaction (FR-49.4).
+model GiftCard {
+  id               String         @id @default(uuid()) @db.Uuid
+  storeId          String         @map("store_id") @db.Uuid
+  code             String
+  source           GiftCardSource
+  status           GiftCardStatus @default(pending_payment)
+  initialValue     Decimal        @map("initial_value") @db.Decimal(12, 2)
+  remainingBalance Decimal        @map("remaining_balance") @db.Decimal(12, 2)
+  currency         String
+  // Set only for a `buyer_purchase` card - the buyer's email at purchase
+  // time, so a seller can confirm payment against a real person.
+  purchaserEmail String? @map("purchaser_email")
+  // Set only for a `seller_issued` card - the seller's own reason
+  // (goodwill/refund/etc.), never shown to buyers.
+  issuedNote String? @map("issued_note")
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz
+  // FR-49.3 - the moment a `buyer_purchase` card's payment was confirmed
+  // (mirrors Order.placedAt's "when did this become real" role); set at
+  // creation time for a `seller_issued` card.
+  activatedAt DateTime? @map("activated_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  store       Store                @relation(fields: [storeId], references: [id])
+  redemptions GiftCardRedemption[]
+
+  @@unique([storeId, code], name: "uniq_gift_card_store")
+  @@index([storeId, status], name: "idx_gift_cards_store_status")
+  @@map("gift_cards")
+}
+
+// Module 32 (SRS §5.49/FR-49.4) - append-only; created only alongside the
+// same atomic conditional decrement of GiftCard.remainingBalance that
+// guards the race, inside the same transaction as the order that consumed
+// it. Never updated or deleted.
+model GiftCardRedemption {
+  id         String   @id @default(uuid()) @db.Uuid
+  storeId    String   @map("store_id") @db.Uuid
+  giftCardId String   @map("gift_card_id") @db.Uuid
+  orderId    String   @map("order_id") @db.Uuid
+  amount     Decimal  @db.Decimal(12, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  giftCard GiftCard @relation(fields: [giftCardId], references: [id])
+  order    Order    @relation(fields: [orderId], references: [id])
+
+  @@index([giftCardId], name: "idx_gift_card_redemptions_gift_card")
+  @@index([orderId], name: "idx_gift_card_redemptions_order")
+  @@map("gift_card_redemptions")
 }
 
 // Module 8 (Supplier Portal, FR-3.1). Global profile, same shape as `Seller`
@@ -1517,6 +1595,13 @@ model Order {
   source            OrderSource @default(storefront)
   discountCodeId    String?     @map("discount_code_id") @db.Uuid
   discountAmount    Decimal     @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  // Module 32 (SRS §5.49/FR-49.5) - a redeemed gift card is a payment
+  // reduction against the already-computed total, never a price discount
+  // (unlike discountAmount, it plays no part in computeOrderTotals()'s
+  // tax/shipping math) - the seller still collects `totalAmount -
+  // giftCardAmount` via the normal Direct Seller Collection flow, and
+  // commission (FR-49.5) is accrued on the full totalAmount regardless.
+  giftCardAmount    Decimal     @default(0) @map("gift_card_amount") @db.Decimal(12, 2)
   tags              String[]    @default([])
   shippingAmount    Decimal     @map("shipping_amount") @db.Decimal(12, 2)
   taxAmount         Decimal     @default(0) @map("tax_amount") @db.Decimal(12, 2)
@@ -1547,6 +1632,11 @@ model Order {
   // orders.verification_channel != "none" at order-placement time; absent
   // entirely means "this order never needed verification," not "pending."
   verification   OrderVerification?
+  // Module 32 (SRS §5.49/FR-49.4) - the append-only redemption ledger; an
+  // order may carry at most one redemption in v1.0 (one gift card per
+  // checkout), but this stays a list for the same reason LedgerEntry does -
+  // the audit trail, not a single mutable pointer.
+  giftCardRedemptions GiftCardRedemption[]
 
   @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
   @@index([discountCodeId], name: "idx_orders_discount_code")
