@@ -7,6 +7,51 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 34: Email Campaigns
+
+SRS §5.51/§14.51, FR-51.1-51.7. Basic campaign/newsletter sends to exactly
+one saved segment (Module 33), via the seller's own connected SMTP
+sender. Third module of the "Pre-Launch Enhancements" batch (v0.32) - the
+dependency the founder called out ("Customer Segments before Email
+Campaigns") now pays off directly.
+
+### Added
+- `EmailCampaign` model (new `email_campaigns` table, RLS-isolated) -
+  reuses Module 26's `SellerVerificationEmail` connected-sender record
+  and `smtp-credential-crypto.util.ts` for sending (FR-51.1); no new
+  credential store or encryption key.
+- **Plan-tier monthly send quota** (`email_campaigns.monthly_send_limit`,
+  resolved via `SubscriptionsService.getPlanContext()`, same pattern as
+  `catalog.product_limit`) - the check runs before the campaign row
+  exists or anything is queued, so an over-quota send is rejected
+  entirely, never partially sent (FR-51.2).
+- **Unsubscribe handling** - the first such mechanism in this codebase.
+  `Customer` gains `unsubscribedAt`/`unsubscribeToken`; the raw token is
+  stored directly (not hashed like password-reset tokens) since it must
+  keep working for the customer's lifetime and the worst case of it
+  leaking is an unwanted unsubscribe, not an account takeover.
+  Suppression is re-checked live at actual send time, not only against
+  the count captured at campaign creation (FR-51.3). Resolves through a
+  new `/unsubscribe` page in `apps/web`, mirroring the existing
+  `/verify-email`/`/reset-password` token-link pattern.
+- **Honest deliverability note**, always visible in the campaign
+  composer: sends go through the seller's own SMTP credentials with no
+  platform-level sender-reputation warming (FR-51.4).
+- **No AI** - campaign subject/body is entirely seller-authored (FR-51.5).
+- Campaign sends run as a BullMQ background job
+  (`EmailCampaignsService.processCampaign()`, new `email-campaigns`
+  queue) and are logged to the Platform Event Log as `campaign.sent`
+  (FR-51.6/51.7).
+- Seller dashboard screen (`/stores/:storeId/campaigns`) - compose and
+  send a campaign to a segment via a connected sender, recent-campaigns
+  list with live send/fail counts.
+- e2e coverage (against a real in-process SMTP server, not a mock): send
+  via connected sender as a background job with a Platform Event Log
+  assertion, monthly quota blocking a whole campaign before anything
+  sends, unsubscribe excluding a still-matching customer from a
+  subsequent send (link extracted from the actual sent email), RLS
+  cross-tenant isolation.
+
 ## Module 33: Customer Segments
 
 SRS §5.50/§14.50, FR-50.1-50.6. Saved filters over the existing CRM

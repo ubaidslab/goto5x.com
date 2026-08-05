@@ -3297,19 +3297,31 @@ from each customer's most recent order's shipping address (no new
 `Customer` column). Seller-dashboard CRUD screen with a live member list
 and member-count preview.
 
-### Module 34 (Email Campaigns) — scope summary
+### Module 34 (Email Campaigns) — scope summary (built)
 `docs/SRS.md` §5.51, FR-51.1-51.7. Depends on Module 33. Reuses Module
 26's `SellerVerificationEmail` connected-sender record and
 `smtp-credential-crypto.util.ts` encryption utility for sending — no new
-credential store. New plan-tier numeric Settings Registry key
-(`email_campaigns.monthly_send_limit`), resolved via the same
-`getPlanContext(sellerId)` pattern `catalog.product_limit` already
-established. New unsubscribe mechanism (first in this codebase) — a
-per-recipient unsubscribe link + a store-scoped suppression flag on
-`Customer`, checked at send time. Campaign sends run as a background job
-(existing BullMQ infra) and are logged to the existing Platform Event Log
-(§14.23). No AI (composer is seller-authored only); the composer UI
-carries an explicit, honest deliverability disclaimer.
+credential store or encryption key. New plan-tier numeric Settings
+Registry key (`email_campaigns.monthly_send_limit`), resolved via the
+same `getPlanContext(sellerId)` pattern `catalog.product_limit` already
+established; the quota check runs BEFORE the campaign row exists or
+anything is queued, so an over-quota send is rejected entirely, never
+partially sent. New unsubscribe mechanism (first in this codebase) - a
+per-recipient unsubscribe link (raw token stored directly on `Customer`,
+not hashed like password-reset tokens - it must be re-derivable so the
+same link keeps working for a customer's lifetime, and the worst case of
+it leaking is an unwanted unsubscribe, not an account takeover) + a
+store-scoped `unsubscribedAt` suppression flag, re-checked live at actual
+send time (not only at campaign-creation time). Campaign sends run as a
+background job (existing BullMQ infra, `email-campaigns` queue,
+`EmailCampaignsService.processCampaign()` - e2e tests call it directly,
+same precedent as `DataExportService.processExport()`) and are logged to
+the existing Platform Event Log as `campaign.sent`. No AI (composer is
+seller-authored only); the composer UI carries an explicit, honest
+deliverability disclaimer. The unsubscribe link itself resolves through a
+new `/unsubscribe` page in `apps/web` (mirrors the existing
+`/verify-email`/`/reset-password` token-link pattern) rather than a raw
+API endpoint.
 
 ### Module 35 (Staff Accounts, plan-tier) — scope summary
 `docs/SRS.md` §5.52, FR-52.1-52.6. New `StaffAccount` model with a fixed

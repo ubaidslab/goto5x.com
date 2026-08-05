@@ -494,6 +494,7 @@ model Store {
   adSpendEntries            AdSpendEntry[]
   giftCards                 GiftCard[]
   customerSegments          CustomerSegment[]
+  emailCampaigns            EmailCampaign[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -1660,8 +1661,20 @@ model Customer {
   lastOrderAt  DateTime? @map("last_order_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  store  Store   @relation(fields: [storeId], references: [id])
-  orders Order[]
+  // Module 34 (SRS §5.51/FR-51.3) - permanent, store-scoped suppression
+  // from every future campaign send, regardless of which segment this
+  // customer would otherwise match. Unlike password-reset/email-verify
+  // tokens (auth/token.util.ts), the raw value is stored directly rather
+  // than hashed: it must be re-derivable so the SAME unsubscribe link
+  // keeps working for a customer across every future campaign, and the
+  // worst case of this value leaking is an unwanted unsubscribe, not an
+  // account takeover - hashing would only break that reusability for no
+  // real security gain. Lazily generated on first campaign send.
+  unsubscribedAt  DateTime? @map("unsubscribed_at") @db.Timestamptz
+  unsubscribeToken String?  @unique @map("unsubscribe_token")
+
+  store          Store           @relation(fields: [storeId], references: [id])
+  orders         Order[]
 
   @@unique([storeId, email], name: "uniq_customer_store_email")
   @@index([storeId, totalSpent], name: "idx_customers_store_spent")
@@ -1698,10 +1711,49 @@ model CustomerSegment {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  store Store @relation(fields: [storeId], references: [id])
+  store     Store           @relation(fields: [storeId], references: [id])
+  campaigns EmailCampaign[]
 
   @@index([storeId], name: "idx_customer_segments_store")
   @@map("customer_segments")
+}
+
+enum EmailCampaignStatus {
+  queued
+  sending
+  sent
+  failed
+}
+
+// Module 34 (SRS §5.51/§14.51) - a basic campaign/newsletter sent to
+// exactly one saved segment (§5.50) via the seller's OWN connected SMTP
+// sender (Module 26's SellerVerificationEmail - reused as-is, FR-51.1, no
+// second credential store). Sends run as a background job (FR-51.6);
+// recipientCount/sentCount/failedCount are the truth about what happened,
+// not an assumption from the segment's size at creation time (membership
+// is re-derived live when the job actually runs, same discipline as
+// Customer Segments itself).
+model EmailCampaign {
+  id            String              @id @default(uuid()) @db.Uuid
+  storeId       String              @map("store_id") @db.Uuid
+  segmentId     String              @map("segment_id") @db.Uuid
+  senderEmailId String              @map("sender_email_id") @db.Uuid
+  subject       String
+  body          String
+  status        EmailCampaignStatus @default(queued)
+  recipientCount Int                @default(0) @map("recipient_count")
+  sentCount     Int                 @default(0) @map("sent_count")
+  failedCount   Int                 @default(0) @map("failed_count")
+  failureReason String?             @map("failure_reason")
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  sentAt        DateTime?           @map("sent_at") @db.Timestamptz
+
+  store       Store                   @relation(fields: [storeId], references: [id])
+  segment     CustomerSegment         @relation(fields: [segmentId], references: [id])
+  senderEmail SellerVerificationEmail @relation(fields: [senderEmailId], references: [id])
+
+  @@index([storeId, createdAt], name: "idx_email_campaigns_store_created")
+  @@map("email_campaigns")
 }
 
 enum ReviewStatus {
@@ -1910,6 +1962,7 @@ model SellerVerificationEmail {
 
   seller        Seller              @relation(fields: [sellerId], references: [id])
   verifications OrderVerification[]
+  campaigns     EmailCampaign[]
 
   @@index([sellerId, status], name: "idx_seller_verification_emails_seller_status")
   @@map("seller_verification_emails")

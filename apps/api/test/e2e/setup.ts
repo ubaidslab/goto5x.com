@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
 import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
+import { seedCampaignsSettings } from "../../src/campaigns/campaigns.seed";
 import { seedCareersSettings } from "../../src/careers/careers.seed";
 import { seedDataExportSettings } from "../../src/data-export/data-export.seed";
 import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
@@ -69,7 +70,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       seller_api_tokens, template_entitlements, external_api_clients, themes,
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
-      gift_card_redemptions, gift_cards, customer_segments,
+      gift_card_redemptions, gift_cards, email_campaigns, customer_segments,
       listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
       ledger_entries, seller_invoices, wallet_topup_requests, supplier_wallet_entries,
       payments, tracking_updates, order_timeline_events, order_notes, order_items, orders, carts,
@@ -134,6 +135,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   // Templates module (v0.31 design phase) - depends on the paid plan rows
   // seedPlansData() just (re)created, so it must run after them.
   await seedTemplatesBrandingSettings(prisma);
+  // Module 34 - depends on the same paid plan rows for its plan-tier quota key.
+  await seedCampaignsSettings(prisma);
 }
 
 /**

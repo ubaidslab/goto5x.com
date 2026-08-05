@@ -23,6 +23,8 @@ import { VerificationReReviewService } from "../verification/verification-re-rev
 import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
 import { DataExportService } from "../data-export/data-export.service";
 import { DATA_EXPORT_JOB_NAME, DATA_EXPORT_QUEUE_NAME } from "../data-export/data-export.queue";
+import { EmailCampaignsService } from "../campaigns/email-campaigns.service";
+import { EMAIL_CAMPAIGNS_QUEUE_NAME } from "../campaigns/campaigns.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -44,6 +46,7 @@ async function main() {
   const storeHealth = appContext.get(StoreHealthScoreService);
   const verificationReReview = appContext.get(VerificationReReviewService);
   const dataExport = appContext.get(DataExportService);
+  const emailCampaigns = appContext.get(EmailCampaignsService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -200,9 +203,24 @@ async function main() {
     console.error(`${DATA_EXPORT_JOB_NAME} (seller-data-export) job ${job?.id} failed:`, err);
   });
 
+  // Module 34 (SRS §5.51, FR-51.6) - per-campaign send job.
+  // EmailCampaignsService.processCampaign() never throws (a send/decrypt
+  // failure is caught inside it and recorded on the campaign row itself),
+  // same discipline as Module 24's export processor above.
+  const emailCampaignsWorker = new Worker(
+    EMAIL_CAMPAIGNS_QUEUE_NAME,
+    async (job) => emailCampaigns.processCampaign(job.data.campaignId as string),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  emailCampaignsWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`email-campaigns job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24).",
+    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34).",
   );
 
   const shutdown = async () => {
@@ -216,6 +234,7 @@ async function main() {
     await storeHealthSweepWorker.close();
     await verificationReReviewSweepWorker.close();
     await dataExportWorker.close();
+    await emailCampaignsWorker.close();
     await appContext.close();
     process.exit(0);
   };

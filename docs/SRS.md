@@ -6100,19 +6100,19 @@ going forward, per FR-6.28.
 - [x] RLS denies cross-tenant access to another store's segments/
       customers (FR-50.5).
 
-### 14.51 Email Campaigns (new, v0.32, not yet built)
-- [ ] A seller at their plan's monthly send quota is blocked from
+### 14.51 Email Campaigns (built, Module 34, v0.32)
+- [x] A seller at their plan's monthly send quota is blocked from
       sending, never partially sent — proven by an e2e test driving the
       counter to its limit (FR-51.2).
-- [ ] An unsubscribed customer is excluded from a campaign send even
+- [x] An unsubscribed customer is excluded from a campaign send even
       when they match the target segment's filter criteria — proven by
       unsubscribing a matching customer and asserting they receive
       nothing on the next send (FR-51.3).
-- [ ] The unsubscribe link in a sent campaign email actually unsubscribes
+- [x] The unsubscribe link in a sent campaign email actually unsubscribes
       that customer for future sends to that store (FR-51.3).
-- [ ] The deliverability note renders on every view of the campaign
+- [x] The deliverability note renders on every view of the campaign
       composer (FR-51.4).
-- [ ] A campaign send is dispatched as a background job, not
+- [x] A campaign send is dispatched as a background job, not
       synchronously in the request/response cycle (FR-51.6).
 
 ### 14.52 Staff Accounts, plan-tier (new, v0.32, not yet built)
