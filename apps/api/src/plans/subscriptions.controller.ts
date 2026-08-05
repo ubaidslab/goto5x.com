@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
+import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.decorator";
+import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
 import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { SellerAgreementGuard } from "../trust-safety/seller-agreement.guard";
 import { ChangePlanDto } from "./dto/change-plan.dto";
@@ -8,9 +10,10 @@ import { RedeemPromoCodeDto } from "./dto/redeem-promo-code.dto";
 import { PromoCodesService } from "./promo-codes.service";
 import { SubscriptionsService } from "./subscriptions.service";
 
-/** SRS §5.7 (FR-7.5/7.9) - a seller's own plan/billing self-service surface. */
+/** SRS §5.7 (FR-7.5/7.9) - a seller's own plan/billing self-service surface. Owner-only always (SRS §5.52/FR-52.2). */
 @Controller("sellers/me/subscription")
-@UseGuards(SellerAgreementGuard)
+@UseGuards(SellerAgreementGuard, BlockStaffSessionsGuard)
+@BlockStaffSessions()
 export class SubscriptionsController {
   constructor(
     private readonly subscriptions: SubscriptionsService,

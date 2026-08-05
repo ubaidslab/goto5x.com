@@ -41,6 +41,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { ReviewsModule } from "./reviews/reviews.module";
 import { SellersModule } from "./sellers/sellers.module";
 import { SettingsModule } from "./settings-registry/settings.module";
+import { StaffModule } from "./staff/staff.module";
 import { StorefrontModule } from "./storefront/storefront.module";
 import { StoreHealthModule } from "./store-health/store-health.module";
 import { StoreSettingsModule } from "./store-settings/store-settings.module";
@@ -108,6 +109,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     GiftCardsModule,
     CustomerSegmentsModule,
     CampaignsModule,
+    StaffModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

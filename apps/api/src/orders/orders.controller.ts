@@ -3,8 +3,10 @@ import { OrderStatus } from "@prisma/client";
 import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { RequireStaffScope } from "../common/decorators/require-staff-scope.decorator";
 import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { StaffScopeGuard } from "../common/guards/staff-scope.guard";
 import { JwtAccessPayload } from "../common/types";
 import { CheckoutService } from "./checkout.service";
 import { AddOrderNoteDto } from "./dto/add-order-note.dto";
@@ -16,8 +18,10 @@ import { UploadTrackingDto } from "./dto/upload-tracking.dto";
 import { OrderBucket, OrdersOverviewService } from "./orders-overview.service";
 import { OrdersService } from "./orders.service";
 
+/** A staff session needs the `orders` scope to reach any route here (SRS §5.52/FR-52.2). */
 @Controller("stores/:storeId/orders")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, StaffScopeGuard)
+@RequireStaffScope("orders")
 export class OrdersController {
   constructor(
     private readonly orders: OrdersService,

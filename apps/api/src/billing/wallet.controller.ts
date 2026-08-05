@@ -6,6 +6,8 @@ import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
+import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.decorator";
+import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
 import { JwtAccessPayload } from "../common/types";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AdjustSellerWalletDto } from "./dto/adjust-seller-wallet.dto";
@@ -14,9 +16,10 @@ import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
 import { WalletService } from "./wallet.service";
 
-/** Seller-facing wallet: FR-6.27's Balance/top-up/history screen. */
+/** Seller-facing wallet: FR-6.27's Balance/top-up/history screen. Owner-only always (SRS §5.52/FR-52.2). */
 @Controller("sellers/me/wallet")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockStaffSessionsGuard)
+@BlockStaffSessions()
 export class SellerWalletController {
   constructor(private readonly wallet: WalletService) {}
 

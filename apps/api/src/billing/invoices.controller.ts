@@ -3,13 +3,16 @@ import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.decorator";
+import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
 import { JwtAccessPayload } from "../common/types";
 import { WaiveCommissionDto } from "./dto/waive-commission.dto";
 import { InvoicesService } from "./invoices.service";
 
-/** Seller-facing: their own commission invoices only. */
+/** Seller-facing: their own commission invoices only. Owner-only always (SRS §5.52/FR-52.2). */
 @Controller("sellers/me/invoices")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockStaffSessionsGuard)
+@BlockStaffSessions()
 export class SellerInvoicesController {
   constructor(private readonly invoices: InvoicesService) {}
 

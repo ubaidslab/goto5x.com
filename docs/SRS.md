@@ -4000,12 +4000,20 @@ differentiator, at the founder's explicit direction)
   admin capability through existing/new admin-scoped mechanisms, not a
   new generic permissions framework.
 - FR-52.2: **`StaffAccount` model, coarse role-based scopes.** Seller-
-  owned, carrying a fixed set of explicit permission scopes (e.g.
-  `orders`, `catalog`, `discounts`, `customers`) — `billing`/`payment-
-  instructions`/`wallet`/`plan` are never assignable to a staff scope,
-  owner-only always. Same "coarse, explicit, auditable scopes" discipline
-  as the platform's own 3-value `AdminRole` enum, not a fully generic
-  permissions framework (that ambition stays deferred per FR-52.1).
+  owned, carrying a fixed set of explicit permission scopes (`orders`,
+  `catalog`, `discounts`, `customers`, and **`design`**) —
+  `billing`/`payment-instructions`/`wallet`/`plan` are never assignable
+  to a staff scope, owner-only always. Same "coarse, explicit, auditable
+  scopes" discipline as the platform's own 3-value `AdminRole` enum, not
+  a fully generic permissions framework (that ambition stays deferred per
+  FR-52.1). The **`design`** scope is deliberately narrow — theme
+  customization (Module 4's customizer) and storefront branding only, no
+  orders/catalog/customer/discount access — added at the founder's
+  explicit direction (v0.32, pre-Module-35-build) so a seller can hand a
+  contracted designer store-design-only access without exposing business
+  data; this is also the seller-side access model the future D-Studio
+  designer-marketplace concept (roadmap-only, §5.22) will build on, not a
+  new concept invented for that roadmap item.
 - FR-52.3: **Scoped session, modeled on impersonation's shape.** A staff
   login issues a JWT carrying a `staffAccountId` and its scopes (same
   additive-field pattern as `JwtAccessPayload`'s existing
@@ -6115,18 +6123,22 @@ going forward, per FR-6.28.
 - [x] A campaign send is dispatched as a background job, not
       synchronously in the request/response cycle (FR-51.6).
 
-### 14.52 Staff Accounts, plan-tier (new, v0.32, not yet built)
-- [ ] A staff session scoped to e.g. `orders` cannot access a
+### 14.52 Staff Accounts, plan-tier (built, Module 35, v0.32)
+- [x] A staff session scoped to e.g. `orders` cannot access a
       `billing`/`wallet`/`plan` route, proven by an e2e test asserting a
       403 on an out-of-scope route with a valid staff JWT (FR-52.2/52.3).
-- [ ] A seller at their plan's staff-account limit is blocked from
+- [x] A seller at their plan's staff-account limit is blocked from
       creating another staff account, with the same
       "plan's limit has been reached" message style as
       `catalog.product_limit` (FR-52.5).
-- [ ] Every write a staff session performs is recorded to the Platform
+- [x] Every write a staff session performs is recorded to the Platform
       Event Log tagged with its `staffAccountId` (FR-52.4).
-- [ ] A Free-plan seller has zero staff-account capacity by default
+- [x] A Free-plan seller has zero staff-account capacity by default
       (FR-52.6).
+- [x] A staff session scoped to `design` can reach the theme customizer
+      but is blocked (403) from an `orders`/`catalog`/`customers` route,
+      and conversely a session scoped to e.g. `orders` is blocked from
+      the customizer (FR-52.2).
 
 ### 14.53 Admin Email Section (new, v0.32, not yet built)
 - [ ] Linked SMTP+IMAP credentials are stored encrypted at rest and never

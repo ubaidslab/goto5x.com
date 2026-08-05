@@ -3323,7 +3323,7 @@ new `/unsubscribe` page in `apps/web` (mirrors the existing
 `/verify-email`/`/reset-password` token-link pattern) rather than a raw
 API endpoint.
 
-### Module 35 (Staff Accounts, plan-tier) — scope summary
+### Module 35 (Staff Accounts, plan-tier) — scope summary (built)
 `docs/SRS.md` §5.52, FR-52.1-52.6. New `StaffAccount` model with a fixed
 set of coarse, explicit permission scopes (never `billing`/`payment-
 instructions`/`wallet`/`plan`). JWT/session shape modeled on

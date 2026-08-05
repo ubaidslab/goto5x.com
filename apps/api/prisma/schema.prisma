@@ -345,6 +345,7 @@ model Seller {
   verifiedStoreApplications   VerifiedStoreApplication[]
   dataExports                 SellerDataExport[]
   verificationEmails          SellerVerificationEmail[]
+  staffAccounts               StaffAccount[]
 
   @@map("sellers")
 }
@@ -1966,6 +1967,46 @@ model SellerVerificationEmail {
 
   @@index([sellerId, status], name: "idx_seller_verification_emails_seller_status")
   @@map("seller_verification_emails")
+}
+
+enum StaffScope {
+  orders
+  catalog
+  discounts
+  customers
+  design
+}
+
+enum StaffAccountStatus {
+  active
+  revoked
+}
+
+// Module 35 (SRS §5.52/FR-52.1-52.6) - pulls the previously Phase-3-deferred
+// staff-sub-account concept forward as a plan-tier differentiator. Seller-
+// owned, deliberately seller-scoped only (no store_id, no RLS policy) -
+// same "no RLS, explicit sellerId filter via PrismaAdminService" discipline
+// as SellerVerificationEmail above, since a staff account's access spans
+// all of the owner's stores, not one. `billing`/`payment-instructions`/
+// `wallet`/`plan` are never assignable scopes - owner-only always,
+// enforced app-side (StaffScopeGuard has no metadata value that maps to
+// them, so no route can be opted into checking for them as a staff-
+// satisfiable scope).
+model StaffAccount {
+  id           String             @id @default(uuid()) @db.Uuid
+  sellerId     String             @map("seller_id") @db.Uuid
+  email        String             @unique
+  passwordHash String             @map("password_hash")
+  name         String?
+  scopes       StaffScope[]
+  status       StaffAccountStatus @default(active)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt    DateTime?          @map("revoked_at") @db.Timestamptz
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId], name: "idx_staff_accounts_seller")
+  @@map("staff_accounts")
 }
 
 // Module 28 (SRS §5.39, FR-39.4) - append-only stock-change history, seller-

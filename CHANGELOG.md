@@ -7,6 +7,54 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 35: Staff Accounts, plan-tier
+
+SRS §5.52/§14.52, FR-52.1-52.6. Scoped, role-based, audit-logged staff
+sub-accounts for a seller, gated by plan-tier capacity. Fourth module of
+the "Pre-Launch Enhancements" batch (v0.32).
+
+### Added
+- `StaffAccount` model (new `staff_accounts` table, seller-scoped, no
+  RLS - same "explicit `sellerId` filter via `PrismaAdminService`"
+  discipline as `SellerVerificationEmail`, since a staff account's access
+  spans every store the owner has, not one store).
+- Fixed, explicit permission scopes: `orders`, `catalog`, `discounts`,
+  `customers`, `design` - deliberately excludes `billing`/`payment-
+  instructions`/`wallet`/`plan`, which stay owner-only regardless of a
+  staff session's assigned scopes (FR-52.2/52.3). The `design` scope
+  exists specifically so a seller can hand a designer store-design-only
+  access to the theme customizer, without exposing orders or customer
+  data - the intended on-ramp to a future D-Studio designer-access flow.
+- **Plan-tier staff capacity** (`staff.max_accounts`, resolved via
+  `SubscriptionsService.getPlanContext()`, same check-then-act shape as
+  `catalog.product_limit`) - Free defaults to zero staff accounts
+  (FR-52.5/52.6).
+- Staff sessions authenticate via their own login endpoint
+  (`POST /staff/auth/login`) and carry a JWT issued with the *owner's*
+  `sellerId` plus new `staffAccountId`/`scopes` claims - every existing
+  `@CurrentSellerId()`-based controller and RLS policy resolves tenant
+  scope correctly with zero code changes, same precedent as impersonation
+  session tokens.
+- `@RequireStaffScope()`/`StaffScopeGuard` (opt-in allowlist, applied to
+  `OrdersController` for `orders` and to the theme-settings/branding
+  controllers for `design`) and `@BlockStaffSessions()`/
+  `BlockStaffSessionsGuard` (explicit hard block, applied to
+  wallet/invoices/payment-instructions/subscriptions controllers) - two
+  complementary mechanisms rather than a global default-deny guard, which
+  NestJS's guard execution order (global guards run before controller-
+  level `JwtAuthGuard`) would make silently ineffective.
+- Every write a staff session performs is tagged to the Platform Event
+  Log as `staff_account.action` (actor = the staff account, not the
+  owner) via a generic HTTP-layer interceptor, same approach as
+  `ImpersonationAuditInterceptor` (FR-52.4).
+- Owner-only staff management screen (`/stores/:storeId/staff-accounts`)
+  - create with a scope picker, list with live status, revoke.
+- e2e coverage: zero capacity on Free with plan-tier limit raising it,
+  scope-based route access (orders vs. design, each way), owner-only
+  surfaces staying unreachable even for a staff session scoped to
+  everything assignable, Platform Event Log tagging on writes (not
+  reads), and login failing after revocation.
+
 ## Module 34: Email Campaigns
 
 SRS §5.51/§14.51, FR-51.1-51.7. Basic campaign/newsletter sends to exactly

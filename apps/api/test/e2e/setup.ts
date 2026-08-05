@@ -25,6 +25,7 @@ import {
   seedModule3Settings,
   seedPlatformEventsSettings,
 } from "../../src/settings-registry/settings.seed";
+import { seedStaffSettings } from "../../src/staff/staff.seed";
 import { seedStoreHealthSettings } from "../../src/store-health/store-health.seed";
 import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
 import { seedBuiltInThemes, seedModule4Settings, seedTemplatesBrandingSettings } from "../../src/theme-engine/themes.seed";
@@ -85,6 +86,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       seller_data_exports,
       payout_requests, program_content_submissions, referral_attributions, program_participants,
       subscriptions,
+      staff_accounts,
       stores, admin_users, sellers, suppliers, user_security_events, users, plans,
       seller_signup_waitlist,
       impersonation_sessions, content_page_revisions, content_pages,
@@ -137,6 +139,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedTemplatesBrandingSettings(prisma);
   // Module 34 - depends on the same paid plan rows for its plan-tier quota key.
   await seedCampaignsSettings(prisma);
+  // Module 35 - depends on the same paid plan rows for its plan-tier quota key.
+  await seedStaffSettings(prisma);
 }
 
 /**
