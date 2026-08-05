@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AdminCompletionModule } from "./admin-completion/admin-completion.module";
+import { AdminEmailModule } from "./admin-email/admin-email.module";
 import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
@@ -110,6 +111,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     CustomerSegmentsModule,
     CampaignsModule,
     StaffModule,
+    AdminEmailModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

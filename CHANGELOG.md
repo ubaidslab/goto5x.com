@@ -7,6 +7,48 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 36: Admin Email Section
+
+SRS §5.53/§14.53, FR-53.1-53.5. UZEYN's own unified inbox in the admin
+terminal - link SMTP+IMAP email accounts, read/reply across all of them
+from one place. Fifth module of the "Pre-Launch Enhancements" batch
+(v0.32).
+
+### Added
+- `AdminEmailAccount` model (new `admin_email_accounts` table),
+  admin-global - same "no RLS, gated by `AdminAuthGuard`, inherently
+  precedes tenant context" category as `AdminAuditLog`/
+  `ImpersonationSession`, since this is the founder's own inbox, not a
+  seller-facing feature.
+- **IMAP+SMTP credentials encrypted at rest** under their own
+  independent `ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY` - same AES-256-GCM
+  `iv:authTag:ciphertext` shape as `smtp-credential-crypto.util.ts`, kept
+  as its own key so it rotates independently (FR-53.2).
+- **Unified inbox** (`AdminMailService`) - connects to each linked
+  account's real IMAP server (via `imapflow`) on demand, merges the most
+  recent messages from every linked account into one date-sorted list
+  (FR-53.3).
+- **Reply always via the originating account's own SMTP credentials**
+  (`nodemailer`), never a shared/default sender - the founder replies
+  personally as themself from the correct address (FR-53.3).
+- **No AI** in v1.0 - no summarization, suggested replies, or
+  auto-triage; AI-assist for this section is a roadmap-only note (§5.22)
+  (FR-53.4).
+- Every link/unlink action is recorded to `AdminAuditLog` (not the
+  Platform Event Log - this is a genuine admin action on an admin-scoped
+  resource, distinct from Staff Accounts' seller-side logging) with
+  before/after values (FR-53.5). A separate on-demand test-connection
+  endpoint checks both IMAP and SMTP connectivity without gating
+  account creation on it.
+- Bare functional admin terminal screen (`/admin/email`) - link/unlink
+  accounts, test connection, unified inbox, reply.
+- e2e coverage (against real in-process IMAP servers via
+  `hoodiecrow-imap` and real SMTP test servers, not mocks): credentials
+  never appear in plaintext in an API response, two linked accounts'
+  messages merge into one date-sorted list, a reply uses the originating
+  account's own SMTP server, and every link/unlink is audit-logged with
+  before/after values.
+
 ## Module 35: Staff Accounts, plan-tier
 
 SRS §5.52/§14.52, FR-52.1-52.6. Scoped, role-based, audit-logged staff

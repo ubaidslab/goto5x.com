@@ -3338,7 +3338,7 @@ Platform Event Log (§14.23) — deliberately not `AdminAuditLog`, which
 stays reserved for platform-admin actions. Free plan defaults to zero
 staff accounts.
 
-### Module 36 (Admin Email Section) — scope summary
+### Module 36 (Admin Email Section) — scope summary (built)
 `docs/SRS.md` §5.53, FR-53.1-53.5. New `AdminEmailAccount` model,
 admin-global (no RLS, same category as `AdminAuditLog`/
 `ImpersonationSession`). SMTP+IMAP credentials encrypted at rest under a

@@ -28,6 +28,7 @@ describe("validateEnv", () => {
     IDENTITY_FINGERPRINT_HMAC_SECRET: "identity-fingerprint-test-secret",
     EXTERNAL_API_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString("base64"),
     SMTP_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString("base64"),
+    ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 13).toString("base64"),
   };
 
   it("passes through a fully-populated, valid config", () => {
@@ -80,6 +81,18 @@ describe("validateEnv", () => {
   it("passes when EXTERNAL_API_SECRET_ENCRYPTION_KEY decodes to exactly 32 bytes", () => {
     expect(() =>
       validateEnv({ ...validConfig, EXTERNAL_API_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64") }),
+    ).not.toThrow();
+  });
+
+  it("throws when ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY does not decode to exactly 32 bytes", () => {
+    expect(() =>
+      validateEnv({ ...validConfig, ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(16, 1).toString("base64") }),
+    ).toThrow(/32-byte key/);
+  });
+
+  it("passes when ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY decodes to exactly 32 bytes", () => {
+    expect(() =>
+      validateEnv({ ...validConfig, ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64") }),
     ).not.toThrow();
   });
 });

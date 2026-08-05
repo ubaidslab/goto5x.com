@@ -6140,14 +6140,14 @@ going forward, per FR-6.28.
       and conversely a session scoped to e.g. `orders` is blocked from
       the customizer (FR-52.2).
 
-### 14.53 Admin Email Section (new, v0.32, not yet built)
-- [ ] Linked SMTP+IMAP credentials are stored encrypted at rest and never
+### 14.53 Admin Email Section (built, Module 36, v0.32)
+- [x] Linked SMTP+IMAP credentials are stored encrypted at rest and never
       appear in plaintext in any API response or log (FR-53.2).
-- [ ] The unified inbox correctly merges messages from two or more linked
+- [x] The unified inbox correctly merges messages from two or more linked
       accounts into one list (FR-53.3).
-- [ ] A reply sent from the unified inbox uses the originating account's
+- [x] A reply sent from the unified inbox uses the originating account's
       own SMTP credentials, not a shared/default sender (FR-53.3).
-- [ ] Every link/unlink action is recorded in `AdminAuditLog` with
+- [x] Every link/unlink action is recorded in `AdminAuditLog` with
       before/after values (FR-53.5).
 
 ### 14.54 Advanced Granular Admin Control (new, v0.32, not yet built)

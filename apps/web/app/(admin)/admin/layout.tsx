@@ -45,6 +45,7 @@ const NAV_LINKS: { href: string; label: string }[] = [
   { href: "/admin/external-api-clients", label: "External API clients" },
   { href: "/admin/content-pages", label: "Content pages" },
   { href: "/admin/messages", label: "Messages" },
+  { href: "/admin/email", label: "Email" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -18,7 +18,8 @@
   },
   "pnpm": {
     "overrides": {
-      "multer": "^2.2.0"
+      "multer": "^2.2.0",
+      "minimist": "^1.2.8"
     }
   }
 }

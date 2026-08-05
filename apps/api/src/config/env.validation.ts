@@ -112,6 +112,15 @@ class EnvironmentVariables {
   // secrets rotate independently.
   @IsString()
   SMTP_CREDENTIAL_ENCRYPTION_KEY!: string;
+
+  // Module 36 (SRS §5.53/FR-53.2) - encrypts a linked admin email
+  // account's IMAP+SMTP passwords at rest, same AES-256-GCM mechanism/
+  // key-management discipline as DRIVE_TOKEN_ENCRYPTION_KEY/
+  // IDENTITY_ENCRYPTION_KEY/EXTERNAL_API_SECRET_ENCRYPTION_KEY/
+  // SMTP_CREDENTIAL_ENCRYPTION_KEY, kept as its own key so all five
+  // secrets rotate independently.
+  @IsString()
+  ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY!: string;
 }
 
 /**
@@ -151,6 +160,11 @@ export function validateEnv(config: Record<string, unknown>) {
   if (Buffer.from(validated.SMTP_CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
     throw new Error(
       "Invalid environment configuration:\nSMTP_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
+    );
+  }
+  if (Buffer.from(validated.ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

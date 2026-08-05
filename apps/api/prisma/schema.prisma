@@ -397,6 +397,7 @@ model AdminUser {
   impersonationSessions    ImpersonationSession[]
   verifiedWalletTopUps     WalletTopUpRequest[]
   decidedVerifiedStoreApps VerifiedStoreApplication[]
+  linkedEmailAccounts      AdminEmailAccount[]
 
   @@map("admin_users")
 }
@@ -2007,6 +2008,36 @@ model StaffAccount {
 
   @@index([sellerId], name: "idx_staff_accounts_seller")
   @@map("staff_accounts")
+}
+
+// Module 36 (SRS §5.53/FR-53.1-53.5) - UZEYN's own unified inbox in the
+// admin terminal. Admin-global, not tenant-scoped - same "no RLS, gated by
+// AdminAuthGuard, inherently precedes tenant context" category as
+// AdminAuditLog/ImpersonationSession, since this is the founder's own
+// inbox, not a seller-facing feature. IMAP+SMTP credentials are encrypted
+// at rest under their own independent ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY
+// (same AES-256-GCM shape as smtp-credential-crypto.util.ts, kept as its
+// own key so it rotates independently of the seller-facing SMTP secret).
+model AdminEmailAccount {
+  id                    String   @id @default(uuid()) @db.Uuid
+  emailAddress          String   @unique @map("email_address")
+  displayName           String?  @map("display_name")
+  imapHost              String   @map("imap_host")
+  imapPort              Int      @map("imap_port")
+  imapUseTls            Boolean  @default(true) @map("imap_use_tls")
+  imapUsername          String   @map("imap_username")
+  imapPasswordEncrypted String   @map("imap_password_encrypted")
+  smtpHost              String   @map("smtp_host")
+  smtpPort              Int      @map("smtp_port")
+  smtpUseTls            Boolean  @default(false) @map("smtp_use_tls")
+  smtpUsername          String   @map("smtp_username")
+  smtpPasswordEncrypted String   @map("smtp_password_encrypted")
+  linkedByAdminUserId   String?  @map("linked_by_admin_user_id") @db.Uuid
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  linkedByAdminUser AdminUser? @relation(fields: [linkedByAdminUserId], references: [id])
+
+  @@map("admin_email_accounts")
 }
 
 // Module 28 (SRS §5.39, FR-39.4) - append-only stock-change history, seller-
