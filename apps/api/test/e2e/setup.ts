@@ -69,7 +69,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       seller_api_tokens, template_entitlements, external_api_clients, themes,
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
-      gift_card_redemptions, gift_cards,
+      gift_card_redemptions, gift_cards, customer_segments,
       listing_reviews, supplier_listings, store_supplier_links, supplier_adapters,
       ledger_entries, seller_invoices, wallet_topup_requests, supplier_wallet_entries,
       payments, tracking_updates, order_timeline_events, order_notes, order_items, orders, carts,

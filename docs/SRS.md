@@ -6088,16 +6088,16 @@ going forward, per FR-6.28.
       proven by an e2e test, same proof style as every other
       tenant-isolation test in this SRS (FR-49.7).
 
-### 14.50 Customer Segments (new, v0.32, not yet built)
-- [ ] A segment's member list matches a hand-computed expected set for a
+### 14.50 Customer Segments (built, Module 33, v0.32)
+- [x] A segment's member list matches a hand-computed expected set for a
       fixture of customers with known order counts/spend/last-order
       dates (FR-50.1/50.2).
-- [ ] Adding a new qualifying order changes segment membership on the
+- [x] Adding a new qualifying order changes segment membership on the
       next view without any explicit recompute step — proven by mutating
       underlying `Customer` data and re-querying the segment (FR-50.4).
-- [ ] The location filter correctly derives from each customer's most
+- [x] The location filter correctly derives from each customer's most
       recent order's shipping address (FR-50.3).
-- [ ] RLS denies cross-tenant access to another store's segments/
+- [x] RLS denies cross-tenant access to another store's segments/
       customers (FR-50.5).
 
 ### 14.51 Email Campaigns (new, v0.32, not yet built)

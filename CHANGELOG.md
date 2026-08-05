@@ -7,6 +7,41 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 33: Customer Segments
+
+SRS §5.50/§14.50, FR-50.1-50.6. Saved filters over the existing CRM
+customer list (order count, total spent, last-order date, location).
+Second module of the "Pre-Launch Enhancements" batch (v0.32) - the
+founder's one explicit dependency ("Customer Segments before Email
+Campaigns") - built as the foundation the next module's send targeting
+will read from.
+
+### Added
+- `CustomerSegment` model (new `customer_segments` table, RLS-isolated) -
+  a saved filter only, holding typed nullable bound columns
+  (`minOrders`/`maxOrders`/`minTotalSpent`/`maxTotalSpent`/
+  `lastOrderAfter`/`lastOrderBefore`/`locationCity`/`locationCountry`).
+  Deliberate refinement over the SRS's looser "structured JSON criteria"
+  wording: the dimension set is small and fixed, so typed columns match
+  this codebase's existing convention of reserving JSON for genuinely
+  free-form data.
+- **Membership is always resolved live**, never stored: every read
+  (list/get/preview) re-queries `Customer.ordersCount`/`totalSpent`/
+  `lastOrderAt` (tracked since Module 15) plus each candidate's most
+  recent order's `shippingAddress` for the location filter, through one
+  shared `matchesSegmentCriteria()` pure-function so "matches this
+  segment" has exactly one definition regardless of caller.
+- `POST/GET/PATCH/DELETE /stores/:storeId/customer-segments`,
+  `POST /stores/:storeId/customer-segments/preview` (member count for
+  unsaved criteria, before committing to a segment).
+- Seller dashboard screen (`/stores/:storeId/customer-segments`) - create
+  a segment from any combination of the filters above, view its live
+  member list inline, delete.
+- e2e coverage: CRUD + tenant isolation, live re-derivation as a
+  customer's order count crosses a segment's threshold (no change to the
+  segment row itself), location filter resolving from each customer's
+  most-recent (not first) order, RLS cross-tenant 404s.
+
 ## Module 32: Gift Cards
 
 SRS §5.49/§14.49, FR-49.1-49.7. Purchasable and seller-issued store gift

@@ -493,6 +493,7 @@ model Store {
   orderVerifications        OrderVerification[]
   adSpendEntries            AdSpendEntry[]
   giftCards                 GiftCard[]
+  customerSegments          CustomerSegment[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -1665,6 +1666,42 @@ model Customer {
   @@unique([storeId, email], name: "uniq_customer_store_email")
   @@index([storeId, totalSpent], name: "idx_customers_store_spent")
   @@map("customers")
+}
+
+// Module 33 (SRS §5.50/FR-50.1-50.6) - a saved filter, not a materialized
+// member list (FR-50.2/50.4): typed nullable columns rather than a JSON
+// criteria blob, since the dimension set is small and fixed (order count/
+// spend/last-order-date ranges, location) - more queryable/indexable than
+// JSON, and this codebase's established preference (JSON is reserved for
+// genuinely free-form data like shipping_address, not a fixed filter
+// shape). Membership is always resolved live by CustomerSegmentsService
+// against Customer's existing ordersCount/totalSpent/lastOrderAt
+// (FR-13.x) - this table has no member-list column of its own.
+model CustomerSegment {
+  id      String @id @default(uuid()) @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  name    String
+
+  minOrders     Int? @map("min_orders")
+  maxOrders     Int? @map("max_orders")
+  minTotalSpent Decimal? @map("min_total_spent") @db.Decimal(12, 2)
+  maxTotalSpent Decimal? @map("max_total_spent") @db.Decimal(12, 2)
+  // FR-50.3 - derived from each candidate customer's most recent order's
+  // shipping address at match time (no location column on Customer
+  // itself - buyer accounts don't exist in v1.0, so a past order's
+  // shipping address is the only location signal that exists).
+  lastOrderAfter  DateTime? @map("last_order_after") @db.Timestamptz
+  lastOrderBefore DateTime? @map("last_order_before") @db.Timestamptz
+  locationCity    String?   @map("location_city")
+  locationCountry String?   @map("location_country")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@index([storeId], name: "idx_customer_segments_store")
+  @@map("customer_segments")
 }
 
 enum ReviewStatus {

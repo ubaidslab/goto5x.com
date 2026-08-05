@@ -10,6 +10,7 @@ import { BrandingModule } from "./branding/branding.module";
 import { CareersModule } from "./careers/careers.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { ContentPagesModule } from "./content-pages/content-pages.module";
+import { CustomerSegmentsModule } from "./customer-segments/customer-segments.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
@@ -104,6 +105,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     PnLModule,
     BrandingModule,
     GiftCardsModule,
+    CustomerSegmentsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -3283,13 +3283,19 @@ touches revenue/commission. Checkout gains a redemption step
 routed through the existing Direct Seller Collection confirm/mark-as-paid
 flow (§5.6c) for any remaining balance.
 
-### Module 33 (Customer Segments) — scope summary
-`docs/SRS.md` §5.50, FR-50.1-50.6. New `CustomerSegment` model (name +
-structured JSON filter criteria) + RLS. No new source of truth — member
-lists are derived live from `Customer.ordersCount`/`totalSpent`/
-`lastOrderAt` (existing since FR-13.x); location derived from each
-customer's most recent order's shipping address (no new `Customer`
-column). Seller-dashboard CRUD screen with a live member-count preview.
+### Module 33 (Customer Segments) — scope summary (built)
+`docs/SRS.md` §5.50, FR-50.1-50.6. New `CustomerSegment` model + RLS.
+Built with typed nullable bound columns (`minOrders`/`maxOrders`/
+`minTotalSpent`/`maxTotalSpent`/`lastOrderAfter`/`lastOrderBefore`/
+`locationCity`/`locationCountry`) rather than the structured-JSON
+criteria this scope summary originally sketched — a deliberate, disclosed
+refinement, since the filter dimension set is small and fixed and this
+codebase reserves JSON for genuinely free-form data. No new source of
+truth — member lists are derived live from `Customer.ordersCount`/
+`totalSpent`/`lastOrderAt` (existing since FR-13.x); location derived
+from each customer's most recent order's shipping address (no new
+`Customer` column). Seller-dashboard CRUD screen with a live member list
+and member-count preview.
 
 ### Module 34 (Email Campaigns) — scope summary
 `docs/SRS.md` §5.51, FR-51.1-51.7. Depends on Module 33. Reuses Module
