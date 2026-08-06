@@ -61,14 +61,14 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
     const { storeId } = await signupLoginAndCreateStore("storefront-sub@example.com", "storefront-sub-store");
     const res = await request(app.getHttpServer())
       .get("/storefront/store")
-      .query({ hostname: "storefront-sub-store.goto5x.com" });
+      .query({ hostname: "storefront-sub-store.uzeyn.com" });
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(storeId);
-    expect(res.body.canonicalHostname).toBe("storefront-sub-store.goto5x.com");
+    expect(res.body.canonicalHostname).toBe("storefront-sub-store.uzeyn.com");
   });
 
   it("an unresolvable hostname (no matching domain or subdomain) returns 404", async () => {
-    const res = await request(app.getHttpServer()).get("/storefront/store").query({ hostname: "nonexistent.goto5x.com" });
+    const res = await request(app.getHttpServer()).get("/storefront/store").query({ hostname: "nonexistent.uzeyn.com" });
     expect(res.status).toBe(404);
   });
 
@@ -103,7 +103,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
     // canonicalHostname now reflects the verified custom domain.
     const bySubdomain = await request(app.getHttpServer())
       .get("/storefront/store")
-      .query({ hostname: "storefront-domain-store.goto5x.com" });
+      .query({ hostname: "storefront-domain-store.uzeyn.com" });
     expect(bySubdomain.body.id).toBe(storeId);
     expect(bySubdomain.body.canonicalHostname).toBe("www.github.com");
   });
@@ -117,7 +117,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
     const res = await request(app.getHttpServer())
       .get("/storefront/store")
-      .query({ hostname: "storefront-hidden-store.goto5x.com" });
+      .query({ hostname: "storefront-hidden-store.uzeyn.com" });
     expect(res.status).toBe(200);
     expect(res.body.accessMode).toBe("coming_soon");
   });
@@ -131,7 +131,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
       const res = await request(app.getHttpServer())
         .get("/storefront/store")
-        .query({ hostname: "storefront-suspended-store.goto5x.com" });
+        .query({ hostname: "storefront-suspended-store.uzeyn.com" });
       expect(res.status).toBe(403);
       expect(res.body.message).toMatchObject({ code: "store_suspended" });
     },
@@ -143,7 +143,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
     const res = await request(app.getHttpServer())
       .get("/storefront/store")
-      .query({ hostname: "storefront-banned-store.goto5x.com" });
+      .query({ hostname: "storefront-banned-store.uzeyn.com" });
     expect(res.status).toBe(404);
   });
 
@@ -160,7 +160,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
     const listRes = await request(app.getHttpServer())
       .get("/storefront/products")
-      .query({ hostname: "storefront-seo-store.goto5x.com" });
+      .query({ hostname: "storefront-seo-store.uzeyn.com" });
     expect(listRes.status).toBe(200);
     expect(listRes.body).toHaveLength(1);
     expect(listRes.body[0].seoTitle).toBe("Unbranded Widget"); // falls back to product title
@@ -168,7 +168,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
     const detailRes = await request(app.getHttpServer())
       .get(`/storefront/products/${product.body.id}`)
-      .query({ hostname: "storefront-seo-store.goto5x.com" });
+      .query({ hostname: "storefront-seo-store.uzeyn.com" });
     expect(detailRes.status).toBe(200);
     expect(detailRes.body.seoTitle).toBe("Unbranded Widget");
   });
@@ -182,12 +182,12 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
     const listRes = await request(app.getHttpServer())
       .get("/storefront/products")
-      .query({ hostname: "storefront-draft-store.goto5x.com" });
+      .query({ hostname: "storefront-draft-store.uzeyn.com" });
     expect(listRes.body).toEqual([]);
 
     const detailRes = await request(app.getHttpServer())
       .get(`/storefront/products/${product.body.id}`)
-      .query({ hostname: "storefront-draft-store.goto5x.com" });
+      .query({ hostname: "storefront-draft-store.uzeyn.com" });
     expect(detailRes.status).toBe(404);
   });
 
@@ -201,7 +201,7 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
     const res = await request(app.getHttpServer())
       .get(`/storefront/products/${productA.body.id}`)
-      .query({ hostname: "storefront-cross-b-store.goto5x.com" });
+      .query({ hostname: "storefront-cross-b-store.uzeyn.com" });
     expect(res.status).toBe(404);
   });
 

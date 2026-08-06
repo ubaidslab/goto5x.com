@@ -1,14 +1,14 @@
 > **DRAFT — NOT LEGAL ADVICE.** This document is a starting point for a Pakistani
-> lawyer to review, correct, and finalize before goto5x.com launches. It has not
+> lawyer to review, correct, and finalize before uzeyn.com launches. It has not
 > been reviewed by counsel. Do not publish it as-is. See `docs/SRS.md` §13, open
 > question 2.
 
-# goto5x.com — Refund Policy (Draft)
+# uzeyn.com — Refund Policy (Draft)
 
 **Last updated:** [date] · **Version:** draft-2
 
 ## 1. Who This Applies To
-Each Seller store on goto5x.com sets its own refund terms for its own products,
+Each Seller store on uzeyn.com sets its own refund terms for its own products,
 which must be at least as protective of Buyers as this baseline policy. Where a
 Seller has not published a more specific policy, this baseline applies.
 

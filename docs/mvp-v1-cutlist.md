@@ -1,4 +1,4 @@
-# goto5x.com — v1.0 MVP Cut-List (updated for SRS v0.15 — build-phase amendment)
+# uzeyn.com — v1.0 MVP Cut-List (updated for SRS v0.15 — build-phase amendment)
 
 Solo founder + AI build team. The goal of v1.0 is a **real, live, revenue-capable
 platform** with genuine day-one commerce feature parity — not every SRS requirement
@@ -32,7 +32,7 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 ## IN — v1.0
 
 **Platform**
-- goto5x.com's own marketing/signup site, built to the premium visual bar (FR-0.1)
+- uzeyn.com's own marketing/signup site, built to the premium visual bar (FR-0.1)
 - Legal/content pages (ToS, Privacy, Refund, About, Contact) — admin-editable and
   versioned (FR-12.1); `docs/legal/` drafts flagged for human legal review
 
@@ -42,7 +42,7 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
   free subdomain, custom domain attachment
 - **Template Store showcase + Install/License API** (FR-1.8, FR-24.1–24.7) —
   built-in free templates always ship regardless of the Template Store's
-  existence; the showcase is a link-out only; the Install API is goto5x.com's
+  existence; the showcase is a link-out only; the Install API is uzeyn.com's
   side of the hook (import-only, signed, entitlement-based, no downloadable files)
 
 **Catalog & storefront commerce**
@@ -242,9 +242,9 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - Both hooks gated by an admin-manageable **external-API client registry**
   (FR-8.14), mirroring the supplier adapter registry
 - **Referral attribution + cross-SaaS discount eligibility (new in v0.7):** every
-  SSO handoff/API call carries a verifiable "came from goto5x.com" signal
+  SSO handoff/API call carries a verifiable "came from uzeyn.com" signal
   (audit-logged, no new table), and a small signed endpoint lets either SaaS
-  check a seller's plan-based discount eligibility without goto5x.com knowing
+  check a seller's plan-based discount eligibility without uzeyn.com knowing
   that SaaS's own discount terms (FR-24.13–24.14)
 
 **Admin terminal — Control Plane**

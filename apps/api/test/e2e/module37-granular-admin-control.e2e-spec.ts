@@ -137,7 +137,7 @@ describe("Advanced Granular Admin Control (e2e) - SRS §5.54, §14.54", () => {
 
   it("FR-54.2/54.5: an admin can force-remove an approved product (instant storefront invisibility) and restore it, both audit-logged", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("removable@example.com", "removable-store");
-    const hostname = "removable-store.goto5x.com";
+    const hostname = "removable-store.uzeyn.com";
     const userRow = await superuser.user.findUniqueOrThrow({ where: { email: "removable@example.com" } });
     await superuser.seller.update({ where: { userId: userRow.id }, data: { isTrusted: true } });
 
@@ -188,7 +188,7 @@ describe("Advanced Granular Admin Control (e2e) - SRS §5.54, §14.54", () => {
       data: { definitionKey: "moderation.restricted_keywords", scopeType: "global", scopeId: null, value: ["special"] as any },
     });
     const { token, storeId } = await signupLoginAndCreateStore("supplier-review-seller@example.com", "supplier-review-store");
-    const hostname = "supplier-review-store.goto5x.com";
+    const hostname = "supplier-review-store.uzeyn.com";
     const supplierToken = await signupLoginSupplier("gac-supplier@example.com");
     const listing = await seedSupplierListing("gac-supplier@example.com", "Special Printify Mug");
 

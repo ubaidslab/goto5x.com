@@ -1,4 +1,4 @@
-# goto5x.com — Architecture Diagram
+# uzeyn.com — Architecture Diagram
 
 Companion to `docs/SRS.md` §3 (System Architecture Overview). Two views: (1) module
 boundaries inside the Phase 1 monolith, and (2) the four-phase scaling path, with
@@ -252,7 +252,7 @@ no new server, no new database, no new paid service; disabling either client fro
 new in v0.7):** both hooks now carry a signed attribution signal on every SSO
 handoff/API call (logged to `AdminAuditLog` as a system actor, no new table), and
 `BridgesM` exposes one small signed read-only endpoint either SaaS can call to
-check a seller's plan-based discount eligibility — goto5x.com never knows or
+check a seller's plan-based discount eligibility — uzeyn.com never knows or
 applies that SaaS's own discount terms, only answers the eligibility question.
 
 **Template Package Spec (architecture decision, new v0.18 — pinned now, no
@@ -342,7 +342,7 @@ ways, not just documented:
    identical across every template), the confirmed/verification outcome, and
    the resulting P&L figures are byte-identical across all five runs.
 
-**Storefront branding ("Powered by eyosto"):** a small mark in the shared
+**Storefront branding ("Managed by UZEYN"):** a small mark in the shared
 `SiteFooter` — never inside a template package, so no template can suppress
 it itself — mandatory on the Free plan (the platform's own free organic
 marketing) and removable only once a paid plan grants the capability.

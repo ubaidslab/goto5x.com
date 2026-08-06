@@ -1,4 +1,4 @@
-# goto5x.com — Software Requirements Specification (SRS)
+# uzeyn.com — Software Requirements Specification (SRS)
 
 **Version:** 0.31 (Build-phase amendment)
 **Date:** 2026-08-03
@@ -407,7 +407,7 @@ mapping/preview/error-report flow — no new import engine, and every
 imported product still passes the existing Moderation Engine (§5.27)
 exactly like a manually-created one. The Cost-Savings Calculator (§5.45)
 is a marketing-site widget computing estimated annual savings
-(eyosto's plan fee + 1% commission vs. Shopify's subscription + fees) from
+(UZEYN's plan fee + 1% commission vs. Shopify's subscription + fees) from
 every comparison figure as admin-editable Settings Registry data, never
 hard-coded, always labeled as an estimate. The Seller Trust & Achievement
 Badge Engine (§5.46) is one shared, Settings-Registry-threshold-driven
@@ -546,7 +546,7 @@ cut decision, without resolving them unilaterally.
   a seller's account — import-only, no downloadable files, license-validated) and a
   **Social Media SaaS** hook (a "Marketing" entry point in the seller dashboard
   using the existing SSO hook, no second login; a seller-scoped, rate-limited,
-  revocable **Product Feed API**). goto5x.com builds only its own side of each hook.
+  revocable **Product Feed API**). uzeyn.com builds only its own side of each hook.
 - **Small v1.0 storefront additions** (§5.16 extended): social media links,
   an FAQ accordion section type, and richer footer content blocks.
 - **Confirmed, not pulled forward:** seller staff sub-accounts / admin sub-roles
@@ -865,7 +865,7 @@ built):**
 ## 1. Introduction
 
 ### 1.1 Purpose
-This document defines the requirements for **goto5x.com**, a multi-tenant e-commerce
+This document defines the requirements for **uzeyn.com**, a multi-tenant e-commerce
 platform (Shopify-class) that lets sellers launch premium-designed online stores,
 connects them to dropshipping suppliers, and gives sellers deep control over store
 design and operations through an advanced dashboard. It is the reference point for
@@ -876,7 +876,7 @@ is the single source of truth; no requirement is considered documented if it exi
 only in a prior version's git history.**
 
 ### 1.2 Scope
-In scope for goto5x.com (this SRS): goto5x.com's own premium public site; the
+In scope for uzeyn.com (this SRS): uzeyn.com's own premium public site; the
 multi-tenant store builder (premium templates, customizer, coded-theme escape
 hatch); storefront discovery & merchandising (collections, search, navigation,
 announcement bar, coming-soon mode, SEO, social links, FAQ); the seller admin
@@ -889,19 +889,19 @@ Plane; custom domain attachment; and two external-SaaS integration hooks (§5.24
 Full detail is in §5.
 
 Explicitly **out of scope** for this SRS (separate products the founder builds and
-runs independently), each with a documented integration hook so goto5x.com doesn't
+runs independently), each with a documented integration hook so uzeyn.com doesn't
 have to be rewritten to connect to them later:
 - **Social media scheduling/management SaaS** — SSO hook via the Auth module
   (§3.2a) plus a Product Feed API (§5.24b). Monetization lives entirely in that
-  product; goto5x.com is the bridge.
+  product; uzeyn.com is the bridge.
 - **Template Store (premium template marketplace)** — a signed Template Install/
-  License API (§5.24a). goto5x.com always ships its own built-in free templates
+  License API (§5.24a). uzeyn.com always ships its own built-in free templates
   regardless of whether the Template Store exists or is connected.
 
 ### 1.3 Definitions & Abbreviations
 | Term | Meaning |
 |---|---|
-| Seller | A merchant who creates and owns a store on goto5x.com |
+| Seller | A merchant who creates and owns a store on uzeyn.com |
 | Supplier | An entity that lists products for sellers to sell (dropship or own inventory) |
 | Buyer | End customer purchasing from a seller's storefront |
 | Tenant | A single seller's store instance within the shared platform |
@@ -921,7 +921,7 @@ Shopify's cost or complexity — with genuine day-one commerce feature parity
 dropship suppliers, a control panel simple enough that non-technical sellers can run
 a professional-looking store, a free tier that is complete rather than a ticking
 trial, and clean bridges into the founder's other products (premium templates,
-social media marketing) without goto5x.com ever having to build those products
+social media marketing) without uzeyn.com ever having to build those products
 itself.
 
 ---
@@ -934,7 +934,7 @@ Direct competitor: **Shopify**. Differentiation strategy:
    FR-7.3) — Pakistan-first pricing.
 2. **Premium visual templates** as a standard offering — the aesthetic of
    horizonx.so — with the same visual bar applied to buyer-facing surfaces beyond
-   the storefront (receipts, order-status pages, emails, §6) and to goto5x.com's own
+   the storefront (receipts, order-status pages, emails, §6) and to uzeyn.com's own
    marketing site (§5.0, §13: apple.com-level polish + horizonx.so motion). A
    **Template Store** (a separate SaaS by the founder) extends this further with
    purchasable premium templates, bridged via a clean install API (§5.24a) — the
@@ -947,7 +947,7 @@ Direct competitor: **Shopify**. Differentiation strategy:
    Guard-Rails (§5.23) that protect the platform's own unit economics as it grows.
 6. **A growth bridge, not a growth silo** — a "Marketing" entry point (§5.24b) hands
    a seller off to the founder's separate social-media SaaS with no second signup,
-   so goto5x.com benefits from that product's existence without building it.
+   so uzeyn.com benefits from that product's existence without building it.
 
 ### 2.2 Product Functions (high level)
 - Store creation, premium template selection (built-in free + Template Store
@@ -967,7 +967,7 @@ Direct competitor: **Shopify**. Differentiation strategy:
 - Platform-wide administration, Business Guard-Rails, and admin-editable content
 - Custom domain + Google Drive media connection per seller
 - Bridges to the founder's Template Store (template install/license) and Social
-  Media SaaS (product feed) — goto5x.com's side of each hook only
+  Media SaaS (product feed) — uzeyn.com's side of each hook only
 
 ### 2.3 User Classes and Characteristics
 | Role | Description |
@@ -975,7 +975,7 @@ Direct competitor: **Shopify**. Differentiation strategy:
 | **Buyer** | Shops on a seller's storefront; needs no account (v1.0) — order status via a secure emailed link (FR-5.4); optional accounts are v1.1 (FR-22.1) |
 | **Seller** | Owns a store; manages catalog, design, discovery, customers, orders (including manual/phone orders), shipping, discounts, tax, payment collection instructions, commission invoices, and connections to the Template Store/Social Media SaaS |
 | **Supplier** | Lists products for one or more sellers; fulfills orders and provides tracking |
-| **Platform Admin** | goto5x.com staff; manages sellers, suppliers, commission invoices, Trust & Safety enforcement, disputes, platform health, content pages, business guard-rails, and the external-API client registry (§5.24) |
+| **Platform Admin** | uzeyn.com staff; manages sellers, suppliers, commission invoices, Trust & Safety enforcement, disputes, platform health, content pages, business guard-rails, and the external-API client registry (§5.24) |
 
 ### 2.4 Operating Environment
 Single VPS at Phase 1 (app, DB, Redis, MinIO, worker, same-VPS staging stack),
@@ -987,7 +987,7 @@ revision per the founder's request (§9, §10).
 
 ### 2.5 Design & Implementation Constraints
 - Payments **must** go through a licensed payment processor / gateway partner —
-  goto5x.com must never custom-build raw card/payment handling (PCI-DSS liability).
+  uzeyn.com must never custom-build raw card/payment handling (PCI-DSS liability).
   Commission, hold, reserve, and payout logic are custom and gateway-independent
   (§5.6).
 - **Self-host-first (binding):** the default choice for any infrastructure
@@ -1008,7 +1008,7 @@ revision per the founder's request (§9, §10).
 - **No trial-of-paid-features (binding, §5.23):** the Free Plan is a permanent,
   complete-but-limited tier, never a time-boxed trial of paid capability.
 - **External-SaaS hooks are one-directional contracts, not shared builds (binding,
-  new in v0.6):** goto5x.com implements and owns only its side of the Template
+  new in v0.6):** uzeyn.com implements and owns only its side of the Template
   Store and Social Media integration hooks (an inbound API each product calls, or
   is called by). It never depends on either product's own infrastructure,
   monetization, or roadmap to function — a seller with neither connected sees a
@@ -1031,7 +1031,7 @@ revision per the founder's request (§9, §10).
 
 ### 2.6 Assumptions & Dependencies
 - Safepay's sole-proprietor-friendly onboarding (§5.6a, §11) is assumed sufficient
-  to take goto5x.com's first live payment without waiting on a registered legal
+  to take uzeyn.com's first live payment without waiting on a registered legal
   entity; a registered entity is still needed for Phase 1.x gateways and for
   hold-graduation identity verification (§13).
 - Dropship supplier integrations depend on those suppliers exposing usable APIs.
@@ -1040,7 +1040,7 @@ revision per the founder's request (§9, §10).
   research item (§5.4, FR-4.10, §13).
 - The Template Store and Social Media SaaS are assumed to exist as **separate**
   products built independently by the founder; this SRS assumes nothing about their
-  timeline, and goto5x.com's hooks (§5.24) function correctly whether or not either
+  timeline, and uzeyn.com's hooks (§5.24) function correctly whether or not either
   product has launched yet.
 
 ---
@@ -1169,7 +1169,7 @@ implementation. Adding a new integration of any of these three kinds is "write o
 adapter," never "touch core order/ledger/catalog code." The two external-SaaS hooks
 (§5.24) follow the same *spirit* — a documented, versioned contract rather than a
 bespoke integration — though they are inbound/outbound API contracts rather than
-pluggable adapters, since goto5x.com does not orchestrate across *multiple*
+pluggable adapters, since uzeyn.com does not orchestrate across *multiple*
 template stores or social-media platforms the way it orchestrates across multiple
 suppliers.
 
@@ -1199,7 +1199,7 @@ is written until Phase 4.
 ### 3.7 Release & Versioning Strategy
 - Environments: `dev` → `staging` → `production`. **Staging runs as a separate
   Docker Compose stack on the same single VPS**, under a staging subdomain (e.g.
-  `staging.goto5x.com`) — separate containers, database, and Redis instance from
+  `staging.uzeyn.com`) — separate containers, database, and Redis instance from
   production, so a staging bug cannot touch production data. Zero additional
   infrastructure cost at launch; moves to its own VPS once cashflow supports it.
 - Database migrations are versioned, reversible, and **backward-compatible with the
@@ -1275,7 +1275,7 @@ work later, not an architecture change now**:
 Full functional detail is in §5.24; this subsection states the shared architectural
 shape both hooks follow, so they read as one coherent pattern rather than two
 one-off integrations:
-- Both hooks are **small, versioned, authenticated API surfaces** goto5x.com owns —
+- Both hooks are **small, versioned, authenticated API surfaces** uzeyn.com owns —
   never a shared database, shared session, or shared deploy with the external
   product.
 - Both are gated by an `external_api_clients` registry (mirroring the Supplier
@@ -1437,7 +1437,7 @@ audit log — one purpose-built role, not the start of a general framework.
 
 ## 5. Functional Requirements
 
-### 5.0 goto5x.com's Own Site
+### 5.0 uzeyn.com's Own Site
 - FR-0.1: The public marketing/signup site is held to the same premium visual bar
   as the seller storefront templates — specifically **apple.com-level minimal
   premium polish combined with the horizonx.so motion aesthetic** (§13) — it is the
@@ -1493,7 +1493,7 @@ audit log — one purpose-built role, not the start of a general framework.
 - FR-1.7 (Phase 3+): Animation/motion preset customization and AI-assisted
   content/image suggestions inside the customizer.
 - FR-1.8: **Template marketplace showcase & install hook** — the theme-selection UI
-  always shows goto5x.com's own **built-in free templates** first and foremost, and
+  always shows uzeyn.com's own **built-in free templates** first and foremost, and
   additionally surfaces a **premium-templates showcase** linking out to the
   founder's separate Template Store SaaS. Full detail — including the Template
   Install/License API — is specified in §5.24a, since it's a full integration hook,
@@ -1508,7 +1508,7 @@ audit log — one purpose-built role, not the start of a general framework.
   every seller (on any template or blank) can freely use every section type
   from day one, unlike a theme-locked competitor.
 - FR-1.10 (new, v0.31 design phase): **Storefront branding mark.** A small
-  "Powered by eyosto" mark in the storefront's shared footer chrome —
+  "Managed by UZEYN" mark in the storefront's shared footer chrome —
   **mandatory on the Free plan** (the platform's own free organic
   marketing), **removable only once a paid plan grants the capability**.
   Resolved server-side (never left to the client), via two independent
@@ -1699,7 +1699,7 @@ mode specifically.
   justify their more enterprise-paced onboarding.
 - **Phase 4:** Stripe via a foreign entity for international buyers.
 - Commission, hold, reserve, and payout logic are implemented entirely in
-  goto5x.com's own ledger and are **gateway-agnostic by construction** — switching
+  uzeyn.com's own ledger and are **gateway-agnostic by construction** — switching
   or adding a gateway never touches that code, only a new Payment Adapter (§3.5).
 
 ### 5.6b Payout Request & Disbursement Engine — DORMANT in v1.0, see §5.6 note above
@@ -2147,7 +2147,7 @@ requires the founder to ask an engineer for a deploy.
   FR-6.12); SMS/WhatsApp as a Phase 2+ addition.
 
 ### 5.11 Custom Domain
-- FR-11.1: Every store gets a free subdomain (`storename.goto5x.com`) by default.
+- FR-11.1: Every store gets a free subdomain (`storename.uzeyn.com`) by default.
 - FR-11.2: Seller can attach an owned custom domain via CNAME/A-record
   instructions with automated verification and TLS issuance.
 - FR-11.3: **Domain upsell referral (link-out only, new v0.18).** The
@@ -2157,7 +2157,7 @@ requires the founder to ask an engineer for a deploy.
   (`domains.referral_enabled`, `domains.referral_url`,
   `domains.referral_partner_name`), so the founder can change or disable the
   affiliate partner without a deploy. This is presentation/link-out only,
-  the same spirit as FR-24.2's premium-templates showcase — goto5x.com does
+  the same spirit as FR-24.2's premium-templates showcase — uzeyn.com does
   not sell, resell, process, or fulfill any domain purchase; clicking
   through hands the seller off to the partner's own site entirely. The
   block renders nothing at all when the enabled flag is off.
@@ -2352,7 +2352,7 @@ ships, and so v1.0's schema doesn't need to be redesigned to accommodate them.
   existing Payment Adapter.
 - FR-22.9: **CSV import metafields/complex option combinations** (deferred from
   v1.0, FR-18.1) — the fast-follow to the core-fields-only v1.0 importer.
-- FR-22.10: **A goto5x seller mobile app (roadmap note only, v0.27 — not
+- FR-22.10: **A UZEYN seller mobile app (roadmap note only, v0.27 — not
   built, no schema/architecture change implied by this entry).** Would
   carry push notifications and in-app document delivery (invoices,
   §5.36's export bundles) as native capabilities email cannot offer,
@@ -2427,30 +2427,30 @@ Every threshold below is a Settings Registry entry, not a hard-coded constant.
   the auth layer — both Settings-Registry-tunable thresholds.
 
 ### 5.24 External-SaaS Integration Hooks (new in v0.6)
-The founder runs two separate future SaaS products. goto5x.com builds **only its
+The founder runs two separate future SaaS products. uzeyn.com builds **only its
 own side** of each hook — a small, versioned, authenticated API surface — never the
 external product itself. See §3.10 for the shared architectural pattern both hooks
 follow.
 
 #### 5.24a Template Store Hook
-- FR-24.1: goto5x.com **always** ships its own built-in free templates (the
+- FR-24.1: uzeyn.com **always** ships its own built-in free templates (the
   existing `themes` catalog, FR-1.1) — the theme-selection UI's core functionality
   never depends on the Template Store existing or being reachable.
 - FR-24.2: The theme-selection UI additionally includes a **premium-templates
   showcase** — a curated, visually consistent panel linking out to the Template
-  Store SaaS. This is a presentation/link-out feature only; goto5x.com does not
+  Store SaaS. This is a presentation/link-out feature only; uzeyn.com does not
   proxy or mirror the Template Store's own catalog or checkout.
 - FR-24.3: **Template Install/License API** — after a seller completes a purchase
   on the Template Store, that external system calls a **signed, authenticated**
-  goto5x.com API endpoint to grant the seller a **template entitlement**: the
-  purchased template is registered into goto5x.com's `themes` catalog (if not
+  uzeyn.com API endpoint to grant the seller a **template entitlement**: the
+  purchased template is registered into uzeyn.com's `themes` catalog (if not
   already present) and a `template_entitlements` row is created linking that
   specific seller to that specific theme.
 - FR-24.4: **Import-only, no downloadable files (anti-piracy, luxury UX).** At no
   point does a seller receive a raw template file/package to download — the
   Template Store's purchase flow leads directly into an installed, selectable
   template in the seller's own theme-selection UI. This is both a piracy control
-  (the template's source never leaves goto5x.com-controlled storage in a form a
+  (the template's source never leaves uzeyn.com-controlled storage in a form a
   buyer could redistribute) and a UX one (no manual install step).
 - FR-24.5: A seller's access to a marketplace-purchased template is gated by their
   **template entitlement**, a mechanism distinct from — and layered on top of —
@@ -2465,9 +2465,9 @@ follow.
   purchase) is symmetric: the same API surface accepts a revoke call, which removes
   the entitlement without deleting the underlying `themes` catalog entry others may
   legitimately hold.
-- FR-24.7: goto5x.com does not implement or assume anything about the Template
+- FR-24.7: uzeyn.com does not implement or assume anything about the Template
   Store's own billing, refund policy, or catalog management — those are that
-  product's concern; goto5x.com only honors grant/revoke signals it receives
+  product's concern; uzeyn.com only honors grant/revoke signals it receives
   through this API.
 - **Template Package Spec (architecture decision, new v0.18 — pinned now,
   no code):** every storefront template — the three built-in v1.0 themes and
@@ -2501,7 +2501,7 @@ follow.
   never return seller B's products, exactly like every other tenant-scoped access
   path in the platform.
 - FR-24.12: Monetization of the Social Media SaaS (subscriptions, usage billing,
-  etc.) lives **entirely inside that product** — goto5x.com is the bridge (identity
+  etc.) lives **entirely inside that product** — uzeyn.com is the bridge (identity
   + product data), not a party to that product's billing relationship with the
   seller.
 
@@ -2510,18 +2510,18 @@ Both SaaS products are founder-owned and connect via the same signed-API-key
 pattern (§3.10); these two requirements apply identically to both hooks:
 - FR-24.13: **Referral attribution** — every SSO handoff (FR-24.8) and every
   signed API call from either SaaS (FR-24.3, FR-24.9) carries a verifiable
-  signal that the seller originated from goto5x.com, so the founder can confirm
+  signal that the seller originated from uzeyn.com, so the founder can confirm
   (and, later, revenue-share against) genuine cross-product attribution. This is
   **distinct from the seller-to-seller referral program** (FR-22.6, Phase 1.1) —
-  that rewards a seller for referring another seller to goto5x.com; this
-  attributes a goto5x.com seller's activity on a *different, founder-owned*
+  that rewards a seller for referring another seller to uzeyn.com; this
+  attributes a uzeyn.com seller's activity on a *different, founder-owned*
   product. No new table: the attribution event is recorded in
   `admin_audit_logs` as a system actor, the same pattern already used for
   Template Install grants (FR-24.6).
-- FR-24.14: **Cross-SaaS discount eligibility** — goto5x.com exposes a small,
+- FR-24.14: **Cross-SaaS discount eligibility** — uzeyn.com exposes a small,
   signed, read-only eligibility-check endpoint (e.g. "is this seller on an
   active paid plan") that either SaaS can call to decide whether a seller
-  qualifies for a cross-product discount on *that SaaS's own* pricing. goto5x.com
+  qualifies for a cross-product discount on *that SaaS's own* pricing. uzeyn.com
   never applies or knows the discount terms themselves — it only answers the
   eligibility question, consistent with FR-24.7/FR-24.12's rule that each
   product's own billing stays inside that product.
@@ -3772,11 +3772,11 @@ site conversion tool, homepage/pricing)
 - FR-45.1: **Interactive, public, no auth required.** A seller enters
   monthly order volume and average order value (or monthly sales
   directly); the calculator outputs estimated annual savings comparing
-  eyosto's cost (plan fee + 1% commission) against Shopify's (subscription
+  UZEYN's cost (plan fee + 1% commission) against Shopify's (subscription
   tier + transaction/card-processing fees + a typical-app-cost estimate).
 - FR-45.2: **Every comparison figure is Settings Registry data.** Shopify
   plan tiers/pricing, transaction fee %, typical-app-cost estimate, and
-  eyosto's own plan fees/commission % are all admin-editable settings,
+  UZEYN's own plan fees/commission % are all admin-editable settings,
   never hard-coded in frontend or backend code — a pricing change
   (either platform's) is a data update, not a deploy.
 - FR-45.3: **Honest "estimate" framing.** Output is clearly labeled
@@ -4132,7 +4132,7 @@ disclosed)
   listings for stores it holds an active `StoreSupplierLink` to; a seller can never
   see another seller's supplier relationships or ledger. A Product Feed API token
   (FR-24.9) is scoped identically — one seller, never platform-wide.
-- **Payment security:** goto5x.com never stores raw card data — checkout uses the
+- **Payment security:** uzeyn.com never stores raw card data — checkout uses the
   gateway's hosted fields/tokenization (PCI-DSS SAQ-A scope). All inbound
   payment-gateway and supplier webhooks are **signature-verified**; an unsigned or
   invalid-signature webhook is rejected before it can touch the ledger.
@@ -4172,7 +4172,7 @@ disclosed)
 ## 7. External Interface Requirements
 
 ### 7.1 User-Facing Applications
-- **goto5x.com public site** — marketing/signup, premium visual bar.
+- **uzeyn.com public site** — marketing/signup, premium visual bar.
 - **Storefront** — public, per-tenant, template-rendered site, including
   discovery/merchandising (§5.16), the buyer order-status lookup (FR-5.4), and
   review submission (§5.14).
@@ -4255,7 +4255,7 @@ falls on and why.
 | Admin control plane / config management | **Build (generic Settings Registry)** | Costs nothing extra to run; the single highest-leverage decision for a solo-founder-operated platform |
 | PDF generation (receipts/invoices) | **Build (self-hosted)** | A self-hosted PDF renderer costs nothing beyond compute already on the VPS; a paid invoicing SaaS is not justified for one templated PDF (FR-19.2) |
 | CSV import/export processing | **Build** | Runs as a background job on existing BullMQ infrastructure — the Shopify-compatible core-field mapping (FR-18.1) is a maintained code artifact, not a licensed tool |
-| Template Store / Social Media SaaS integration hooks | **Build (small API surface only)** | goto5x.com never builds either external product — it builds and owns a small, versioned, authenticated API on its own side (§5.24), which is the cheapest possible way to benefit from both without taking on their scope |
+| Template Store / Social Media SaaS integration hooks | **Build (small API surface only)** | uzeyn.com never builds either external product — it builds and owns a small, versioned, authenticated API on its own side (§5.24), which is the cheapest possible way to benefit from both without taking on their scope |
 
 ---
 
@@ -4285,7 +4285,7 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
   Business Guard-Rails; **the Trust & Safety System (v0.15 — versioned
   Seller Agreement, rule-based T&S engine, enforcement ladder)**; the admin
   Control Plane (including the external-API client registry); the Template
-  Install/License API and the Product Feed API (both hooks, goto5x.com's
+  Install/License API and the Product Feed API (both hooks, uzeyn.com's
   side only); legal/content pages.
 - **Phase 1.1:** CJ Dropshipping adapter, self-serve supplier registration + full
   multi-store dashboard, listing moderation queue, optional buyer accounts,
@@ -4396,7 +4396,7 @@ mode's eventual reactivation.
 6. **Markaz API viability** (§5.4, FR-4.10) — needs research before any adapter
    build commitment.
 7. **Template Store / Social Media SaaS timelines and contracts (new in v0.6):**
-   this SRS specifies goto5x.com's side of both hooks (§5.24) independent of when
+   this SRS specifies uzeyn.com's side of both hooks (§5.24) independent of when
    either external product ships; the actual signing-secret exchange, API version
    support window, and any commercial terms between the two products (even though
    they share a founder) are the founder's decision, not specified here since
@@ -4405,7 +4405,7 @@ mode's eventual reactivation.
    here):** FR-24.6 states revocation is symmetric (an API call removes an
    entitlement), but *when* the Template Store should call it (e.g. on a refund
    window closing, on a subscription-style template lapsing, on a dispute) is that
-   product's own business logic — goto5x.com only needs the hook to exist, not an
+   product's own business logic — uzeyn.com only needs the hook to exist, not an
    opinion on the Template Store's monetization model. Flagged explicitly per the
    founder's request rather than silently assumed.
 
@@ -4435,7 +4435,7 @@ next module starts. Each item is written to be testable, not aspirational.
       marketing-surface spacing doubled; shadows softened toward "distance
       not drama." The shared UI kit (shadcn/ui-on-Radix base, existing
       components upgraded in place, 12 new primitives + toast system) and
-      the "eyosto" wordmark from the rejected pass carry forward unchanged.
+      the "UZEYN" wordmark from the rejected pass carry forward unchanged.
       `/design-system` rebuilt to the corrected direction, plus a real proof
       page — the marketing homepage hero section (`apps/web/app/page.tsx`)
       — since a design system can't be judged from swatches alone. Proven

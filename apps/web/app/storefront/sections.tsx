@@ -48,7 +48,7 @@ export function AboutSection({ store, theme }: { store: PublicStore; theme: Reso
   return (
     <section style={{ padding: "32px 24px", background: theme.colors.background, color: theme.colors.text }}>
       <h2 style={{ color: theme.colors.primary }}>About {store.name}</h2>
-      <p>{store.seoDescription ?? `${store.name} is a store on goto5x.com.`}</p>
+      <p>{store.seoDescription ?? `${store.name} is a store on uzeyn.com.`}</p>
     </section>
   );
 }

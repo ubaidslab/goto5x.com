@@ -33,7 +33,7 @@ retrofitted per the Module 15.5 precedent).
 | `/stores/[storeId]/suppliers` | Suppliers | Local suppliers whose products you can list and sell from your store. | Link supplier; unlink supplier |
 | `/stores/[storeId]/navigation` | Navigation | The header and footer menus shown on your storefront. | Add/reorder/remove menu items; save |
 | `/stores/[storeId]/customizer` | Customize (store name) | Pick a theme, adjust colors and sections, and preview changes before saving. | Choose theme; edit sections; save |
-| `/stores/[storeId]/domains` | Domains | Every store gets a free goto5x.com subdomain automatically - attaching your own domain here is optional. | Add custom domain; verify DNS |
+| `/stores/[storeId]/domains` | Domains | Every store gets a free uzeyn.com subdomain automatically - attaching your own domain here is optional. | Add custom domain; verify DNS |
 | `/stores/[storeId]/marketing` | Marketing | Connect your store to marketing tools like the Social Media SaaS to promote your catalog. | Connect Social Media SaaS |
 | `/stores/[storeId]/data` | Import & export | Bring products in from another platform, or take your own data out. | Import CSV; export CSV |
 | `/stores/[storeId]/billing` | Plans & Billing | Your plan, upgrade options, and teams. | Upgrade plan; manage team seats |
@@ -55,7 +55,7 @@ retrofitted per the Module 15.5 precedent).
 | Route | Page name | Purpose | Key actions |
 |---|---|---|---|
 | `/login` | Log in / Two-factor authentication | Sign in to manage your store; confirm identity with a one-time code when required. | Log in; verify code; forgot password link |
-| `/signup` | Sign up | Create a seller account to start selling on goto5x.com. | Create account (requires accepting Seller Agreement) |
+| `/signup` | Sign up | Create a seller account to start selling on uzeyn.com. | Create account (requires accepting Seller Agreement) |
 | `/reset-password` | Forgot password / Set a new password | Get a reset link by email, then choose a new password from that link. | Send reset link; reset password |
 | `/verify-email` | Email verification | Confirming the email address you signed up with. | (automatic; link to login) |
 

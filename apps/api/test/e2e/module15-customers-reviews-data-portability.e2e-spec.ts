@@ -6,7 +6,7 @@ import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaF
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const S3_TEST_PORT = 4569;
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 /**
  * SRS §5.13/§5.14/§5.18/§5.19 (Customers, Reviews & Data Portability),
@@ -66,7 +66,7 @@ describe("Customers, Reviews & Data Portability (e2e) - SRS §5.13/§5.14/§5.18
     // to be published; set directly rather than every test going through
     // the real publish flow (top-up + verify).
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
   }
 
   async function createSelfProduct(token: string, storeId: string, price: number, stockQuantity = 100) {

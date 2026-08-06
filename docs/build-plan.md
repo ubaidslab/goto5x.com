@@ -3381,17 +3381,49 @@ before/after values. Additive to, not a replacement for, the existing
 
 ---
 
-## UZEYN rename (dedicated commit, end of this batch)
+## UZEYN rename (built)
 
 Full rename pass — `goto5x`/`eyosto` → **UZEYN** — across repo, docs,
 code, and storefront branding ("Managed by UZEYN"). Slotted as its own
-commit immediately after Module 43, before the deep audit and the design
-phase resume, so it never tangles with feature-work diffs. `uzeyn.com`
-business email setup (Cloudflare Email Routing + Gmail "send as" for v1,
-self-hosted Mailcow/Mailu noted as a later option) is documented as a new
-section in `docs/launch-runbook.md` — founder-ops documentation, not
-application code, so it ships alongside this commit but is not itself a
-code change.
+commit immediately after Module 37 (the batch turned out to end there,
+not at Module 43 as originally estimated), before the deep audit and the
+design phase resume, so it never tangles with feature-work diffs.
+`uzeyn.com` business email setup (Cloudflare Email Routing + Gmail "send
+as" for v1, self-hosted Mailcow/Mailu noted as a later option) is
+documented as a new section in `docs/launch-runbook.md` — founder-ops
+documentation, not application code, shipped alongside this commit but
+not itself a code change.
+
+**Execution notes:**
+- Package identity (`@goto5x/api`/`@goto5x/web`/root `goto5x` →
+  `@uzeyn/api`/`@uzeyn/web`/`uzeyn`), all env-encoded names (`POSTGRES_DB`,
+  `MINIO_ROOT_USER`/`MINIO_BUCKET`, `ADMIN_MFA_ISSUER_NAME`,
+  `EMAIL_FROM_ADDRESS`, the Compose project name), and every
+  `goto5x.com`/`eyosto.com` domain reference renamed. The local dev/test
+  Postgres database was renamed in place (`ALTER DATABASE goto5x RENAME TO
+  uzeyn`) since it's disposable local state, not a migration-tracked
+  identifier; CI's ephemeral service containers needed no such step.
+- The "Powered by eyosto" storefront mark is now "Managed by UZEYN" —
+  wording changed, not just the name, per the founder's explicit
+  instruction — updated everywhere it's rendered, described in a Settings
+  Registry description, or referenced in a comment/test name.
+- Confirmed via grep before starting that no table/column/enum name,
+  migration filename, or Settings Registry key ever contained the old
+  name — this was a pure rename with zero schema/data-migration surface.
+- **This document's own existing content is unchanged** — every
+  `goto5x`/`eyosto` mention still in the Phase 1/2 narrative above
+  describes what was literally named/decided at that point in the
+  project's history (choosing "eyosto" as the wordmark, deferring a
+  site-wide rename, this file's own `goto5x.com/` repository-structure
+  tree, which is still the repo's real folder name). Rewriting that
+  history would misrepresent it, so only `CHANGELOG.md` gained a new
+  entry describing this pass; nothing already written in either document
+  was edited.
+- The GitHub repository itself (`ubaidslab/goto5x.com`) was **not**
+  renamed — that's an infrastructure/ownership action outside what a
+  commit can do, not a code change.
+- Verified: full local typecheck (api + web), full local e2e suite, and a
+  real CI-verified green run on the pushed commit.
 
 ---
 

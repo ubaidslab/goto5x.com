@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { navItems } from "./nav-items";
 
 /**
- * Typographic wordmark - "eyosto" is the official platform name (no logo
+ * Typographic wordmark - "UZEYN" is the official platform name (no logo
  * design work per CLAUDE.md's Design Direction; this stays a considered
  * type treatment, not a mark/icon). Nothing else in this codebase should
  * hard-code the name outside this component and the brand-asset/content-
@@ -14,7 +14,7 @@ import { navItems } from "./nav-items";
 function Wordmark() {
   return (
     <div className="px-2">
-      <span className="font-display text-h4 font-bold tracking-tight text-ink">eyosto</span>
+      <span className="font-display text-h4 font-bold tracking-tight text-ink">UZEYN</span>
     </div>
   );
 }

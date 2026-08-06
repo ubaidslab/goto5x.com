@@ -9,7 +9,7 @@ import { BrandingService } from "./branding.service";
 import { UpdateBrandingDto } from "./dto/update-branding.dto";
 
 /**
- * The seller's own view/control of their store's "Powered by eyosto" mark.
+ * The seller's own view/control of their store's "Managed by UZEYN" mark.
  * A staff session needs the `design` scope to reach this - storefront
  * branding is part of store design (SRS §5.52/FR-52.2).
  */

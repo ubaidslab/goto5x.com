@@ -6,7 +6,7 @@ import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaF
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const S3_TEST_PORT = 4569; // must match .env.test's MINIO_ENDPOINT - see media.e2e-spec.ts's comment on why this is safe under --runInBand
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 const shippingAddress = {
   fullName: "Ayesha Khan",
@@ -70,7 +70,7 @@ describe("Storefront Buyer Purchase Flow & Store Branding (e2e) - SRS §5.32, §
     // to be published; set directly rather than every test going through
     // the real publish flow (top-up + verify).
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
   }
 
   it("uploads a store logo, exposes it on the dashboard and public storefront endpoints, and replacing it cleans up the old asset", async () => {

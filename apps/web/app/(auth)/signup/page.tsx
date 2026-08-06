@@ -53,7 +53,7 @@ export default function SignupPage() {
     } else if (body.waitlisted) {
       // SRS FR-25.5 - never an error: the applicant's email + country was
       // captured for future launch-campaign outreach instead.
-      setStatus("goto5x.com is launching in your region soon - we've noted your interest and will be in touch.");
+      setStatus("uzeyn.com is launching in your region soon - we've noted your interest and will be in touch.");
     } else {
       setStatus("Account created. Check your email for a verification link.");
     }
@@ -62,7 +62,7 @@ export default function SignupPage() {
   return (
     <main>
       <h1>Sign up</h1>
-      <p>Create an account to start selling, or to fulfill orders for sellers, on goto5x.com.</p>
+      <p>Create an account to start selling, or to fulfill orders for sellers, on uzeyn.com.</p>
       <form onSubmit={onSubmit}>
         <div>
           <label>
@@ -112,7 +112,7 @@ export default function SignupPage() {
                   onChange={(e) => setAgreementAccepted(e.target.checked)}
                   required
                 />
-                I accept the Seller Agreement (facilitation-workspace terms - goto5x.com is not a party to your sales
+                I accept the Seller Agreement (facilitation-workspace terms - uzeyn.com is not a party to your sales
                 or fulfillment, and you're responsible for your own listings and compliance).
               </label>
             </div>

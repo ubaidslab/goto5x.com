@@ -663,7 +663,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               {supportAccessHistory === null ? (
                 <p className="text-sm text-ink-muted">Loading...</p>
               ) : supportAccessHistory.length === 0 ? (
-                <p className="text-sm text-ink-muted">goto5x.com support has never accessed your account.</p>
+                <p className="text-sm text-ink-muted">uzeyn.com support has never accessed your account.</p>
               ) : (
                 <ul className="space-y-2">
                   {supportAccessHistory.map((entry, i) => (

@@ -43,7 +43,7 @@ export function MarketingNav() {
         )}
       >
         <Link href="/" className="font-display text-h4 font-bold tracking-tight text-ink">
-          eyosto
+          UZEYN
         </Link>
         <nav className="hidden items-center gap-6 sm:flex">
           {LINKS.map((link) => (

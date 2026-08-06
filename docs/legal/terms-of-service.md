@@ -1,13 +1,13 @@
 > **DRAFT — NOT LEGAL ADVICE.** This document is a starting point for a Pakistani
-> lawyer to review, correct, and finalize before goto5x.com launches. It has not been
+> lawyer to review, correct, and finalize before uzeyn.com launches. It has not been
 > reviewed by counsel. Do not publish it as-is. See `docs/SRS.md` §13, open question 2.
 
-# goto5x.com — Terms of Service / Seller Agreement (Draft)
+# uzeyn.com — Terms of Service / Seller Agreement (Draft)
 
 **Last updated:** [date] · **Version:** draft-2
 
-## 1. What goto5x.com Is
-**goto5x.com ("the Platform") is a facilitation workspace, not a marketplace
+## 1. What uzeyn.com Is
+**uzeyn.com ("the Platform") is a facilitation workspace, not a marketplace
 operator or the seller of record for anything sold through it.** It lets
 independent merchants ("Sellers") create and operate their own online stores,
 and connects them to third-party suppliers ("Suppliers") who may fulfill

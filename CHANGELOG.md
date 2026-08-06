@@ -1,11 +1,83 @@
 # Changelog
 
-All notable changes to goto5x.com, reconstructed retroactively from the module-
-by-module build history in `docs/build-plan.md` and the SRS's own amendment
-changelog (`docs/SRS.md`). Versions here track the SRS/build-plan version
-number (not npm semver) — each entry is either a specification amendment
-(docs only) or a shipped module (code + tests). Maintained on every future
-change.
+All notable changes to UZEYN (formerly developed under the working names
+"goto5x" and "eyosto" — see the rename entry below), reconstructed
+retroactively from the module-by-module build history in
+`docs/build-plan.md` and the SRS's own amendment changelog (`docs/SRS.md`).
+Versions here track the SRS/build-plan version number (not npm semver) —
+each entry is either a specification amendment (docs only) or a shipped
+module (code + tests). Maintained on every future change.
+
+## UZEYN rename pass
+
+Full rename pass — `goto5x`/`eyosto` → **UZEYN** — across the repo: code,
+docs, config, and storefront branding. Dedicated commit, slotted
+immediately after Module 37, before the deep audit and design-phase
+resume, per the founder's instruction.
+
+### Changed
+- npm workspace package names (`@goto5x/api` → `@uzeyn/api`, `@goto5x/web`
+  → `@uzeyn/web`, root package `goto5x` → `uzeyn`); no import paths broke
+  since neither package is ever imported by its scoped name (only
+  referenced via `pnpm --filter`).
+- `docker-compose.yml`'s Compose project name; all env var values that
+  encode the old name (`POSTGRES_DB`, `MINIO_ROOT_USER`, `MINIO_BUCKET`,
+  `ADMIN_MFA_ISSUER_NAME`, `EMAIL_FROM_ADDRESS`) in `.env.example`,
+  `apps/api/.env.test.example`, and `.github/workflows/ci.yml` — CI spins
+  up fresh ephemeral service containers per run, so nothing there depended
+  on prior state.
+- The storefront's "Powered by eyosto" mark is now **"Managed by UZEYN"**
+  (`apps/web/app/storefront/chrome.tsx`'s `PoweredByMark` component and
+  every settings-description/comment referencing it) — both the name and
+  the verb changed, per the founder's explicit wording.
+- The dashboard/marketing/design-system wordmark, page titles, and all
+  storefront-template fallback SEO copy ("_store_ is a store on eyosto")
+  now read **UZEYN**. Three shared CSS animation classes renamed
+  (`.eyosto-overlay`/`.eyosto-fade`/`.eyosto-scrim` →
+  `.uzeyn-overlay`/`.uzeyn-fade`/`.uzeyn-scrim`) in `globals.css` and its
+  four consuming components (Dialog/DropdownMenu/Toast/Tooltip).
+  `goto5x.com`/`eyosto.com` domain references throughout dashboard/signup/
+  storefront copy and legal docs became `uzeyn.com`.
+- Internal identifiers with no user-facing surface: the external-API
+  request-signing headers (`x-goto5x-client-type/-timestamp/-signature` →
+  `x-uzeyn-*`, both the controllers that read them and the e2e specs that
+  set them), the local-cart `localStorage` key prefix and event name, the
+  Google Drive export folder name a seller sees in their own Drive
+  (`"goto5x Data Exports"` → `"UZEYN Data Exports"`), and every e2e
+  spec/unit-test literal that mirrors a renamed env var or header so
+  fixtures stay consistent with the code they exercise.
+- `docs/SRS.md`, `docs/architecture.md`, `docs/database-schema.md`,
+  `docs/tech-stack.md`, `docs/mvp-v1-cutlist.md`, `docs/page-inventory.md`,
+  `docs/launch-runbook.md`, and `docs/legal/*.md` — living documents, so
+  every occurrence renamed for current accuracy.
+
+### Deliberately left unchanged
+- **`CHANGELOG.md`'s own past entries** (this document) and **all of
+  `docs/build-plan.md`'s existing per-module narrative** — both are
+  historical build records describing what was literally named/decided at
+  each point in time (e.g. build-plan.md's Phase 1 section narrates
+  choosing "eyosto" as the wordmark, and explicitly explains why a
+  site-wide rename was deferred then). Rewriting that history to say
+  "UZEYN" would misrepresent what was actually shipped at each step, so
+  only new entries are added; nothing already written is edited.
+- **The GitHub repository's own name** (`ubaidslab/goto5x.com`) and the
+  local repo folder path — renaming a GitHub repository is an
+  infrastructure/ownership action outside what a commit can do, and
+  `docs/build-plan.md`'s repository-structure tree (`goto5x.com/...`) is
+  therefore still factually correct and untouched.
+- **Applied Prisma migration files and every DB-persisted identifier**:
+  no table/column/enum name, migration filename, or Settings Registry key
+  (e.g. `branding.powered_by_removable`/`branding.powered_by_hidden`)
+  contained the old name in the first place — confirmed by grep before
+  starting — so none needed touching or a data migration.
+- The local dev/test Postgres database itself was renamed
+  (`ALTER DATABASE goto5x RENAME TO uzeyn`) since it's a disposable local
+  instance, not a migration-tracked identifier.
+
+### Verified
+Full local typecheck (`apps/api` + `apps/web`), full local e2e suite, and
+a real CI-verified green run on the pushed commit — see the module report
+for the exact `Test Suites:`/`Tests:` summary lines.
 
 ## Module 37: Advanced Granular Admin Control
 

@@ -220,7 +220,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "goto5x worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34).",
   );
 
   const shutdown = async () => {

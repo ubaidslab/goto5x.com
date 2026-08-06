@@ -73,7 +73,7 @@ function EditorialAbout({ store, theme }: { store: PublicStore; theme: ResolvedT
       <h2 className={`${playfair.variable} mb-4 text-3xl`} style={{ fontFamily: "var(--font-editorial-display)", color: theme.colors.primary }}>
         About {store.name}
       </h2>
-      <p className="mx-auto max-w-2xl text-lg opacity-80">{store.seoDescription ?? `${store.name} is a store on eyosto.`}</p>
+      <p className="mx-auto max-w-2xl text-lg opacity-80">{store.seoDescription ?? `${store.name} is a store on UZEYN.`}</p>
     </section>
   );
 }

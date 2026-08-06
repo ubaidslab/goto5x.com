@@ -10,7 +10,7 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 const PASSWORD = "correct-horse-battery";
 const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 const S3_TEST_PORT = 4569;
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 /** SRS §5.23/§14.21 - Business Guard-Rails & Platform Economics. */
 describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {

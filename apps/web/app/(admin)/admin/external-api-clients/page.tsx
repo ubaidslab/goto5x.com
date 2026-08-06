@@ -84,7 +84,7 @@ export default function AdminExternalApiClientsPage() {
   return (
     <main>
       <h1>External API Clients (bare view - no design pass yet)</h1>
-      <p>Template Store and Social Media SaaS hooks (SRS §5.24). goto5x.com never builds either external product - only this small, versioned API surface.</p>
+      <p>Template Store and Social Media SaaS hooks (SRS §5.24). uzeyn.com never builds either external product - only this small, versioned API surface.</p>
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}
       {revealedSecret && (

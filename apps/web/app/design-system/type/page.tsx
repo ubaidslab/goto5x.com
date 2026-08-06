@@ -90,7 +90,7 @@ export default function TypeComparisonPage() {
       <div className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-3">
           <a href="/design-system" className="font-display text-sm font-bold tracking-tight text-ink">
-            eyosto / design system
+            UZEYN / design system
           </a>
           <span className="text-ink-faint">/</span>
           <span className="text-sm font-medium text-ink-muted">Type comparison</span>

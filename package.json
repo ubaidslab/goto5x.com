@@ -1,20 +1,20 @@
 {
-  "name": "goto5x",
+  "name": "uzeyn",
   "private": true,
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev:api": "pnpm --filter @goto5x/api start:dev",
-    "dev:web": "pnpm --filter @goto5x/web dev",
-    "test:api": "pnpm --filter @goto5x/api test",
-    "test:api:e2e": "pnpm --filter @goto5x/api test:e2e",
-    "prisma:migrate": "pnpm --filter @goto5x/api prisma:migrate",
-    "prisma:generate": "pnpm --filter @goto5x/api prisma:generate",
+    "dev:api": "pnpm --filter @uzeyn/api start:dev",
+    "dev:web": "pnpm --filter @uzeyn/web dev",
+    "test:api": "pnpm --filter @uzeyn/api test",
+    "test:api:e2e": "pnpm --filter @uzeyn/api test:e2e",
+    "prisma:migrate": "pnpm --filter @uzeyn/api prisma:migrate",
+    "prisma:generate": "pnpm --filter @uzeyn/api prisma:generate",
     "audit": "pnpm audit --audit-level=critical",
     "audit:report": "pnpm audit --audit-level=high || true",
     "verify:dependency-audit-mechanism": "bash scripts/verify-dependency-audit-blocks-vulnerable-package.sh",
-    "simulate": "pnpm --filter @goto5x/api simulate"
+    "simulate": "pnpm --filter @uzeyn/api simulate"
   },
   "pnpm": {
     "overrides": {

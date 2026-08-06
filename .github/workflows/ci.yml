@@ -34,11 +34,11 @@ jobs:
       - name: Check template isolation boundary (Templates module, THE ISOLATION RULE)
         run: node scripts/check-template-isolation.js
       - name: Generate Prisma client (needed for apps/api types)
-        run: pnpm --filter @goto5x/api prisma:generate
+        run: pnpm --filter @uzeyn/api prisma:generate
       - name: Typecheck apps/api
-        run: pnpm --filter @goto5x/api exec tsc --noEmit
+        run: pnpm --filter @uzeyn/api exec tsc --noEmit
       - name: Typecheck apps/web
-        run: pnpm --filter @goto5x/web exec tsc --noEmit
+        run: pnpm --filter @uzeyn/web exec tsc --noEmit
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -52,7 +52,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @goto5x/api prisma:generate
+      - run: pnpm --filter @uzeyn/api prisma:generate
       - name: Unit tests (no external services required)
         run: pnpm test:api
 
@@ -66,7 +66,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: ci-superuser-password
-          POSTGRES_DB: goto5x
+          POSTGRES_DB: uzeyn
         ports: ["5432:5432"]
         options: >-
           --health-cmd="pg_isready -U postgres"
@@ -92,7 +92,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Generate Prisma client (test files import PrismaClient directly)
-        run: pnpm --filter @goto5x/api prisma:generate
+        run: pnpm --filter @uzeyn/api prisma:generate
 
       # InvoicePdfService (Module 15/24) renders PDFs via a real headless
       # Chromium (Playwright), not a mock - matches this project's stated
@@ -102,22 +102,22 @@ jobs:
       # system libraries headless Chromium needs (fonts, mesa, etc.) are
       # present on the bare runner too.
       - name: Install Playwright Chromium + system dependencies (PDF generation)
-        run: pnpm --filter @goto5x/api exec playwright install --with-deps chromium
+        run: pnpm --filter @uzeyn/api exec playwright install --with-deps chromium
 
       - name: Bootstrap app_runtime/app_admin roles (once per fresh database)
         env:
           PGPASSWORD: ci-superuser-password
         run: |
-          psql -h localhost -U postgres -d goto5x \
+          psql -h localhost -U postgres -d uzeyn \
             -v runtime_password=ci-runtime-password \
             -v admin_password=ci-admin-password \
-            -v dbname=goto5x \
+            -v dbname=uzeyn \
             -f apps/api/scripts/bootstrap-db.sql
 
       - name: Run migrations (as superuser - app roles only have DML rights)
         env:
-          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/goto5x?schema=public
-        run: pnpm --filter @goto5x/api exec prisma migrate deploy
+          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
+        run: pnpm --filter @uzeyn/api exec prisma migrate deploy
 
       - name: Write apps/api/.env.test
         run: |
@@ -127,32 +127,32 @@ jobs:
           # that happen to symlink it there - a plain CI runner has no such
           # symlink). Ask Playwright's own API where it actually installed
           # Chromium on THIS runner rather than guessing a path/version.
-          CHROMIUM_PATH=$(pnpm --filter @goto5x/api exec node -e "console.log(require('playwright').chromium.executablePath())")
+          CHROMIUM_PATH=$(pnpm --filter @uzeyn/api exec node -e "console.log(require('playwright').chromium.executablePath())")
           cat > apps/api/.env.test <<EOF
           NODE_ENV=test
           PORT=3000
-          DATABASE_URL=postgresql://app_runtime:ci-runtime-password@localhost:5432/goto5x?schema=public
-          DATABASE_ADMIN_URL=postgresql://app_admin:ci-admin-password@localhost:5432/goto5x?schema=public
-          TEST_SUPERUSER_DATABASE_URL=postgresql://postgres:ci-superuser-password@localhost:5432/goto5x?schema=public
+          DATABASE_URL=postgresql://app_runtime:ci-runtime-password@localhost:5432/uzeyn?schema=public
+          DATABASE_ADMIN_URL=postgresql://app_admin:ci-admin-password@localhost:5432/uzeyn?schema=public
+          TEST_SUPERUSER_DATABASE_URL=postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
           REDIS_URL=redis://localhost:6379
           JWT_ACCESS_SECRET=ci-test-secret-not-for-production-use-1234567890
           JWT_ACCESS_TTL_MINUTES=15
           JWT_REFRESH_TTL_DAYS=30
-          ADMIN_MFA_ISSUER_NAME=goto5x.com
+          ADMIN_MFA_ISSUER_NAME=uzeyn.com
           EMAIL_PROVIDER=console
-          EMAIL_FROM_ADDRESS=no-reply@goto5x.com
+          EMAIL_FROM_ADDRESS=no-reply@uzeyn.com
           APP_BASE_URL=http://localhost:3001
           PLAYWRIGHT_CHROMIUM_PATH=$CHROMIUM_PATH
           MINIO_ENDPOINT=http://localhost:4569
           MINIO_ROOT_USER=S3RVER
           MINIO_ROOT_PASSWORD=S3RVER
-          MINIO_BUCKET=goto5x-media-test
+          MINIO_BUCKET=uzeyn-media-test
           GOOGLE_DRIVE_CLIENT_ID=test-client-id
           GOOGLE_DRIVE_CLIENT_SECRET=test-client-secret
           GOOGLE_DRIVE_REDIRECT_URI=http://localhost:3000/media/drive/callback
           DRIVE_TOKEN_ENCRYPTION_KEY=cVKW5U8XxG2Wn9GxwZ8v4vQY2ZC1o9dCmR3hT5nQmZ4=
           PRINTIFY_API_KEY=ci-test-printify-key-placeholder
-          TRAEFIK_DYNAMIC_CONFIG_DIR=/tmp/goto5x-traefik-dynamic-test
+          TRAEFIK_DYNAMIC_CONFIG_DIR=/tmp/uzeyn-traefik-dynamic-test
           IDENTITY_ENCRYPTION_KEY=hPVvBmwP4FUPhlWoIzKOyj1FZ1UBu0N+AbNgZoVNsPk=
           IDENTITY_FINGERPRINT_HMAC_SECRET=ci-test-identity-fingerprint-hmac-secret
           EXTERNAL_API_SECRET_ENCRYPTION_KEY=UBSQp73iyfU/LUU+gFQ69pB9C2Gw1Tg1RVqSmuM/FdE=
@@ -210,4 +210,4 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @goto5x/web build
+      - run: pnpm --filter @uzeyn/web build

@@ -27,7 +27,7 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log(`goto5x API listening on port ${port}`);
+  console.log(`UZEYN API listening on port ${port}`);
 }
 
 bootstrap();

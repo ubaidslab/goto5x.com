@@ -1,6 +1,6 @@
 # Production topology (also what local dev runs, via docker-compose.override.yml
 # for dev-only conveniences). See docs/architecture.md §1.
-name: goto5x
+name: uzeyn
 
 services:
   postgres:

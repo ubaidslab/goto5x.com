@@ -5,7 +5,7 @@ import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 
 /**
- * Templates module (v0.31 design phase) - the "Powered by eyosto"
+ * Templates module (v0.31 design phase) - the "Managed by UZEYN"
  * storefront mark. Founder-mandated invariant: mandatory on the Free plan
  * (the platform's own free organic marketing), removable only once a paid
  * plan grants the capability. Two settings keys, resolved independently
@@ -47,7 +47,7 @@ export class BrandingService {
       const planContext = await this.subscriptions.getPlanContext(sellerId);
       const removable = await this.settings.resolve<boolean>("branding.powered_by_removable", planContext);
       if (!removable) {
-        throw new ForbiddenException("Removing the eyosto mark isn't included in your current plan.");
+        throw new ForbiddenException("Removing the UZEYN mark isn't included in your current plan.");
       }
     }
     await this.settings.setValue("branding.powered_by_hidden", "store", storeId, hidden, userId);

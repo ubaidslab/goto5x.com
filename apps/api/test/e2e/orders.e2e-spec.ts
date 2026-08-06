@@ -69,7 +69,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     // to be published; set directly rather than every test going through
     // the real publish flow (top-up + verify).
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
   }
 
   async function signupLoginSupplier(email: string) {

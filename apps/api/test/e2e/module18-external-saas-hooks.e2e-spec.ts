@@ -8,9 +8,9 @@ import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaF
 
 /**
  * SRS §5.24/§14.22 (Module 18, External-SaaS Integration Hooks) - both hooks
- * are goto5x.com's own side only; the external SaaS products themselves are
+ * are uzeyn.com's own side only; the external SaaS products themselves are
  * out of scope by design (the founder's own instruction, §3.10) - every test
- * here exercises goto5x's API surface, never a mock of the other product.
+ * here exercises UZEYN's API surface, never a mock of the other product.
  */
 describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
   let app: INestApplication;
@@ -101,9 +101,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const install = await request(app.getHttpServer())
         .post("/external/template-store/install")
         .set("Content-Type", "application/json")
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", timestamp)
-        .set("x-goto5x-signature", sign(secret, timestamp, body))
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", timestamp)
+        .set("x-uzeyn-signature", sign(secret, timestamp, body))
         .send(body);
 
       expect(install.status).toBe(201);
@@ -154,9 +154,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const res = await request(app.getHttpServer())
         .post("/external/template-store/install")
         .set("Content-Type", "application/json")
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", timestamp)
-        .set("x-goto5x-signature", sign("totally-wrong-secret", timestamp, body))
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", timestamp)
+        .set("x-uzeyn-signature", sign("totally-wrong-secret", timestamp, body))
         .send(body);
 
       expect(res.status).toBe(401);
@@ -183,9 +183,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const res = await request(app.getHttpServer())
         .post("/external/template-store/install")
         .set("Content-Type", "application/json")
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", timestamp)
-        .set("x-goto5x-signature", sign(secret, timestamp, body))
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", timestamp)
+        .set("x-uzeyn-signature", sign(secret, timestamp, body))
         .send(body);
 
       expect(res.status).toBe(401);
@@ -203,9 +203,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
         return request(app.getHttpServer())
           .post("/external/template-store/install")
           .set("Content-Type", "application/json")
-          .set("x-goto5x-client-type", "template_store")
-          .set("x-goto5x-timestamp", timestamp)
-          .set("x-goto5x-signature", sign(secret, timestamp, body))
+          .set("x-uzeyn-client-type", "template_store")
+          .set("x-uzeyn-timestamp", timestamp)
+          .set("x-uzeyn-signature", sign(secret, timestamp, body))
           .send(body);
       }
       const installA = await install(sellerA.sellerId);
@@ -217,9 +217,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const revoke = await request(app.getHttpServer())
         .post("/external/template-store/revoke")
         .set("Content-Type", "application/json")
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", revokeTimestamp)
-        .set("x-goto5x-signature", sign(secret, revokeTimestamp, revokeBody))
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", revokeTimestamp)
+        .set("x-uzeyn-signature", sign(secret, revokeTimestamp, revokeBody))
         .send(revokeBody);
       expect(revoke.status).toBe(201);
 
@@ -262,9 +262,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const install = await request(app.getHttpServer())
         .post("/external/template-store/install")
         .set("Content-Type", "application/json")
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", timestamp)
-        .set("x-goto5x-signature", sign(secret, timestamp, body))
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", timestamp)
+        .set("x-uzeyn-signature", sign(secret, timestamp, body))
         .send(body);
 
       const select = await request(app.getHttpServer())
@@ -375,9 +375,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const query1 = `sellerId=${seller.sellerId}`;
       const freeCheck = await request(app.getHttpServer())
         .get(`/external/eligibility?${query1}`)
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", timestamp1)
-        .set("x-goto5x-signature", sign(secret, timestamp1, query1));
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", timestamp1)
+        .set("x-uzeyn-signature", sign(secret, timestamp1, query1));
       expect(freeCheck.status).toBe(200);
       expect(freeCheck.body).toEqual({ eligible: false });
 
@@ -388,9 +388,9 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       const timestamp2 = String(Date.now());
       const paidCheck = await request(app.getHttpServer())
         .get(`/external/eligibility?${query1}`)
-        .set("x-goto5x-client-type", "template_store")
-        .set("x-goto5x-timestamp", timestamp2)
-        .set("x-goto5x-signature", sign(secret, timestamp2, query1));
+        .set("x-uzeyn-client-type", "template_store")
+        .set("x-uzeyn-timestamp", timestamp2)
+        .set("x-uzeyn-signature", sign(secret, timestamp2, query1));
       expect(paidCheck.status).toBe(200);
       expect(paidCheck.body).toEqual({ eligible: true });
 

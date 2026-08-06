@@ -54,7 +54,7 @@ function AtelierAbout({ store, theme }: { store: PublicStore; theme: ResolvedThe
   return (
     <section className="px-6 py-24 text-center [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
       <h2 className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">About</h2>
-      <p className="mx-auto max-w-xl text-lg">{store.seoDescription ?? `${store.name} is a store on eyosto.`}</p>
+      <p className="mx-auto max-w-xl text-lg">{store.seoDescription ?? `${store.name} is a store on UZEYN.`}</p>
     </section>
   );
 }

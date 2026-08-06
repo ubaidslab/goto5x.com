@@ -78,7 +78,7 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
       "on every public storefront surface - list, detail, search, and collections (FR-27.3/27.5)",
     async () => {
       const { token, storeId } = await signupLoginAndCreateStore("probation@example.com", "probation-store");
-      const hostname = "probation-store.goto5x.com";
+      const hostname = "probation-store.uzeyn.com";
 
       const create = await request(app.getHttpServer())
         .post(`/stores/${storeId}/products`)
@@ -127,7 +127,7 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
 
   it("approving a queued product makes it publicly visible everywhere and is audit-logged (FR-27.5/27.6)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("approve-flow@example.com", "approve-flow-store");
-    const hostname = "approve-flow-store.goto5x.com";
+    const hostname = "approve-flow-store.uzeyn.com";
     const create = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products`)
       .set("Authorization", `Bearer ${token}`)
@@ -153,7 +153,7 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
 
   it("rejecting a queued product requires notes, keeps it invisible, and is audit-logged (FR-27.5/27.6)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("reject-flow@example.com", "reject-flow-store");
-    const hostname = "reject-flow-store.goto5x.com";
+    const hostname = "reject-flow-store.uzeyn.com";
     const create = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products`)
       .set("Authorization", `Bearer ${token}`)
@@ -185,7 +185,7 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
 
   it("a trusted seller's products bypass moderation entirely and are visible immediately (FR-27.4)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("trusted@example.com", "trusted-store");
-    const hostname = "trusted-store.goto5x.com";
+    const hostname = "trusted-store.uzeyn.com";
     const user = await superuser.user.findUniqueOrThrow({ where: { email: "trusted@example.com" } });
     await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
 
@@ -252,7 +252,7 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
   it("probation lifts after N approved products - the (N+1)th listing publishes immediately (FR-27.3)", async () => {
     await overrideGlobalSetting("moderation.new_seller_probation_count", 1);
     const { token, storeId } = await signupLoginAndCreateStore("probation-lift@example.com", "probation-lift-store");
-    const hostname = "probation-lift-store.goto5x.com";
+    const hostname = "probation-lift-store.uzeyn.com";
 
     const first = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products`)

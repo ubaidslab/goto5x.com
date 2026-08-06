@@ -52,7 +52,7 @@ export function renderExportSummaryHtml(data: ExportSummaryData): string {
   </table>
   <p class="footnote">
     This export is a convenience copy of your own store data for your own records. It is not a
-    substitute for goto5x.com's own automated platform backups, which run regardless of this export.
+    substitute for uzeyn.com's own automated platform backups, which run regardless of this export.
   </p>
 </body>
 </html>`;

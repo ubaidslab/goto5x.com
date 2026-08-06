@@ -18,7 +18,7 @@ import { SellerApiTokensService } from "./seller-api-tokens.service";
 import { TemplateInstallController } from "./template-install.controller";
 import { TemplateInstallService } from "./template-install.service";
 
-/** Module 18 (SRS §5.24) - both external-SaaS hooks: goto5x.com's own side only. */
+/** Module 18 (SRS §5.24) - both external-SaaS hooks: uzeyn.com's own side only. */
 @Module({
   imports: [AdminModule, PlansModule, SettingsModule, StorefrontModule, JwtModule.register({})],
   controllers: [

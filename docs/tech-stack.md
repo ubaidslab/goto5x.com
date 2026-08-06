@@ -1,4 +1,4 @@
-# goto5x.com — Final Tech Stack
+# uzeyn.com — Final Tech Stack
 
 **Optimized for:** solo-developer velocity, low VPS cost, long-term scalability, strong
 ecosystem/community support (so answers and libraries exist when the solo founder+AI

@@ -12,11 +12,11 @@ export const DialogClose = DialogPrimitive.Close;
 export const DialogContent = forwardRef<ElementRef<typeof DialogPrimitive.Content>, ComponentPropsWithoutRef<typeof DialogPrimitive.Content>>(
   ({ className, children, ...props }, ref) => (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="eyosto-scrim fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px]" />
+      <DialogPrimitive.Overlay className="uzeyn-scrim fixed inset-0 z-50 bg-ink/40 backdrop-blur-[2px]" />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "eyosto-overlay fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2",
+          "uzeyn-overlay fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2",
           "rounded-lg border border-border bg-surface p-6 shadow-xl",
           "focus:outline-none",
           className,

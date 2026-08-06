@@ -54,7 +54,7 @@ describe("Staff Accounts (e2e) - SRS §5.52, §14.52", () => {
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com`, sellerId: storeRow.sellerId };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com`, sellerId: storeRow.sellerId };
   }
 
   async function createStaff(ownerToken: string, email: string, scopes: string[]) {

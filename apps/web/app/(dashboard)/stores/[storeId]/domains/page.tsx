@@ -106,14 +106,14 @@ export default function DomainsPage({ params }: { params: { storeId: string } })
     <div>
       <PageHeader
         title="Domains"
-        description="Every store gets a free goto5x.com subdomain automatically - attaching your own domain here is optional."
+        description="Every store gets a free uzeyn.com subdomain automatically - attaching your own domain here is optional."
       />
 
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
         <Card>
-          <CardHeader title="Attach a custom domain" description="Point your domain's DNS at goto5x.com, then verify it here." />
+          <CardHeader title="Attach a custom domain" description="Point your domain's DNS at uzeyn.com, then verify it here." />
           <CardBody className="space-y-4">
             <form onSubmit={attach} className="flex items-end gap-2">
               <div className="flex-1">

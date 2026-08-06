@@ -2,7 +2,7 @@
 
 ## What it does
 
-Two integration points that let goto5x.com plug into companion products
+Two integration points that let uzeyn.com plug into companion products
 without becoming those products itself: a premium theme marketplace, and a
 social-media marketing tool.
 

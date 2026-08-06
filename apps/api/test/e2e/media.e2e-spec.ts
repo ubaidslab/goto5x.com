@@ -6,7 +6,7 @@ import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaF
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const S3_TEST_PORT = 4569;
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", () => {
   let app: INestApplication;

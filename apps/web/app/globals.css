@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * eyosto Design System — v1.1 (Phase 1 redo, Module 19)
+ * UZEYN Design System — v1.1 (Phase 1 redo, Module 19)
  * -----------------------------------------------------------------------
  * v1.1 note: v1's Plus Jakarta Sans + softer neutrals were founder-
  * rejected as reading "friendly startup," not "premium minimal." This
@@ -11,7 +11,7 @@
  * throughout instead of a 600/700 mix. See each token group's own comment
  * below for the specific before/after reasoning.
  * Single source of truth for every color, type, spacing, radius, shadow,
- * and motion value used across eyosto's dashboard, marketing site,
+ * and motion value used across UZEYN's dashboard, marketing site,
  * storefronts, and admin terminal. Rebranding — a new accent color, an
  * adjusted type scale — is a change to this file only, never a per-screen
  * rewrite. See /design-system for the live contract every component below
@@ -363,27 +363,27 @@
 }
 
 [data-radix-popper-content-wrapper] [data-state="open"],
-.eyosto-overlay[data-state="open"] {
+.uzeyn-overlay[data-state="open"] {
   animation: overlay-in var(--duration-base) var(--ease-standard);
 }
-.eyosto-overlay[data-state="closed"] {
+.uzeyn-overlay[data-state="closed"] {
   animation: overlay-out var(--duration-fast) var(--ease-in);
 }
-.eyosto-fade[data-state="open"] {
+.uzeyn-fade[data-state="open"] {
   animation: fade-in var(--duration-fast) var(--ease-standard);
 }
-.eyosto-fade[data-state="closed"] {
+.uzeyn-fade[data-state="closed"] {
   animation: fade-out var(--duration-fast) var(--ease-in);
 }
-.eyosto-scrim[data-state="open"] {
+.uzeyn-scrim[data-state="open"] {
   animation: scrim-in var(--duration-base) var(--ease-standard);
 }
-.eyosto-scrim[data-state="closed"] {
+.uzeyn-scrim[data-state="closed"] {
   animation: fade-out var(--duration-fast) var(--ease-in);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .eyosto-overlay, .eyosto-fade, .eyosto-scrim {
+  .uzeyn-overlay, .uzeyn-fade, .uzeyn-scrim {
     animation: none !important;
   }
 }

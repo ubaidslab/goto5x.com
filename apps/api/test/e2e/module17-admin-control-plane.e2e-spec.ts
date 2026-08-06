@@ -128,11 +128,11 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       const write = await request(app.getHttpServer())
         .put("/admin/brand-assets/logo")
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ url: "https://goto5x.com/logo-v1.png" });
+        .send({ url: "https://uzeyn.com/logo-v1.png" });
       expect(write.body.currentVersion).toBe(1);
 
       const publicRead = await request(app.getHttpServer()).get("/brand-assets/logo");
-      expect(publicRead.body.url).toBe("https://goto5x.com/logo-v1.png");
+      expect(publicRead.body.url).toBe("https://uzeyn.com/logo-v1.png");
     });
   });
 

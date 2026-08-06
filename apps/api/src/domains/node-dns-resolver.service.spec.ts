@@ -25,11 +25,11 @@ describe("NodeDnsResolverService (real DNS)", () => {
   });
 
   it("returns an empty array (not a throw) for a nonexistent domain", async () => {
-    await expect(resolver.resolve4("this-domain-absolutely-does-not-exist-goto5x-12345.invalid")).resolves.toEqual(
+    await expect(resolver.resolve4("this-domain-absolutely-does-not-exist-uzeyn-12345.invalid")).resolves.toEqual(
       [],
     );
     await expect(
-      resolver.resolveCname("this-domain-absolutely-does-not-exist-goto5x-12345.invalid"),
+      resolver.resolveCname("this-domain-absolutely-does-not-exist-uzeyn-12345.invalid"),
     ).resolves.toEqual([]);
   });
 

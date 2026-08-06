@@ -14,7 +14,7 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 // (package.json's `--runInBand`): that file's afterAll has already closed
 // its server before this file's beforeAll opens this one.
 const S3_TEST_PORT = 4569;
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 /**
  * The real Google OAuth/Drive endpoints are unreachable from this sandbox

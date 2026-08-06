@@ -207,7 +207,7 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
       "transparency data visible on the storefront (FR-2.7/FR-3.2/FR-4.6)",
     async () => {
       const { token, storeId } = await signupLoginAndCreateStore("review-seller@example.com", "review-seller-store");
-      const hostname = "review-seller-store.goto5x.com";
+      const hostname = "review-seller-store.uzeyn.com";
       const supplierToken = await signupLoginSupplier("review-supplier@example.com");
       const { listing } = await seedSupplierListing("review-supplier@example.com");
 
@@ -255,7 +255,7 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
 
   it("seller rejecting a listing review creates no product and it never appears on the storefront", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("reject-seller@example.com", "reject-seller-store");
-    const hostname = "reject-seller-store.goto5x.com";
+    const hostname = "reject-seller-store.uzeyn.com";
     const supplierToken = await signupLoginSupplier("reject-supplier@example.com");
     const { listing } = await seedSupplierListing("reject-supplier@example.com");
 
@@ -385,7 +385,7 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
         await overrideGlobalSetting("moderation.new_seller_probation_count", 0);
         await overrideGlobalSetting("moderation.restricted_keywords", ["vape"]);
         const { token, storeId } = await signupLoginAndCreateStore("mod-restricted-seller@example.com", "mod-restricted-seller-store");
-        const hostname = "mod-restricted-seller-store.goto5x.com";
+        const hostname = "mod-restricted-seller-store.uzeyn.com";
         const supplierToken = await signupLoginSupplier("mod-restricted-supplier@example.com");
         const { listing } = await seedSupplierListing("mod-restricted-supplier@example.com", "Vape Pen");
         const linkId = await linkAndActivate(token, storeId, "mod-restricted-seller-store", supplierToken);

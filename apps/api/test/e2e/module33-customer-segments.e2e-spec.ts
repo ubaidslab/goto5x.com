@@ -50,7 +50,7 @@ describe("Customer Segments (e2e) - SRS §5.50, §14.50", () => {
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
   }
 
   async function createSelfProduct(token: string, storeId: string, price: number) {

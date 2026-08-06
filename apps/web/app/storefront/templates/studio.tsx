@@ -78,7 +78,7 @@ function StudioAbout({ store, theme }: { store: PublicStore; theme: ResolvedThem
         <h2 className={`${grotesk.variable} mb-4 text-3xl font-bold uppercase tracking-tight`} style={{ fontFamily: "var(--font-studio-display)" }}>
           About {store.name}
         </h2>
-        <p className="text-lg opacity-90">{store.seoDescription ?? `${store.name} is a store on eyosto.`}</p>
+        <p className="text-lg opacity-90">{store.seoDescription ?? `${store.name} is a store on UZEYN.`}</p>
       </div>
     </section>
   );

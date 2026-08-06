@@ -20,7 +20,7 @@ export interface TestS3Server {
 }
 
 export async function startTestS3Server(port: number, bucket: string): Promise<TestS3Server> {
-  const directory = mkdtempSync(join(tmpdir(), "goto5x-s3rver-"));
+  const directory = mkdtempSync(join(tmpdir(), "uzeyn-s3rver-"));
   const instance = new S3rver({
     port,
     address: "localhost",

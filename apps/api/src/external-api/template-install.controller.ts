@@ -24,9 +24,9 @@ export class TemplateInstallController {
   async install(
     @Body() dto: TemplateInstallDto,
     @Req() req: RawBodyRequest<Request>,
-    @Headers("x-goto5x-client-type") clientType: string | undefined,
-    @Headers("x-goto5x-timestamp") timestamp: string | undefined,
-    @Headers("x-goto5x-signature") signature: string | undefined,
+    @Headers("x-uzeyn-client-type") clientType: string | undefined,
+    @Headers("x-uzeyn-timestamp") timestamp: string | undefined,
+    @Headers("x-uzeyn-signature") signature: string | undefined,
   ) {
     const { clientId } = await this.signatures.verify(clientType, timestamp, signature, req.rawBody?.toString("utf8") ?? "");
     return this.templateInstall.install(dto, clientId);
@@ -36,9 +36,9 @@ export class TemplateInstallController {
   async revoke(
     @Body() dto: TemplateRevokeDto,
     @Req() req: RawBodyRequest<Request>,
-    @Headers("x-goto5x-client-type") clientType: string | undefined,
-    @Headers("x-goto5x-timestamp") timestamp: string | undefined,
-    @Headers("x-goto5x-signature") signature: string | undefined,
+    @Headers("x-uzeyn-client-type") clientType: string | undefined,
+    @Headers("x-uzeyn-timestamp") timestamp: string | undefined,
+    @Headers("x-uzeyn-signature") signature: string | undefined,
   ) {
     await this.signatures.verify(clientType, timestamp, signature, req.rawBody?.toString("utf8") ?? "");
     return this.templateInstall.revoke(dto);

@@ -10,7 +10,7 @@ describe("TraefikDynamicConfigService (real filesystem)", () => {
   let service: TraefikDynamicConfigService;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "goto5x-traefik-test-"));
+    dir = mkdtempSync(join(tmpdir(), "uzeyn-traefik-test-"));
     const config = { getOrThrow: () => dir } as unknown as ConfigService;
     service = new TraefikDynamicConfigService(config);
   });

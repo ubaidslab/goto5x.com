@@ -33,7 +33,7 @@ export class DomainsService {
     const rootDomain = await this.settings.resolve<string>("domains.platform_root_domain");
     if (domainName === rootDomain || domainName.endsWith(`.${rootDomain}`)) {
       throw new BadRequestException(
-        `"${domainName}" is one of goto5x.com's own subdomains, not an external domain you own - ` +
+        `"${domainName}" is one of uzeyn.com's own subdomains, not an external domain you own - ` +
           `every store already gets a free subdomain automatically (FR-11.1).`,
       );
     }

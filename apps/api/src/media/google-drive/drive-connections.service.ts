@@ -110,7 +110,7 @@ export class DriveConnectionsService {
     );
     if (connection?.exportFolderId) return connection.exportFolderId;
 
-    const folderId = await this.driveClient.createFolder(accessToken, "goto5x Data Exports");
+    const folderId = await this.driveClient.createFolder(accessToken, "UZEYN Data Exports");
     await this.tenantPrisma.run(sellerId, (tx) =>
       tx.googleDriveConnection.update({ where: { sellerId }, data: { exportFolderId: folderId } }),
     );

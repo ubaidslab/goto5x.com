@@ -63,7 +63,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
   it("full-text search returns relevant results and an unmatched category filter narrows to nothing (FR-16.2)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("search@example.com", "search-store");
-    const hostname = "search-store.goto5x.com";
+    const hostname = "search-store.uzeyn.com";
 
     const wireless = await createActiveProduct(token, storeId, "Wireless Headphones", "Great sound, no wires.");
     await createActiveProduct(token, storeId, "Wired Earbuds", "Budget-friendly wired option.");
@@ -87,7 +87,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
   it("search respects a min/max price range against variant prices", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("search-price@example.com", "search-price-store");
-    const hostname = "search-price-store.goto5x.com";
+    const hostname = "search-price-store.uzeyn.com";
     const cheap = await createActiveProduct(token, storeId, "Cheap Widget");
     const pricey = await createActiveProduct(token, storeId, "Pricey Widget");
     await request(app.getHttpServer())
@@ -107,7 +107,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
   it("a collection renders its assigned products on the storefront in sort order (FR-16.1)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("sf-collections@example.com", "sf-collections-store");
-    const hostname = "sf-collections-store.goto5x.com";
+    const hostname = "sf-collections-store.uzeyn.com";
     const collection = await request(app.getHttpServer())
       .post(`/stores/${storeId}/collections`)
       .set("Authorization", `Bearer ${token}`)
@@ -134,7 +134,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
   it("an inactive collection is not publicly reachable", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("sf-inactive-collection@example.com", "sf-inactive-collection-store");
-    const hostname = "sf-inactive-collection-store.goto5x.com";
+    const hostname = "sf-inactive-collection-store.uzeyn.com";
     const collection = await request(app.getHttpServer())
       .post(`/stores/${storeId}/collections`)
       .set("Authorization", `Bearer ${token}`)
@@ -159,18 +159,18 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
     const resA = await request(app.getHttpServer())
       .get("/storefront/navigation")
-      .query({ hostname: "sf-nav-a-store.goto5x.com" });
+      .query({ hostname: "sf-nav-a-store.uzeyn.com" });
     expect(resA.body.header).toHaveLength(1);
 
     const resB = await request(app.getHttpServer())
       .get("/storefront/navigation")
-      .query({ hostname: "sf-nav-b-store.goto5x.com" });
+      .query({ hostname: "sf-nav-b-store.uzeyn.com" });
     expect(resB.body.header).toEqual([]);
   });
 
   it("lists only the categories actually used by this store's active products", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("sf-categories@example.com", "sf-categories-store");
-    const hostname = "sf-categories-store.goto5x.com";
+    const hostname = "sf-categories-store.uzeyn.com";
     const category = await superuser.category.create({ data: { name: "Gadgets", slug: `gadgets-${Date.now()}` } });
     const product = await createActiveProduct(token, storeId, "Gadget One");
     await request(app.getHttpServer())
@@ -184,7 +184,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
   it("a coming_soon store blocks products/search/collections but getStorePublic still works (FR-16.5)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("gate-coming-soon@example.com", "gate-coming-soon-store");
-    const hostname = "gate-coming-soon-store.goto5x.com";
+    const hostname = "gate-coming-soon-store.uzeyn.com";
     await createActiveProduct(token, storeId, "Hidden Product");
     await request(app.getHttpServer())
       .patch(`/stores/${storeId}`)
@@ -216,7 +216,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
 
   it("a password_protected store blocks products until a correct-password unlock token is supplied (FR-16.5)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("gate-password@example.com", "gate-password-store");
-    const hostname = "gate-password-store.goto5x.com";
+    const hostname = "gate-password-store.uzeyn.com";
     await createActiveProduct(token, storeId, "Gated Product");
     await request(app.getHttpServer())
       .patch(`/stores/${storeId}`)
@@ -252,7 +252,7 @@ describe("Storefront: search, collections, and the access gate (e2e) - SRS FR-16
       .send({ accessMode: "password_protected", accessPassword: "someotherpassword" });
     const otherUnlock = await request(app.getHttpServer())
       .post("/storefront/unlock")
-      .send({ hostname: "gate-password-other-store.goto5x.com", password: "someotherpassword" });
+      .send({ hostname: "gate-password-other-store.uzeyn.com", password: "someotherpassword" });
     const crossToken = await request(app.getHttpServer())
       .get("/storefront/products")
       .query({ hostname, unlockToken: otherUnlock.body.unlockToken });

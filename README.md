@@ -1,4 +1,4 @@
-# goto5x.com
+# uzeyn.com
 
 Multi-tenant e-commerce platform. Full requirements live in `docs/SRS.md`;
 this README covers running the code.
@@ -45,16 +45,16 @@ pinned). No Docker required for this path.
 1. Install Postgres 16 and Redis locally, and start them.
 2. Create the database and set a superuser password:
    ```sh
-   createdb goto5x
+   createdb uzeyn
    psql -c "ALTER USER postgres PASSWORD 'your-local-superuser-password';"
    ```
 3. Bootstrap the two application roles (**do this once per fresh database**):
    ```sh
    cd apps/api
-   PGPASSWORD=your-local-superuser-password psql -h localhost -U postgres -d goto5x \
+   PGPASSWORD=your-local-superuser-password psql -h localhost -U postgres -d uzeyn \
      -v runtime_password="a-runtime-password" \
      -v admin_password="an-admin-password" \
-     -v dbname="goto5x" \
+     -v dbname="uzeyn" \
      -f scripts/bootstrap-db.sql
    ```
    Read the comments at the top of `scripts/bootstrap-db.sql` before changing
@@ -77,7 +77,7 @@ pinned). No Docker required for this path.
    # Point DATABASE_URL at the Postgres SUPERUSER for this one step only -
    # migrations create tables and must run as an owner/superuser, not as
    # app_runtime/app_admin, which only have DML rights (see bootstrap-db.sql).
-   DATABASE_URL="postgresql://postgres:your-local-superuser-password@localhost:5432/goto5x" \
+   DATABASE_URL="postgresql://postgres:your-local-superuser-password@localhost:5432/uzeyn" \
      npx prisma migrate deploy
    ```
 6. Seed baseline data every module depends on (Settings Registry defaults

@@ -108,7 +108,7 @@ function OnboardingWizard({
     {
       key: "domain",
       label: "Configure a domain",
-      description: "Attach your own domain, or use the free goto5x.com subdomain.",
+      description: "Attach your own domain, or use the free uzeyn.com subdomain.",
       action: progress.domain ? null : (
         <div className="flex gap-2">
           <Link href={`/stores/${storeId}/domains`}>

@@ -98,7 +98,7 @@ export default function DesignSystemPage() {
       {/* In-page contract nav */}
       <div className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-1 overflow-x-auto px-6 py-3">
-          <span className="mr-3 shrink-0 font-display text-sm font-bold tracking-tight text-ink">eyosto / design system</span>
+          <span className="mr-3 shrink-0 font-display text-sm font-bold tracking-tight text-ink">UZEYN / design system</span>
           {NAV_SECTIONS.map(([id, label]) => (
             <a
               key={id}
@@ -117,7 +117,7 @@ export default function DesignSystemPage() {
           <Reveal>
             <p className="text-eyebrow uppercase text-accent">Phase 1 · Module 19 · v1.1</p>
             <h1 className="mt-4 font-display text-display text-ink">
-              The eyosto
+              The UZEYN
               <br />
               design system.
             </h1>
@@ -648,7 +648,7 @@ export default function DesignSystemPage() {
                     </Avatar>
                     <div>
                       <p className="text-sm font-medium text-ink">Acme Goods</p>
-                      <p className="text-xs text-ink-muted">acme-goods.eyosto.com</p>
+                      <p className="text-xs text-ink-muted">acme-goods.uzeyn.com</p>
                     </div>
                   </div>
                 </CardBody>

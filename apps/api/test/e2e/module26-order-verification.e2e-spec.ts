@@ -65,7 +65,7 @@ describe("Order Verification Channel Adapter (e2e) - SRS §3.5/§5.37, §14.37",
     await superuser.seller.update({ where: { userId: user.id }, data: { cnicHash: `test-cnic-hash-${user.id}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com`, sellerId: seller.id as string };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com`, sellerId: seller.id as string };
   }
 
   async function createSelfProduct(token: string, storeId: string, price: number) {

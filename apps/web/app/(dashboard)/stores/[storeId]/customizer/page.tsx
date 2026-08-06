@@ -191,7 +191,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     slug: store.slug,
     currency: "PKR",
     accessMode: store.accessMode,
-    canonicalHostname: `${store.slug}.goto5x.com`,
+    canonicalHostname: `${store.slug}.uzeyn.com`,
     seoTitle: store.name,
     seoDescription: null,
     logoUrl: null,
@@ -242,7 +242,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
           )}
 
           <Card>
-            <CardHeader title="Storefront branding" description="The 'Powered by eyosto' mark shown on your storefront." />
+            <CardHeader title="Storefront branding" description="The 'Managed by UZEYN' mark shown on your storefront." />
             <CardBody className="space-y-3">
               {branding && (
                 <>
@@ -253,7 +253,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                       disabled={!branding.removable || savingBranding}
                       onChange={(e) => toggleBranding(e.target.checked)}
                     />
-                    Hide the &quot;Powered by eyosto&quot; mark
+                    Hide the &quot;Managed by UZEYN&quot; mark
                   </label>
                   {!branding.removable && (
                     <p className="text-xs text-ink-muted">

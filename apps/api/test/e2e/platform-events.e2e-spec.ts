@@ -9,7 +9,7 @@ import { resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const S3_TEST_PORT = 4569; // must match .env.test's MINIO_ENDPOINT - see media.e2e-spec.ts's comment on why this is safe under --runInBand
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 /**
  * SRS §3.11/FR-26.x, §14.23 - proves the six lifecycle events backfilled

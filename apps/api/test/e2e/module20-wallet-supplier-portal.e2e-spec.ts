@@ -262,7 +262,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       const pauseEvent = await superuser.platformEvent.findFirst({ where: { eventType: "wallet.orders_paused", entityId: sellerId } });
       expect(pauseEvent).not.toBeNull();
 
-      const storefrontRead = await request(app.getHttpServer()).get("/storefront/products?hostname=floor-breach-store.goto5x.com");
+      const storefrontRead = await request(app.getHttpServer()).get("/storefront/products?hostname=floor-breach-store.uzeyn.com");
       expect(storefrontRead.status).toBe(200);
 
       const blockedOrder = await createAndPayManualOrder(token, storeId, productId, variantId);
@@ -302,7 +302,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       expect(pausedStore.status).toBe("orders_paused");
 
       // Storefront browsing stays open; checkout is blocked.
-      const storefrontRead = await request(app.getHttpServer()).get("/storefront/products?hostname=grace-ladder-store.goto5x.com");
+      const storefrontRead = await request(app.getHttpServer()).get("/storefront/products?hostname=grace-ladder-store.uzeyn.com");
       expect(storefrontRead.status).toBe(200);
 
       const { productId, variantId } = await addProduct(token, storeId, 100);

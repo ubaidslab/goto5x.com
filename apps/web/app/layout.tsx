@@ -22,8 +22,8 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "eyosto",
-  description: "eyosto — the all-in-one commerce platform",
+  title: "UZEYN",
+  description: "UZEYN — the all-in-one commerce platform",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

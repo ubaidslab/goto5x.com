@@ -112,7 +112,7 @@ describe("Delivery-Time Badges (e2e) - SRS §5.40, §14.40", () => {
 
   it("FR-40.1: search results carry supplier delivery-transparency data for supplier-sourced items", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("badge-search-seller@example.com", "badge-search-store");
-    const hostname = "badge-search-store.goto5x.com";
+    const hostname = "badge-search-store.uzeyn.com";
     const productId = await createSupplierSourcedProduct(token, storeId, "badge-search-store", "Delivery Badge Search Mug");
 
     const results = await request(app.getHttpServer())
@@ -129,7 +129,7 @@ describe("Delivery-Time Badges (e2e) - SRS §5.40, §14.40", () => {
 
   it("FR-40.1: collection contents carry supplier delivery-transparency data for supplier-sourced items", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("badge-coll-seller@example.com", "badge-coll-store");
-    const hostname = "badge-coll-store.goto5x.com";
+    const hostname = "badge-coll-store.uzeyn.com";
     const productId = await createSupplierSourcedProduct(token, storeId, "badge-coll-store", "Delivery Badge Collection Mug");
 
     const collection = await request(app.getHttpServer())
@@ -155,7 +155,7 @@ describe("Delivery-Time Badges (e2e) - SRS §5.40, §14.40", () => {
 
   it("FR-40.2: a self-fulfilled product (no supplier listing) shows supplierShipping: null on every read surface, never an invented estimate", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("badge-self-seller@example.com", "badge-self-store");
-    const hostname = "badge-self-store.goto5x.com";
+    const hostname = "badge-self-store.uzeyn.com";
     const productId = await createSelfFulfilledProduct(token, storeId, "Self-Fulfilled Badge Widget");
 
     const collection = await request(app.getHttpServer())

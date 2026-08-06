@@ -21,7 +21,7 @@ describe("ObjectStorageService", () => {
   function buildConfig(overrides: Record<string, string> = {}) {
     const values: Record<string, string> = {
       MINIO_ENDPOINT: "http://localhost:9000",
-      MINIO_BUCKET: "goto5x-media-test",
+      MINIO_BUCKET: "uzeyn-media-test",
       MINIO_ROOT_USER: "user",
       MINIO_ROOT_PASSWORD: "pass",
       ...overrides,
@@ -41,23 +41,23 @@ describe("ObjectStorageService", () => {
   it("builds the public URL from MINIO_ENDPOINT/bucket when MEDIA_PUBLIC_BASE_URL is unset", async () => {
     const service = new ObjectStorageService(buildConfig());
     const url = await service.putObject("stores/s1/media/file.png", Buffer.from("x"), "image/png");
-    expect(url).toBe("http://localhost:9000/goto5x-media-test/stores/s1/media/file.png");
+    expect(url).toBe("http://localhost:9000/uzeyn-media-test/stores/s1/media/file.png");
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
 
   it("prefers MEDIA_PUBLIC_BASE_URL (the CDN-fronted URL) when set", async () => {
-    const service = new ObjectStorageService(buildConfig({ MEDIA_PUBLIC_BASE_URL: "https://cdn.goto5x.com" }));
+    const service = new ObjectStorageService(buildConfig({ MEDIA_PUBLIC_BASE_URL: "https://cdn.uzeyn.com" }));
     const url = await service.putObject("stores/s1/media/file.png", Buffer.from("x"), "image/png");
-    expect(url).toBe("https://cdn.goto5x.com/stores/s1/media/file.png");
+    expect(url).toBe("https://cdn.uzeyn.com/stores/s1/media/file.png");
   });
 
   it("keyFromUrl recovers the storage key from a URL it produced", () => {
-    const service = new ObjectStorageService(buildConfig({ MEDIA_PUBLIC_BASE_URL: "https://cdn.goto5x.com" }));
-    expect(service.keyFromUrl("https://cdn.goto5x.com/stores/s1/media/file.png")).toBe("stores/s1/media/file.png");
+    const service = new ObjectStorageService(buildConfig({ MEDIA_PUBLIC_BASE_URL: "https://cdn.uzeyn.com" }));
+    expect(service.keyFromUrl("https://cdn.uzeyn.com/stores/s1/media/file.png")).toBe("stores/s1/media/file.png");
   });
 
   it("keyFromUrl rejects a URL from a different base", () => {
-    const service = new ObjectStorageService(buildConfig({ MEDIA_PUBLIC_BASE_URL: "https://cdn.goto5x.com" }));
+    const service = new ObjectStorageService(buildConfig({ MEDIA_PUBLIC_BASE_URL: "https://cdn.uzeyn.com" }));
     expect(() => service.keyFromUrl("https://evil.example.com/x")).toThrow();
   });
 

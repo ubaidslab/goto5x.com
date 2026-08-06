@@ -11,6 +11,6 @@ describe("NodeTlsProberService (real TLS)", () => {
   });
 
   it("fails against a hostname that doesn't resolve at all", async () => {
-    await expect(prober.probe("this-domain-absolutely-does-not-exist-goto5x-12345.invalid")).resolves.toBe(false);
+    await expect(prober.probe("this-domain-absolutely-does-not-exist-uzeyn-12345.invalid")).resolves.toBe(false);
   });
 });

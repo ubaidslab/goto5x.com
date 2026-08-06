@@ -2,7 +2,7 @@
 > lawyer to review, correct, and finalize before these programs launch. It has not
 > been reviewed by counsel. Do not publish it as-is. See `docs/SRS.md` §5.33, FR-33.12.
 
-# goto5x.com — Growth & Partner Programs Terms (Draft)
+# uzeyn.com — Growth & Partner Programs Terms (Draft)
 
 **Last updated:** [date] · **Version:** draft-1 · **Covers:** Certified
 Ambassador, Student Referral, Creator programs (Careers has its own terms,
@@ -12,7 +12,7 @@ built separately)
 Participation in any Growth & Partner Program (Ambassador, Student
 Referral, Creator) requires an application. **Meeting the published
 eligibility criteria for a program means you may apply — it does not mean
-your application will be approved.** goto5x.com reviews every application
+your application will be approved.** uzeyn.com reviews every application
 manually and may reject an application at its sole discretion, including
 for reasons not captured by the automated eligibility check.
 
@@ -27,7 +27,7 @@ for reasons not captured by the automated eligibility check.
   commission window is fixed at the moment your referral is recorded and
   does not change even if the published rate/window later changes.
 - Referral commission is calculated **only** against a referred seller's
-  plan-subscription payments to goto5x.com. It is never calculated against
+  plan-subscription payments to uzeyn.com. It is never calculated against
   that seller's own storefront sales, revenue, or wallet top-ups.
 - A monthly performance reward (a free premium plan period, or an
   equivalent credit) may be granted for referring a sufficient number of
@@ -61,18 +61,18 @@ A later referral attempt for the same seller — through any program — has
 no effect.
 
 ## 4. Withdrawals
-Earnings post to your existing goto5x.com wallet. You may request a
+Earnings post to your existing uzeyn.com wallet. You may request a
 withdrawal once your balance meets the published minimum. Every withdrawal
-request is reviewed by goto5x.com before any funds are disbursed; a
+request is reviewed by uzeyn.com before any funds are disbursed; a
 rejected request does not affect your wallet balance.
 
 ## 5. Fraud, Clawback, and Suspension/Termination
-goto5x.com monitors for self-referral and fraudulent referral patterns. A
+uzeyn.com monitors for self-referral and fraudulent referral patterns. A
 confirmed finding may result in cancellation of pending rewards, a
 clawback of previously credited or withdrawn amounts (which may take your
 wallet balance negative), suspension, or termination of your program
-participation, at goto5x.com's discretion — with or without prior notice,
-for Terms violation, fraud, or suspicious activity. goto5x.com may suspend
+participation, at uzeyn.com's discretion — with or without prior notice,
+for Terms violation, fraud, or suspicious activity. uzeyn.com may suspend
 or terminate any approved participant's access, in-flight rewards, or
 account at any time for these reasons.
 

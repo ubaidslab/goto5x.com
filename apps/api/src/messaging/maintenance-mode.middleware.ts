@@ -28,6 +28,6 @@ export class MaintenanceModeMiddleware implements NestMiddleware {
     const allowlist = await this.settings.resolve<string[]>("platform.maintenance_admin_ip_allowlist");
     if (allowlist.includes(req.ip ?? "")) return next();
 
-    throw new ServiceUnavailableException("goto5x.com is temporarily down for maintenance.");
+    throw new ServiceUnavailableException("uzeyn.com is temporarily down for maintenance.");
   }
 }

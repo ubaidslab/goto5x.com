@@ -71,7 +71,7 @@ describe("Custom domains & TLS (e2e) - SRS FR-11.1/FR-11.2, §14.11", () => {
     const res = await request(app.getHttpServer())
       .post(`/stores/${storeId}/domains`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ domainName: "someone-else.goto5x.com" });
+      .send({ domainName: "someone-else.uzeyn.com" });
     expect(res.status).toBe(400);
   });
 
@@ -133,7 +133,7 @@ describe("Custom domains & TLS (e2e) - SRS FR-11.1/FR-11.2, §14.11", () => {
   );
 
   it(
-    "real end-to-end negative case: a real domain whose DNS does not point at goto5x fails verification",
+    "real end-to-end negative case: a real domain whose DNS does not point at uzeyn fails verification",
     async () => {
       const { token, storeId } = await signupLoginAndCreateStore("domain-real-neg@example.com", "domain-real-neg-store");
       // dns.google's real A record (8.8.8.8) will never match this test

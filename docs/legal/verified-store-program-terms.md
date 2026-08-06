@@ -2,7 +2,7 @@
 > lawyer to review, correct, and finalize before this program launches. It has not
 > been reviewed by counsel. Do not publish it as-is. See `docs/SRS.md` §5.35, FR-35.7.
 
-# goto5x.com — Verified Store Program Terms (Draft)
+# uzeyn.com — Verified Store Program Terms (Draft)
 
 **Last updated:** [date] · **Version:** draft-1
 
@@ -20,7 +20,7 @@ custom domain, a Store Health Score of 80+, CNIC verification on file,
 zero unresolved Trust & Safety flags, and a minimum confirmed-sales
 volume — each subject to change). **Meeting every criterion means you may
 apply — it does not mean your application will be approved.** Every
-application is manually reviewed by goto5x.com staff, who may reject an
+application is manually reviewed by uzeyn.com staff, who may reject an
 application at their sole discretion, including for reasons the automated
 eligibility check does not capture.
 
@@ -35,13 +35,13 @@ Verified status is not a one-time, permanent grant.
   Trust & Safety enforcement action is taken against your account, your
   store is automatically flagged for re-review and the Verified badge is
   suspended pending that review.
-- goto5x.com staff may revoke Verified status at any time, for any reason,
+- uzeyn.com staff may revoke Verified status at any time, for any reason,
   with notes recorded internally.
 - Revocation or suspension is never a promise of reinstatement — you may
   need to reapply (see §5) and pay the applicable fee again.
 
 ## 5. Annual Re-Verification
-Unless goto5x.com disables this requirement (a setting subject to change),
+Unless uzeyn.com disables this requirement (a setting subject to change),
 Verified status expires 12 months after approval. Continuing to display
 the badge past that point requires a fresh application, evaluated against
 the eligibility criteria and manual review process in effect at that
@@ -54,6 +54,6 @@ checkout, for as long as your store's status is Verified, and disappears
 immediately once it is not.
 
 ## 7. Changes
-goto5x.com may change the eligibility criteria, fee amount, refund policy,
+uzeyn.com may change the eligibility criteria, fee amount, refund policy,
 re-verification requirements, or any other term of this program at any
 time. Material changes will be published in advance where practicable.

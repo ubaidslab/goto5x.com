@@ -5,7 +5,7 @@ import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaF
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const S3_TEST_PORT = 4569;
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
 
 /** Module 22 Phase B (SRS §5.33, FR-33.8, checklist §14.33's Careers line) - fully independent of Phase A's referral engine. */

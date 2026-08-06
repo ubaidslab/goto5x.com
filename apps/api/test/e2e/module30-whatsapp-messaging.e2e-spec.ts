@@ -149,7 +149,7 @@ describe("WhatsApp Semi-Automation (e2e) - SRS §5.41, §14.41", () => {
 
   it("FR-41.1c/FR-41.2: an abandoned cart with a captured WhatsApp number is listed as actionable and generates a recovery link with an item summary", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreateStore("wa-cart@example.com", "wa-cart-store");
-    const hostname = "wa-cart-store.goto5x.com";
+    const hostname = "wa-cart-store.uzeyn.com";
     const { productId, variantId } = await createProductWithVariant(token, storeId, "WA-SKU-3");
 
     // FR-41.2 - buyerWhatsapp is captured at cart-creation time, the same request as buyerEmail.
@@ -198,7 +198,7 @@ describe("WhatsApp Semi-Automation (e2e) - SRS §5.41, §14.41", () => {
 
   it("a cart still shows in the abandoned list with hasWhatsapp: false when no number was captured, and its recovery link 400s", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("wa-cart-nonumber@example.com", "wa-cart-nonumber-store");
-    const hostname = "wa-cart-nonumber-store.goto5x.com";
+    const hostname = "wa-cart-nonumber-store.uzeyn.com";
     const { productId, variantId } = await createProductWithVariant(token, storeId, "WA-SKU-4");
 
     const cartCreate = await request(app.getHttpServer())

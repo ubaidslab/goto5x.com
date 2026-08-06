@@ -15,7 +15,7 @@ export const TooltipContent = forwardRef<ElementRef<typeof TooltipPrimitive.Cont
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "eyosto-fade z-50 rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas shadow-md",
+          "uzeyn-fade z-50 rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas shadow-md",
           className,
         )}
         {...props}

@@ -33,7 +33,7 @@ export function MarketingFooter() {
       <div className="mx-auto max-w-6xl px-6 py-16">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <span className="font-display text-h4 font-bold tracking-tight text-ink">eyosto</span>
+            <span className="font-display text-h4 font-bold tracking-tight text-ink">UZEYN</span>
             <p className="mt-3 max-w-xs text-sm text-ink-muted">
               The all-in-one commerce platform for Pakistan&apos;s sellers.
             </p>
@@ -54,7 +54,7 @@ export function MarketingFooter() {
           ))}
         </div>
         <div className="mt-16 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 text-xs text-ink-faint sm:flex-row">
-          <p>&copy; {new Date().getFullYear()} eyosto. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} UZEYN. All rights reserved.</p>
           <p>Made for Pakistan&apos;s sellers.</p>
         </div>
       </div>

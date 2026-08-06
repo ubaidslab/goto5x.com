@@ -29,7 +29,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
   let fakeDriveClient: jest.Mocked<IDriveClient>;
 
   beforeAll(async () => {
-    s3 = await startTestS3Server(4569, "goto5x-media-test");
+    s3 = await startTestS3Server(4569, "uzeyn-media-test");
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();

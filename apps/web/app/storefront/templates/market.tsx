@@ -61,7 +61,7 @@ function MarketAbout({ store, theme }: { store: PublicStore; theme: ResolvedThem
   return (
     <section className="border-t px-6 py-10" style={{ background: theme.colors.background, color: theme.colors.text, borderColor: `${theme.colors.text}1a` }}>
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">About {store.name}</h2>
-      <p className="text-sm opacity-80">{store.seoDescription ?? `${store.name} is a store on eyosto.`}</p>
+      <p className="text-sm opacity-80">{store.seoDescription ?? `${store.name} is a store on UZEYN.`}</p>
     </section>
   );
 }

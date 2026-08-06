@@ -19,7 +19,7 @@ export const DropdownMenuContent = forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "eyosto-overlay z-50 min-w-[10rem] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-lg",
+        "uzeyn-overlay z-50 min-w-[10rem] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-lg",
         className,
       )}
       {...props}
@@ -133,7 +133,7 @@ export const DropdownMenuSubContent = forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.SubContent
     ref={ref}
-    className={cn("eyosto-overlay z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-lg", className)}
+    className={cn("uzeyn-overlay z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-lg", className)}
     {...props}
   />
 ));

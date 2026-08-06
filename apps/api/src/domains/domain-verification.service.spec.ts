@@ -43,7 +43,7 @@ describe("DomainVerificationService", () => {
     };
 
     const settingsValues: Record<string, unknown> = {
-      "domains.cname_target": "stores.goto5x.com",
+      "domains.cname_target": "stores.uzeyn.com",
       "domains.a_record_ip": "127.0.0.1",
     };
     const settings = { resolve: jest.fn().mockImplementation(async (key: string) => settingsValues[key]) };
@@ -75,7 +75,7 @@ describe("DomainVerificationService", () => {
       tlsStatus: "pending",
       verifiedAt: null,
     });
-    dnsResolver.resolveCname.mockResolvedValue(["stores.goto5x.com"]);
+    dnsResolver.resolveCname.mockResolvedValue(["stores.uzeyn.com"]);
 
     const result = await service.verifyDomain("d1");
 
@@ -123,7 +123,7 @@ describe("DomainVerificationService", () => {
       tlsStatus: "pending",
       verifiedAt: new Date("2026-01-01"),
     });
-    dnsResolver.resolveCname.mockResolvedValue(["stores.goto5x.com"]);
+    dnsResolver.resolveCname.mockResolvedValue(["stores.uzeyn.com"]);
     tlsProber.probe.mockResolvedValue(true);
 
     const result = await service.verifyDomain("d1");
@@ -179,7 +179,7 @@ describe("DomainVerificationService", () => {
       if (id === "d2") throw new Error("simulated lookup failure");
       return { id: "d1", domainName: "good.example.com", verificationStatus: "pending", tlsStatus: "pending", verifiedAt: null };
     });
-    dnsResolver.resolveCname.mockResolvedValue(["stores.goto5x.com"]);
+    dnsResolver.resolveCname.mockResolvedValue(["stores.uzeyn.com"]);
 
     const result = await service.recheckOutstandingDomains();
 

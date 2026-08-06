@@ -16,8 +16,8 @@ export interface LocalCartItem {
   unitPrice: number;
 }
 
-const KEY_PREFIX = "goto5x_cart_";
-const UPDATED_EVENT = "goto5x-cart-updated";
+const KEY_PREFIX = "uzeyn_cart_";
+const UPDATED_EVENT = "uzeyn-cart-updated";
 
 function keyFor(hostname: string): string {
   return `${KEY_PREFIX}${hostname}`;

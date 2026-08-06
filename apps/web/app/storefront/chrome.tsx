@@ -63,7 +63,7 @@ function NavItems({ items, theme }: { items: NavigationItem[]; theme: ResolvedTh
 function VerifiedBadge() {
   return (
     <span
-      title="This store has passed goto5x's Verified Store review."
+      title="This store has passed UZEYN's Verified Store review."
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -128,7 +128,7 @@ export function SiteHeader({
 }
 
 /**
- * Templates module (v0.31 design phase) - the "Powered by eyosto" mark.
+ * Templates module (v0.31 design phase) - the "Managed by UZEYN" mark.
  * Lives in this shared chrome component, never inside a template package,
  * so no template's own code can suppress it - `poweredByVisible` is
  * resolved server-side (StorefrontService.getStorePublic()) and is the
@@ -137,9 +137,9 @@ export function SiteHeader({
 function PoweredByMark() {
   return (
     <p style={{ marginTop: 12, fontSize: 12, opacity: 0.6 }}>
-      Powered by{" "}
-      <a href="https://eyosto.com" style={{ color: "inherit" }}>
-        eyosto
+      Managed by{" "}
+      <a href="https://uzeyn.com" style={{ color: "inherit" }}>
+        UZEYN
       </a>
     </p>
   );

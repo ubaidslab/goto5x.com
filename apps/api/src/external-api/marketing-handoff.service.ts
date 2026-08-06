@@ -55,6 +55,6 @@ export class MarketingHandoffService {
     });
 
     const separator = baseUrl.includes("?") ? "&" : "?";
-    return { url: `${baseUrl}${separator}sso_token=${token}&ref=goto5x` };
+    return { url: `${baseUrl}${separator}sso_token=${token}&ref=uzeyn` };
   }
 }

@@ -58,7 +58,7 @@ describe("Orders Command Center + Tracking Timeline (e2e) - SRS §5.38, §14.38"
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { userId: user.id }, data: { cnicHash: `test-cnic-hash-${user.id}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    return { token, storeId: store.body.id as string, hostname: `${slug}.goto5x.com` };
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
   }
 
   async function placeOrder(token: string, storeId: string, hostname: string) {

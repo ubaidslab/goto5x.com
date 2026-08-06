@@ -1,4 +1,4 @@
-# goto5x.com — Database Schema (v1, updated for SRS v0.15 — payment-model pivot: `ledger_entries` gains two new v1.0-active entry types, `seller_invoices`/`store_payment_instructions` are new design-level tables (not yet built), `plans.plan_type` and `sellers.agreement_*` columns added; the dormant Platform-Collected-mode tables are unchanged, only retitled — see each table's own note below)
+# uzeyn.com — Database Schema (v1, updated for SRS v0.15 — payment-model pivot: `ledger_entries` gains two new v1.0-active entry types, `seller_invoices`/`store_payment_instructions` are new design-level tables (not yet built), `plans.plan_type` and `sellers.agreement_*` columns added; the dormant Platform-Collected-mode tables are unchanged, only retitled — see each table's own note below)
 
 PostgreSQL. All timestamps `timestamptz`. All primary keys `uuid` unless noted.
 Companion to `docs/SRS.md` §3.2 (tenant isolation), §3.8 (Settings Registry), §5.6b
@@ -216,7 +216,7 @@ Index: `idx_sellers_cnic_hash (cnic_hash) UNIQUE`.
 | id | uuid PK | this **is** the `store_id` referenced everywhere |
 | seller_id | uuid FK → sellers.id | |
 | name | text | |
-| slug | text unique | subdomain: `slug.goto5x.com` |
+| slug | text unique | subdomain: `slug.uzeyn.com` |
 | status | enum(`active`,`suspended`,`banned`,`archived`) | `archived` is the end state of the dormant-store lifecycle (FR-23.2), distinct from `suspended`: storefront fully offline, data retained |
 | access_mode | enum(`public`,`coming_soon`,`password_protected`) default `'public'` | FR-16.5 |
 | access_password_hash | text nullable | set only when `access_mode = 'password_protected'` |
@@ -254,10 +254,10 @@ Index: `idx_domains_domain_name (domain_name)` unique. RLS follows the same
 
 New Settings Registry keys driving domain verification/TLS (global scope):
 `domains.cname_target` (the CNAME value sellers point at, e.g.
-`stores.goto5x.com`), `domains.a_record_ip` (the VPS's public IP, for apex
+`stores.uzeyn.com`), `domains.a_record_ip` (the VPS's public IP, for apex
 domains that can't use a CNAME per DNS rules), `domains.platform_root_domain`
 (rejects a custom-domain attach attempt that is actually one of the
-platform's own free subdomains, e.g. `someoneelse.goto5x.com`, closing an
+platform's own free subdomains, e.g. `someoneelse.uzeyn.com`, closing an
 otherwise-real subdomain-hijack edge case), `domains.verification_poll_minutes`
 (how often the scheduled worker job rechecks `pending`/`failed` domains).
 
@@ -278,7 +278,7 @@ otherwise-real subdomain-hijack edge case), `domains.verification_poll_minutes`
 | seller_id | uuid FK → sellers.id | |
 | theme_id | uuid FK → themes.id | |
 | source | enum(`built_in`,`marketplace_purchase`) | |
-| external_purchase_ref | text nullable | the Template Store's own reference for the purchase, kept for support/dispute traceability — not interpreted by goto5x.com |
+| external_purchase_ref | text nullable | the Template Store's own reference for the purchase, kept for support/dispute traceability — not interpreted by uzeyn.com |
 | granted_at | timestamptz | |
 | revoked_at | timestamptz nullable | set by a symmetric revoke call (FR-24.6); the `themes` catalog entry itself is never deleted when one seller's entitlement is revoked |
 

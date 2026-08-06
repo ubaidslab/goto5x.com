@@ -7,7 +7,7 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const PASSWORD = "correct-horse-battery";
 const S3_TEST_PORT = 4569;
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 /**
  * Module 28 (SRS §5.39, §14.39) - Inventory Management. No new stock-

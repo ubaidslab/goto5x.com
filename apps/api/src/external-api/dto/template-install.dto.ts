@@ -18,7 +18,7 @@ export class TemplateInstallDto {
   @MaxLength(2000)
   previewImageUrl?: string;
 
-  /** The Template Store's own reference for the purchase - kept for support/dispute traceability, never interpreted by goto5x.com (FR-24.5). */
+  /** The Template Store's own reference for the purchase - kept for support/dispute traceability, never interpreted by uzeyn.com (FR-24.5). */
   @IsString()
   @MaxLength(200)
   purchaseRef!: string;

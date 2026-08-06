@@ -1,6 +1,6 @@
 # Launch Runbook
 
-The ordered, end-to-end checklist for taking goto5x.com from a fresh VPS to
+The ordered, end-to-end checklist for taking uzeyn.com from a fresh VPS to
 publicly serving real sellers. Built as part of Module 21 (Hardening &
 Launch Readiness). This is the document to follow on launch day, top to
 bottom — do not skip ahead. Every item is something a person (the founder)
@@ -28,7 +28,7 @@ calls, real third-party services).
 ## 2. DNS
 
 - [ ] Point the platform's apex/`www` domain (or your chosen platform
-      subdomain, e.g. `app.goto5x.com` / `api.goto5x.com` per
+      subdomain, e.g. `app.uzeyn.com` / `api.uzeyn.com` per
       `PLATFORM_HOSTNAMES`) at the VPS's IP with an A/AAAA record.
 - [ ] Confirm propagation (`dig +short <domain>` from an external network)
       before proceeding — Traefik's Let's Encrypt HTTP-01 challenge will
@@ -145,8 +145,8 @@ calls, real third-party services).
       launch; a managed Postgres backup service is a fine later upgrade.
 - [ ] **Actually test a restore once**, before launch, against a scratch
       database — `pg_dump` output that was never restored is unverified.
-      `createdb goto5x_restore_test && gunzip -c backup-*.sql.gz | psql -d
-      goto5x_restore_test`, then spot-check a few rows exist.
+      `createdb uzeyn_restore_test && gunzip -c backup-*.sql.gz | psql -d
+      uzeyn_restore_test`, then spot-check a few rows exist.
 - [ ] Confirm MinIO's `minio_data` volume is included in your VPS
       provider's disk-snapshot schedule (or add MinIO to the same backup
       script via `mc mirror`) — product media lives there, not in

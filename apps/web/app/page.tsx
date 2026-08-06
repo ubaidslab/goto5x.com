@@ -88,7 +88,7 @@ const FAQS = [
   },
   {
     question: "Do I need my own domain?",
-    answer: "No - every store gets a free eyosto subdomain at signup. Attach your own domain whenever you're ready; we handle the TLS certificate automatically.",
+    answer: "No - every store gets a free UZEYN subdomain at signup. Attach your own domain whenever you're ready; we handle the TLS certificate automatically.",
   },
   {
     question: "How does pricing actually work?",
@@ -185,7 +185,7 @@ export default function Home() {
           />
           <Reveal delay={0.15} className="mx-auto mt-16 max-w-3xl rounded-2xl border border-border bg-surface p-10 text-center shadow-sm">
             <p className="font-display text-h2 font-bold text-ink">
-              eyosto is the one platform that already knows how the pieces fit.
+              UZEYN is the one platform that already knows how the pieces fit.
             </p>
             <p className="mt-4 text-body text-ink-muted">
               Storefront, suppliers, orders, and payouts - one login, one wallet, one dashboard.
@@ -214,17 +214,17 @@ export default function Home() {
           <SectionTitle
             eyebrow="The real product"
             title="Not a mockup. This is the actual dashboard."
-            description="Every screen below is a live screenshot of eyosto today - the same product you'll sign into."
+            description="Every screen below is a live screenshot of UZEYN today - the same product you'll sign into."
           />
           <Reveal stagger={0.1} className="mt-16 grid gap-8 lg:grid-cols-2">
-            <DeviceMockup src="/marketing/dashboard-products.png" alt="Products dashboard" url="app.eyosto.com/products" />
-            <DeviceMockup src="/marketing/dashboard-orders.png" alt="Orders dashboard" url="app.eyosto.com/orders" />
+            <DeviceMockup src="/marketing/dashboard-products.png" alt="Products dashboard" url="app.uzeyn.com/products" />
+            <DeviceMockup src="/marketing/dashboard-orders.png" alt="Orders dashboard" url="app.uzeyn.com/orders" />
           </Reveal>
           <Reveal delay={0.2} className="mt-8">
             <DeviceMockup
               src="/marketing/storefront-home.png"
               alt="A live storefront"
-              url="northline-goods.eyosto.com"
+              url="northline-goods.uzeyn.com"
               width={1200}
               height={480}
             />
@@ -286,7 +286,7 @@ export default function Home() {
       {/* ============ TESTIMONIALS ============ */}
       <section className="border-t border-border py-32">
         <div className="mx-auto max-w-6xl px-6">
-          <SectionTitle eyebrow="Sellers on eyosto" title="Placeholder stories - real ones are coming soon." />
+          <SectionTitle eyebrow="Sellers on UZEYN" title="Placeholder stories - real ones are coming soon." />
           <Reveal stagger={0.1} className="mt-16 grid gap-6 sm:grid-cols-3">
             {TESTIMONIALS.map((t) => (
               <TestimonialCard key={t.name} {...t} />

@@ -1,14 +1,14 @@
 > **DRAFT — NOT LEGAL ADVICE.** This document is a starting point for a Pakistani
-> lawyer to review, correct, and finalize before goto5x.com launches, specifically
+> lawyer to review, correct, and finalize before uzeyn.com launches, specifically
 > against Pakistan's data-protection framework (see `docs/SRS.md` §13, open question 2).
 > It has not been reviewed by counsel. Do not publish it as-is.
 
-# goto5x.com — Privacy Policy (Draft)
+# uzeyn.com — Privacy Policy (Draft)
 
 **Last updated:** [date] · **Version:** draft-2
 
 ## 1. What This Policy Covers
-This policy describes how goto5x.com ("the Platform") collects, uses, and protects
+This policy describes how uzeyn.com ("the Platform") collects, uses, and protects
 personal data belonging to Sellers, Suppliers, and Buyers who use stores hosted on
 the Platform.
 
@@ -50,17 +50,17 @@ the Platform.
 - **With Buyers, from Sellers:** a Seller's own configured payment-collection
   instructions (bank/JazzCash/Easypaisa details, or a Cash on Delivery
   indicator) are shown to a Buyer after they place an order, so the Buyer
-  can pay that Seller directly — goto5x.com is not a party to that payment
+  can pay that Seller directly — uzeyn.com is not a party to that payment
   and does not process, hold, or store any card, bank-transaction, or
   mobile-wallet-transaction detail. [If a future Platform-Collected
   Payments mode is reactivated (`docs/SRS.md` §5.6d), this section will be
   updated to describe payment-processor data sharing at that time.]
 - **With Google (Drive import):** only where a Seller explicitly connects their
-  Google Drive account to import media; goto5x.com accesses only what the Seller
+  Google Drive account to import media; uzeyn.com accesses only what the Seller
   authorizes.
 - **With the Template Store** (a separate marketplace product, `docs/SRS.md`
   §5.24a): when a Seller purchases a premium template there, that product calls a
-  signed goto5x.com API to unlock the template on the Seller's account. This flow
+  signed uzeyn.com API to unlock the template on the Seller's account. This flow
   carries no Buyer data and no Seller financial data — only the minimum
   information needed to identify which Seller account should receive the
   template.
@@ -84,7 +84,7 @@ the Platform.
 - Tenant data isolation is enforced both in application logic and at the database
   level (Row-Level Security), so one Seller's data is never accessible through
   another Seller's account.
-- goto5x.com never collects, processes, or stores any card, bank-transaction,
+- uzeyn.com never collects, processes, or stores any card, bank-transaction,
   or mobile-wallet-transaction detail — payment happens directly between
   Buyer and Seller (§3, Direct Seller Collection); only the Seller's own
   configured payment-collection instructions (not transaction data) pass

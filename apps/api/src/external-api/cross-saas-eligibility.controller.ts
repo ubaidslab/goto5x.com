@@ -6,7 +6,7 @@ import { ExternalApiSignatureService } from "./external-api-signature.service";
 /**
  * FR-24.14 - either external SaaS calls this to decide whether a seller
  * qualifies for a cross-product discount on *that SaaS's own* pricing.
- * goto5x.com never applies or knows the discount terms - it only answers
+ * uzeyn.com never applies or knows the discount terms - it only answers
  * the eligibility boolean, same "each product's own billing stays inside
  * that product" rule as FR-24.7/24.12.
  */
@@ -21,9 +21,9 @@ export class CrossSaasEligibilityController {
   async check(
     @Query("sellerId") sellerId: string | undefined,
     @Req() req: Request,
-    @Headers("x-goto5x-client-type") clientType: string | undefined,
-    @Headers("x-goto5x-timestamp") timestamp: string | undefined,
-    @Headers("x-goto5x-signature") signature: string | undefined,
+    @Headers("x-uzeyn-client-type") clientType: string | undefined,
+    @Headers("x-uzeyn-timestamp") timestamp: string | undefined,
+    @Headers("x-uzeyn-signature") signature: string | undefined,
   ) {
     if (!sellerId) throw new BadRequestException("sellerId is required.");
     // GET has no body to sign - the canonical query string (exactly what the

@@ -22,7 +22,7 @@ function parseArgs(argv: string[]): TrafficArgs {
     durationSeconds: Number(get("--duration", "300")),
     concurrency: Number(get("--concurrency", "20")),
     apiBaseUrl: get("--api-base-url", process.env.API_BASE_URL ?? "http://localhost:3000"),
-    storefrontHostSuffix: get("--storefront-host-suffix", ".goto5x.com"),
+    storefrontHostSuffix: get("--storefront-host-suffix", ".uzeyn.com"),
   };
 }
 

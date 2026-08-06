@@ -288,7 +288,7 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
       await request(app.getHttpServer()).post(`/admin/verification/applications/${apply.body.id}/approve`).set("Authorization", `Bearer ${adminToken}`).send({});
 
       const store = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
-      const before = await request(app.getHttpServer()).get(`/storefront/store?hostname=${store.slug}.goto5x.com`);
+      const before = await request(app.getHttpServer()).get(`/storefront/store?hostname=${store.slug}.uzeyn.com`);
       expect(before.body.verified).toBe(true);
 
       await request(app.getHttpServer())
@@ -296,7 +296,7 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ notes: "Standing admin override for this test." });
 
-      const after = await request(app.getHttpServer()).get(`/storefront/store?hostname=${store.slug}.goto5x.com`);
+      const after = await request(app.getHttpServer()).get(`/storefront/store?hostname=${store.slug}.uzeyn.com`);
       expect(after.body.verified).toBe(false);
     });
 
@@ -313,7 +313,7 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
       expect(store.verifiedStatus).toBe("pending_re_review");
       expect(store.reReviewReason).toContain("health_score_below_threshold");
 
-      const front = await request(app.getHttpServer()).get(`/storefront/store?hostname=${store.slug}.goto5x.com`);
+      const front = await request(app.getHttpServer()).get(`/storefront/store?hostname=${store.slug}.uzeyn.com`);
       expect(front.body.verified).toBe(false);
     });
 
@@ -367,7 +367,7 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
       const expiredStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
       expect(expiredStore.verifiedStatus).toBe("expired");
 
-      const front = await request(app.getHttpServer()).get(`/storefront/store?hostname=${expiredStore.slug}.goto5x.com`);
+      const front = await request(app.getHttpServer()).get(`/storefront/store?hostname=${expiredStore.slug}.uzeyn.com`);
       expect(front.body.verified).toBe(false);
 
       // Re-applying still requires the full live eligibility + admin-audit path - never auto-restored.

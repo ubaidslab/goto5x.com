@@ -3,7 +3,7 @@
 ## What it does
 
 Lets a seller attach their own domain to their store instead of the free
-`*.goto5x.com` subdomain, with automatic HTTPS.
+`*.uzeyn.com` subdomain, with automatic HTTPS.
 
 ## How it works
 

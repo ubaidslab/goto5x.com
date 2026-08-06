@@ -6,14 +6,14 @@ import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaF
 const PASSWORD = "correct-horse-battery";
 
 /**
- * Templates module (v0.31 design phase) - the "Powered by eyosto" mark.
+ * Templates module (v0.31 design phase) - the "Managed by UZEYN" mark.
  * Founder-mandated invariant: mandatory on Free (the platform's own free
  * organic marketing), removable only once a paid plan grants the
  * capability (branding.powered_by_removable, plan-scoped) - and a stored
  * "hidden" preference (branding.powered_by_hidden, store-scoped) never
  * takes effect on its own, only when the plan capability also allows it.
  */
-describe("Storefront branding - 'Powered by eyosto' mark (e2e)", () => {
+describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
 
@@ -48,7 +48,7 @@ describe("Storefront branding - 'Powered by eyosto' mark (e2e)", () => {
       .send({ name: `Store for ${email}`, slug });
     const user = await superuser.user.findUniqueOrThrow({ where: { email } });
     const storeRow = await superuser.store.findUniqueOrThrow({ where: { id: store.body.id } });
-    return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.goto5x.com` };
+    return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.uzeyn.com` };
   }
 
   async function movePlan(sellerId: string, tierOrder: number) {

@@ -34,7 +34,7 @@ export class EmailService {
   async sendVerificationEmail(to: string, verifyUrl: string): Promise<void> {
     await this.send(
       to,
-      "Verify your goto5x.com account",
+      "Verify your uzeyn.com account",
       `Click to verify your email: ${verifyUrl}`,
     );
   }
@@ -42,7 +42,7 @@ export class EmailService {
   async sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
     await this.send(
       to,
-      "Reset your goto5x.com password",
+      "Reset your uzeyn.com password",
       `Click to reset your password (this link expires soon): ${resetUrl}`,
     );
   }
@@ -96,7 +96,7 @@ export class EmailService {
     await this.send(
       to,
       "Your wallet balance is running low",
-      `Your goto5x.com wallet balance has dropped below the recommended minimum. Top up within ${graceDays} day(s) to avoid your store(s) pausing new orders - your storefront stays visible, but checkout will be temporarily unavailable until you top up.`,
+      `Your uzeyn.com wallet balance has dropped below the recommended minimum. Top up within ${graceDays} day(s) to avoid your store(s) pausing new orders - your storefront stays visible, but checkout will be temporarily unavailable until you top up.`,
     );
   }
 
@@ -110,7 +110,7 @@ export class EmailService {
   async sendDataExportReadyEmail(to: string, dashboardLoginUrl: string): Promise<void> {
     await this.send(
       to,
-      "Your goto5x.com data export is ready",
+      "Your uzeyn.com data export is ready",
       `Your latest data export (products, orders, customers, and a summary PDF) is ready to download. Log in here, then go to Settings -> Data export: ${dashboardLoginUrl}\n\nThis is a convenience export for your own records - it is not a substitute for our own platform backups, which run automatically regardless.`,
     );
   }

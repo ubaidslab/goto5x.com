@@ -5,7 +5,7 @@
 Every seller has a prepaid wallet. Instead of the platform collecting money
 from buyers, or billing a seller after the fact, a seller tops up their own
 wallet in advance and the platform's commission and fees are deducted from
-that balance as they're earned. This is the mechanism that lets goto5x.com
+that balance as they're earned. This is the mechanism that lets uzeyn.com
 never touch buyer money while still collecting its own revenue safely.
 
 ## How it works

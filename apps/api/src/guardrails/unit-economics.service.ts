@@ -66,7 +66,7 @@ export class UnitEconomicsService {
    * paid, per the mark-as-paid flow) the same way commission excludes them
    * by construction (LedgerService never writes a `commission_accrued` row
    * for one); revenue in this business model (Direct Seller Collection) IS
-   * commission earned - goto5x never touches order money itself.
+   * commission earned - UZEYN never touches order money itself.
    */
   async computeRealTimeAnalytics() {
     const [gmv, activeStoreCount, commissionResult, topSellerRows] = await Promise.all([

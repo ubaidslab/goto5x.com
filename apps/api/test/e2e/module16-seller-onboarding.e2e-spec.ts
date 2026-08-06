@@ -7,7 +7,7 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const PASSWORD = "correct-horse-battery";
 const S3_TEST_PORT = 4569; // must match .env.test's MINIO_ENDPOINT - see media.e2e-spec.ts's comment on why this is safe under --runInBand
-const BUCKET = "goto5x-media-test";
+const BUCKET = "uzeyn-media-test";
 
 describe("Seller Onboarding Wizard (e2e) - SRS §5.20/§5.25, FR-20.1/FR-25.5, §14.20", () => {
   let app: INestApplication;

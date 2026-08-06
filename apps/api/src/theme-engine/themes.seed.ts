@@ -114,7 +114,7 @@ export async function seedModule4Settings(prisma: PrismaClient) {
 
 /**
  * Templates module (v0.31 design phase, storefront branding FR) - the
- * "Powered by eyosto" storefront mark. Two keys, deliberately separate
+ * "Managed by UZEYN" storefront mark. Two keys, deliberately separate
  * (mirrors the plan-capability + store-preference split already used for
  * theme.premium_tier_enabled's gate vs. an individual store's own choice):
  *
@@ -140,7 +140,7 @@ export async function seedTemplatesBrandingSettings(prisma: PrismaClient) {
       allowedScopes: ["global", "plan"],
       defaultValue: false,
       description:
-        "Whether the seller's plan permits hiding the 'Powered by eyosto' storefront mark. Off on Free (mandatory there by founder mandate); on for paid individual/team tiers.",
+        "Whether the seller's plan permits hiding the 'Managed by UZEYN' storefront mark. Off on Free (mandatory there by founder mandate); on for paid individual/team tiers.",
     },
     update: {},
   });
@@ -152,7 +152,7 @@ export async function seedTemplatesBrandingSettings(prisma: PrismaClient) {
       valueType: "boolean",
       allowedScopes: ["global", "store"],
       defaultValue: false,
-      description: "A store's own preference to hide the 'Powered by eyosto' mark - only takes effect if the seller's plan permits it.",
+      description: "A store's own preference to hide the 'Managed by UZEYN' mark - only takes effect if the seller's plan permits it.",
     },
     update: {},
   });

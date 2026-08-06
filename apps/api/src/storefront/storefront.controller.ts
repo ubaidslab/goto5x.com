@@ -5,8 +5,8 @@ import { StorefrontService } from "./storefront.service";
  * Public, unauthenticated - no JwtAuthGuard anywhere in this controller.
  * `hostname` is passed explicitly rather than read off this request's own
  * `Host` header because the API and the storefront are different
- * hostnames in production (e.g. `api.goto5x.com` vs a seller's own
- * `mystore.goto5x.com`/custom domain) - the caller (apps/web, itself
+ * hostnames in production (e.g. `api.uzeyn.com` vs a seller's own
+ * `mystore.uzeyn.com`/custom domain) - the caller (apps/web, itself
  * rendering under the storefront's real hostname) is the one place that
  * actually knows what hostname the buyer's browser is on.
  *

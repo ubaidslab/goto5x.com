@@ -34,7 +34,7 @@ export const Toast = forwardRef<
   <ToastPrimitive.Root
     ref={ref}
     className={cn(
-      "eyosto-overlay group relative flex w-full items-start gap-3 overflow-hidden rounded-lg border p-4 pr-8 shadow-lg",
+      "uzeyn-overlay group relative flex w-full items-start gap-3 overflow-hidden rounded-lg border p-4 pr-8 shadow-lg",
       "data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=cancel]:translate-x-0",
       "data-[swipe=end]:animate-[overlay-out_var(--duration-fast)_var(--ease-in)]",
       toneClasses[tone],
