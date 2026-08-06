@@ -1,7 +1,7 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.31 (Build-phase amendment)
-**Date:** 2026-08-03
+**Version:** 0.33 (Build-phase amendment — deep-audit Phase A launch blockers)
+**Date:** 2026-08-06
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -488,6 +488,116 @@ the v1 approach, self-hosted Mailcow/Mailu noted as a later option) —
 operational documentation, not application code, so it carries no FR
 number.**
 
+**v0.33 (deep-audit Phase A — launch blockers; six findings where a
+business decision changed in discussion but never reached the code,
+found by a full pre-audit sweep of the built platform against this
+document). Also corrects a long-standing drift: the header **Version:**
+marker above had been stuck at 0.31 since before v0.32 shipped — bumped
+to 0.33 here, and this paragraph is the authoritative record of what
+changed in both v0.32 and v0.33 relative to the last time it moved.**
+**(1) No Free Plan, no free trial (§5.7, §5.23, §5.31, §5.6e) —
+CRITICAL.** FR-7.3 is rewritten in place: there is no Free plan tier.
+Every seller starts on a discounted first-billing-cycle entry (**First
+Month**, a real, distinct, paid `Plan` row at `tierOrder 0`, full Starter
+feature set, 2% commission, Rs. 1,499 for the first cycle) that
+auto-transitions to Starter at its regular current price via the
+existing `Subscription.pendingPlanId`/next-cycle mechanism FR-7.5 already
+defines — no new transition machinery. FR-7.2's "insufficient balance
+downgrades to Free" clause is struck and replaced: a plan-fee shortfall
+now folds into the **same** `orders_paused` wallet grace ladder FR-6.25
+already runs for commission shortfalls (one mechanism, not two) — a
+seller without an active paid subscription simply cannot publish
+(FR-6.21 unchanged) or keeps operating in a paused state, **never** a
+free tier to fall back to. This retires all three
+`plan.findFirst({tierOrder: 0})` Free-plan-fallback call sites the audit
+found (`plan-fee-debit.service.ts` ×2, `subscriptions.service.ts`'s
+team-leave-triggered downgrade) — FR-7.13 (§5.31) is amended to match:
+leaving a team pauses the member's store(s) at period end instead of
+reassigning them to Free. FR-23.1/23.2/23.3/23.4/23.5 (§5.23) are
+reworded to drop every "Free-Plan"-specific frame — quota enforcement,
+dormant-store lifecycle, and the no-trial principle all already applied
+generically per-tier and read cleaner without a tier that no longer
+exists; FR-23.3 is strengthened, not weakened, by this change (there is
+now no free entry point of any kind to time-box, so "no trial" is
+trivially, structurally true rather than merely enforced). The
+now-purposeless Free-store-per-identity velocity limit (FR-23.5's second
+clause, and its entire backing `FreeStoreLimitService`) is retired along
+with the free/paid store split the FR-23.4 unit-economics dashboard used
+to report — both existed only to guard a tier that no longer exists.
+**(2) Full pricing data model (§5.7, new FR-7.19).** `Plan` gains a
+`regularPrice` column (nullable; the plan editor and pricing page render
+it struck through beside the current `price` whenever the two differ —
+`price` remains the single field that's actually billed, so "campaign"
+pricing is simply an admin lowering `price` further for a window,
+requiring no third price field or new mechanism). Launch defaults for
+all four tiers (First Month, Starter, Growth, Pro — the SRS's own FR-7.1
+illustrative tier names are hereby made real, replacing the as-seeded
+`Standard`/`Pro` naming drift the audit also flagged) are founder-set
+plan-editor **data**, documented in `docs/database-schema.md`'s seed
+notes, never hard-coded — consistent with FR-7.1's binding "plan
+data, not code" discipline. Yearly billing = 10 months' price (2 months
+free) is FR-7.6's existing `yearlyDiscountPercent` mechanism, seeded at
+16.67% (2/12) for every tier — no new field. The pricing page (FR-7.19)
+must render a struck-through regular price, a "Most Popular" badge on
+one admin-designated tier, a long value-stacked per-tier feature list,
+and a Shopify cost-comparison line — all plan/settings data per FR-7.17's
+existing "never hard-coded in the frontend" rule, extended to price
+display, not a carve-out from it. **(3) Commission rate hard cap
+(§5.7, FR-7.4 amended).** `billing.commission_rate_percent`'s
+`SettingsDefinition.validation.max` tightens from 100 to **2** — a real
+business ceiling, not the previous purely-mathematical percent bound.
+`SettingsService.validateValue()` already enforces `validation.min`/`max`
+generically (confirmed: zero new validation code needed), and the admin
+settings screen's existing `isHighImpact()` check already matches every
+`billing.`-prefixed key including this one (confirmed: zero new
+confirmation-UI code needed) — this fix is a data/seed change plus a
+test proving an over-cap `setValue()` call is rejected, not new
+mechanism. **(4) Self-fulfilled stock protection (§5.5, §5.39 FR-39.5
+corrected).** FR-39.5's claim that checkout already reuses "the existing
+oversell-protection decrement logic" for every product was false — the
+audit confirmed the atomic conditional-decrement pattern
+(`supplierListingId`-gated `updateMany({where: {stockQuantity: {gte:
+qty}}}`) is wired **only** to supplier-fulfilled line items;
+self-fulfilled `ProductVariant.stockQuantity` is fetched for pricing but
+never checked or decremented at checkout. FR-39.5 is rewritten:
+self-fulfilled checkout now applies the identical atomic pattern,
+gated by a new `ProductVariant.trackInventory` boolean (default `true`;
+a seller can mark a variant untracked/unlimited-stock, the explicit
+opt-out the audit called for) — one oversell-protection mechanism across
+both fulfillment paths, not two. **(5) Wallet balance — running total,
+not re-aggregation (§5.6e, FR-6.21 amended, new FR-6.29).** FR-6.21's
+"Balance = sum of credits minus sum of debits, always computed, never
+stored redundantly" principle is **reversed** here, deliberately: at
+nine call sites across every hot path (checkout, the grace-ladder sweep,
+payouts, the publish gate), `getBalance()` was re-summing a seller's
+entire ledger history on every call — both a scaling problem and, more
+seriously, a correctness one (two concurrent orders reading the same
+stale re-aggregated balance can both pass an affordability check that
+only one should). A new `WalletBalance.balance` running-total column
+(one row per seller) is updated atomically, in the same transaction as
+every `LedgerEntry` insert; the ledger stays the append-only source of
+truth, the column becomes its verified, race-free cache — `getBalance()`
+becomes an O(1) read. A new daily reconciliation job (FR-6.29; none
+existed before this amendment — confirmed by the audit, not a
+regression) recomputes each seller's ledger sum and flags any drift from
+the cached column for admin visibility. **(6) Facebook/Instagram Shop
+feed + WhatsApp catalog links (new §5.55, Growth+).** Two genuinely new,
+plan-gated capabilities, both reusing existing machinery rather than
+building new integrations: a Meta Commerce Catalog-compliant product
+feed (extends FR-24.9's existing Product Feed API's field set —
+`availability`/`condition`/`description`/`brand`/`currency` — the
+existing feed's minimal shape was built for a different, founder-owned
+Social Media SaaS product and was never Meta-format-compliant, so this
+ships as a new endpoint alongside it, not a breaking change to it), and
+a product-level "share on WhatsApp" deep link extending §5.41's existing
+`wa.me` link generator to a fourth, product-scoped trigger not tied to
+an existing Order/Cart (the three existing generators all require one).
+Both are gated Growth-tier-and-above via the Settings Registry
+`allowedScopes: ["plan"]` pattern FR-7.1's product-limit gating already
+established — the idiomatic template, not a new gating mechanism. Full
+WhatsApp Business API catalog sync remains FR-41.4's existing
+roadmap-only deferral, unchanged.
+
 **Changelog v0.1 → v0.2:** Added platform's-own-site design requirement, advanced/
 custom theme code option for sellers, seller-initiated supplier invite flow, generic
 supplier adapter/plugin interface, hold-graduation mechanism, shared-identity hook
@@ -884,7 +994,8 @@ dashboard (catalog, customers, reviews, shipping, tax, discounts, orders — inc
 manual/draft orders — CSV import/export, onboarding); the supplier portal and
 adapter-based dropshipping integrations with buyer-facing delivery transparency; the
 payments, commission, hold, reserve, and payout/disbursement engine; subscription
-plans including a first-class Free Plan; Business Guard-Rails; the admin Control
+plans including a discounted First Month paid entry (no free tier, v0.33 —
+§5.7); Business Guard-Rails; the admin Control
 Plane; custom domain attachment; and two external-SaaS integration hooks (§5.24).
 Full detail is in §5.
 
@@ -930,8 +1041,8 @@ itself.
 
 ### 2.1 Product Perspective
 Direct competitor: **Shopify**. Differentiation strategy:
-1. **Cheaper entry plans**, including a genuinely usable **Free Plan** (§5.7,
-   FR-7.3) — Pakistan-first pricing.
+1. **Cheaper entry plans**, including a steeply discounted **First Month**
+   paid entry — no free tier (§5.7, FR-7.3, v0.33) — Pakistan-first pricing.
 2. **Premium visual templates** as a standard offering — the aesthetic of
    horizonx.so — with the same visual bar applied to buyer-facing surfaces beyond
    the storefront (receipts, order-status pages, emails, §6) and to uzeyn.com's own
@@ -962,8 +1073,8 @@ Direct competitor: **Shopify**. Differentiation strategy:
 - Data portability (CSV import/export) and self-hosted branded PDF receipts/invoices
 - Payments (prepaid at launch), commission (with plan-based laddering), hold,
   reserve, and payout/disbursement through an admin approval queue
-- Subscription plans including a first-class Free Plan, yearly billing, and
-  launch-campaign pricing
+- Subscription plans including a discounted First Month paid entry (no
+  free tier, v0.33), yearly billing, and launch-campaign pricing
 - Platform-wide administration, Business Guard-Rails, and admin-editable content
 - Custom domain + Google Drive media connection per seller
 - Bridges to the founder's Template Store (template install/license) and Social
@@ -1005,8 +1116,10 @@ revision per the founder's request (§9, §10).
   formatting is locale-aware from v1.0 — even though only one locale (English)
   ships at launch — specifically so RTL/Urdu (§10, Phase 2+) is a content and
   CSS-direction task later, not an architecture rewrite.
-- **No trial-of-paid-features (binding, §5.23):** the Free Plan is a permanent,
-  complete-but-limited tier, never a time-boxed trial of paid capability.
+- **No trial-of-paid-features (binding, §5.23; strengthened v0.33):** there
+  is no free tier at all — the First Month entry (§5.7) is a discounted
+  paid purchase with full Starter capability from day one, never a
+  time-boxed trial of paid capability.
 - **External-SaaS hooks are one-directional contracts, not shared builds (binding,
   new in v0.6):** uzeyn.com implements and owns only its side of the Template
   Store and Social Media integration hooks (an inbound API each product calls, or
@@ -1507,14 +1620,19 @@ audit log — one purpose-built role, not the start of a general framework.
   starting state, still a genuine "more editable than Shopify" claim since
   every seller (on any template or blank) can freely use every section type
   from day one, unlike a theme-locked competitor.
-- FR-1.10 (new, v0.31 design phase): **Storefront branding mark.** A small
-  "Managed by UZEYN" mark in the storefront's shared footer chrome —
-  **mandatory on the Free plan** (the platform's own free organic
-  marketing), **removable only once a paid plan grants the capability**.
-  Resolved server-side (never left to the client), via two independent
-  Settings Registry keys so a downgrade to Free always reverts to showing
-  it regardless of the seller's stored preference — see docs/architecture.md's
-  Template Package Spec section for the exact mechanism.
+- FR-1.10 (new, v0.31 design phase; tier mapping revised v0.33 — no Free
+  plan to anchor "mandatory" against): **Storefront branding mark.** A
+  small "Managed by UZEYN" mark in the storefront's shared footer chrome —
+  **mandatory through First Month, Starter, and Growth** (the platform's
+  own organic marketing on every tier below the top), **removable only on
+  Pro**, where the plan grants the capability. Resolved server-side (never
+  left to the client), via two independent Settings Registry keys — the
+  same "capability the plan grants + the seller's own stored preference,
+  ANDed" mechanism as before, now anchored to Pro-and-above instead of a
+  Free-vs-paid split; a seller who downgrades below Pro always reverts to
+  showing the mark regardless of their stored preference — see
+  docs/architecture.md's Template Package Spec section for the exact
+  mechanism.
 - **THE ISOLATION RULE (new, v0.31 design phase, binding on FR-1.1/1.2/1.9
   onward):** template selection and all customization affect presentation
   only. Cart, checkout, orders, payments, verification, wallet, and every
@@ -1830,13 +1948,17 @@ platform's own revenue collection-risk-free by construction and gives the
 founder a single, simple lever (top up or don't) instead of a grace-
 period/suspend cycle.
 - FR-6.21: **Wallet ledger & activation gate.** Every seller has one
-  wallet: a computed balance over the same append-only `LedgerEntry`
-  table §5.6c already uses (extends it — new entry types for a top-up
-  credit and each debit kind below, alongside the existing
+  wallet: a balance derived from the same append-only `LedgerEntry` table
+  §5.6c already uses (extends it — new entry types for a top-up credit
+  and each debit kind below, alongside the existing
   `commission_accrued`/`commission_waived` — never a parallel ledger
-  table). Balance = sum of credits minus sum of debits, always computed,
-  never stored redundantly (same "derive, don't cache the derivable"
-  discipline as every other balance in this system). **Signup, store
+  table). **Balance computation is revised in v0.33 — see FR-6.29:** the
+  ledger stays the sole append-only source of truth, but the balance
+  itself is now a maintained running-total column, not re-summed on
+  every read (the original "derive, don't cache the derivable" framing
+  here is superseded — the v0.33 audit found nine hot-path call sites
+  re-aggregating a seller's entire ledger history per call, both a
+  scaling problem and a concurrency-correctness one). **Signup, store
   setup, and the onboarding wizard (Module 16) stay entirely free** — no
   wallet interaction is required to build a store. **Publishing a store**
   (the point at which it can accept a real, checkout-completed order) is
@@ -1923,42 +2045,89 @@ period/suspend cycle.
   FR-6.24/FR-7.2's wallet debits and never generated either. The table and
   its `InvoiceType` enum are unchanged in shape — nothing is dropped, only
   unused.
+- FR-6.29: **Running wallet balance + daily reconciliation (new v0.33).**
+  A new `WalletBalance` table (one row per seller: `balance`, `updatedAt`)
+  is updated **atomically, in the same database transaction** as every
+  `LedgerEntry` insert — a single, shared write path so no caller can
+  create a ledger entry without the balance column moving with it in
+  lockstep. `WalletService.getBalance()` becomes a plain O(1) read of
+  this column instead of re-aggregating the ledger; every existing caller
+  (the publish gate, the grace-ladder sweep, the negative-float check,
+  payout eligibility, the plan-fee sweep, the wallet dashboard, the
+  Verified Store Program application-fee check) is unchanged at the call
+  site — only what `getBalance()` does internally changes. This also
+  closes a concurrency gap the v0.33 audit found: two orders completing
+  near-simultaneously previously could each read the same stale
+  re-aggregated balance and both pass an affordability check that only
+  one should — the atomic column update, inside the same transaction as
+  the debit it represents, makes that race structurally impossible. A new
+  **daily reconciliation job** (none existed before v0.33 — confirmed
+  gap, not a regression) recomputes each seller's true ledger sum and
+  compares it against `WalletBalance.balance`; any drift is flagged for
+  admin visibility (the same admin-notification-center precedent FR-39.2
+  already established) rather than silently auto-corrected, so a real
+  bug is surfaced, not masked.
 
 ### 5.7 Subscription Plans, Pricing & Billing
-- FR-7.1: Tiered plans (e.g. Free / Starter / Growth / Premium) priced in the
-  platform's configured currency (PKR at launch), gating features (product count,
-  storage, template tiers, custom domain, coded-theme mode, analytics depth) via
-  the Settings Registry.
-- FR-7.2: **Recurring billing cycle for paid plans (revised again v0.24 —
-  supersedes v0.20's invoice-based pin; see FR-6.24/§5.6e).** A seller on
-  a paid plan is billed monthly-in-advance via a **wallet debit**, not a
-  `seller_invoices` row — the same prepaid wallet FR-6.21 already gates
-  publishing on. **Non-payment here means graceful downgrade, not a
-  store action:** insufficient wallet balance for a plan-fee debit
-  downgrades the seller to the Free Plan (the identical mechanism FR-7.13
-  already uses for a voluntary team-leave) — never `orders_paused` or
-  suspension, since an unpaid plan fee is the seller choosing not to
-  afford that tier, not a debt tied to store operations the way
-  commission is; FR-6.25's grace ladder is strictly a
-  commission/store-operations concern and never fires for a plan-fee
-  shortfall. The Teams group total (FR-7.15/7.18, leader-billed) and the
+- FR-7.1: Tiered plans — **First Month, Starter, Growth, Pro** (v0.33: these
+  were previously illustrative names; they are now the real, seeded v1.0
+  individual tiers, replacing the as-built `Free`/`Standard`/`Pro` naming
+  drift) — priced in the platform's configured currency (PKR at launch),
+  gating features (product count, storage, template tiers, custom domain,
+  coded-theme mode, analytics depth) via the Settings Registry.
+- FR-7.2: **Recurring billing cycle for paid plans (revised v0.33 — no
+  Free-Plan fallback; supersedes v0.24's downgrade-to-Free clause; see
+  FR-6.24/§5.6e).** A seller on a paid plan is billed monthly-in-advance
+  via a **wallet debit**, not a `seller_invoices` row — the same prepaid
+  wallet FR-6.21 already gates publishing on. **Non-payment folds into
+  the same mechanism FR-6.25 already runs for a commission shortfall —
+  one grace ladder, not two:** a plan-fee debit that cannot be collected
+  is treated identically to a low wallet balance and, after the same
+  grace window, transitions the seller's store(s) to `orders_paused`.
+  **There is no Free Plan to fall back to (§5.23's binding no-trial
+  principle, strengthened by v0.33 — see FR-23.3) — a seller without an
+  active paid subscription cannot publish a store at all (FR-6.21
+  unchanged), and an existing paid seller who stops paying is paused,
+  never silently moved to a free tier.** This retires the three
+  `plan.findFirst({tierOrder: 0})` Free-plan-fallback lookups the v0.33
+  audit found (two in the plan-fee debit sweep, one in the team-leave
+  flow, FR-7.13) — none has a replacement lookup, since there is nothing
+  to look up. The Teams group total (FR-7.15/7.18, leader-billed) and the
   FR-25.7 extra-device-slot add-on debit the same wallet on the same
-  cadence, per FR-6.24. Built in Module 20 (Supplier Portal Completion &
-  Plan-Fee Collection) — the `seller_invoices.invoice_type =
-  'plan_subscription'`/`'group_sponsorship'` schema built ready for this
-  in Module 14 is now dormant (FR-6.28) rather than activated; until
-  Module 20 ships, a paid plan can only be reached via an admin grant
-  (FR-7.8) or a promo-code-adjacent flow, never real self-service
-  billing.
-- FR-7.3: **Free Plan (first-class)** — a plan tier with **no billing cycle**,
-  bounded by tight Settings-Registry-tunable limits: product count, storage quota,
-  access to the base template tier only, no custom domain, and one store per
-  verified identity. The Free Plan carries a **higher default commission %** than
-  paid plans (admin-configurable per FR-7.4).
-- FR-7.4: **Inverse commission laddering** — the plan editor (FR-8.2) exposes a
-  per-plan commission-rate override such that higher-tier plans carry a **lower**
-  commission than the Free Plan, using the same Settings Registry mechanism
-  already defined for per-plan/per-seller/per-category overrides (FR-6.1, FR-8.3).
+  cadence, per FR-6.24, and non-payment of either folds into the same
+  `orders_paused` ladder on the same terms.
+- FR-7.3: **First Month (discounted paid entry — replaces the Free Plan,
+  v0.33).** There is no free tier and no time-boxed trial (§5.23's
+  binding no-trial principle applies to this tier as much as any other —
+  see FR-23.3). Every new seller's **first billing cycle** is priced at a
+  steep, founder-set discount off Starter's regular price (launch default:
+  Rs. 1,499 vs. Starter's Rs. 5,799 discounted/launch price) while
+  carrying **Starter's full feature set** from day one — 1 store, 100
+  products, 2% commission, order verification, P&L dashboard, custom
+  domain, all four storefront templates, WhatsApp tools. This is a real,
+  distinct, paid `Plan` row (`tierOrder 0`, same tier-ordering mechanism
+  FR-7.17 already defines) assigned at signup in place of the old
+  Free-Plan assignment — a seller is never without a `Subscription` row,
+  and that row is never free. At the end of the first billing cycle, the
+  subscription **auto-transitions to Starter** at Starter's then-current
+  price via the existing `Subscription.pendingPlanId` next-cycle
+  mechanism (FR-7.5) — the same transition machinery already used for
+  every other plan change, not a new one built for this case. Non-payment
+  at any point (including the first cycle) is FR-7.2's `orders_paused`
+  path, never a downgrade.
+- FR-7.4: **Inverse commission laddering, with a hard ceiling (amended
+  v0.33).** The plan editor (FR-8.2) exposes a per-plan commission-rate
+  override such that higher-tier plans carry a **lower** commission —
+  launch defaults: First Month/Starter 2%, Growth 1.5%, Pro 1% — using
+  the same Settings Registry mechanism already defined for per-plan/
+  per-seller/per-category overrides (FR-6.1, FR-8.3).
+  **`billing.commission_rate_percent`'s validation ceiling is a hard
+  2% maximum (v0.33) — not the previous purely-mathematical 100% percent
+  bound.** `SettingsService.setValue()` rejects any write above this
+  ceiling at any scope (global/plan/seller); the admin settings screen's
+  existing high-impact-key confirmation step (already matching every
+  `billing.`-prefixed key) applies unchanged — no admin can silently push
+  commission past the ceiling, confirmed or not.
 - FR-7.5: **Plan change flow (v1.0 simple rule)** — a plan upgrade or downgrade
   takes effect at the start of the seller's **next billing cycle**; no prorated
   mid-cycle billing in v1.0 (Phase 2 item).
@@ -1968,9 +2137,9 @@ period/suspend cycle.
 - FR-7.7: **Launch-campaign pricing** — time-limited or first-N-sellers
   promotional pricing/commission rates, expressed as Settings Registry entries
   with an optional expiry timestamp or a counter condition.
-- FR-7.8: **Admin-granted plans (new)** — an admin can directly grant any plan,
-  including the Free Plan, to a specific seller from the plan editor (FR-8.2),
-  bypassing normal checkout/billing for that one assignment. Recorded in
+- FR-7.8: **Admin-granted plans (new)** — an admin can directly grant any
+  plan to a specific seller from the plan editor (FR-8.2), bypassing
+  normal checkout/billing for that one assignment. Recorded in
   `admin_audit_logs` like every other control-plane mutation (before/after plan).
 - FR-7.9: **Platform-level subscription promotion codes (new)** — an admin can
   create a one-time discount code for **subscription billing** (a plan/billing
@@ -2049,6 +2218,30 @@ period/suspend cycle.
   price)** — every seat on one team bills at the same price, never a
   per-member-chosen amount. FR-7.15's text is amended accordingly (see
   §5.31); §14.31's group-invoice-math checklist line is updated to match.
+- FR-7.19: **Struck-through regular pricing + campaign pricing (new
+  v0.33).** `Plan` gains a `regularPrice` column (nullable Decimal,
+  alongside the existing `price` — the field that's actually billed).
+  Whenever `regularPrice` is set and exceeds `price`, the plan editor and
+  the public pricing page (FR-7.17) render `regularPrice` struck through
+  beside the current `price` — no new mechanism for a further "campaign"
+  discount: an admin lowering `price` again for a limited window (e.g.
+  the launch defaults' First Month Rs. 1,499 / Starter Rs. 5,799 /
+  campaign Rs. 4,999) is the same single-field edit, consistent with
+  FR-7.7's existing time-limited-promotional-pricing concept and FR-7.17's
+  "pricing UI is a data operation, never a deploy" discipline. Launch
+  default data for all four tiers (First Month/Starter/Growth/Pro —
+  `regularPrice`/`price`/commission %/product limit/feature flags) is
+  founder-set plan-editor data, recorded in `docs/database-schema.md`'s
+  seed notes, never hard-coded. Yearly billing stays FR-7.6's existing
+  mechanism, seeded at a 2-months-free (16.67%) discount for every tier —
+  no new field. The pricing page must additionally render a "Most
+  Popular" badge on one admin-designated tier (a new
+  `plans.most_popular_tier_id`-style Settings Registry pointer, not a
+  hard-coded tier name), a long value-stacked per-tier feature list, and
+  a Shopify cost-comparison line — all sourced from plan/settings data,
+  the same "never hard-coded in the frontend" rule FR-7.17 already binds
+  tier names/prices/features to, extended here to cover price display and
+  comparison copy too.
 
 ### 5.8 Platform Admin Terminal — the Control Plane
 The admin terminal is not "a management screen" — it is the platform's control
@@ -2400,31 +2593,44 @@ ships, and so v1.0's schema doesn't need to be redesigned to accommodate them.
 
 ### 5.23 Business Guard-Rails & Platform Economics
 Every threshold below is a Settings Registry entry, not a hard-coded constant.
-- FR-23.1: **Free-plan enforcement** — storage quota is metered per store against
-  the plan's Settings-Registry-defined limit; the product-count limit is enforced
-  **at creation time** (a create request beyond the limit is rejected with a clear
-  reason), not merely displayed as a soft warning.
-- FR-23.2: **Dormant-store lifecycle** — a scheduled job flags a free-plan store
-  inactive beyond a configurable threshold (`lifecycle.dormant_warning_days`) and
-  sends a warning email; after a further configurable period
-  (`lifecycle.dormant_suspend_days`) it is suspended; after a further configurable
-  period (`lifecycle.dormant_archive_days`) it is **archived** — a store status
-  distinct from `suspended`: data retained, storefront fully and permanently
-  offline until the seller re-engages.
-- FR-23.3: **No trial-of-paid-features (binding product principle)** — the Free
-  Plan is complete and permanently usable within its limits, never a time-boxed
-  trial; a paid-plan-only feature is inaccessible on the Free Plan regardless of
-  account age, enforced by the same plan-scoped Settings Registry checks used
-  everywhere else — no separate "trial expired" code path exists to build or
-  accidentally leave open.
-- FR-23.4: **Unit-economics admin dashboard** — extends FR-8.10 with: active
-  free-vs-paid store counts, commission earned specifically from Free-Plan stores,
-  per-store storage usage, and a monthly platform-cost-vs-revenue break-even view
-  where the cost figure is **admin-entered** (`finance.monthly_infra_cost`) rather
-  than computed.
-- FR-23.5: **Velocity/abuse limits** — a per-identity limit on the number of
-  Free-Plan stores one verified identity can create, and signup-rate limiting at
-  the auth layer — both Settings-Registry-tunable thresholds.
+- FR-23.1: **Plan-tier limit enforcement (reworded v0.33 — no Free-Plan
+  framing; there is no free tier, §5.7)** — storage quota is metered per
+  store against the seller's resolved plan tier's Settings-Registry-
+  defined limit; the product-count limit is enforced **at creation time**
+  (a create request beyond the limit is rejected with a clear reason),
+  not merely displayed as a soft warning. Applies identically to every
+  tier, First Month included — a discounted first cycle is a price
+  reduction, never a looser or stricter limit than the Starter tier it
+  shares (FR-7.3).
+- FR-23.2: **Dormant-store lifecycle (reworded v0.33 — plan-agnostic, as
+  it has always actually run in code)** — a scheduled job flags any store
+  inactive beyond a configurable threshold (`lifecycle.dormant_warning_days`)
+  and sends a warning email, regardless of plan tier; after a further
+  configurable period (`lifecycle.dormant_suspend_days`) it is suspended;
+  after a further configurable period (`lifecycle.dormant_archive_days`)
+  it is **archived** — a store status distinct from `suspended`: data
+  retained, storefront fully and permanently offline until the seller
+  re-engages.
+- FR-23.3: **No trial-of-paid-features (binding product principle,
+  strengthened v0.33)** — there is no free tier and no time-boxed trial
+  anywhere in the platform (§5.7's First Month is a discounted **paid**
+  entry, not a trial — full price applies from the very first rupee, it
+  is simply a lower price for one cycle). A paid-plan-only feature is
+  inaccessible below the tier that grants it regardless of account age,
+  enforced by the same plan-scoped Settings Registry checks used
+  everywhere else — no separate "trial expired" code path exists to
+  build or accidentally leave open, and, as of v0.33, no free-tier code
+  path either.
+- FR-23.4: **Unit-economics admin dashboard (reworded v0.33 — the
+  free-vs-paid split is retired along with the Free Plan itself)** —
+  extends FR-8.10 with: active store counts by tier, commission earned
+  per tier, per-store storage usage, and a monthly platform-cost-vs-
+  revenue break-even view where the cost figure is **admin-entered**
+  (`finance.monthly_infra_cost`) rather than computed.
+- FR-23.5: **Velocity/abuse limits (reworded v0.33 — the free-store
+  velocity limit is retired; it existed only to guard a tier that no
+  longer exists)** — signup-rate limiting at the auth layer, a
+  Settings-Registry-tunable threshold.
 
 ### 5.24 External-SaaS Integration Hooks (new in v0.6)
 The founder runs two separate future SaaS products. uzeyn.com builds **only its
@@ -2455,8 +2661,8 @@ follow.
 - FR-24.5: A seller's access to a marketplace-purchased template is gated by their
   **template entitlement**, a mechanism distinct from — and layered on top of —
   the existing plan-based template-**tier** gating (FR-7.1, `themes.tier`): a
-  Free-Plan seller who purchases a premium marketplace template still has that one
-  specific template available to them, without their plan's tier otherwise
+  First-Month-tier seller who purchases a premium marketplace template still has
+  that one specific template available to them, without their plan's tier otherwise
   changing. The two gating mechanisms are checked independently and both must pass.
 - FR-24.6: The Template Install/License API's authenticity is verified via a
   signed-request scheme (§6.5) before any entitlement is granted; every grant is
@@ -2734,10 +2940,11 @@ a dedicated module rather than left implicit.
 - FR-28.4: **Dashboard personalization (new, v0.15).** A seller can choose a
   dashboard theme/wallpaper for their own admin experience (purely cosmetic —
   never the storefront theme, which stays FR-1.1/FR-1.2's separate system).
-  **Plan-gated:** the Free Plan offers a small built-in set; higher plans
-  unlock more options — gated the same Settings-Registry way FR-7.1 already
-  gates template tiers, cheap to build since it reuses the existing
-  plan-scoped feature-gate mechanism rather than introducing a new one. Still
+  **Plan-gated:** the entry First Month/Starter tier offers a small
+  built-in set; higher plans unlock more options — gated the same
+  Settings-Registry way FR-7.1 already gates template tiers, cheap to
+  build since it reuses the existing plan-scoped feature-gate mechanism
+  rather than introducing a new one. Still
   governed by the SIMPLICITY INVARIANT (§3.13) — personalization is an
   option behind a settings screen, never a default-view distraction.
 
@@ -2938,14 +3145,18 @@ not a parallel billing system.
   accepted this exact disclosure cannot become an active sponsored member.
   This is a stricter, member-facing sibling of FR-29.1's versioned-
   agreement acceptance discipline, not a new legal-content system.
-- FR-7.13: **Leave-team flow (member-initiated, always available).** A
-  sponsored member can leave their team at any time from their own
-  dashboard settings. Leaving ends sponsorship **gracefully**: the member's
-  plan downgrades to the Free Plan at the **current billing period's end**
+- FR-7.13: **Leave-team flow (member-initiated, always available; amended
+  v0.33 — no Free-Plan fallback).** A sponsored member can leave their
+  team at any time from their own dashboard settings. Leaving ends
+  sponsorship **gracefully**: at the **current billing period's end**
   (the same "next-cycle" rule FR-7.5 already uses for ordinary plan
-  changes, not immediate), and the member's account/store is **never**
-  deleted or suspended as a consequence of leaving — leaving is the
-  member's right, not a penalty condition.
+  changes, not immediate) the member's store(s) fold into the same
+  `orders_paused` mechanism FR-7.2/FR-6.25 already define for any
+  seller without an active paid subscription — **never** a downgrade to
+  a free tier (there is none, §5.7), and the member's account/store is
+  **never** deleted or suspended as a consequence of leaving — leaving is
+  the member's right, not a penalty condition. A member who subscribes to
+  their own paid plan before or at period end is never paused at all.
 - FR-7.14: **Leader's team dashboard — read-only, and only that.** The
   leader sees: a member list, each member's sponsorship status (active/
   left), and a **read-only** per-member analytics summary (sales, order
@@ -2971,12 +3182,13 @@ not a parallel billing system.
   grace-period-suspension mechanism. **Suspension never crosses the team
   boundary**: non-payment of the leader's own commission invoice suspends
   only the leader's own store; non-payment of the group sponsorship invoice
-  suspends the *sponsorship* (members downgrade to Free per FR-7.13's
-  graceful-downgrade rule, exactly as if the leader had stopped sponsoring
-  voluntarily) but never a member's store outright, and never the leader's
-  own store either. A member's own separate commission invoice (on
-  whatever plan they're currently on — Free, or whatever their team tier
-  currently grants them while sponsored, FR-7.18) is entirely independent
+  suspends the *sponsorship* (members' stores fold into `orders_paused`
+  per FR-7.13's amended v0.33 rule, exactly as if the leader had stopped
+  sponsoring voluntarily) but never a member's store outright, and never
+  the leader's own store either. A member's own separate commission
+  invoice (on whatever their team tier currently grants them while
+  sponsored, FR-7.18, or their own paid plan if no longer sponsored) is
+  entirely independent
   of the leader's billing and can suspend only that member's own store.
 - FR-7.16: **Standard/Pro plan tiers bundle developer perks.** The plan
   editor (FR-8.2) expresses that qualifying paid tiers include coded-theme
@@ -3093,8 +3305,11 @@ every other module.
   platform for their own plan subscription (§5.6e's wallet plan-fee
   debits, FR-6.24) — **never** against that seller's storefront GMV,
   sales, or wallet top-ups collected for commission. A referred seller
-  who never upgrades past the Free Plan generates zero referral
-  commission, by design.
+  who never upgrades past the First Month/Starter entry tier's own plan
+  fee generates minimal-to-zero referral commission by the same design —
+  the mechanism is unaffected by v0.33's removal of the Free Plan, since
+  it was never keyed to any specific tier, only to actual plan-fee
+  payments.
 - FR-33.5: **Program 1 — Certified Ambassador.** Eligibility: applicant
   must already hold an eligible paid plan (a Settings-Registry-configured
   plan-tier list, same "which tier gates what" mechanism as every other
@@ -3577,11 +3792,24 @@ protection logic verbatim)
   overwritten or editable after the fact, same append-only-history
   discipline as `AdminAuditLog`/`PlatformEvent` elsewhere in this SRS,
   scoped to the seller's own store rather than the admin side.
-- FR-39.5: **Reuses oversell protection verbatim.** This screen is a
-  read/adjust surface over the existing `stockQuantity` field and Module
-  9's existing checkout-time oversell-protection decrement logic — no
-  change to that logic, no second code path that could decrement stock
-  differently than checkout already does.
+- FR-39.5: **Oversell protection, corrected to actually cover
+  self-fulfilled products (v0.33 — this FR previously claimed checkout
+  already reused the same mechanism for every product; the v0.33 audit
+  found that was false: the atomic conditional-decrement pattern
+  (`updateMany` gated on `stockQuantity >= quantity`, FR-4.5) was wired
+  only to supplier-fulfilled line items — a self-fulfilled variant's
+  `stockQuantity` was read for pricing but never checked or decremented
+  at checkout, a real oversell bug).** Checkout now applies the identical
+  atomic pattern to `ProductVariant.stockQuantity` for self-fulfilled
+  items, gated by a new `trackInventory` boolean on `ProductVariant`
+  (default `true`) — a seller can mark a variant untracked/unlimited-
+  stock (the explicit opt-out this correction requires), in which case
+  no check or decrement happens for that variant, same as today's
+  behavior. This screen remains a read/adjust surface over
+  `stockQuantity` and the now-corrected checkout decrement logic — one
+  oversell-protection mechanism across both fulfillment paths, still no
+  second code path that could decrement stock differently than checkout
+  does.
 - FR-39.6: **Inventory export, as a new Data Export artifact.** A new
   optional CSV (current stock levels across all products/variants) added
   to the existing Seller Data Export bundle (§5.36) — the seller's own
@@ -4032,9 +4260,11 @@ differentiator, at the founder's explicit direction)
   FR-51.2/`catalog.product_limit` — creating a staff account beyond the
   seller's plan limit is blocked with the same "your plan's limit has
   been reached" pattern already established.
-- FR-52.6: **Zero on Free.** The Free plan's default is zero staff
-  accounts (owner-only) — staff accounts are a paid-tier differentiator
-  from day one, never available on Free.
+- FR-52.6: **Zero on the entry tier (revised v0.33 — no Free plan).** The
+  First Month/Starter default is zero staff accounts (owner-only) — staff
+  accounts are a paid-tier differentiator from day one, unlocked starting
+  at Growth (`staff.max_accounts`'s plan-scoped default), never available
+  below it.
 
 ### 5.53 Admin Email Section (new, v0.32 — UZEYN's own unified inbox in
 the admin terminal; admin-global, not tenant-scoped)
@@ -4105,6 +4335,49 @@ disclosed)
   → suspended → banned). These are narrower, single-purpose controls (one
   seller's listing ability, one product, one feature) rather than a full
   account-level escalation.
+
+### 5.55 Facebook/Instagram Shop Feed & WhatsApp Catalog Links (new, v0.33
+— deep-audit Phase A item 6; two Growth+-gated capabilities, both reusing
+existing machinery rather than building new integrations)
+- FR-55.1: **Meta-compatible product catalog feed.** A new,
+  Meta-Commerce-Catalog-compliant feed endpoint, extending FR-24.9's
+  existing Product Feed API field set to what Meta's own catalog format
+  requires — `id`, `availability`, `condition`, `description`, `brand`,
+  and an explicit `currency` field (the existing feed has none, PKR is
+  implicit) — alongside the fields FR-24.9 already exposes
+  (title/price/image/storefront URL). This ships as a **new** endpoint
+  alongside FR-24.9's existing one, not a breaking reshape of it — that
+  feed already serves a different, founder-owned Social Media SaaS
+  product with its own consumer(s); this one is purpose-built for a
+  seller to paste into Meta Commerce Manager themselves. Free — no paid
+  Meta API tier required for a seller to self-connect their own feed URL.
+- FR-55.2: **Plan-gated, Growth tier and above.** Access to the feed
+  endpoint is gated via the Settings Registry `allowedScopes: ["plan"]`
+  pattern FR-7.1's product-limit gating already established (the
+  idiomatic template for every plan-gated feature in this SRS) — not a
+  new gating mechanism. A First-Month or Starter seller's feed URL
+  returns a clear "upgrade to Growth" response, never partial/degraded
+  data.
+- FR-55.3: **Tenant isolation, identical to FR-24.11's existing
+  guarantee.** The feed is seller-scoped and rate-limited exactly like
+  FR-24.9/24.11's existing Product Feed API — a feed token/URL scoped to
+  seller A can never return seller B's products.
+- FR-55.4: **WhatsApp product-share link (new fourth trigger point,
+  extends §5.41).** A product-level "share on WhatsApp" deep link —
+  reusing §5.41's exact `wa.me` link-construction utility and
+  Settings-Registry-driven template mechanism (FR-41.1/41.3) — generated
+  from a product's own page/editor, with a pre-filled message
+  (product name, price, storefront URL) interpolated in. This is a
+  **fourth** generator alongside FR-41.1's existing three (order
+  confirmation, shipping update, cart recovery) and, unlike all three of
+  those, is **not** tied to an existing `Order`/`Cart` row — it is
+  reachable for any published product at any time, gated Growth+ per
+  FR-55.2's mechanism.
+- FR-55.5: **Full WhatsApp Business API catalog sync remains
+  roadmap-only, unchanged.** FR-41.4's existing deferral of a paid,
+  Meta-gated, automated WhatsApp Business API send/catalog-sync sequence
+  is unaffected by FR-55.4 — the product-share link is a free,
+  seller-clicked convenience, not a step toward automation.
 
 ---
 
@@ -4280,8 +4553,9 @@ starts until the previous module's Acceptance Checklist (§14) is verified. See
   import/export (core fields); one branded PDF invoice; seller onboarding
   wizard; **invoice-based commission ledger (default 1%) + monthly seller
   invoicing + grace-period auto-suspension (v0.15, replaces hold/reserve/
-  payout for v1.0)**; the Free Plan + inverse commission laddering + yearly
-  billing + launch-campaign pricing + **Supplier Premium Plan (v0.15)**;
+  payout for v1.0)**; the discounted First Month paid entry (no free
+  tier, v0.33) + inverse commission laddering + yearly billing +
+  launch-campaign pricing + **Supplier Premium Plan (v0.15)**;
   Business Guard-Rails; **the Trust & Safety System (v0.15 — versioned
   Seller Agreement, rule-based T&S engine, enforcement ladder)**; the admin
   Control Plane (including the external-API client registry); the Template

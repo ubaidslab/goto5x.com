@@ -3427,5 +3427,53 @@ not itself a code change.
 
 ---
 
+## Deep-Audit Phase A: launch blockers (Modules 44-48)
+
+A full pre-audit sweep of the built platform against `docs/SRS.md` found
+six places where a business decision changed in discussion but never
+reached the code. SRS v0.33 documents the corrected spec (see its own
+changelog paragraph for the full FR-by-FR detail); this section is the
+build-order/slotting record. Founder-specified severity order, confirmed
+as the right order after research — no changes:
+
+- **Module 44 — No Free Plan; First Month paid entry; full pricing
+  data; pricing page (🔴 CRITICAL, items 1+2 combined).** Combined into
+  one module because item 2's pricing figures are literally the data
+  item 1's plan seed needs — they were never separable work. Touches the
+  most call sites of any module in this batch (five `Plan` lookups
+  across signup/downgrade, three of which are the audit's flagged
+  Free-plan fallbacks; the `Subscription`/`Plan` schema; the wallet grace
+  ladder; the guardrails module) and every other module in this batch
+  either reads plan/commission data this module seeds (45, 48) or is
+  independent of it (46, 47) — building it first means nothing downstream
+  is built against a plan model about to change.
+- **Module 45 — Commission rate hard cap (🟠).** Small and isolated
+  (a `SettingsDefinition.validation.max` change plus a rejection test) —
+  research confirmed both the generic min/max validation mechanism and
+  the admin high-impact-confirmation UI already exist and already cover
+  this exact key, so this is genuinely a data/seed fix, not new
+  mechanism. Slotted right after Module 44 since it shares the same
+  `billing.seed.ts` file and per-tier commission values Module 44 is
+  already touching.
+- **Module 46 — Self-fulfilled stock protection (🟠, real oversell
+  bug).** Independent of Modules 44/45 — touches checkout/inventory, not
+  plans/billing. Kept in the founder's given order (before wallet
+  balance) since it's a correctness bug with direct customer-facing
+  impact (double-selling the last unit), same severity class as the
+  commission cap.
+- **Module 47 — Wallet running balance + reconciliation (race fix +
+  scaling).** Depends on nothing built in 44-46, but is naturally after
+  them since Module 44's plan-fee/`orders_paused` unification and Module
+  45's commission cap both flow through the same wallet debit path this
+  module is hardening — sequencing it last among the correctness fixes
+  means it's hardening a wallet-debit surface that's already reached its
+  final v0.33 shape, not a moving target.
+- **Module 48 — Facebook/Instagram Shop feed + WhatsApp catalog links
+  (Growth+).** The only net-new feature in this batch (the other five are
+  fixes/corrections) — correctly last, and its Growth-tier gate depends
+  on Module 44's tier data existing first.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*
