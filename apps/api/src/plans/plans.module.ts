@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
+import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { AdminPlansController } from "./admin-plans.controller";
 import { AdminSubscriptionsController } from "./admin-subscriptions.controller";
@@ -11,7 +12,7 @@ import { SubscriptionsService } from "./subscriptions.service";
 import { SupplierSubscriptionsController } from "./supplier-subscriptions.controller";
 
 @Module({
-  imports: [AdminModule, TrustSafetyModule],
+  imports: [AdminModule, TrustSafetyModule, SettingsModule],
   controllers: [
     PlansController,
     AdminPlansController,

@@ -204,7 +204,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
         .set("Authorization", `Bearer ${token}`);
 
       const balanceAfterSale = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
-      expect(balanceAfterSale.body.balance).toBe(995); // 1% of 500
+      expect(balanceAfterSale.body.balance).toBe(990); // First Month's 2% of 500 (v0.33 signup default)
 
       const history = await request(app.getHttpServer())
         .get("/sellers/me/wallet/transactions")
@@ -230,7 +230,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       expect(markPaid.status).toBe(201);
 
       const balance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
-      expect(balance.body.balance).toBe(-0.5); // 1% of 50, taken from a zero balance
+      expect(balance.body.balance).toBe(-1); // First Month's 2% of 50, taken from a zero balance
     });
 
     it("a sale that drives the balance below the floor pauses stores immediately, without waiting for grace to expire; a verified top-up restores (FR-6.26 fix)", async () => {
@@ -253,7 +253,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       expect(markPaid.status).toBe(201);
 
       const balance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
-      expect(balance.body.balance).toBe(-2); // 1% of 200, taken from a zero balance - below the -1 floor
+      expect(balance.body.balance).toBe(-4); // First Month's 2% of 200, taken from a zero balance - below the -1 floor
 
       // Paused immediately by markAsPaid itself - no sweep was ever run.
       const pausedStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
@@ -324,18 +324,15 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     });
   });
 
-  describe("Plan fee / team seat / device slot wallet debits (FR-6.24, revised FR-7.2)", () => {
-    it("debits a paid plan's fee monthly; insufficient balance downgrades to Free - never orders_paused/suspension", async () => {
+  describe("Plan fee / team seat / device slot wallet debits (FR-6.24, revised v0.33 FR-7.2)", () => {
+    it("debits a paid plan's fee monthly; insufficient balance pauses orders (never a Free-Plan reassignment - there is no more Free Plan)", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("plan-fee@example.com", "plan-fee-store");
       const adminToken = await createAndLoginAdmin("plan-fee-admin@example.com");
       await topUpAndVerify(token, adminToken, 5000);
 
-      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      await request(app.getHttpServer())
-        .post("/sellers/me/subscription/change")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ planId: starterPlan.id });
-
+      // Every seller starts on First Month (v0.33) - already a real, paid,
+      // tracked billing cycle, so no plan change is needed to exercise the
+      // fee-debit sweep.
       const planFeeDebit = app.get(PlanFeeDebitService);
       const aMonthLater = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
       const firstSweep = await planFeeDebit.runMonthlyDebitSweep(aMonthLater);
@@ -346,6 +343,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
 
       // Drain the wallet, then let the next cycle's fee hit an empty wallet.
       const subscriptionRow = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
+      const planBeforeShortfall = subscriptionRow.planId;
       await superuser.subscription.update({
         where: { id: subscriptionRow.id },
         data: { currentPeriodEnd: aMonthLater },
@@ -358,15 +356,19 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
 
       const secondCycle = new Date(aMonthLater.getTime() + 31 * 24 * 60 * 60 * 1000);
       const secondSweep = await planFeeDebit.runMonthlyDebitSweep(secondCycle);
-      expect(secondSweep.downgraded).toBeGreaterThanOrEqual(1);
+      expect(secondSweep.downgraded).toBeGreaterThanOrEqual(1); // v0.33: counts stores paused, not plans downgraded
 
-      const downgraded = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-      const freePlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-      expect(downgraded.planId).toBe(freePlan.id);
+      // The subscription stays on the exact same plan - never reassigned,
+      // since there is no more Free Plan to fall back to.
+      const afterShortfall = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
+      expect(afterShortfall.planId).toBe(planBeforeShortfall);
 
-      // Never orders_paused/suspended for a plan-fee shortfall.
+      // Insufficient plan-fee balance now pauses orders via the same
+      // mechanism as the wallet low-balance grace ladder
+      // (WalletGraceLadderService.pauseActiveStores()) - unified per the
+      // founder's explicit instruction.
       const store = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
-      expect(store.status).toBe("active");
+      expect(store.status).toBe("orders_paused");
     });
   });
 

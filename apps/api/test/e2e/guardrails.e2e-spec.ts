@@ -54,9 +54,15 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
     return { token, storeId: store.body.id as string, sellerId: seller.id as string };
   }
 
-  describe("Free-plan product-count limit (FR-23.1)", () => {
+  describe("Plan product-count limit (FR-23.1)", () => {
     it("rejects product creation at creation time once the plan's limit is reached - not a soft warning", async () => {
-      await app.get(SettingsService).setValue("catalog.product_limit", "global", null, 1, ADMIN_ID);
+      // v0.33 - First Month (the signup default) carries its own
+      // plan-scoped catalog.product_limit override (100, per plans.seed.ts)
+      // which takes precedence over a global override (PRECEDENCE: plan
+      // beats global) - so the test override must target First Month's own
+      // plan scope, not global, to actually take effect.
+      const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await app.get(SettingsService).setValue("catalog.product_limit", "plan", firstMonthPlan.id, 1, ADMIN_ID);
       const { token, storeId } = await signupAndCreateStore("product-limit@example.com", "product-limit-store");
       const category = await superuser.category.create({ data: { name: "Limit", slug: `limit-${Date.now()}` } });
 
@@ -100,7 +106,7 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
   });
 
   describe("No trial-of-paid-features (FR-23.3)", () => {
-    it("a paid-plan-only feature stays inaccessible on the Free Plan regardless of account age", async () => {
+    it("a paid-plan-only feature stays inaccessible on First Month (no override there, v0.33) regardless of account age", async () => {
       const { token, storeId } = await signupAndCreateStore("no-trial@example.com", "no-trial-store");
       await superuser.store.update({ where: { id: storeId }, data: { createdAt: new Date("2020-01-01") } });
 
@@ -108,7 +114,7 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
         .patch(`/stores/${storeId}/theme-settings`)
         .set("Authorization", `Bearer ${token}`)
         .send({ customCode: "<div>x</div>" });
-      expect(res.status).toBe(403); // no "trial expired" path exists to accidentally leave open - just always false on Free
+      expect(res.status).toBe(403); // no "trial expired" path exists to accidentally leave open - just always false with no override
     });
   });
 
@@ -161,58 +167,24 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
     });
   });
 
-  describe("Velocity/abuse limits (FR-23.5)", () => {
-    it("blocks a second Free-Plan store for the same verified identity, but a paid seller is unaffected", async () => {
-      const { token, sellerId } = await signupAndCreateStore("velocity@example.com", "velocity-store-1");
-      await superuser.seller.update({ where: { id: sellerId }, data: { cnicHash: "shared-identity-hash" } });
-
-      const second = await request(app.getHttpServer())
-        .post("/stores")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Second store", slug: "velocity-store-2" });
-      expect(second.status).toBe(400);
-
-      // A different identity is unaffected.
-      const { token: otherToken } = await signupAndCreateStore("velocity-other@example.com", "velocity-other-store-1");
-      const otherSecond = await request(app.getHttpServer())
-        .post("/stores")
-        .set("Authorization", `Bearer ${otherToken}`)
-        .send({ name: "Other second store", slug: "velocity-other-store-2" });
-      expect(otherSecond.status).toBe(400); // still capped globally at 1, just a different identity
-
-      // Once upgraded off the Free Plan, the limit no longer applies.
-      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      await superuser.subscription.update({ where: { sellerId }, data: { planId: starterPlan.id } });
-      const third = await request(app.getHttpServer())
-        .post("/stores")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Third store", slug: "velocity-store-3" });
-      expect(third.status).toBe(201);
-    });
-  });
-
   describe("Unit-economics data (FR-23.4)", () => {
-    it("separates free-vs-paid store counts and commission, using the admin-entered infra cost for break-even", async () => {
-      const { sellerId: freeSellerId } = await signupAndCreateStore("unit-econ-free@example.com", "unit-econ-free-store");
-      const { sellerId: paidSellerId } = await signupAndCreateStore("unit-econ-paid@example.com", "unit-econ-paid-store");
-      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      await superuser.subscription.update({ where: { sellerId: paidSellerId }, data: { planId: starterPlan.id } });
+    it("totals commission across all (now-paid-only) stores, using the admin-entered infra cost for break-even", async () => {
+      const { sellerId: sellerAId } = await signupAndCreateStore("unit-econ-a@example.com", "unit-econ-a-store");
+      const { sellerId: sellerBId } = await signupAndCreateStore("unit-econ-b@example.com", "unit-econ-b-store");
 
       await superuser.ledgerEntry.create({
-        data: { sellerId: freeSellerId, type: "commission_accrued", amount: 10, currency: "PKR" },
+        data: { sellerId: sellerAId, type: "commission_accrued", amount: 10, currency: "PKR" },
       });
       await superuser.ledgerEntry.create({
-        data: { sellerId: paidSellerId, type: "commission_accrued", amount: 5, currency: "PKR" },
+        data: { sellerId: sellerBId, type: "commission_accrued", amount: 5, currency: "PKR" },
       });
       await app.get(SettingsService).setValue("finance.monthly_infra_cost", "global", null, 8, ADMIN_ID);
 
       const summary = await app.get(UnitEconomicsService).computeSummary();
-      expect(summary.freeStoreCount).toBe(1);
-      expect(summary.paidStoreCount).toBe(1);
-      expect(summary.commissionFromFreeStores).toBe(10);
-      expect(summary.commissionFromPaidStores).toBe(5);
+      expect(summary.storeCount).toBe(2);
+      expect(summary.totalCommission).toBe(15);
       expect(summary.monthlyInfraCost).toBe(8);
-      expect(summary.breakEven).toBe(7); // (10+5) - 8
+      expect(summary.breakEven).toBe(7); // 15 - 8
     });
   });
 });

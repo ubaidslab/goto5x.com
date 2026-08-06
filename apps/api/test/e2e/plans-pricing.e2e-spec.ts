@@ -70,7 +70,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("the public /plans endpoint renders every group/tier entirely from plan-editor data", async () => {
       const res = await request(app.getHttpServer()).get("/plans");
       expect(res.status).toBe(200);
-      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["Free", "Starter", "Standard", "Pro"]);
+      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["First Month", "Starter", "Growth", "Pro"]);
       expect(res.body.team).toHaveLength(3);
       expect(res.body.supplier.map((p: { name: string }) => p.name)).toEqual(["Supplier Free", "Supplier Premium"]);
     });
@@ -118,8 +118,8 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     });
   });
 
-  describe("Free Plan enforcement + inverse commission laddering (FR-7.3/7.4)", () => {
-    it("Free Plan carries the default (higher) commission rate; a higher tier overrides it via Settings Registry precedence", async () => {
+  describe("First Month entry pricing + inverse commission laddering (v0.33 FR-7.3/7.4)", () => {
+    it("First Month carries its own (higher) commission-rate override; a higher tier's own override takes precedence", async () => {
       const { token, sellerId } = await signup("commission-ladder@example.com");
       await superuser.seller.update({ where: { id: sellerId }, data: { isTrusted: true, cnicHash: `hash-${sellerId}` } });
 
@@ -141,6 +141,8 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         0.5,
         "00000000-0000-0000-0000-000000000000",
       );
+      // First Month's own seeded 2% override (plans.seed.ts) is what the
+      // first order below exercises - no extra setup needed for it.
 
       const category = await superuser.category.create({ data: { name: "Ladder", slug: `ladder-${Date.now()}` } });
       async function placeAndPay(price: number) {
@@ -166,18 +168,17 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
           .set("Authorization", `Bearer ${token}`);
       }
 
-      // Free Plan: default 1% rate.
+      // First Month (signup default, v0.33): its own seeded 2% override.
       await placeAndPay(1000);
-      const freeEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
-      expect(Number(freeEntries[0].amount)).toBeCloseTo(10, 2); // 1% of 1000
+      const firstMonthEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
+      expect(Number(firstMonthEntries[0].amount)).toBeCloseTo(20, 2); // 2% of 1000
 
-      // Upgrade to Starter (Free Plan -> no cycle yet, so FR-7.5's "immediately" edge case applies).
-      const change = await request(app.getHttpServer())
-        .post("/sellers/me/subscription/change")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ planId: starterPlan.id });
-      expect(change.status).toBe(201);
-      expect(change.body.planId).toBe(starterPlan.id);
+      // Move directly to Starter (a real cycle is already active by v0.33,
+      // so the self-service change endpoint would defer this to next
+      // cycle per FR-7.5 - writing the row directly isolates this test to
+      // the commission-precedence question, which FR-7.5's own deferral
+      // rule is covered separately below).
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: starterPlan.id } });
 
       await placeAndPay(1000);
       const allEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" }, orderBy: { createdAt: "asc" } });
@@ -186,27 +187,34 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
 
     it("FR-7.5: a plan change requested while already on a paid cycle is deferred to the next cycle, not applied immediately", async () => {
       const { token, sellerId } = await signup("next-cycle@example.com");
+      const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      const standardPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
+      const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
 
-      // First change (Free -> Starter): no cycle yet, applies immediately and starts one.
-      await request(app.getHttpServer())
+      // v0.33 - every seller starts on First Month with a real billing
+      // cycle already active (assignFirstMonthAtSignup), so even the very
+      // FIRST self-service change request defers to the next cycle; there
+      // is no more "no cycle yet -> immediate" case at signup.
+      const firstChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
         .send({ planId: starterPlan.id });
+      expect(firstChange.status).toBe(201);
+      expect(firstChange.body.planId).toBe(firstMonthPlan.id); // unchanged for now
+      expect(firstChange.body.pendingPlanId).toBe(starterPlan.id);
 
-      // Second change (Starter -> Standard): a real cycle is now active, so this must defer.
+      // A second change request while still on the same (First Month) cycle overwrites the pending target.
       const secondChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
-        .send({ planId: standardPlan.id });
+        .send({ planId: growthPlan.id });
       expect(secondChange.status).toBe(201);
-      expect(secondChange.body.planId).toBe(starterPlan.id); // unchanged for now
-      expect(secondChange.body.pendingPlanId).toBe(standardPlan.id);
+      expect(secondChange.body.planId).toBe(firstMonthPlan.id); // still unchanged
+      expect(secondChange.body.pendingPlanId).toBe(growthPlan.id);
 
       const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-      expect(subscription.planId).toBe(starterPlan.id);
-      expect(subscription.pendingPlanId).toBe(standardPlan.id);
+      expect(subscription.planId).toBe(firstMonthPlan.id);
+      expect(subscription.pendingPlanId).toBe(growthPlan.id);
     });
   });
 
@@ -272,13 +280,15 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         return Number(entries[0].amount);
       }
 
-      // The first-ever seller is within the counter condition (rank 1 <= limit 1): 1% - 1% = 0%.
+      // Both sellers start on First Month (v0.33), whose own plan-scoped
+      // override is 2% (not the global default) - the first-ever seller is
+      // within the counter condition (rank 1 <= limit 1): 2% - 1% = 1%.
       const firstAmount = await orderAndCommission(firstToken, "campaign-first-store", firstSellerId);
-      expect(firstAmount).toBeCloseTo(0, 2);
+      expect(firstAmount).toBeCloseTo(10, 2);
 
-      // The second seller is rank 2, over the limit - full 1% rate applies.
+      // The second seller is rank 2, over the limit - full 2% rate applies.
       const secondAmount = await orderAndCommission(secondToken, "campaign-second-store", secondSellerId);
-      expect(secondAmount).toBeCloseTo(10, 2);
+      expect(secondAmount).toBeCloseTo(20, 2);
     });
   });
 
@@ -297,7 +307,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
 
       const log = await superuser.adminAuditLog.findFirst({ where: { action: "plans.admin_granted", targetType: "subscription" } });
       expect(log).not.toBeNull();
-      expect((log!.beforeValue as { planName: string }).planName).toBe("Free");
+      expect((log!.beforeValue as { planName: string }).planName).toBe("First Month");
       expect((log!.afterValue as { planName: string }).planName).toBe("Pro");
     });
   });
@@ -374,7 +384,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ name: "Perk Store", slug: "perk-store" });
 
-      // Free Plan (global default false) - rejected.
+      // First Month (signup default, no override for this key) - rejected.
       const rejected = await request(app.getHttpServer())
         .patch(`/stores/${store.body.id}/theme-settings`)
         .set("Authorization", `Bearer ${token}`)
@@ -396,7 +406,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("dashboard-personalization gating (FR-28.4) is finally enforced, not just documented (Module 10's open item, closed here)", async () => {
       const { token, sellerId } = await signup("dashboard-perk@example.com");
 
-      // Free Plan (global default ["default"]) - "emerald" is rejected.
+      // First Month (signup default, global default ["default"] for this key) - "emerald" is rejected.
       const rejected = await request(app.getHttpServer())
         .patch("/sellers/me/dashboard-theme")
         .set("Authorization", `Bearer ${token}`)

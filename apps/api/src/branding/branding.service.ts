@@ -6,13 +6,14 @@ import { SettingsService } from "../settings-registry/settings.service";
 
 /**
  * Templates module (v0.31 design phase) - the "Managed by UZEYN"
- * storefront mark. Founder-mandated invariant: mandatory on the Free plan
- * (the platform's own free organic marketing), removable only once a paid
- * plan grants the capability. Two settings keys, resolved independently
- * (see themes.seed.ts's seedTemplatesBrandingSettings doc comment) so a
- * downgrade to Free always reverts to showing the mark, regardless of what
- * the seller previously chose - `getVisibility()` below is the one place
- * that combines them, and it never trusts the stored preference alone.
+ * storefront mark. Founder-mandated invariant: mandatory on First
+ * Month/Starter/Growth (the platform's own free organic marketing),
+ * removable only once the seller reaches Pro (v0.33 - see themes.seed.ts's
+ * seedTemplatesBrandingSettings doc comment). Two settings keys, resolved
+ * independently so a downgrade off Pro always reverts to showing the mark,
+ * regardless of what the seller previously chose - `getVisibility()` below
+ * is the one place that combines them, and it never trusts the stored
+ * preference alone.
  */
 @Injectable()
 export class BrandingService {

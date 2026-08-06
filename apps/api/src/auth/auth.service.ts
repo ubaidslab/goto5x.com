@@ -144,10 +144,10 @@ export class AuthService {
       // later whenever a scored input changes (CNIC saved, a payment
       // instrument's name-consistency result).
       await this.riskScore.computeAtSignup(user.seller!.id, ip, dto.deviceFingerprint);
-      // SRS §5.7/FR-7.1/7.3 - every seller starts on the Free (individual,
-      // tier 0) plan; this is the real seller->plan assignment that never
-      // existed before Module 14 (see subscriptions.service.ts's own note).
-      await this.subscriptions.assignFreePlanAtSignup(user.seller!.id, referralSource);
+      // SRS §5.7/FR-7.1/7.3 (v0.33) - every seller starts on First Month
+      // (individual, tier 0): a real, paid first billing cycle, not a Free
+      // Plan - see subscriptions.service.ts's own note.
+      await this.subscriptions.assignFirstMonthAtSignup(user.seller!.id, referralSource);
       // SRS §5.33 FR-33.3 - resolves the just-captured referralSource
       // against an approved program participant's referral code, if any;
       // a no-op (never throws, never blocks signup) if null/invalid/

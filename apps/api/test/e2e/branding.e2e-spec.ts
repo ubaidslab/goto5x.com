@@ -7,11 +7,12 @@ const PASSWORD = "correct-horse-battery";
 
 /**
  * Templates module (v0.31 design phase) - the "Managed by UZEYN" mark.
- * Founder-mandated invariant: mandatory on Free (the platform's own free
- * organic marketing), removable only once a paid plan grants the
- * capability (branding.powered_by_removable, plan-scoped) - and a stored
- * "hidden" preference (branding.powered_by_hidden, store-scoped) never
- * takes effect on its own, only when the plan capability also allows it.
+ * Founder-mandated invariant: mandatory on First Month/Starter/Growth (the
+ * platform's own free organic marketing), removable only once the seller
+ * reaches Pro (branding.powered_by_removable, plan-scoped, v0.33 - see SRS
+ * "Plans & Pricing") - and a stored "hidden" preference
+ * (branding.powered_by_hidden, store-scoped) never takes effect on its
+ * own, only when the plan capability also allows it.
  */
 describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
   let app: INestApplication;
@@ -56,8 +57,8 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     await superuser.subscription.update({ where: { sellerId }, data: { planId: plan.id } });
   }
 
-  it("is mandatory on the Free plan - a Free seller cannot hide it, and it always renders on the storefront", async () => {
-    const { token, storeId, hostname } = await signupLoginAndCreateStore("branding-free@example.com", "branding-free-store");
+  it("is mandatory on First Month (signup default) - the seller cannot hide it, and it always renders on the storefront", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("branding-entry@example.com", "branding-entry-store");
 
     const before = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(before.body).toEqual({ removable: false, hidden: false, visible: true });
@@ -72,9 +73,20 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     expect(store.body.poweredByVisible).toBe(true);
   });
 
-  it("a paid-plan seller can hide the mark, and it actually disappears from the live storefront", async () => {
-    const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("branding-paid@example.com", "branding-paid-store");
-    await movePlan(sellerId, 1); // Starter (paid)
+  it("is still mandatory on Starter and Growth - only Pro grants removal (v0.33 SRS 'Plans & Pricing')", async () => {
+    const { token, storeId, sellerId } = await signupLoginAndCreateStore("branding-starter@example.com", "branding-starter-store");
+    await movePlan(sellerId, 1); // Starter
+    const starter = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
+    expect(starter.body.removable).toBe(false);
+
+    await movePlan(sellerId, 2); // Growth
+    const growth = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
+    expect(growth.body.removable).toBe(false);
+  });
+
+  it("a Pro seller can hide the mark, and it actually disappears from the live storefront", async () => {
+    const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("branding-pro@example.com", "branding-pro-store");
+    await movePlan(sellerId, 3); // Pro
 
     const before = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(before.body).toEqual({ removable: true, hidden: false, visible: true });
@@ -90,14 +102,14 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     expect(store.body.poweredByVisible).toBe(false);
   });
 
-  it("downgrading back to Free reverts the mark to shown, even though the stored 'hidden' preference is untouched", async () => {
+  it("downgrading off Pro reverts the mark to shown, even though the stored 'hidden' preference is untouched", async () => {
     const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("branding-downgrade@example.com", "branding-downgrade-store");
-    await movePlan(sellerId, 1); // Starter (paid)
+    await movePlan(sellerId, 3); // Pro
     await request(app.getHttpServer()).patch(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`).send({ hidden: true });
-    const hiddenWhilePaid = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
-    expect(hiddenWhilePaid.body.poweredByVisible).toBe(false);
+    const hiddenOnPro = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
+    expect(hiddenOnPro.body.poweredByVisible).toBe(false);
 
-    await movePlan(sellerId, 0); // back to Free
+    await movePlan(sellerId, 1); // downgrade to Starter
 
     const afterDowngrade = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(afterDowngrade.body).toEqual({ removable: false, hidden: true, visible: true });

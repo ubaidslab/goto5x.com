@@ -32,24 +32,41 @@ export class SubscriptionsService {
   ) {}
 
   /**
-   * Called once, from AuthService.signup() - every seller starts on the
-   * Free (individual, tier 0) plan. `referralSource` (SRS FR-33.1) is
+   * Called once, from AuthService.signup() - every seller starts on First
+   * Month (individual, tier 0, v0.33/FR-7.1/7.3): a real, tracked, paid
+   * first billing cycle - there is no more Free Plan and no free trial.
+   * pendingPlanId is set to Starter (tier 1) immediately, so the existing
+   * applyDueCycleChanges() sweep (FR-7.5) auto-transitions the seller onto
+   * Starter the moment the First Month cycle ends, with no separate
+   * transition mechanism needed. `referralSource` (SRS FR-33.1) is
    * captured here, once, since this is the only place a Subscription row
    * is ever created for a seller - already-shape-validated by
    * resolveReferralSource(), never re-validated against a program table
    * here since none exist yet (Module 22).
    */
-  async assignFreePlanAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
-    const freePlan = await this.prisma.plan.findFirst({
+  async assignFirstMonthAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
+    const firstMonthPlan = await this.prisma.plan.findFirst({
       where: { planGroup: "individual", tierOrder: 0 },
     });
-    if (!freePlan) {
+    if (!firstMonthPlan) {
       // Seeding failure, not a seller-facing condition - plans.seed.ts always
       // creates this row before the app accepts signups.
-      throw new Error("No Free (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
+      throw new Error("No First Month (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
+    }
+    const starterPlan = await this.prisma.plan.findFirst({
+      where: { planGroup: "individual", tierOrder: 1 },
+    });
+    if (!starterPlan) {
+      throw new Error("No Starter (individual, tier 1) plan exists - plans.seed.ts must run before signup.");
     }
     await this.prisma.subscription.create({
-      data: { sellerId, planId: freePlan.id, referralSource },
+      data: {
+        sellerId,
+        planId: firstMonthPlan.id,
+        pendingPlanId: starterPlan.id,
+        currentPeriodEnd: addInterval(new Date(), "monthly"),
+        referralSource,
+      },
     });
   }
 
@@ -216,25 +233,38 @@ export class SubscriptionsService {
     });
   }
 
-  /** FR-7.13 - graceful downgrade to Free at the *current* period's end, whether member-initiated or non-payment-triggered. */
-  async scheduleDowngradeToFreeAtPeriodEnd(sellerId: string): Promise<void> {
-    const freePlan = await this.prisma.plan.findFirst({ where: { planGroup: "individual", tierOrder: 0 } });
-    if (!freePlan) throw new Error("No Free (individual, tier 0) plan exists.");
+  /**
+   * FR-7.13 - graceful downgrade to Starter (v0.33: the entry paid tier,
+   * now that Free no longer exists) at the *current* period's end, whether
+   * member-initiated or non-payment-triggered.
+   */
+  async scheduleDowngradeToStarterAtPeriodEnd(sellerId: string): Promise<void> {
+    const starterPlan = await this.prisma.plan.findFirst({ where: { planGroup: "individual", tierOrder: 1 } });
+    if (!starterPlan) throw new Error("No Starter (individual, tier 1) plan exists.");
     const subscription = await this.prisma.subscription.findUnique({ where: { sellerId } });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
 
     if (subscription.currentPeriodEnd === null) {
-      // No cycle to wait for (e.g. already effectively unsponsored) - same
-      // "nothing to defer" case requestPlanChange() handles.
+      // No cycle to wait for (e.g. a sponsored team member losing
+      // sponsorship) - starts a real Starter billing cycle immediately,
+      // same "nothing to defer" case requestPlanChange() handles. This is
+      // what lets the seller flow through the ordinary plan-fee-debit
+      // sweep (and, on non-payment, WalletGraceLadderService's pause) like
+      // any other paid subscription - no separate enforcement path needed.
       await this.prisma.subscription.update({
         where: { sellerId },
-        data: { planId: freePlan.id, pendingPlanId: null, sponsoredByTeamId: null, currentPeriodEnd: null },
+        data: {
+          planId: starterPlan.id,
+          pendingPlanId: null,
+          sponsoredByTeamId: null,
+          currentPeriodEnd: addInterval(new Date(), "monthly"),
+        },
       });
       return;
     }
     await this.prisma.subscription.update({
       where: { sellerId },
-      data: { pendingPlanId: freePlan.id, sponsoredByTeamId: null },
+      data: { pendingPlanId: starterPlan.id, sponsoredByTeamId: null },
     });
   }
 }

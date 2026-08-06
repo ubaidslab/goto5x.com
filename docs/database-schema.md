@@ -837,22 +837,26 @@ primary query.
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| name | text | Free / Starter / Growth / Premium — founder-set display name |
+| name | text | First Month / Starter / Growth / Pro (individual, v0.33) — founder-set display name |
 | plan_group | enum(`individual`,`team`,`supplier`) default `'individual'` | **v0.19, supersedes the v0.15 `plan_type` column of the same shape** — `individual` is the normal self-fulfilled seller plan group (was `plan_type = 'seller'`), `team` is new (leader-facing, §5.31), `supplier` is unchanged (FR-7.10). Renamed rather than adding a fourth column because this **is** the same "which plan family" concept `plan_type` already expressed — `team` is simply a third value, not a parallel axis. Migrating existing `plan_type = 'seller'` rows to `plan_group = 'individual'` is a one-time backfill when Module 14 builds this. |
-| tier_order | integer | **new, v0.19** — this plan's ordered position **within its plan_group** (FR-7.17) — e.g. Individual's Free=0/Starter=1/Standard=2/Pro=3, Team's three sub-tiers 0/1/2, Supplier's Free=0/Premium=1. Replaces the old flat `sort_order` below for within-group ordering; `sort_order` still governs cross-group display order on the pricing page. |
+| tier_order | integer | **new, v0.19** — this plan's ordered position **within its plan_group** (FR-7.17) — e.g. Individual's First Month=0/Starter=1/Growth=2/Pro=3 (v0.33 — there is no Free tier), Team's three sub-tiers 0/1/2, Supplier's Free=0/Premium=1 (the supplier Free tier is unaffected by v0.33 — FR-7.10). Replaces the old flat `sort_order` below for within-group ordering; `sort_order` still governs cross-group display order on the pricing page. |
 | seat_price | numeric(12,2) nullable | **new, v0.19, FR-7.18** — only meaningful when `plan_group = 'team'`: the per-sponsored-seat monthly price this Team tier bills a leader at (Module 11's group-invoice math, FR-7.15, reads this column, not any individual member's own plan price). Null for `individual`/`supplier` plans. |
-| price | numeric(12,2) | 0 for the Free Plan (FR-7.3); for a `team`-group plan, this is the **leader's own** subscription price (if any) for holding that Team tier — separate from `seat_price`, which bills per sponsored member |
+| price | numeric(12,2) | the amount actually billed; for a `team`-group plan, this is the **leader's own** subscription price (if any) for holding that Team tier — separate from `seat_price`, which bills per sponsored member |
+| regular_price | numeric(12,2) nullable | **new, v0.33/FR-7.19, Module 44** — the struck-through "was" price shown beside `price` on the pricing page/plan editor whenever set and higher than `price`. Null for a plan with no regular/discounted distinction (e.g. a tier created outside the launch-pricing seed). `price` remains the single field actually billed — a further "campaign" discount is simply lowering `price` again, never a third field. |
 | currency | text default `'PKR'` | plans aren't store-scoped, so they need their own explicit currency column |
-| billing_interval | enum(`monthly`,`yearly`,`none`) | `none` for the Free Plan, which has no billing cycle (FR-7.3) |
-| yearly_discount_percent | numeric(5,2) nullable | admin-configured discount for the yearly price relative to twelve months at the monthly rate (FR-7.6) |
+| billing_interval | enum(`monthly`,`yearly`,`none`) | `none` for a tier with no recurring charge (e.g. the supplier Free tier) |
+| yearly_discount_percent | numeric(5,2) nullable | admin-configured discount for the yearly price relative to twelve months at the monthly rate (FR-7.6); v0.33's individual-tier launch data uses 16.67% (= 10 months' price for 12) across every tier |
 | is_active | boolean | retiring a plan doesn't delete it — existing subscribers stay on it |
 | sort_order | integer | cross-group display order in the pricing/admin UI (see `tier_order` above for within-group order) |
 
 Unique constraint: `(plan_group, tier_order)` — no two tiers occupy the same position within a group; also the seed/admin-editor's natural idempotency key.
 
 Commission-rate overrides and feature limits for a plan are **not** columns on
-this table — they are `settings_values` rows scoped to `('plan', plans.id)`,
-including the Free Plan's higher default commission (FR-7.3/FR-7.4). The
+this table — they are `settings_values` rows scoped to `('plan', plans.id)`.
+**v0.33:** every individual tier (First Month/Starter/Growth/Pro) carries its
+own explicit `billing.commission_rate_percent`/`catalog.product_limit`
+override — there is no more "Free Plan falls through to the global default"
+case (FR-7.3/FR-7.4). The
 Supplier Premium Plan's flagship gate — access to the multi-store aggregated
 dashboard (FR-3.3) — is the same mechanism: a `settings_values` row scoped to
 the supplier's assigned plan, not a new column here. Every existing
@@ -868,9 +872,9 @@ resolved gate reads from.
 | id | uuid PK | |
 | seller_id | uuid unique FK → sellers.id | one row per seller (built Module 14: only sellers get a real plan assignment yet — suppliers don't have a `subscriptions` row, see FR-7.10's disclosed §14.7 note) |
 | plan_id | uuid FK → plans.id | |
-| status | enum(`active`,`cancelled`) | **built as `active`/`cancelled` only — no `past_due` value.** Non-payment is handled entirely through `seller_invoices`' own status/grace-period mechanism (FR-6.18/FR-7.15); a parallel "past_due" subscription status would be a second, potentially-inconsistent source of truth for the same fact |
-| current_period_end | timestamptz nullable | null for the Free Plan (no billing cycle) and for a sponsored team member (billing flows through the leader's group invoice instead, FR-7.18) |
-| pending_plan_id | uuid FK → plans.id, nullable | set when a seller requests a change while already on an active cycle; applied at `current_period_end` per the simple next-cycle rule (FR-7.5) — no proration in v1.0. When there is no cycle to defer to (Free Plan, or a sponsored member), the change applies immediately instead — a disclosed reading of FR-7.5 for the edge case the SRS text doesn't pin down explicitly |
+| status | enum(`active`,`cancelled`) | **built as `active`/`cancelled` only — no `past_due` value.** Non-payment is handled entirely through the wallet grace ladder / `seller_invoices`' own status/grace-period mechanism (FR-6.18/FR-7.15); a parallel "past_due" subscription status would be a second, potentially-inconsistent source of truth for the same fact |
+| current_period_end | timestamptz nullable | **v0.33:** every seller's own subscription gets a real value here from signup onward (First Month is a real paid tier, not a Free Plan) — null only for a sponsored team member (billing flows through the leader's group invoice instead, FR-7.18) |
+| pending_plan_id | uuid FK → plans.id, nullable | set when a seller requests a change while already on an active cycle; applied at `current_period_end` per the simple next-cycle rule (FR-7.5) — no proration in v1.0. When there is no cycle to defer to (a sponsored member, v0.33 — this can no longer happen at ordinary signup), the change applies immediately instead — a disclosed reading of FR-7.5 for the edge case the SRS text doesn't pin down explicitly |
 | sponsored_by_team_id | uuid FK → teams.id, nullable | **new, v0.17 (FR-7.11–7.15)** — set while this seller is an actively-sponsored team member; null for an unsponsored subscription (including a member who has left, per FR-7.13's graceful downgrade). While set, `plan_id` points directly at the leader's chosen Team tier's own `plans` row — every existing plan-gated check resolves correctly with no special-casing, per FR-7.17 |
 
 Index: `idx_subscriptions_seller (seller_id)`.
@@ -1020,7 +1024,7 @@ No RLS - global, admin-gated at the application layer, same category as
 ### `settings_definitions` (global — the Settings Registry catalog)
 | Column | Type | Notes |
 |---|---|---|
-| key | text PK | e.g. `billing.commission_rate`, `payouts.hold_days`, `payouts.reserve_percentage`, `payouts.scheduled_mode_enabled`, `payouts.frozen`, `payments.cod_enabled`, `catalog.product_limit`, `theme.coded_mode_enabled`, `platform.maintenance_mode`, `cart.abandoned_after_hours`, `lifecycle.dormant_warning_days`/`dormant_suspend_days`/`dormant_archive_days`, `catalog.low_stock_threshold`, `finance.monthly_infra_cost`, `plans.free_store_limit_per_identity`, `billing.launch_campaign_expiry`/`launch_campaign_seller_limit`, **new in Module 18 (§5.24):** `theme.premium_tier_enabled` (closes the plan-tier gate Module 4's `Theme` model doc comment deferred), `external_api.template_install_rate_limit_per_hour`/`external_api.product_feed_rate_limit_per_hour`, `template_store.showcase_url`/`social_media_saas.marketing_handoff_base_url` (both empty by default — no hard dependency on either external product existing yet) |
+| key | text PK | e.g. `billing.commission_rate`, `payouts.hold_days`, `payouts.reserve_percentage`, `payouts.scheduled_mode_enabled`, `payouts.frozen`, `payments.cod_enabled`, `catalog.product_limit`, `theme.coded_mode_enabled`, `platform.maintenance_mode`, `cart.abandoned_after_hours`, `lifecycle.dormant_warning_days`/`dormant_suspend_days`/`dormant_archive_days`, `catalog.low_stock_threshold`, `finance.monthly_infra_cost`, `billing.launch_campaign_expiry`/`launch_campaign_seller_limit` (`plans.free_store_limit_per_identity` retired v0.33/Module 44 — no Free Plan left to guard a velocity limit around), **new in Module 18 (§5.24):** `theme.premium_tier_enabled` (closes the plan-tier gate Module 4's `Theme` model doc comment deferred), `external_api.template_install_rate_limit_per_hour`/`external_api.product_feed_rate_limit_per_hour`, `template_store.showcase_url`/`social_media_saas.marketing_handoff_base_url` (both empty by default — no hard dependency on either external product existing yet) |
 | value_type | enum(`boolean`,`number`,`string`,`json`) | |
 | allowed_scopes | text[] | subset of `{global, plan, seller, category, store}` |
 | default_value | jsonb | used when no `settings_values` row exists for a given scope |

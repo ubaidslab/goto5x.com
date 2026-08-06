@@ -17,6 +17,14 @@ export class CreatePlanDto {
   @Min(0)
   price!: number;
 
+  // v0.33/FR-7.19 - the struck-through "was" price shown beside `price` on
+  // the plan editor and public pricing page. Optional - a tier with no
+  // regular/discounted distinction simply omits it.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  regularPrice?: number;
+
   // FR-7.18 - only meaningful for planGroup = "team"; PlansService rejects
   // it otherwise.
   @IsOptional()

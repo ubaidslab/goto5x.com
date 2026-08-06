@@ -3437,8 +3437,8 @@ build-order/slotting record. Founder-specified severity order, confirmed
 as the right order after research — no changes:
 
 - **Module 44 — No Free Plan; First Month paid entry; full pricing
-  data; pricing page (🔴 CRITICAL, items 1+2 combined).** Combined into
-  one module because item 2's pricing figures are literally the data
+  data; pricing page (🔴 CRITICAL, items 1+2 combined). BUILT.** Combined
+  into one module because item 2's pricing figures are literally the data
   item 1's plan seed needs — they were never separable work. Touches the
   most call sites of any module in this batch (five `Plan` lookups
   across signup/downgrade, three of which are the audit's flagged
@@ -3447,6 +3447,45 @@ as the right order after research — no changes:
   either reads plan/commission data this module seeds (45, 48) or is
   independent of it (46, 47) — building it first means nothing downstream
   is built against a plan model about to change.
+  - New `Plan.regularPrice` column (nullable, migration
+    `20260806100000_module44_first_month_pricing`); `SubscriptionsService.
+    assignFirstMonthAtSignup()`/`scheduleDowngradeToStarterAtPeriodEnd()`
+    replace the removed Free-Plan methods; `PlanFeeDebitService.
+    debitDuePlanFees()` now calls `WalletGraceLadderService.
+    pauseActiveStores()` (made public) on insufficient balance instead of
+    a Free-Plan fallback — the founder's explicit "unify the two
+    mechanisms" instruction; `debitDueSupplierPlanFees()`'s silent
+    Free-tier reassignment removed too (no replacement enforcement built —
+    disclosed scope decision); `FreeStoreLimitService` and
+    `plans.free_store_limit_per_identity` deleted outright;
+    `UnitEconomicsService.computeSummary()`'s free-vs-paid split replaced
+    with a single total.
+  - Full v0.33 launch pricing seeded (First Month/Starter/Growth/Pro:
+    price, regularPrice, 16.67% yearly discount, per-tier
+    `billing.commission_rate_percent`/`catalog.product_limit` overrides);
+    `staff.max_accounts`/`branding.powered_by_removable` re-mapped to the
+    new tier names. New `marketing.most_popular_individual_tier_order`
+    Settings Registry key drives the pricing page's badge (launch
+    default: Growth) — never hard-coded.
+  - `apps/web/app/pricing/page.tsx` rebuilt: struck-through regular
+    pricing, data-driven "Most Popular" badge, long per-tier feature
+    copy, a Shopify-comparison line. Admin plan editor gained a
+    regular-price column/input.
+  - Disclosed scope decisions (not built, beyond the six named audit
+    items): no new store-count-per-plan enforcement (the "1 store"
+    pricing-table language is descriptive copy only); no retroactive
+    plan-gating for the ~10 other named marketing features (pricing-page
+    copy only — only commission %, product limit, staff accounts, and
+    branding removal got real per-tier enforcement, since those already
+    had functioning gating mechanisms); no new supplier-dashboard
+    enforcement for supplier plan-fee non-payment.
+  - New `test/e2e/module44-first-month-pricing.e2e-spec.ts` covering the
+    founder's explicit test list; every pre-existing e2e test whose
+    fixtures assumed a Free-Plan signup default or the old 1%
+    global-default commission rate updated for First Month's real 2%
+    plan-scoped override and real billing cycle.
+  - Verified: full local typecheck (api + web), full local e2e suite, and
+    a real CI-verified green run on the pushed commit.
 - **Module 45 — Commission rate hard cap (🟠).** Small and isolated
   (a `SettingsDefinition.validation.max` change plus a rejection test) —
   research confirmed both the generic min/max validation mechanism and

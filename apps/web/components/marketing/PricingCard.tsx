@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 export function PricingCard({
   name,
   priceLabel,
+  regularPriceLabel,
   cadence,
   description,
   features,
@@ -14,6 +15,7 @@ export function PricingCard({
 }: {
   name: string;
   priceLabel: string;
+  regularPriceLabel?: string;
   cadence?: string;
   description: string;
   features: string[];
@@ -37,7 +39,10 @@ export function PricingCard({
       )}
       <h3 className={cn("font-display text-h3 font-bold", featured ? "text-canvas" : "text-ink")}>{name}</h3>
       <p className={cn("mt-2 text-sm", featured ? "text-canvas/70" : "text-ink-muted")}>{description}</p>
-      <div className="mt-6 flex items-baseline gap-1">
+      <div className="mt-6 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        {regularPriceLabel && (
+          <span className={cn("text-base line-through", featured ? "text-canvas/50" : "text-ink-faint")}>{regularPriceLabel}</span>
+        )}
         <span className={cn("font-display text-h1 font-bold", featured ? "text-canvas" : "text-ink")}>{priceLabel}</span>
         {cadence && <span className={cn("text-sm", featured ? "text-canvas/70" : "text-ink-faint")}>/{cadence}</span>}
       </div>

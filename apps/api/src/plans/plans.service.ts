@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { $Enums } from "@prisma/client";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { CreatePlanDto } from "./dto/create-plan.dto";
 import { computeYearlyPrice } from "./plan-pricing.util";
 import { UpdatePlanDto } from "./dto/update-plan.dto";
@@ -18,15 +19,26 @@ export class PlansService {
   constructor(
     private readonly prisma: PrismaRuntimeService,
     private readonly auditLog: AuditLogService,
+    private readonly settings: SettingsService,
   ) {}
 
-  /** Public pricing-page data - grouped and tier-ordered, active plans only unless includeInactive. */
+  /**
+   * Public pricing-page data - grouped and tier-ordered, active plans only
+   * unless includeInactive. FR-7.19 - `mostPopular` is Settings-Registry-
+   * driven (marketing.most_popular_individual_tier_order), never a
+   * hard-coded tier name, so the founder can move the badge with no
+   * deploy.
+   */
   async listGrouped(includeInactive = false) {
     const plans = await this.prisma.plan.findMany({
       where: includeInactive ? {} : { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { tierOrder: "asc" }],
     });
-    const withYearly = plans.map(this.withYearlyPrice);
+    const mostPopularTierOrder = await this.settings.resolve<number>("marketing.most_popular_individual_tier_order");
+    const withYearly = plans.map((plan) => ({
+      ...this.withYearlyPrice(plan),
+      mostPopular: plan.planGroup === "individual" && plan.tierOrder === mostPopularTierOrder,
+    }));
     const groups: Record<string, typeof withYearly> = { individual: [], team: [], supplier: [] };
     for (const plan of withYearly) {
       groups[plan.planGroup].push(plan);
@@ -61,6 +73,7 @@ export class PlansService {
         tierOrder,
         seatPrice: dto.seatPrice,
         price: dto.price,
+        regularPrice: dto.regularPrice,
         currency: dto.currency ?? "PKR",
         billingInterval: dto.billingInterval,
         yearlyDiscountPercent: dto.yearlyDiscountPercent,
@@ -87,6 +100,7 @@ export class PlansService {
         tierOrder: dto.tierOrder,
         seatPrice: dto.seatPrice,
         price: dto.price,
+        regularPrice: dto.regularPrice,
         currency: dto.currency,
         billingInterval: dto.billingInterval,
         yearlyDiscountPercent: dto.yearlyDiscountPercent,

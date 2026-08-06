@@ -2,8 +2,8 @@ import { PrismaClient } from "@prisma/client";
 
 /**
  * Module 35's Settings Registry key (SRS §5.52/FR-52.5/52.6) - global
- * defaultValue 0 covers Free (and anything unlisted), same "Free gets
- * X, paid tiers get a plan-scoped override" mechanism as
+ * defaultValue 0 covers any plan with no override, same "entry tiers get
+ * zero, higher tiers get a plan-scoped override" mechanism as
  * branding.powered_by_removable (themes.seed.ts). Must run after
  * seedPlansData() - the paid plan rows it queries must already exist.
  */
@@ -22,12 +22,19 @@ export async function seedStaffSettings(prisma: PrismaClient) {
     update: {},
   });
 
-  const maxAccountsByTier: Record<number, number> = { 1: 2, 2: 5, 3: 10 };
+  // v0.33 - First Month/Starter (individual tierOrder 0/1) carry no
+  // staff-account capacity (SRS "Plans & Pricing" launch defaults); Growth
+  // gets 3, Pro gets 10. Team-group tiers are untouched by the v0.33
+  // rework, so they keep their own (pre-existing) mapping by tierOrder.
+  const maxAccountsByTierAndGroup: Record<"individual" | "team", Record<number, number>> = {
+    individual: { 2: 3, 3: 10 },
+    team: { 1: 2, 2: 5 },
+  };
   const paidPlans = await prisma.plan.findMany({
     where: { planGroup: { in: ["individual", "team"] }, tierOrder: { gt: 0 } },
   });
   for (const plan of paidPlans) {
-    const value = maxAccountsByTier[plan.tierOrder];
+    const value = maxAccountsByTierAndGroup[plan.planGroup as "individual" | "team"]?.[plan.tierOrder];
     if (value == null) continue;
     await prisma.settingsValue.upsert({
       where: { uniq_settings_scope: { definitionKey: "staff.max_accounts", scopeType: "plan", scopeId: plan.id } },

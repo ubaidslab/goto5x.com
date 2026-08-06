@@ -6,6 +6,7 @@ import { round2 } from "../orders/money.util";
 import { ProgramCommissionService } from "./program-commission.service";
 import { WalletService } from "./wallet.service";
 import { SupplierWalletService } from "./supplier-wallet.service";
+import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
 
 /** The calendar month a debit is "for" - team-seat/device-slot debits are idempotent per seller per this window. */
 function currentCalendarMonthStart(now: Date): Date {
@@ -35,6 +36,7 @@ export class PlanFeeDebitService {
     private readonly wallet: WalletService,
     private readonly supplierWallet: SupplierWalletService,
     private readonly programCommission: ProgramCommissionService,
+    private readonly walletGraceLadder: WalletGraceLadderService,
   ) {}
 
   /**
@@ -46,6 +48,13 @@ export class PlanFeeDebitService {
    * DataExportModule (which itself imports MediaModule -> AuthModule ->
    * GrowthProgramsModule -> BillingModule - a real cycle this avoids
    * entirely rather than papering over with forwardRef()).
+   *
+   * `downgraded` (v0.33) - now a mixed counter: on the seller side it
+   * counts stores PAUSED for plan-fee non-payment (there is no more Free
+   * Plan to fall back to - see debitDuePlanFees()); on the supplier side it
+   * still counts a real downgrade to the (legitimate, FR-7.10) supplier
+   * Free tier. Field name kept as-is to avoid churning every caller/test
+   * for a rename with no behavioral stake.
    */
   async runMonthlyDebitSweep(now = new Date()): Promise<{ debited: number; downgraded: number; renewedSellerIds: string[] }> {
     let debited = 0;
@@ -60,16 +69,26 @@ export class PlanFeeDebitService {
     return { debited, downgraded, renewedSellerIds };
   }
 
-  /** FR-7.10 supplement - the supplier-side mirror of debitDuePlanFees, debiting the separate supplier wallet. */
+  /**
+   * FR-7.10 supplement - the supplier-side mirror of debitDuePlanFees,
+   * debiting the separate supplier wallet. v0.33: the silent reassignment
+   * to the supplier Free tier on non-payment is REMOVED (per the founder's
+   * explicit "no silent Free-Plan fallback anywhere" instruction) - an
+   * overdue supplier subscription now simply stays overdue (currentPeriodEnd
+   * left in the past) rather than being auto-downgraded. Disclosed scope
+   * decision: no new supplier-dashboard enforcement was added for
+   * non-payment in this module - that's new scope beyond the founder's
+   * named list. `downgraded` is always 0 here now; the parameter/counter is
+   * kept only so debitDueSupplierPlanFees stays call-compatible with
+   * runMonthlyDebitSweep's shared onDowngrade callback.
+   */
   private async debitDueSupplierPlanFees(now: Date, onDowngrade: (count: number) => void): Promise<number> {
     const due = await this.prismaAdmin.subscription.findMany({
       where: { supplierId: { not: null }, currentPeriodEnd: { lte: now } },
       include: { plan: true },
     });
 
-    const freeSupplierPlan = await this.prismaAdmin.plan.findFirst({ where: { planGroup: "supplier", tierOrder: 0 } });
     let debited = 0;
-    let downgraded = 0;
 
     for (const subscription of due) {
       if (Number(subscription.plan.price) <= 0) continue;
@@ -86,29 +105,34 @@ export class PlanFeeDebitService {
           data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.plan.billingInterval as "monthly" | "yearly") },
         });
         debited += 1;
-      } else if (freeSupplierPlan) {
-        await this.prismaAdmin.subscription.update({
-          where: { id: subscription.id },
-          data: { planId: freeSupplierPlan.id, currentPeriodEnd: null },
-        });
-        downgraded += 1;
       }
+      // else: insufficient balance - leave the subscription overdue
+      // (currentPeriodEnd stays in the past); no downgrade, no pause.
     }
 
-    onDowngrade(downgraded);
+    onDowngrade(0);
     return debited;
   }
 
-  /** FR-7.2 (revised v0.24) - insufficient balance downgrades to Free, never orders_paused/suspension. */
+  /**
+   * FR-7.2 (revised v0.33) - there is no more Free Plan to fall back to.
+   * Insufficient balance now pauses every one of the seller's active
+   * stores via WalletGraceLadderService.pauseActiveStores() - the exact
+   * same mechanism the wallet-low-balance grace ladder already uses, per
+   * the founder's explicit "unify the two mechanisms" instruction. The
+   * subscription itself is left overdue (currentPeriodEnd stays in the
+   * past); it never gets reassigned to another plan, so the seller resumes
+   * on the same plan and cycle the moment they pay and the store is
+   * restored (WalletGraceLadderService.checkAndRestore()).
+   */
   private async debitDuePlanFees(now: Date, onDowngrade: (count: number) => void, onRenewed: (sellerId: string) => void): Promise<number> {
     const due = await this.prismaAdmin.subscription.findMany({
       where: { sellerId: { not: null }, currentPeriodEnd: { lte: now } },
       include: { plan: true },
     });
 
-    const freePlan = await this.prismaAdmin.plan.findFirst({ where: { planGroup: "individual", tierOrder: 0 } });
     let debited = 0;
-    let downgraded = 0;
+    let paused = 0;
 
     for (const subscription of due) {
       // Team-sponsored members carry currentPeriodEnd: null (SubscriptionsService.sponsorMember) so
@@ -139,16 +163,13 @@ export class PlanFeeDebitService {
         await this.programCommission.accrueReferralCommissionIfApplicable(subscription.sellerId!, round2(fee), subscription.plan.currency);
         onRenewed(subscription.sellerId!);
         debited += 1;
-      } else if (freePlan) {
-        await this.prismaAdmin.subscription.update({
-          where: { id: subscription.id },
-          data: { planId: freePlan.id, pendingPlanId: null, currentPeriodEnd: null },
-        });
-        downgraded += 1;
+      } else {
+        const result = await this.walletGraceLadder.pauseActiveStores(subscription.sellerId!);
+        if (result.count > 0) paused += 1;
       }
     }
 
-    onDowngrade(downgraded);
+    onDowngrade(paused);
     return debited;
   }
 

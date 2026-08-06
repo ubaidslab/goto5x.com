@@ -11,10 +11,8 @@ interface Analytics {
 }
 
 interface UnitEconomics {
-  freeStoreCount: number;
-  paidStoreCount: number;
-  commissionFromFreeStores: number;
-  commissionFromPaidStores: number;
+  storeCount: number;
+  totalCommission: number;
   monthlyInfraCost: number;
   breakEven: number;
 }
@@ -92,20 +90,12 @@ export default function AdminAnalyticsPage() {
       <table border={1} cellPadding={4}>
         <tbody>
           <tr>
-            <td>Free-plan stores</td>
-            <td>{unitEconomics.freeStoreCount}</td>
+            <td>Total stores</td>
+            <td>{unitEconomics.storeCount}</td>
           </tr>
           <tr>
-            <td>Paid-plan stores</td>
-            <td>{unitEconomics.paidStoreCount}</td>
-          </tr>
-          <tr>
-            <td>Commission from free-plan stores</td>
-            <td>{unitEconomics.commissionFromFreeStores.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td>Commission from paid-plan stores</td>
-            <td>{unitEconomics.commissionFromPaidStores.toFixed(2)}</td>
+            <td>Total commission earned</td>
+            <td>{unitEconomics.totalCommission.toFixed(2)}</td>
           </tr>
           <tr>
             <td>Monthly infra cost (admin-entered)</td>

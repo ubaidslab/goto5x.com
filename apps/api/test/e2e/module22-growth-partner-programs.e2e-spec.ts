@@ -201,7 +201,8 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       expect(attributionsAfter[0].participantId).toBe(attribution.participantId);
 
       // --- Commission accrual: ONLY from the referred seller's own plan-subscription fee ---
-      await topUpAndVerify(referred.token, adminToken, 5000);
+      // v0.33 - Starter now costs 5799 (was 1500), so the top-up must cover it.
+      await topUpAndVerify(referred.token, adminToken, 10000);
 
       // A wallet top-up must NEVER generate referral commission.
       const commissionAfterTopup = await superuser.ledgerEntry.findMany({
@@ -218,13 +219,17 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
 
       // Only the referred seller's OWN plan-subscription fee debit generates referral commission, at the configured rate.
       const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      await request(app.getHttpServer())
-        .post("/sellers/me/subscription/change")
-        .set("Authorization", `Bearer ${referred.token}`)
-        .send({ planId: starterPlan.id });
+      // v0.33 - a real billing cycle is already active from signup (First
+      // Month), so the self-service change endpoint would defer this to
+      // the next cycle (FR-7.5) rather than switch planId immediately;
+      // write the subscription row directly to isolate this test to the
+      // referral-commission-on-plan-fee question.
       const referredSubscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: referred.sellerId } });
       const dueDate = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
-      await superuser.subscription.update({ where: { id: referredSubscription.id }, data: { currentPeriodEnd: dueDate } });
+      await superuser.subscription.update({
+        where: { id: referredSubscription.id },
+        data: { planId: starterPlan.id, pendingPlanId: null, currentPeriodEnd: dueDate },
+      });
 
       const planFeeDebit = app.get(PlanFeeDebitService);
       await planFeeDebit.runMonthlyDebitSweep(dueDate);

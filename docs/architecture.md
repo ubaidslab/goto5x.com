@@ -344,12 +344,13 @@ ways, not just documented:
 
 **Storefront branding ("Managed by UZEYN"):** a small mark in the shared
 `SiteFooter` — never inside a template package, so no template can suppress
-it itself — mandatory on the Free plan (the platform's own free organic
-marketing) and removable only once a paid plan grants the capability.
+it itself — mandatory on First Month/Starter/Growth (the platform's own free
+organic marketing, v0.33) and removable only once a seller reaches Pro.
 Deliberately two independent Settings Registry keys rather than one:
 `branding.powered_by_removable` (plan-scoped capability, off by default, on
-for every paid individual/team tier) and `branding.powered_by_hidden`
-(store-scoped seller preference). `BrandingService.getVisibility()` ANDs
+for Pro among individual tiers and every paid team tier) and
+`branding.powered_by_hidden` (store-scoped seller preference).
+`BrandingService.getVisibility()` ANDs
 both and is the only place that ever decides visibility — a seller who hides
 the mark, then downgrades to Free, reverts to it showing automatically,
 proven by e2e test rather than left as an assumption.

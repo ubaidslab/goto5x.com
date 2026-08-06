@@ -120,11 +120,12 @@ export async function seedModule4Settings(prisma: PrismaClient) {
  *
  *  - `branding.powered_by_removable` (plan-scoped capability): whether the
  *    seller's CURRENT plan permits hiding the mark at all. Global default
- *    `false` - a seller on the Free plan (or any plan with no override) can
- *    never hide it, which is the founder-mandated "mandatory on Free, our
- *    free organic marketing" invariant. Seeded `true` for every paid
- *    individual/team tier below, so it's genuinely live, not an inert
- *    future gate.
+ *    `false` - any plan with no override can never hide it. v0.33/SRS
+ *    "Plans & Pricing": First Month and Starter both carry the mark forced
+ *    (founder-mandated "our free organic marketing" invariant); only Pro
+ *    (individual tierOrder 3) makes it removable - Growth does not. Every
+ *    paid team tier keeps the pre-v0.33 behavior (unaffected by the
+ *    individual-tier pricing rework), so it's still seeded `true` below.
  *  - `branding.powered_by_hidden` (store-scoped preference): the seller's
  *    own choice, once their plan permits it. Storing this separately from
  *    the capability means a seller who sets it, then downgrades to Free,
@@ -157,13 +158,20 @@ export async function seedTemplatesBrandingSettings(prisma: PrismaClient) {
     update: {},
   });
 
-  // Every paid individual/team tier gets the capability - must run after
-  // seedPlansData() so these rows exist. Free (tierOrder 0) is
-  // deliberately excluded, keeping the mark mandatory there.
-  const paidPlans = await prisma.plan.findMany({
-    where: { planGroup: { in: ["individual", "team"] }, tierOrder: { gt: 0 } },
+  // v0.33 - only individual Pro (tierOrder 3) gets the capability among
+  // individual tiers now (First Month/Starter/Growth all keep the mark
+  // forced); every paid team tier keeps the pre-v0.33 "any paid tier"
+  // behavior, unaffected by the individual pricing rework. Must run after
+  // seedPlansData() so these rows exist.
+  const eligiblePlans = await prisma.plan.findMany({
+    where: {
+      OR: [
+        { planGroup: "individual", tierOrder: 3 },
+        { planGroup: "team", tierOrder: { gt: 0 } },
+      ],
+    },
   });
-  for (const plan of paidPlans) {
+  for (const plan of eligiblePlans) {
     await prisma.settingsValue.upsert({
       where: { uniq_settings_scope: { definitionKey: "branding.powered_by_removable", scopeType: "plan", scopeId: plan.id } },
       create: { definitionKey: "branding.powered_by_removable", scopeType: "plan", scopeId: plan.id, value: true },

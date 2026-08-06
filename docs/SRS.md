@@ -2622,10 +2622,12 @@ Every threshold below is a Settings Registry entry, not a hard-coded constant.
   build or accidentally leave open, and, as of v0.33, no free-tier code
   path either.
 - FR-23.4: **Unit-economics admin dashboard (reworded v0.33 — the
-  free-vs-paid split is retired along with the Free Plan itself)** —
-  extends FR-8.10 with: active store counts by tier, commission earned
-  per tier, per-store storage usage, and a monthly platform-cost-vs-
-  revenue break-even view where the cost figure is **admin-entered**
+  free-vs-paid split is retired along with the Free Plan itself, and NOT
+  replaced with a per-tier breakdown — a disclosed scope decision; a
+  per-tier view was never one of the audit's six named items)** —
+  extends FR-8.10 with: total active store count, total commission
+  earned, per-store storage usage, and a monthly platform-cost-vs-revenue
+  break-even view where the cost figure is **admin-entered**
   (`finance.monthly_infra_cost`) rather than computed.
 - FR-23.5: **Velocity/abuse limits (reworded v0.33 — the free-store
   velocity limit is retired; it existed only to guard a tier that no
@@ -4785,10 +4787,11 @@ next module starts. Each item is written to be testable, not aspirational.
       color), selected by theme name via a shared registry so the
       customizer's live preview and the real storefront resolve identically
       by construction; "Start from blank" seeds every section hidden.
-- [x] **Storefront branding mark (FR-1.10):** mandatory (shown, unremovable)
-      on the Free plan; a paid plan can hide it; downgrading to Free reverts
-      it to shown even though the stored preference is untouched — proven by
-      e2e (`branding.e2e-spec.ts`), including cross-tenant isolation on the
+- [x] **Storefront branding mark (FR-1.10, tier mapping revised v0.33):**
+      mandatory (shown, unremovable) on First Month/Starter/Growth; only Pro
+      can hide it; downgrading off Pro reverts it to shown even though the
+      stored preference is untouched — proven by e2e
+      (`branding.e2e-spec.ts`), including cross-tenant isolation on the
       preference itself.
 - [x] **THE ISOLATION RULE, proven three ways:** (1) structural — cart/
       checkout/order-status/wallet/verification components live entirely
@@ -5033,39 +5036,50 @@ going forward, per FR-6.28.
       restores instantly via the same existing restore path — there is no
       separate "floor" restore threshold (FR-6.26)
 
-### 14.7 Subscription Plans, Pricing & Billing (built Module 14)
+### 14.7 Subscription Plans, Pricing & Billing (built Module 14; no-Free-Plan/First-Month rework v0.33 Module 44)
 - [x] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
       (FR-8.2). Scoped narrowly to plan groups/tiers — the rest of FR-8.2's
       admin terminal (feature flags, commission/hold settings, etc.) is
       Module 17's job, per the build-plan's own module sequence
-- [x] Free Plan enforces its limits correctly and carries the correct (higher)
-      default commission rate (FR-7.3)
-- [x] A higher-tier plan's commission rate correctly overrides the Free Plan's via
-      Settings Registry precedence (FR-7.4)
-- [x] A plan change applied mid-cycle takes effect at the next billing cycle, not
-      immediately (FR-7.5). **Disclosed decision:** a Free-Plan seller has no
-      active cycle to defer to, so their first change applies immediately and
-      starts one — the SRS text doesn't pin this edge case explicitly; this is
-      the only reading consistent with "next cycle" meaning anything at all
-      for a seller who has never had one
+- [x] **v0.33:** First Month (the signup default, individual tierOrder 0)
+      enforces its own plan-scoped limits correctly and carries its own
+      (higher, 2%) plan-scoped commission-rate override — there is no
+      Free Plan anywhere in the seeded data (FR-7.3)
+- [x] A higher-tier plan's commission rate correctly overrides a lower
+      tier's via Settings Registry precedence (FR-7.4) — proven between
+      First Month's 2% and Starter's own explicit override
+- [x] A plan change applied mid-cycle takes effect at the next billing
+      cycle, not immediately (FR-7.5). **v0.33:** every seller now has a
+      real billing cycle from signup (First Month), so even the FIRST
+      self-service plan-change request defers to the next cycle — the
+      old "no cycle yet, applies immediately" edge case no longer occurs
+      via ordinary signup (it remains reachable for a sponsored team
+      member changing their own plan, since sponsorship still carries no
+      cycle, FR-7.18)
 - [x] Yearly billing calculates the discounted price correctly (FR-7.6) — a
-      derived `yearlyPrice` field, never a second stored price
+      derived `yearlyPrice` field, never a second stored price. **v0.33:**
+      every individual tier's launch data uses a 16.67% yearly discount
+      (= 10 months' price for 12), consistent across First Month/Starter/
+      Growth/Pro
 - [x] A launch-campaign setting with an expiry or a counter condition stops
       applying correctly once its condition is met (FR-7.7)
 - [x] Plan-scoped Settings Registry entries (product limit, template tier,
       coded-theme access) enforce correctly for a seller on that plan
-- [x] Billing-cycle mechanics are correct for a full period even though v1.0
-      launches on a Free Plan + simple paid tiers
-- [x] **Plan-fee collection (FR-7.2, revised v0.24 — built Module 20):** a
-      seller on a paid plan is debited the plan fee from their prepaid
-      wallet monthly-in-advance (§5.6e/FR-6.24), not via a
-      `seller_invoices` row; insufficient balance downgrades to Free
-      (never `orders_paused`, never suspends the store — that path is the
-      commission-wallet floor's job alone). The `plan_subscription`/
-      `group_sponsorship` `seller_invoices` schema from Module 14 stays
-      dormant (FR-6.28)
-- [x] An admin can grant any plan, including Free, directly to a specific seller,
-      bypassing checkout; the grant is captured in `admin_audit_logs` with the
+- [x] **v0.33:** billing-cycle mechanics are correct for a full period —
+      there is no Free Plan; every seller's cycle starts real and paid
+      from signup (First Month)
+- [x] **Plan-fee collection (FR-7.2, revised v0.24, revised again v0.33
+      Module 44):** a seller on a paid plan is debited the plan fee from
+      their prepaid wallet monthly-in-advance (§5.6e/FR-6.24), not via a
+      `seller_invoices` row; insufficient balance now **pauses orders**
+      (`orders_paused`) through the exact same
+      `WalletGraceLadderService.pauseActiveStores()` path the wallet
+      low-balance grace ladder already uses — never a downgrade to any
+      other plan, since there is no Free Plan to fall back to. The
+      `plan_subscription`/`group_sponsorship` `seller_invoices` schema
+      from Module 14 stays dormant (FR-6.28)
+- [x] An admin can grant any plan directly to a specific seller, bypassing
+      checkout; the grant is captured in `admin_audit_logs` with the
       seller's before/after plan (FR-7.8)
 - [x] A platform-level subscription promo code redeems correctly against
       subscription billing, respects its redemption limit/expiry, and cannot be
@@ -5149,12 +5163,13 @@ going forward, per FR-6.28.
 - [x] Platform brand assets (logo, favicon, hero images) are editable from the
       admin terminal and versioned the same way as content pages (FR-12.3) —
       built Module 17
-- [x] A Free-Plan seller with a marketplace template entitlement still sees only
-      the base template tier otherwise — confirming FR-7.1/FR-8.6 plan-tier
-      gating and FR-24.5 entitlement gating remain independently correct after
-      FR-12.3 (no regression introduced by brand-asset management). Holds by
-      construction: `ContentPagesModule`/`BrandAssetsService` touch no theme-
-      tier or entitlement code path at all
+- [x] A seller on the entry tier with a marketplace template entitlement still
+      sees only the base template tier otherwise — confirming FR-7.1/FR-8.6
+      plan-tier gating and FR-24.5 entitlement gating remain independently
+      correct after FR-12.3 (no regression introduced by brand-asset
+      management). Holds by construction: `ContentPagesModule`/
+      `BrandAssetsService` touch no theme-tier or entitlement code path at
+      all
 - [x] A banner/popup/in-app-notification message targeted at "plan X" is visible
       only to sellers on plan X, one targeted at a specific seller is visible
       only to that seller, and one targeted "all" is visible platform-wide
@@ -5484,36 +5499,50 @@ going forward, per FR-6.28.
       keeping the default is a valid, deliberate choice with no other
       action to detect it by
 
-### 14.21 Business Guard-Rails & Platform Economics (built Module 14)
-- [x] A Free-Plan store's product creation is rejected once its plan's
-      product-count limit is reached — not merely warned (FR-23.1). Storage
-      quota metering also built (`media_assets.size_bytes` + `catalog.storage_quota_bytes`)
+### 14.21 Business Guard-Rails & Platform Economics (built Module 14; reworked v0.33 Module 44 — no Free Plan)
+- [x] A store's product creation is rejected once its plan's product-count
+      limit is reached — not merely warned (FR-23.1); proven against
+      First Month's own plan-scoped override, since a global-scope test
+      value is now shadowed by it (Settings Registry precedence: plan
+      beats global). Storage quota metering also built
+      (`media_assets.size_bytes` + `catalog.storage_quota_bytes`)
 - [x] The dormant-store job correctly progresses a test store through warning →
       suspend → archive at the configured thresholds, and not before them (FR-23.2).
       Each threshold is measured from the *previous* stage's own trigger
       (`dormant_warning_sent_at` anchors suspend; `updated_at`, bumped
       automatically the moment this job suspends a store, anchors archive) —
       no third timestamp column needed beyond the two build-plan.md already
-      reserved on `stores` for this feature
-- [x] A paid-plan-only feature is verifiably inaccessible on the Free Plan
-      regardless of account age — no "trial expired" code path exists to
-      accidentally leave open (FR-23.3)
-- [x] The unit-economics dashboard correctly separates free-vs-paid store counts
-      and commission, and the break-even view reflects the admin-entered cost
-      figure against computed revenue (FR-23.4). **Disclosed scope decision:**
-      built as data only (`UnitEconomicsService`/`GET /admin/unit-economics`) —
-      no dashboard UI. FR-8.10 (the real-time analytics dashboard this
-      extends) isn't built until Module 17 per the module sequence's own
-      "Zero dashboard work in this revision" note; there is nothing yet for
-      a "unit-economics dashboard" to be a tab within
-- [x] A test identity is correctly blocked from creating more than the configured
-      number of Free-Plan stores (FR-23.5)
-- [x] **Financial Truth Invariant (§3.12, v0.10):** the free-vs-paid store
-      counts and commission figures in FR-23.4's unit-economics data are
-      unaffected by a deliberately-constructed unpaid order — holds by
-      construction, since `UnitEconomicsService` only sums `ledger_entries`
-      (which FR-6.16 never writes for an unpaid order), the same rule
-      already proven for `ledger_entries` itself in Module 11's own suite
+      reserved on `stores` for this feature. Plan-agnostic — applies to
+      any store regardless of tier
+- [x] A paid-plan-only feature is verifiably inaccessible on First Month
+      (the signup default, v0.33 — no override there) regardless of
+      account age — no "trial expired" code path exists to accidentally
+      leave open (FR-23.3)
+- [x] The unit-economics dashboard reports a single total active-store
+      count and total commission earned (v0.33 — the free-vs-paid split
+      is retired, not replaced with a per-tier breakdown, a disclosed
+      scope decision), and the break-even view reflects the admin-entered
+      cost figure against computed revenue (FR-23.4). **Disclosed scope
+      decision:** built as data only (`UnitEconomicsService`/
+      `GET /admin/unit-economics`) — no dashboard UI. FR-8.10 (the
+      real-time analytics dashboard this extends) isn't built until
+      Module 17 per the module sequence's own "Zero dashboard work in
+      this revision" note; there is nothing yet for a "unit-economics
+      dashboard" to be a tab within
+- [x] **v0.33 (Module 44):** `FreeStoreLimitService` and the per-identity
+      Free-store velocity limit it enforced (FR-23.5, formerly checked
+      here) are retired outright — there is no Free Plan left to guard a
+      velocity limit around. A second store for the same verified
+      identity is no longer blocked by this mechanism (proven in
+      `trust-safety.e2e-spec.ts`'s name-consistency test, which used to
+      need a settings override to create a second store and no longer
+      does)
+- [x] **Financial Truth Invariant (§3.12, v0.10):** the total commission
+      figure in FR-23.4's unit-economics data is unaffected by a
+      deliberately-constructed unpaid order — holds by construction,
+      since `UnitEconomicsService` only sums `ledger_entries` (which
+      FR-6.16 never writes for an unpaid order), the same rule already
+      proven for `ledger_entries` itself in Module 11's own suite
 
 ### 14.22 External-SaaS Integration Hooks
 - [x] A store's theme-selection UI functions fully (built-in free templates
@@ -5530,10 +5559,10 @@ going forward, per FR-6.28.
 - [x] A revoke call correctly removes a seller's entitlement without affecting
       any other seller's entitlement to the same theme, or the `themes` catalog
       entry itself (FR-24.6)
-- [x] A Free-Plan seller who receives a marketplace template entitlement can use
-      that one template despite their plan's tier otherwise excluding premium
-      templates — the two gating checks (entitlement, plan tier) are verified
-      independently (FR-24.5). **Closes a real, disclosed gap**: `themes`'s
+- [x] A seller on the entry tier who receives a marketplace template
+      entitlement can use that one template despite their plan's tier
+      otherwise excluding premium templates — the two gating checks
+      (entitlement, plan tier) are verified independently (FR-24.5). **Closes a real, disclosed gap**: `themes`'s
       `tier` column had zero plan-based enforcement since Module 4 (its own
       doc comment: "no gating enforced yet — Module 11/14's job"); the new
       `theme.premium_tier_enabled` key (default `false`, same "off for every
@@ -5562,9 +5591,9 @@ going forward, per FR-6.28.
       `platform_events` lean-taxonomy discipline (§3.11); the token/signature
       mechanism itself is what proves origination on every read
 - [x] The cross-SaaS discount-eligibility endpoint answers correctly for a
-      seller on a paid plan vs. the Free Plan, returns only the eligibility
-      boolean (never discount terms), and is rejected when called unsigned
-      (FR-24.14)
+      seller whose plan grants eligibility vs. one whose doesn't, returns
+      only the eligibility boolean (never discount terms), and is rejected
+      when called unsigned (FR-24.14)
 
 ### 14.23 Platform Event Log (cross-cutting, applies to every module from here on)
 - [ ] Every lifecycle event listed for a given module (FR-26.5 and each later
@@ -5675,7 +5704,7 @@ going forward, per FR-6.28.
       screen's normal empty state, never the other seller's data (FR-28.1)
 - [x] A shared list/detail/form component pattern is reused across every
       screen this module builds, not a bespoke layout per screen (FR-28.3)
-- [ ] A Free-Plan seller sees only the built-in dashboard theme/wallpaper
+- [ ] An entry-tier seller sees only the built-in dashboard theme/wallpaper
       set; a higher-plan seller sees the correct additional options gated by
       Settings Registry precedence, not hard-coded per plan (FR-28.4) —
       **not yet gated.** The theme picker itself is built and every preset
@@ -5769,7 +5798,8 @@ going forward, per FR-6.28.
       `consent_accepted_at` is null — attempted directly against the API,
       not just blocked by the UI (FR-7.12)
 - [x] **Leave-team flow:** a member leaves from their own settings at any
-      time; the sponsored plan downgrades to Free at the current period's
+      time; the sponsored plan downgrades to Starter (v0.33 — the entry
+      paid tier, since there is no more Free Plan) at the current period's
       end, never immediately and never as an account/store suspension or
       deletion (FR-7.13). **Disclosed decision:** since billing for a
       sponsored member flows entirely through the leader's group invoice
@@ -5777,7 +5807,8 @@ going forward, per FR-6.28.
       stays null while sponsored), there is no cycle to defer to — the
       downgrade applies at the same "no cycle to wait for" moment FR-7.5's
       own edge case already establishes, not literally "the current
-      period's end" (which doesn't exist for a sponsored member)
+      period's end" (which doesn't exist for a sponsored member), and
+      starts a real Starter billing cycle immediately
 - [x] A seller already actively sponsored by one team cannot be added as an
       active member of a second team without leaving the first — the
       partial unique index on `team_members(seller_id) WHERE status =
@@ -5812,10 +5843,10 @@ going forward, per FR-6.28.
       leader's own separate commission invoice amount is completely
       unaffected by team size (FR-7.15/FR-7.18)
 - [x] Non-payment of the group sponsorship invoice past the grace period
-      downgrades sponsored members to Free (graceful, per FR-7.13) but
-      suspends neither a member's store nor the leader's own store; non-
-      payment of the leader's own commission invoice suspends only the
-      leader's own store (FR-7.15)
+      downgrades sponsored members to Starter (v0.33 — graceful, per
+      FR-7.13, never a Free Plan) but suspends neither a member's store nor
+      the leader's own store; non-payment of the leader's own commission
+      invoice suspends only the leader's own store (FR-7.15)
 
 ### 14.32 Storefront Buyer Purchase Flow & Store Branding (new, v0.22) — Module 15.5
 - [x] A buyer can add a product/variant to their cart from the product page,
@@ -6407,8 +6438,9 @@ going forward, per FR-6.28.
       `catalog.product_limit` (FR-52.5).
 - [x] Every write a staff session performs is recorded to the Platform
       Event Log tagged with its `staffAccountId` (FR-52.4).
-- [x] A Free-plan seller has zero staff-account capacity by default
-      (FR-52.6).
+- [x] A seller with no plan-scoped override has zero staff-account
+      capacity by default (FR-52.6, v0.33 — First Month/Starter carry none;
+      Growth gets 3, Pro gets 10).
 - [x] A staff session scoped to `design` can reach the theme customizer
       but is blocked (403) from an `orders`/`catalog`/`customers` route,
       and conversely a session scoped to e.g. `orders` is blocked from

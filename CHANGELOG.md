@@ -79,6 +79,137 @@ Full local typecheck (`apps/api` + `apps/web`), full local e2e suite, and
 a real CI-verified green run on the pushed commit — see the module report
 for the exact `Test Suites:`/`Tests:` summary lines.
 
+## v0.33 — No Free Plan / First Month entry pricing, full pricing data, commission cap, stock protection, wallet running balance, Meta/WhatsApp catalog (SRS amendment ahead of Modules 44-48)
+
+A founder-directed deep audit of the built platform against the SRS found
+six places where a business decision changed in discussion but never
+reached the code — most critically, a Free Plan that had quietly become
+load-bearing architecture (signup default, plan-fee-failure fallback,
+guard-rail target) despite the founder's actual model never having one.
+Docs-only; slotted as Modules 44-48, in severity order. See
+`docs/build-plan.md`'s "Deep-Audit Phase A" section for the full slotting
+rationale, including why items 1 and 2 below are combined into a single
+module (Module 44).
+
+### Changed
+- FR-7.1-7.4/7.8 rewritten: there is no Free Plan and no free trial. New
+  sellers start on First Month — a real, tracked, paid first billing cycle
+  at a steep discount off Starter, carrying Starter's full feature set —
+  and auto-transition to Starter at the cycle's end via the existing
+  next-cycle mechanism. Plan-fee non-payment pauses orders (unifying with
+  the existing wallet low-balance grace ladder) instead of falling back to
+  a Free Plan; new FR-7.19 seeds a `regularPrice` column for
+  struck-through pricing and the launch pricing table for all four real
+  tiers (First Month/Starter/Growth/Pro).
+- FR-6.21/6.29 (new) — commission rate gets a hard 2% cap in Settings
+  Registry validation, bound to the admin high-impact confirmation step.
+- FR-23.1-23.5 reworded to drop Free-Plan framing; the now-purposeless
+  free-store velocity limit (FR-23.5) is retired outright.
+- FR-7.13/§5.39 — self-fulfilled stock protection: the existing atomic
+  conditional-decrement pattern (already used for supplier listings)
+  extends to `ProductVariant.stockQuantity` at checkout.
+- New §5.55 — wallet balance becomes a maintained running-total column,
+  updated atomically alongside every ledger write, with a new daily
+  reconciliation job comparing it against the ledger's true sum.
+- New Meta-compatible product catalog feed (extending the existing
+  Product Feed API) and a 4th WhatsApp deep-link generator, both
+  Growth+-plan-gated.
+
+## Module 44: No Free Plan — First Month Entry Pricing
+
+SRS §5.7/§5.23/§5.39, FR-7.1-7.4/7.8/7.19, FR-23.1-23.5 (v0.33). Retires
+the Free Plan everywhere it had become load-bearing and replaces it with
+First Month, a real paid entry tier — first module of the deep-audit
+Phase A launch-blocker batch.
+
+### Added
+- New `Plan.regularPrice` column (nullable `Decimal(12,2)`) — the
+  struck-through "was" price shown beside `price` whenever set and
+  higher; `price` remains the only field actually billed.
+- New Settings Registry key `marketing.most_popular_individual_tier_order`
+  — which individual tierOrder gets the pricing page's "Most Popular"
+  badge, data-driven (launch default: Growth) rather than a hard-coded
+  tier name.
+- Full v0.33 launch pricing data seeded for all four individual tiers
+  (First Month/Starter/Growth/Pro): price, regularPrice, a 16.67%
+  yearly-discount (= 10 months' price for 12), and per-tier
+  `billing.commission_rate_percent`/`catalog.product_limit` Settings
+  Registry overrides (2%/2%/1.5%/1%, 100/100/500/unlimited-sentinel).
+  `staff.max_accounts` and `branding.powered_by_removable` re-mapped to
+  the new tier names (Growth gets 3 staff accounts, Pro gets 10 and
+  branding removal — Starter/Growth keep the "Managed by UZEYN" mark
+  mandatory).
+- `apps/web/app/pricing/page.tsx` — struck-through regular pricing,
+  Settings-Registry-driven "Most Popular" badge, a long value-stacked
+  feature list per tier, and a Shopify-comparison line. Admin plan editor
+  gained a regular-price column/input.
+- New `SubscriptionsService.assignFirstMonthAtSignup()` (replaces
+  `assignFreePlanAtSignup()`) — assigns First Month with a real
+  `currentPeriodEnd` and `pendingPlanId` already pointing at Starter, so
+  the existing `applyDueCycleChanges()` sweep (FR-7.5) auto-transitions
+  the seller with no new transition mechanism.
+- New `SubscriptionsService.scheduleDowngradeToStarterAtPeriodEnd()`
+  (replaces the Free-Plan version) for the team-leave/group-invoice-
+  non-payment path — the entry paid tier, never a Free Plan, since it no
+  longer exists.
+- `WalletGraceLadderService.pauseActiveStores()` made public and reused
+  directly by `PlanFeeDebitService.debitDuePlanFees()` on insufficient
+  balance — unifies plan-fee-non-payment pausing with the existing
+  wallet-low-balance grace ladder into one mechanism, per the founder's
+  explicit instruction. The subscription is left overdue on its current
+  plan, never reassigned.
+
+### Removed
+- `FreeStoreLimitService` and the `plans.free_store_limit_per_identity`
+  Settings Registry key deleted outright — the per-identity Free-store
+  velocity limit (FR-23.5) has no purpose once there is no Free Plan to
+  limit.
+- All three silent Free-Plan `Plan.findFirst()` fallbacks the audit
+  found: `debitDuePlanFees()`'s seller-side downgrade,
+  `scheduleDowngradeToFreeAtPeriodEnd()`, and the seller-signup
+  assignment. The supplier-side equivalent
+  (`debitDueSupplierPlanFees()`) had its silent Free-tier reassignment on
+  non-payment removed too (per the founder's literal "three" count) — a
+  disclosed scoping decision: no new supplier-dashboard enforcement was
+  built for the resulting overdue-but-unenforced state, since that's new
+  scope beyond the six named audit items.
+- `UnitEconomicsService.computeSummary()`'s free-vs-paid store split —
+  every store's seller is on a paid plan now, so a single total replaced
+  it (API response shape changed: `freeStoreCount`/`paidStoreCount`/
+  `commissionFromFreeStores`/`commissionFromPaidStores` →
+  `storeCount`/`totalCommission`).
+
+### Disclosed scope decisions (explicitly NOT built, beyond the six named audit items)
+- No new store-count-per-plan enforcement — the "1 store" language in the
+  founder's pricing table is pricing-page descriptive copy only; no
+  existing mechanism enforces it and it wasn't one of the six items.
+- No retroactive plan-gating added for the ~10 other named marketing
+  features (order verification, P&L, custom domain, templates, WhatsApp
+  tools, email campaigns, gift cards, customer segments, D-Studio,
+  inventory management, priority support, advanced analytics) — these
+  are pricing-page copy only in this module; only commission %,
+  `catalog.product_limit`, `staff.max_accounts`, and
+  `branding.powered_by_removable` got real per-tier values wired, since
+  those already had functioning plan-gating mechanisms.
+
+### Tests
+- New `test/e2e/module44-first-month-pricing.e2e-spec.ts` covering the
+  founder's explicit list: no Free plan exists anywhere in seeded data;
+  signup assigns First Month with a real cycle and Starter already
+  queued; the pendingPlanId sweep auto-transitions First Month → Starter;
+  plan-fee expiry pauses orders (never a Free-Plan reassignment); a
+  verified top-up restores a plan-fee-paused store through the existing
+  grace-ladder restore path; the old Free-Plan methods no longer exist on
+  `SubscriptionsService`.
+- Every pre-existing e2e test whose fixtures assumed a Free-Plan signup
+  default or a 1% global-default commission rate updated for First
+  Month's real 2% plan-scoped override and its real billing cycle
+  (`billing.e2e-spec.ts`, `plans-pricing.e2e-spec.ts`,
+  `module20-wallet-supplier-portal.e2e-spec.ts`,
+  `module22-growth-partner-programs.e2e-spec.ts`,
+  `module32-gift-cards.e2e-spec.ts`, `guardrails.e2e-spec.ts`,
+  `teams.e2e-spec.ts`, `branding.e2e-spec.ts`, `trust-safety.e2e-spec.ts`).
+
 ## Module 37: Advanced Granular Admin Control
 
 SRS §5.54/§14.54, FR-54.1-54.6. Four narrow, audit-logged admin controls

@@ -66,7 +66,7 @@ describe("Staff Accounts (e2e) - SRS §5.52, §14.52", () => {
     return { staffAccountId: created.body.id as string, staffToken: login.body.accessToken as string };
   }
 
-  it("FR-52.5/52.6: zero staff capacity on Free by default; raising the plan-tier limit allows creation up to it", async () => {
+  it("FR-52.5/52.6: zero staff capacity by default (First Month, v0.33); raising the plan-tier limit allows creation up to it", async () => {
     const { token } = await signupLoginAndCreateStore("staff1@example.com", "staff1-store");
 
     const blockedOnFree = await request(app.getHttpServer())

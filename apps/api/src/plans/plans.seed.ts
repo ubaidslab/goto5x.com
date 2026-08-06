@@ -43,7 +43,7 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: 60,
       validation: { min: 1 },
-      description: "Days a Free-Plan store may be inactive before the dormant-lifecycle warning email (FR-23.2).",
+      description: "Days a store may be inactive before the dormant-lifecycle warning email (FR-23.2).",
     },
     update: {},
   });
@@ -56,7 +56,7 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: 90,
       validation: { min: 1 },
-      description: "Days of inactivity (after the warning) before a dormant Free-Plan store is suspended (FR-23.2).",
+      description: "Days of inactivity (after the warning) before a dormant store is suspended (FR-23.2).",
     },
     update: {},
   });
@@ -96,19 +96,6 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       defaultValue: 0,
       validation: { min: 0 },
       description: "Admin-entered monthly infra cost (PKR) for the unit-economics break-even view (FR-23.4) - never computed.",
-    },
-    update: {},
-  });
-
-  await prisma.settingsDefinition.upsert({
-    where: { key: "plans.free_store_limit_per_identity" },
-    create: {
-      key: "plans.free_store_limit_per_identity",
-      valueType: "number",
-      allowedScopes: ["global"],
-      defaultValue: 1,
-      validation: { min: 1 },
-      description: "Max Free-Plan stores one verified identity (cnic_hash) may create (FR-23.5).",
     },
     update: {},
   });
@@ -170,7 +157,24 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       valueType: "json",
       allowedScopes: ["global", "plan"],
       defaultValue: ["default"],
-      description: "Dashboard theme/wallpaper ids this resolved plan may choose from (FR-28.4); the Free Plan's global default is the small built-in set.",
+      description: "Dashboard theme/wallpaper ids this resolved plan may choose from (FR-28.4); the global default (any plan with no override) is the small built-in set.",
+    },
+    update: {},
+  });
+
+  // v0.33/FR-7.19 - which individual-group tierOrder gets the "Most
+  // Popular" badge on the pricing page/plan editor - data, not a
+  // hard-coded tier name, so the founder can move it with no deploy.
+  // Launch default: Growth (tierOrder 2).
+  await prisma.settingsDefinition.upsert({
+    where: { key: "marketing.most_popular_individual_tier_order" },
+    create: {
+      key: "marketing.most_popular_individual_tier_order",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 2,
+      validation: { min: 0 },
+      description: "Which individual-group tierOrder gets the 'Most Popular' pricing-page badge (FR-7.19). Launch default: Growth.",
     },
     update: {},
   });
@@ -180,22 +184,37 @@ export async function seedPlansSettings(prisma: PrismaClient) {
  * FR-7.17 - the three v1.0 plan groups, each an ordered list of founder-set
  * tiers (mechanism only; prices/names/limits below are placeholder founder
  * data, editable from the plan editor with no deploy). Idempotent via the
- * (plan_group, tier_order) unique constraint.
+ * (plan_group, tier_order) unique constraint - `update:` block only refreshes
+ * price/regularPrice/yearlyDiscountPercent so an existing plan's own
+ * founder-edited name/sortOrder is never clobbered by re-seeding.
+ *
+ * v0.33/FR-7.3/FR-7.19 - there is no more Free Plan. tierOrder 0 is now
+ * "First Month", a real (paid, tracked) tier that every seller starts on -
+ * it auto-transitions to Starter after one billing cycle
+ * (SubscriptionsService's pendingPlanId sweep). Per-tier commission %,
+ * product limit, and staff-account allowance below are the exact SRS
+ * "Plans & Pricing" launch defaults - seeded as data, never hard-coded in
+ * application logic.
  */
 export async function seedPlansData(prisma: PrismaClient) {
   const individualTiers = [
-    { name: "Free", tierOrder: 0, price: 0, billingInterval: "none" as const },
-    { name: "Starter", tierOrder: 1, price: 1500, billingInterval: "monthly" as const },
-    { name: "Standard", tierOrder: 2, price: 3500, billingInterval: "monthly" as const },
-    { name: "Pro", tierOrder: 3, price: 7000, billingInterval: "monthly" as const },
+    { name: "First Month", tierOrder: 0, price: 1499, regularPrice: 5799, billingInterval: "monthly" as const, commissionPercent: 2, productLimit: 100 },
+    { name: "Starter", tierOrder: 1, price: 5799, regularPrice: 6999, billingInterval: "monthly" as const, commissionPercent: 2, productLimit: 100 },
+    { name: "Growth", tierOrder: 2, price: 14999, regularPrice: 17999, billingInterval: "monthly" as const, commissionPercent: 1.5, productLimit: 500 },
+    { name: "Pro", tierOrder: 3, price: 27999, regularPrice: 34999, billingInterval: "monthly" as const, commissionPercent: 1, productLimit: 100_000 },
   ];
   for (const tier of individualTiers) {
-    await upsertPlan(prisma, { planGroup: "individual", ...tier });
+    const { commissionPercent, productLimit, ...planFields } = tier;
+    const plan = await upsertPlan(prisma, { planGroup: "individual", yearlyDiscountPercent: 16.67, ...planFields });
+    await setPlanScopedSetting(prisma, "billing.commission_rate_percent", plan.id, commissionPercent);
+    await setPlanScopedSetting(prisma, "catalog.product_limit", plan.id, productLimit);
   }
 
   // FR-7.18 - team tiers carry seatPrice (per sponsored seat), not `price`
   // for the leader's own subscription (v1.0: leader pays nothing extra to
   // hold a Team tier beyond whatever individual plan they're already on).
+  // Unaffected by the v0.33 pricing rework - not one of the founder's
+  // named launch-blocker tiers.
   const teamTiers = [
     { name: "Team Starter", tierOrder: 0, price: 0, seatPrice: 1000, billingInterval: "monthly" as const },
     { name: "Team Growth", tierOrder: 1, price: 0, seatPrice: 1500, billingInterval: "monthly" as const },
@@ -205,6 +224,9 @@ export async function seedPlansData(prisma: PrismaClient) {
     await upsertPlan(prisma, { planGroup: "team", ...tier });
   }
 
+  // Supplier tiers are untouched by v0.33 - the supplier Free tier is a
+  // separate, legitimate concept (FR-7.10) from the seller Free Plan that
+  // was removed.
   const supplierTiers = [
     { name: "Supplier Free", tierOrder: 0, price: 0, billingInterval: "none" as const },
     { name: "Supplier Premium", tierOrder: 1, price: 2000, billingInterval: "monthly" as const },
@@ -221,23 +243,37 @@ async function upsertPlan(
     name: string;
     tierOrder: number;
     price: number;
+    regularPrice?: number;
     seatPrice?: number;
     billingInterval: "monthly" | "yearly" | "none";
+    yearlyDiscountPercent?: number;
   },
 ) {
-  const existing = await prisma.plan.findFirst({
-    where: { planGroup: data.planGroup, tierOrder: data.tierOrder },
-  });
-  if (existing) return existing;
-  return prisma.plan.create({
-    data: {
+  const shared = {
+    price: data.price,
+    regularPrice: data.regularPrice ?? null,
+    seatPrice: data.seatPrice ?? null,
+    billingInterval: data.billingInterval,
+    yearlyDiscountPercent: data.yearlyDiscountPercent ?? null,
+  };
+  return prisma.plan.upsert({
+    where: { uniq_plan_group_tier_order: { planGroup: data.planGroup, tierOrder: data.tierOrder } },
+    create: {
       name: data.name,
       planGroup: data.planGroup,
       tierOrder: data.tierOrder,
-      price: data.price,
-      seatPrice: data.seatPrice ?? null,
-      billingInterval: data.billingInterval,
       sortOrder: data.tierOrder,
+      ...shared,
     },
+    update: shared,
+  });
+}
+
+/** Same plan-scoped upsert pattern as staff.seed.ts/themes.seed.ts's per-tier settings loops. */
+async function setPlanScopedSetting(prisma: PrismaClient, definitionKey: string, planId: string, value: number) {
+  await prisma.settingsValue.upsert({
+    where: { uniq_settings_scope: { definitionKey, scopeType: "plan", scopeId: planId } },
+    create: { definitionKey, scopeType: "plan", scopeId: planId, value },
+    update: { value },
   });
 }

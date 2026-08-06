@@ -130,9 +130,10 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   // test file so a version published mid-suite by one test never leaks
   // into another file's run.
   await seedSellerAgreementV1(prisma);
-  // Same reasoning again - AuthService.signup() assigns every new seller the
-  // Free (individual, tier 0) plan (FR-7.1/7.3); that row must exist before
-  // any test signs a seller up.
+  // Same reasoning again - AuthService.signup() assigns every new seller
+  // First Month (individual, tier 0, v0.33/FR-7.1/7.3); that row (and
+  // Starter, its auto-transition target) must exist before any test signs
+  // a seller up.
   await seedPlansData(prisma);
   // Templates module (v0.31 design phase) - depends on the paid plan rows
   // seedPlansData() just (re)created, so it must run after them.

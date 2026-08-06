@@ -122,8 +122,15 @@ export class WalletGraceLadderService {
     return { paused: result.count > 0 };
   }
 
-  /** Shared by the floor check above and the grace-expiry branch of runSweep() below - same non-clobbering updateMany, same event. */
-  private async pauseActiveStores(sellerId: string): Promise<{ count: number }> {
+  /**
+   * Shared by the floor check above, the grace-expiry branch of runSweep()
+   * below, and (v0.33) PlanFeeDebitService.debitDuePlanFees() - non-payment
+   * on the plan fee itself now pauses through this exact same path instead
+   * of falling back to a removed Free Plan, unifying wallet-low-balance
+   * pausing and plan-fee-non-payment pausing into one mechanism. Same
+   * non-clobbering updateMany, same event, regardless of caller.
+   */
+  async pauseActiveStores(sellerId: string): Promise<{ count: number }> {
     const result = await this.prismaAdmin.store.updateMany({
       where: { sellerId, status: "active" },
       data: { status: "orders_paused" },

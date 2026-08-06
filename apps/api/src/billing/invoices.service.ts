@@ -105,11 +105,12 @@ export class InvoicesService {
    * could have suspended (status = 'active') - never overwrites an
    * independently admin-issued suspension/ban.
    *
-   * FR-7.15/FR-7.18 (revised v0.19) - a `group_sponsorship` invoice is a
-   * different kind of debt: non-payment never suspends the leader's store
-   * (or a member's) - it gracefully downgrades every currently-sponsored
-   * member to Free at their own next cycle, the identical mechanism FR-7.13
-   * already uses for a voluntary leave.
+   * FR-7.15/FR-7.18 (revised v0.19, target updated v0.33) - a
+   * `group_sponsorship` invoice is a different kind of debt: non-payment
+   * never suspends the leader's store (or a member's) - it gracefully
+   * downgrades every currently-sponsored member to Starter (the entry paid
+   * tier, now that Free no longer exists) at their own next cycle, the
+   * identical mechanism FR-7.13 already uses for a voluntary leave.
    */
   async sweepOverdueInvoicesAndSuspend(now = new Date()): Promise<{ suspended: number }> {
     const overdue = await this.prismaAdmin.sellerInvoice.findMany({
@@ -125,7 +126,7 @@ export class InvoicesService {
           where: { teamId: invoice.teamId!, status: "active" },
         });
         for (const member of activeMembers) {
-          await this.subscriptions.scheduleDowngradeToFreeAtPeriodEnd(member.sellerId);
+          await this.subscriptions.scheduleDowngradeToStarterAtPeriodEnd(member.sellerId);
         }
         continue;
       }

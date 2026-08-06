@@ -12,10 +12,70 @@ interface Plan {
   id: string;
   name: string;
   price: string;
+  regularPrice: string | null;
   seatPrice: string | null;
   currency: string;
   billingInterval: "monthly" | "yearly" | "none";
+  mostPopular?: boolean;
 }
+
+/**
+ * v0.33/FR-7.19 - long, value-stacked per-tier copy the founder asked for.
+ * Keyed by the live plan name from the API (never hard-coded prices/limits
+ * that duplicate what plans.seed.ts already owns) - a tier renamed or
+ * reordered from the admin plan editor falls back to generic copy below
+ * rather than breaking.
+ */
+const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: string[] }> = {
+  "First Month": {
+    description: "Try the full Starter experience at a steep first-month discount.",
+    features: [
+      "Full Starter feature set, discounted for your first billing cycle",
+      "Up to 100 products",
+      "2% commission on sales",
+      "Auto-continues onto Starter after your first month",
+    ],
+  },
+  Starter: {
+    description: "For getting your first store live and taking real orders.",
+    features: [
+      "Up to 100 products",
+      "2% commission on sales",
+      "Order verification (OTP/call/WhatsApp)",
+      "Profit & loss dashboard",
+      "Free custom domain connection",
+      "All 4 storefront templates",
+      "WhatsApp seller tools",
+      "“Managed by UZEYN” storefront mark",
+    ],
+  },
+  Growth: {
+    description: "For sellers ready to scale past a one-person operation.",
+    features: [
+      "Up to 500 products",
+      "1.5% commission on sales",
+      "3 staff accounts",
+      "Email marketing campaigns",
+      "Gift cards & customer segments",
+      "Facebook/Instagram Shop feed",
+      "Full D-Studio design tools",
+      "Inventory management",
+    ],
+  },
+  Pro: {
+    description: "For established stores that have outgrown the basics.",
+    features: [
+      "Unlimited products",
+      "1% commission on sales - the lowest tier",
+      "10 staff accounts",
+      "@support.uzeyn.com custom email",
+      "Remove the “Managed by UZEYN” mark",
+      "Priority support",
+      "Advanced analytics",
+    ],
+  },
+};
+const DEFAULT_INDIVIDUAL_COPY = { description: "A plan for growing stores.", features: ["Storefront + custom domain", "Wallet & payouts", "Email support"] };
 
 const FAQS = [
   {
@@ -23,8 +83,13 @@ const FAQS = [
     answer: "No. Every plan below is the full price - no onboarding fee, no hidden line items.",
   },
   {
+    question: "What is First Month?",
+    answer:
+      "First Month is your discounted entry cycle - you get the full Starter feature set at a steep first-cycle discount. At the end of your first billing cycle you continue automatically onto Starter at its regular price, with no action needed.",
+  },
+  {
     question: "Can I change plans later?",
-    answer: "Yes, anytime from your dashboard's Plans & Billing page. Upgrades apply immediately; downgrades apply at your next billing cycle.",
+    answer: "Yes, anytime from your dashboard's Plans & Billing page. A plan change is applied at your next billing cycle.",
   },
   {
     question: "What does a team plan add?",
@@ -52,6 +117,11 @@ export default function PricingPage() {
     return plan.price === "0" ? "Free" : `Rs ${plan.price}`;
   }
 
+  function regularPriceLabel(plan: Plan) {
+    if (!plan.regularPrice || Number(plan.regularPrice) <= Number(plan.price)) return undefined;
+    return `Rs ${plan.regularPrice}`;
+  }
+
   return (
     <div className="min-h-screen bg-canvas">
       <MarketingNav />
@@ -73,22 +143,32 @@ export default function PricingPage() {
         <div className="mx-auto max-w-6xl px-6">
           <SectionTitle eyebrow="For sellers" title="Individual plans" />
           {plans ? (
-            <Reveal stagger={0.1} className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              {plans.individual.map((plan, i) => (
-                <PricingCard
-                  key={plan.id}
-                  name={plan.name}
-                  priceLabel={priceLabel(plan)}
-                  cadence={plan.price === "0" ? undefined : plan.billingInterval === "yearly" ? "year" : "month"}
-                  description={i === 0 ? "For getting your first store live." : i === 1 ? "For sellers ready to grow." : "For established stores."}
-                  features={["Unlimited products", "Storefront + custom domain", "Wallet & payouts", "Email support"]}
-                  featured={i === 1}
-                />
-              ))}
+            <Reveal stagger={0.1} className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              {plans.individual.map((plan) => {
+                const copy = INDIVIDUAL_TIER_COPY[plan.name] ?? DEFAULT_INDIVIDUAL_COPY;
+                return (
+                  <PricingCard
+                    key={plan.id}
+                    name={plan.name}
+                    priceLabel={priceLabel(plan)}
+                    regularPriceLabel={regularPriceLabel(plan)}
+                    cadence={plan.price === "0" ? undefined : plan.billingInterval === "yearly" ? "year" : "month"}
+                    description={copy.description}
+                    features={copy.features}
+                    featured={plan.mostPopular}
+                  />
+                );
+              })}
             </Reveal>
           ) : (
             <p className="mt-16 text-center text-sm text-ink-faint">Loading live pricing…</p>
           )}
+          <Reveal delay={0.15} className="mt-16 text-center">
+            <p className="text-body text-ink-muted">
+              Every UZEYN plan undercuts Shopify's equivalent tier - no forced app fees, no 2.9%+30¢
+              payment-processor markup on top, and a commission rate that only goes down as you grow.
+            </p>
+          </Reveal>
         </div>
       </section>
 

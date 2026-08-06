@@ -42,9 +42,10 @@ export class SellersService {
   /**
    * SRS §5.28/FR-28.4 - plan-gated (Module 14 cross-check, closing the open
    * item carried since Module 10: "no real seller->plan assignment existed
-   * until now"). The Free Plan's global default is the small built-in set;
-   * higher tiers override with more options via the same Settings Registry
-   * mechanism FR-7.1 already uses for template tiers.
+   * until now"). The global default (any plan with no override) is the
+   * small built-in set; higher tiers override with more options via the
+   * same Settings Registry mechanism FR-7.1 already uses for template
+   * tiers.
    */
   async updateDashboardTheme(sellerId: string, dashboardTheme: string) {
     const context = await this.subscriptions.getPlanContext(sellerId);

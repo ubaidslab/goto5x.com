@@ -15,6 +15,12 @@ export class UpdatePlanDto {
   @Min(0)
   price?: number;
 
+  // v0.33/FR-7.19 - see create-plan.dto.ts's own note.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  regularPrice?: number;
+
   @IsOptional()
   @IsNumber()
   @IsPositive()

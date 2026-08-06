@@ -195,8 +195,10 @@ These bounds are now written directly into the relevant FRs (SRS §5.15, §5.17,
 - Currency-ready schema throughout, unchanged
 
 **Pricing & plans**
-- **Free Plan** as a first-class tier: no billing cycle, tight limits, one store
-  per identity, higher default commission (FR-7.3)
+- **No Free Plan, no free trial (v0.33)** — new sellers start on **First
+  Month**, a discounted paid entry tier carrying Starter's full feature
+  set, auto-transitioning to Starter after one billing cycle; every tier
+  carries its own plan-scoped commission override (FR-7.3)
 - **Inverse commission laddering** — higher plans, lower commission (FR-7.4)
 - Plan changes take effect next billing cycle, no proration (FR-7.5)
 - Yearly billing with admin-configurable discount (FR-7.6)

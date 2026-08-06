@@ -6,7 +6,6 @@ import request from "supertest";
 import { RiskScoreService } from "../../src/trust-safety/risk-score.service";
 import { SellerAgreementService } from "../../src/trust-safety/seller-agreement.service";
 import { TrustSafetyMonitorsService } from "../../src/trust-safety/trust-safety-monitors.service";
-import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 // A second Luhn-valid 13-digit CNIC, distinct from the one used elsewhere
@@ -208,15 +207,11 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       expect(matching.status).toBe(200);
       expect(matching.body.nameConsistencyStatus).toBe("approved");
 
-      // Module 14 (FR-23.5/FR-7.3) - the Free Plan is now really limited to
-      // one store per identity; this test creates a second store for the
-      // same (CNIC-less) seller purely to exercise name-consistency across
-      // two stores, so the per-identity limit is raised for this test only
-      // (SettingsService.setValue, not a raw DB write, so the cache the
-      // first store's creation already populated is actually invalidated).
-      await app
-        .get(SettingsService)
-        .setValue("plans.free_store_limit_per_identity", "global", null, 10, "00000000-0000-0000-0000-000000000000");
+      // v0.33 (FR-7.3/FR-23.5) - the per-identity free-store limit was
+      // removed along with the Free Plan itself (no more free stores to
+      // limit); this test creates a second store for the same (CNIC-less)
+      // seller purely to exercise name-consistency across two stores, which
+      // no longer needs any settings override to allow.
       const mismatchStoreId = await createStore(matchToken, "name-mismatch-store");
       const mismatching = await request(app.getHttpServer())
         .patch(`/stores/${mismatchStoreId}/payment-instructions`)

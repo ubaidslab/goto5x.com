@@ -4,8 +4,10 @@ import { EmailService } from "../notifications/email.service";
 import { SettingsService } from "../settings-registry/settings.service";
 
 /**
- * SRS §5.23/FR-23.2 - a scheduled job progressing a Free-Plan store through
- * warning -> suspend -> archive at configurable thresholds. `archived` is
+ * SRS §5.23/FR-23.2 - a scheduled job progressing any inactive store
+ * (applies platform-wide, not tied to any one plan tier - v0.33 removed the
+ * Free Plan concept this originally described) through warning -> suspend
+ * -> archive at configurable thresholds. `archived` is
  * distinct from `suspended`: data retained, storefront permanently offline
  * until the seller re-engages (re-engagement itself is a future dashboard
  * action, not built here - this job only progresses the one-way lifecycle

@@ -97,7 +97,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     return { orderId: order.body.id as string, markPaidStatus: markPaid.status };
   }
 
-  it("FR-6.16: marking an order paid accrues commission_accrued at the default 1% rate on the post-discount product+shipping subtotal, excluding tax", async () => {
+  it("FR-6.16: marking an order paid accrues commission_accrued at First Month's 2% plan-scoped rate (v0.33, signup default) on the post-discount product+shipping subtotal, excluding tax", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreateStore("commission-basic@example.com", "commission-basic-store");
     const { orderId, markPaidStatus } = await createPaidOrder(token, storeId, 1000, 10);
     expect(markPaidStatus).toBe(201);
@@ -106,8 +106,8 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].type).toBe("commission_accrued");
     // price 1000, tax 10% exclusive -> subtotal 1000, tax 100, total 1100.
-    // Commission base = total - tax = 1000. 1% of 1000 = 10.
-    expect(Number(entries[0].amount)).toBeCloseTo(10, 2);
+    // Commission base = total - tax = 1000. First Month's 2% of 1000 = 20.
+    expect(Number(entries[0].amount)).toBeCloseTo(20, 2);
   });
 
   it("Financial Truth Invariant (§3.12): a pending order accrues no commission_accrued entry", async () => {
@@ -155,8 +155,8 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
 
     const invoices = await superuser.sellerInvoice.findMany({ where: { sellerId } });
     expect(invoices).toHaveLength(1);
-    // 1% of 1000 + 1% of 2000 = 30
-    expect(Number(invoices[0].totalAmount)).toBeCloseTo(30, 2);
+    // First Month's 2% of 1000 + 2% of 2000 = 60
+    expect(Number(invoices[0].totalAmount)).toBeCloseTo(60, 2);
     expect(invoices[0].status).toBe("pending");
 
     const secondRun = await invoicesService.generateMonthlyInvoices();
@@ -208,7 +208,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
 
     const invoicesService = app.get(InvoicesService);
     const adminId = await createAdminUser(superuser);
-    await invoicesService.waiveCommission(sellerId, first.orderId, 10, adminId);
+    await invoicesService.waiveCommission(sellerId, first.orderId, 20, adminId);
 
     const firstEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, orderId: first.orderId } });
     expect(firstEntries).toHaveLength(2); // accrued + waived
@@ -217,7 +217,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
 
     const secondEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, orderId: second.orderId } });
     expect(secondEntries).toHaveLength(1);
-    expect(Number(secondEntries[0].amount)).toBeCloseTo(20, 2); // untouched
+    expect(Number(secondEntries[0].amount)).toBeCloseTo(40, 2); // untouched (First Month's 2% of 2000)
   });
 
   it("tenant isolation: seller A cannot see seller B's invoices via the API; RLS denies cross-tenant ledger access at the database level", async () => {

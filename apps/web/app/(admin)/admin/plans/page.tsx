@@ -10,10 +10,12 @@ interface Plan {
   planGroup: PlanGroup;
   tierOrder: number;
   price: string;
+  regularPrice: string | null;
   seatPrice: string | null;
   currency: string;
   billingInterval: "monthly" | "yearly" | "none";
   isActive: boolean;
+  mostPopular?: boolean;
 }
 
 const GROUPS: PlanGroup[] = ["individual", "team", "supplier"];
@@ -30,6 +32,7 @@ export default function AdminPlansPage() {
   const [planGroup, setPlanGroup] = useState<PlanGroup>("individual");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("0");
+  const [regularPrice, setRegularPrice] = useState("");
   const [seatPrice, setSeatPrice] = useState("");
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly" | "none">("monthly");
   const [grantSellerId, setGrantSellerId] = useState("");
@@ -61,12 +64,14 @@ export default function AdminPlansPage() {
         name,
         planGroup,
         price: Number(price),
+        regularPrice: regularPrice ? Number(regularPrice) : undefined,
         seatPrice: planGroup === "team" && seatPrice ? Number(seatPrice) : undefined,
         billingInterval,
       }),
     });
     setName("");
     setPrice("0");
+    setRegularPrice("");
     setSeatPrice("");
     load();
   }
@@ -128,8 +133,10 @@ export default function AdminPlansPage() {
                 <th>Tier order</th>
                 <th>Name</th>
                 <th>Price</th>
+                <th>Regular price</th>
                 <th>Seat price</th>
                 <th>Billing interval</th>
+                <th>Most popular</th>
                 <th>Active</th>
                 <th>Actions</th>
               </tr>
@@ -142,8 +149,10 @@ export default function AdminPlansPage() {
                   <td>
                     {plan.currency} {plan.price}
                   </td>
+                  <td>{plan.regularPrice ? `${plan.currency} ${plan.regularPrice}` : "-"}</td>
                   <td>{plan.seatPrice ? `${plan.currency} ${plan.seatPrice}/seat` : "-"}</td>
                   <td>{plan.billingInterval}</td>
+                  <td>{plan.mostPopular ? "yes" : ""}</td>
                   <td>{plan.isActive ? "yes" : "no (retired)"}</td>
                   <td>
                     {plan.isActive && <button onClick={() => retire(plan.id)}>Retire</button>}
@@ -180,6 +189,12 @@ export default function AdminPlansPage() {
             <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} required />
           </label>
         </p>
+        <p>
+          <label>
+            Regular price (struck-through "was" price, optional):{" "}
+            <input type="number" min={0} value={regularPrice} onChange={(e) => setRegularPrice(e.target.value)} />
+          </label>
+        </p>
         {planGroup === "team" && (
           <p>
             <label>
@@ -192,7 +207,7 @@ export default function AdminPlansPage() {
           <label>
             Billing interval:{" "}
             <select value={billingInterval} onChange={(e) => setBillingInterval(e.target.value as typeof billingInterval)}>
-              <option value="none">none (Free)</option>
+              <option value="none">none (no recurring charge)</option>
               <option value="monthly">monthly</option>
               <option value="yearly">yearly</option>
             </select>

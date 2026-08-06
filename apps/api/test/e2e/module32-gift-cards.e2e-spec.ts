@@ -177,8 +177,8 @@ describe("Gift Cards (e2e) - SRS §5.49, §14.49", () => {
     const ledgerEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, orderId: first.body.id } });
     const commission = ledgerEntries.find((e) => e.type === "commission_accrued");
     expect(commission).toBeDefined();
-    // Default commission rate is 1% (FR-7.4); base = totalAmount - taxAmount = 60 - 0.
-    expect(Number(commission!.amount)).toBeCloseTo(0.6, 2);
+    // First Month's 2% plan-scoped rate (v0.33 signup default, FR-7.4); base = totalAmount - taxAmount = 60 - 0.
+    expect(Number(commission!.amount)).toBeCloseTo(1.2, 2);
   });
 
   it("FR-49.7: RLS denies cross-tenant access to another store's gift cards", async () => {

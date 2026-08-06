@@ -17,24 +17,18 @@ export class UnitEconomicsService {
   ) {}
 
   async computeSummary() {
-    const stores = await this.prismaAdmin.store.findMany({
-      select: { id: true, seller: { select: { subscription: { select: { plan: { select: { tierOrder: true, planGroup: true } } } } } } },
-    });
-    const freeStoreIds: string[] = [];
-    const paidStoreIds: string[] = [];
-    for (const store of stores) {
-      const plan = store.seller.subscription?.plan;
-      const isFree = !plan || (plan.planGroup === "individual" && plan.tierOrder === 0);
-      (isFree ? freeStoreIds : paidStoreIds).push(store.id);
-    }
+    // v0.33 - there is no more Free Plan, so the free/paid store split this
+    // used to report is gone; every store's seller is on a paid
+    // subscription (SRS FR-7.1/7.3), so a single total is now the accurate
+    // number.
+    const storeIds = (await this.prismaAdmin.store.findMany({ select: { id: true } })).map((s) => s.id);
 
     // Financial Truth Invariant (§3.12) - only commission_accrued/waived
     // entries count as real revenue, the same rule LedgerService itself
     // enforces at accrual time; an unpaid order never reaches this table
     // at all (FR-6.16), so no extra filtering is needed here.
-    const [freeCommission, paidCommission, monthlyInfraCost] = await Promise.all([
-      this.commissionForStores(freeStoreIds),
-      this.commissionForStores(paidStoreIds),
+    const [totalCommission, monthlyInfraCost] = await Promise.all([
+      this.commissionForStores(storeIds),
       this.settings.resolve<number>("finance.monthly_infra_cost"),
     ]);
 
@@ -43,12 +37,9 @@ export class UnitEconomicsService {
       _sum: { sizeBytes: true },
     });
 
-    const totalCommission = freeCommission + paidCommission;
     return {
-      freeStoreCount: freeStoreIds.length,
-      paidStoreCount: paidStoreIds.length,
-      commissionFromFreeStores: freeCommission,
-      commissionFromPaidStores: paidCommission,
+      storeCount: storeIds.length,
+      totalCommission,
       monthlyInfraCost,
       breakEven: totalCommission - monthlyInfraCost,
       storageUsageByStore: storageByStore.map((row) => ({

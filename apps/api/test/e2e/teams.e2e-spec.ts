@@ -191,7 +191,7 @@ describe("Teams & Community Sponsorship (e2e) - SRS §5.31/§14.31", () => {
       return { memberToken, memberId, teamPlan: plan };
     }
 
-    it("a member can leave at any time; the sponsored plan downgrades to Free gracefully, never as a suspension/deletion", async () => {
+    it("a member can leave at any time; the sponsored plan downgrades to Starter gracefully, never as a suspension/deletion", async () => {
       const { memberToken, memberId, teamPlan: plan } = await setUpActiveMembership();
 
       const subscriptionBefore = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: memberId } });
@@ -202,11 +202,14 @@ describe("Teams & Community Sponsorship (e2e) - SRS §5.31/§14.31", () => {
         .set("Authorization", `Bearer ${memberToken}`);
       expect(leave.status).toBe(201);
 
-      // Free Plan (no cycle while sponsored) - the "no cycle to wait for" case, downgrades immediately.
+      // v0.33 - Starter (no more Free Plan), and a fresh real billing cycle
+      // (no cycle while sponsored) - the "no cycle to wait for" case,
+      // downgrades immediately.
       const subscriptionAfter = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: memberId } });
-      const freePlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-      expect(subscriptionAfter.planId).toBe(freePlan.id);
+      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      expect(subscriptionAfter.planId).toBe(starterPlan.id);
       expect(subscriptionAfter.sponsoredByTeamId).toBeNull();
+      expect(subscriptionAfter.currentPeriodEnd).not.toBeNull();
 
       const membership = await superuser.teamMember.findFirst({ where: { sellerId: memberId } });
       expect(membership!.status).toBe("left");
@@ -346,11 +349,13 @@ describe("Teams & Community Sponsorship (e2e) - SRS §5.31/§14.31", () => {
       // A sponsored member's subscription has no currentPeriodEnd (billing
       // flows entirely through the leader's group invoice, never the
       // member's own cycle) - the same "no cycle to wait for" rule that
-      // makes an ordinary Free-Plan self-service change apply immediately
-      // means this downgrade also applies immediately, not as a pending change.
-      const freePlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-      expect(memberSubscription.planId).toBe(freePlan.id);
+      // makes an ordinary self-service plan change apply immediately means
+      // this downgrade to Starter (v0.33 - no more Free Plan) also applies
+      // immediately, not as a pending change, and starts a real cycle.
+      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      expect(memberSubscription.planId).toBe(starterPlan.id);
       expect(memberSubscription.sponsoredByTeamId).toBeNull();
+      expect(memberSubscription.currentPeriodEnd).not.toBeNull();
 
       const memberStoreAfter = await superuser.store.findUniqueOrThrow({ where: { id: memberStore.body.id } });
       expect(memberStoreAfter.status).toBe("active"); // never suspended by a group invoice
