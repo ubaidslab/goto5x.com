@@ -7,6 +7,7 @@ interface QueuedProduct {
   title: string;
   description: string | null;
   moderationNotes: string | null;
+  sourceType: "self" | "supplier";
   store: { name: string; slug: string } | null;
 }
 
@@ -24,6 +25,9 @@ export default function AdminModerationPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkNotes, setBulkNotes] = useState("");
+  const [lookupProductId, setLookupProductId] = useState("");
+  const [lookupNotes, setLookupNotes] = useState("");
+  const [lookupResult, setLookupResult] = useState<string | null>(null);
 
   function authHeaders(): Record<string, string> {
     const token = localStorage.getItem("adminAccessToken");
@@ -87,6 +91,32 @@ export default function AdminModerationPage() {
     load();
   }
 
+  /**
+   * Module 37 (SRS §5.54/FR-54.2) - unlike the queue above (pending
+   * products only), this reaches ANY product by id regardless of its
+   * current moderation status - the queue list has no concept of
+   * "already approved" products to click through to, so a direct
+   * id lookup is the minimal real action surface (no new product-detail
+   * page, consistent with this page's own "bare view" discipline).
+   */
+  async function forceRemoveOrRestore(action: "remove" | "restore") {
+    if (!lookupProductId.trim()) {
+      setLookupResult("Enter a product id first.");
+      return;
+    }
+    const res = await fetch(`${apiBase}/admin/products/${lookupProductId.trim()}/${action}`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ notes: lookupNotes }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLookupResult(body.message ?? `Couldn't ${action} that product.`);
+      return;
+    }
+    setLookupResult(`Product ${lookupProductId.trim()} is now: ${body.moderationStatus}`);
+  }
+
   if (!queue) return <p>Loading...</p>;
 
   return (
@@ -95,6 +125,23 @@ export default function AdminModerationPage() {
       <p>Listings flagged for prohibited/counterfeit content or restricted keywords, awaiting review.</p>
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}
+
+      <h2>Force remove / restore a product</h2>
+      <p>
+        Instant takedown for a product in ANY moderation status (not just this queue) - SRS §5.54/FR-54.2. Also how
+        a supplier-listed product (source: supplier, see the queue below) can be taken down directly.
+      </p>
+      <p>
+        <label>
+          Product id: <input value={lookupProductId} onChange={(e) => setLookupProductId(e.target.value)} placeholder="uuid" />
+        </label>{" "}
+        <label>
+          Notes: <input value={lookupNotes} onChange={(e) => setLookupNotes(e.target.value)} />
+        </label>{" "}
+        <button onClick={() => forceRemoveOrRestore("remove")}>Remove</button>{" "}
+        <button onClick={() => forceRemoveOrRestore("restore")}>Restore</button>
+      </p>
+      {lookupResult && <p>{lookupResult}</p>}
 
       {queue.length === 0 ? (
         <p>The queue is empty.</p>
@@ -117,6 +164,7 @@ export default function AdminModerationPage() {
                 <th></th>
                 <th>Store</th>
                 <th>Product</th>
+                <th>Source</th>
                 <th>Description</th>
                 <th>Notes</th>
                 <th>Decision</th>
@@ -130,6 +178,7 @@ export default function AdminModerationPage() {
                   </td>
                   <td>{product.store?.name ?? "-"}</td>
                   <td>{product.title}</td>
+                  <td>{product.sourceType === "supplier" ? "Supplier-listed" : "Self"}</td>
                   <td>{product.description ?? "-"}</td>
                   <td>
                     <input

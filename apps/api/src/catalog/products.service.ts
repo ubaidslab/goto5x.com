@@ -33,6 +33,16 @@ export class ProductsService {
 
       // SRS §5.23/FR-23.1 - enforced at creation time, not a soft warning.
       const context = await this.subscriptions.getPlanContext(sellerId);
+
+      // Module 37 (SRS §5.54/FR-54.1) - an admin-applied per-seller block,
+      // checked before the plan-limit check since it's a stronger, targeted
+      // gate rather than a capacity ceiling. Only blocks NEW listings -
+      // never touches products already created.
+      const listingBlocked = await this.settings.resolve<boolean>("catalog.listing_blocked", context);
+      if (listingBlocked) {
+        throw new BadRequestException("New product listings are currently blocked for this seller.");
+      }
+
       const productLimit = await this.settings.resolve<number>("catalog.product_limit", context);
       const existingCount = await tx.product.count({ where: { storeId } });
       if (existingCount >= productLimit) {

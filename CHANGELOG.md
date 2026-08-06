@@ -7,6 +7,62 @@ number (not npm semver) — each entry is either a specification amendment
 (docs only) or a shipped module (code + tests). Maintained on every future
 change.
 
+## Module 37: Advanced Granular Admin Control
+
+SRS §5.54/§14.54, FR-54.1-54.6. Four narrow, audit-logged admin controls
+beyond the existing suspend/ban ladder, all reusing existing mechanisms.
+Sixth and final module of the "Pre-Launch Enhancements" batch (v0.32) -
+the UZEYN rename pass is next.
+
+### Added
+- **Seller-scope listing block** (FR-54.1) - new `catalog.listing_blocked`
+  Settings Registry key (`["global", "seller"]`), checked in
+  `ProductsService.create()` alongside the existing
+  `catalog.product_limit` check. Blocks only NEW product creation; a
+  blocked seller's already-listed products are untouched.
+- **Instant single-product takedown** (FR-54.2) - new `admin_removed`
+  `ModerationStatus` value. `ModerationService.approve()`/`reject()` both
+  hard-require the product be `pending`, so this needed two new methods,
+  `forceRemove()`/`restore()`, with no precondition on the product's
+  current status - an admin can remove/restore a product regardless of
+  whether it was approved, pending, or anything else
+  (`POST /admin/products/:id/remove`/`restore`, a new controller
+  deliberately NOT decorated with `@AllowReviewer()`, since this is a
+  stronger action than the REVIEWER sub-role is scoped to). Storefront
+  exclusion is automatic and required no changes to any existing
+  storefront query - `admin_removed` is deliberately never added to
+  `PUBLIC_MODERATION_STATUSES`, the existing allowlist every
+  storefront-visible product query already filters through.
+- **Supplier-listed product block/approve** (FR-54.3) - reuses the
+  existing Moderation Queue (Module 6) exactly as built; a
+  supplier-sourced listing already lands in the same `pending` queue as
+  a self-fulfilled one. The real gap closed here was visibility: the
+  admin terminal's queue view now shows each queued product's source
+  (self vs. supplier-listed), so an admin can identify and act on
+  supplier-attributed listings via the same existing approve/reject
+  buttons - no new queue.
+- **Per-seller feature-flag override** (FR-54.4) - a new "Settings
+  overrides" section on the Seller 360 page (Module 25), a
+  seller-pre-filled convenience over the already-generic
+  `PUT /admin/settings/values`/`GET /admin/settings/resolve` endpoints
+  (the seller-scope write path itself was already proven end-to-end by
+  an existing Module 25 e2e test and reachable from the standalone
+  `/admin/settings` page - this module's real new surface is the
+  Seller-360-scoped UI, not first-time wiring).
+- Every action across all four controls calls the existing
+  `AuditLogService.record()` with before/after values (FR-54.5).
+- Additive to, not a replacement for, the existing `SellerLifecycleStatus`
+  ladder (active→warned→restricted→suspended→banned) - untouched by
+  anything in this module (FR-54.6).
+- e2e coverage: a listing-blocked seller can't create a new product but
+  keeps its existing listings visible; force-removing an approved
+  product makes it instantly storefront-invisible and restoring it
+  brings it back, both audit-logged; a supplier-listed product surfaces
+  with `sourceType: "supplier"` in the existing queue and can be
+  approved through it with no new queue; a seller-scope override on
+  `catalog.listing_blocked` blocks one seller while a second seller on
+  the same plan is provably unaffected.
+
 ## Module 36: Admin Email Section
 
 SRS §5.53/§14.53, FR-53.1-53.5. UZEYN's own unified inbox in the admin

@@ -170,4 +170,52 @@ export class ModerationService {
     });
     return after;
   }
+
+  /**
+   * Module 37 (SRS §5.54/FR-54.2) - instant single-product takedown. Unlike
+   * approve()/reject() above, this has no precondition on the product's
+   * current moderationStatus - an admin can remove a product regardless of
+   * whether it's approved, pending, or anything else. Storefront invisibility
+   * is automatic: `admin_removed` is deliberately never added to
+   * StorefrontService's PUBLIC_MODERATION_STATUSES allowlist.
+   */
+  async forceRemove(adminUserId: string, productId: string, notes: string | undefined) {
+    const before = await this.prismaAdmin.product.findUnique({ where: { id: productId } });
+    if (!before) throw new NotFoundException("Product not found.");
+    const after = await this.prismaAdmin.product.update({
+      where: { id: productId },
+      data: { moderationStatus: "admin_removed", moderationNotes: notes ?? null },
+    });
+    await this.auditLog.record({
+      adminUserId,
+      action: "moderation.force_remove",
+      targetType: "product",
+      targetId: productId,
+      beforeValue: { moderationStatus: before.moderationStatus },
+      afterValue: { moderationStatus: "admin_removed", notes: notes ?? null },
+    });
+    return after;
+  }
+
+  /** Module 37 (SRS §5.54/FR-54.2) - reverses forceRemove(), back to `approved` (the normal publicly-visible state). */
+  async restore(adminUserId: string, productId: string, notes: string | undefined) {
+    const before = await this.prismaAdmin.product.findUnique({ where: { id: productId } });
+    if (!before) throw new NotFoundException("Product not found.");
+    if (before.moderationStatus !== "admin_removed") {
+      throw new BadRequestException("This product was not admin-removed.");
+    }
+    const after = await this.prismaAdmin.product.update({
+      where: { id: productId },
+      data: { moderationStatus: "approved", moderationNotes: notes ?? null },
+    });
+    await this.auditLog.record({
+      adminUserId,
+      action: "moderation.restore",
+      targetType: "product",
+      targetId: productId,
+      beforeValue: { moderationStatus: before.moderationStatus },
+      afterValue: { moderationStatus: "approved", notes: notes ?? null },
+    });
+    return after;
+  }
 }

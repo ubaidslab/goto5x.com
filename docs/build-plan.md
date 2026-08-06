@@ -3350,22 +3350,34 @@ inbox merging linked accounts, reply via the originating account's own
 SMTP credentials. No AI (founder replies personally) — AI-assist is a
 roadmap-only note (§5.22 FR-22.19).
 
-### Module 37 (Advanced Granular Admin Control) — scope summary
+### Module 37 (Advanced Granular Admin Control) — scope summary (built)
 `docs/SRS.md` §5.54, FR-54.1-54.6. Four narrow, audit-logged admin
 controls, all reusing existing mechanisms rather than introducing new
 ones: (1) block a seller's new-product-listing ability via a new
-seller-scope Settings Registry flag (`catalog.listing_blocked`) — the
-seller-scope plumbing already existed in `PUT /admin/settings/values`
-but had no exercised call site before this module; (2) instant
-single-product takedown via a new `admin_removed` `ModerationStatus`
-value, filtered by the same storefront-visibility WHERE clause already in
-place; (3) supplier-listed-product block/approve via the existing
-Moderation Queue (§5.27/Module 6), no new queue; (4) per-seller
-feature-flag override via the Settings Registry's existing seller-scope
-precedence, surfaced from the Seller 360 page (Module 25). All four call
-the existing `AuditLogService.record()` with before/after values.
-Additive to, not a replacement for, the existing `SellerLifecycleStatus`
-ladder (§5.29).
+seller-scope Settings Registry flag (`catalog.listing_blocked`, checked
+in `ProductsService.create()` alongside `catalog.product_limit`) —
+`PUT /admin/settings/values` already accepted `scopeType: "seller"`
+generically (proven by an existing Module 25 e2e test and reachable from
+the standalone `/admin/settings` page), so this module's real new
+surface is the key itself plus a Seller-360-scoped convenience UI, not
+first-time wiring; (2) instant single-product takedown via a new
+`admin_removed` `ModerationStatus` value — `ModerationService.approve()`/
+`reject()` both hard-require the product be `pending`, so this needed new
+`forceRemove()`/`restore()` methods (any status → `admin_removed` →
+`approved`) on a new, non-`@AllowReviewer()` controller
+(`POST /admin/products/:id/remove|restore`); storefront exclusion is
+automatic since `admin_removed` is deliberately never added to
+`PUBLIC_MODERATION_STATUSES`, no per-query-site changes needed; (3)
+supplier-listed-product block/approve via the existing Moderation Queue
+(§5.27/Module 6, unmodified) — a supplier-sourced listing already lands
+in the same `pending` queue as a self-fulfilled one, so the actual gap
+was the admin terminal not surfacing which queued products are
+supplier-attributed (`sourceType` added to the queue table's UI); (4)
+per-seller feature-flag override via the Settings Registry's existing
+seller-scope precedence, surfaced as a new section on the Seller 360 page
+(Module 25). All four call the existing `AuditLogService.record()` with
+before/after values. Additive to, not a replacement for, the existing
+`SellerLifecycleStatus` ladder (§5.29).
 
 ---
 

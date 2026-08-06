@@ -121,12 +121,18 @@ enum ProductSourceType {
 
 // Module 6 (Listing Moderation Engine, FR-27.5). `not_required` = never
 // queued (trusted seller, or no rule matched); `pending` = in the queue,
-// not publicly visible regardless of `status`.
+// not publicly visible regardless of `status`. Module 37 (SRS §5.54/
+// FR-54.2) added `admin_removed` - an instant takedown an admin can apply
+// to a product in ANY prior status, never included in
+// StorefrontService's PUBLIC_MODERATION_STATUSES allowlist, so it's
+// excluded from every storefront-visible query without touching any of
+// those queries.
 enum ModerationStatus {
   not_required
   pending
   approved
   rejected
+  admin_removed
 }
 
 enum MediaSource {

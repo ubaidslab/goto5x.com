@@ -6150,23 +6150,25 @@ going forward, per FR-6.28.
 - [x] Every link/unlink action is recorded in `AdminAuditLog` with
       before/after values (FR-53.5).
 
-### 14.54 Advanced Granular Admin Control (new, v0.32, not yet built)
-- [ ] A seller flagged `catalog.listing_blocked` cannot create a new
+### 14.54 Advanced Granular Admin Control (built, Module 37, v0.32)
+- [x] A seller flagged `catalog.listing_blocked` cannot create a new
       product (403/400, existing products unaffected), proven by an e2e
       test asserting the flag blocks creation but not existing listing
       visibility (FR-54.1).
-- [ ] An admin can move an `approved` product straight to `admin_removed`
+- [x] An admin can move an `approved` product straight to `admin_removed`
       and it immediately disappears from storefront visibility — proven
       by a before/after storefront-query assertion (FR-54.2).
-- [ ] A supplier-listed product can be blocked/approved from the admin
+- [x] A supplier-listed product can be blocked/approved from the admin
       terminal via the existing moderation queue mechanism, with no new
       queue introduced (FR-54.3).
-- [ ] An admin-overridden seller-scope Settings Registry value takes
+- [x] An admin-overridden seller-scope Settings Registry value takes
       precedence over the plan/global default for that one seller only —
       proven by asserting a second seller on the same plan is unaffected
-      (FR-54.4, exercising §3.8's seller > plan precedence for the first
-      time at the UI layer).
-- [ ] All four controls above produce an `AdminAuditLog` row with
+      (FR-54.4, exercising §3.8's seller > plan precedence at the UI
+      layer via a Seller-360-scoped convenience section - the underlying
+      write path itself was already proven end-to-end by an existing
+      Module 25 e2e test).
+- [x] All four controls above produce an `AdminAuditLog` row with
       before/after values (FR-54.5).
 
 ---

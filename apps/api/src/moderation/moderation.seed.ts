@@ -55,6 +55,23 @@ export async function seedModerationSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  // Module 37 (SRS §5.54/FR-54.1) - admin-settable per-seller block on
+  // NEW product listings, checked in ProductsService.create() alongside
+  // catalog.product_limit. Does not touch the seller's already-listed
+  // products. `["global", "seller"]` (not "plan") - this is a targeted
+  // admin action against one seller, not a plan-tier differentiator.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "catalog.listing_blocked" },
+    create: {
+      key: "catalog.listing_blocked",
+      valueType: "boolean",
+      allowedScopes: ["global", "seller"],
+      defaultValue: false,
+      description: "When true for a seller, that seller cannot create new products (existing listings are unaffected) - an admin-applied block, not a plan limit (FR-54.1).",
+    },
+    update: {},
+  });
 }
 
 if (require.main === module) {

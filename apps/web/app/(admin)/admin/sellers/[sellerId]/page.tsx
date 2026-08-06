@@ -50,6 +50,14 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   const [impersonationSessionId, setImpersonationSessionId] = useState<string | null>(null);
   const [clawbackAmount, setClawbackAmount] = useState("");
   const [clawbackNotes, setClawbackNotes] = useState("");
+  const [settingsKey, setSettingsKey] = useState("");
+  const [settingsValue, setSettingsValue] = useState("");
+  const [settingsLookup, setSettingsLookup] = useState<{
+    valueType: string;
+    effectiveValue: unknown;
+    winningScope: string;
+  } | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   function load() {
     adminApi
@@ -119,6 +127,48 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       load();
     } catch (err) {
       alert(err instanceof AdminApiError ? err.message : `Couldn't ${action} this participation.`);
+    }
+  }
+
+  /**
+   * Module 37 (SRS §5.54/FR-54.4) - a Seller-360-scoped, pre-filled
+   * convenience over the already-generic Settings Registry admin API
+   * (the same PUT /admin/settings/values the standalone /admin/settings
+   * page uses) - not a new write mechanism, just this page's own context
+   * (sellerId) pre-filled in rather than free-typed.
+   */
+  async function lookupSetting() {
+    setSettingsError(null);
+    setSettingsLookup(null);
+    if (!settingsKey.trim()) return;
+    try {
+      const result = await adminApi.get<{ valueType: string; effectiveValue: unknown; winningScope: string }>(
+        `/admin/settings/resolve?key=${encodeURIComponent(settingsKey.trim())}&sellerId=${params.sellerId}`,
+      );
+      setSettingsLookup(result);
+    } catch (err) {
+      setSettingsError(err instanceof AdminApiError ? err.message : "Couldn't look up that settings key.");
+    }
+  }
+
+  async function overrideSettingForSeller() {
+    setSettingsError(null);
+    if (!settingsKey.trim() || !settingsValue.trim()) {
+      setSettingsError("A key and a value are both required.");
+      return;
+    }
+    let parsedValue: unknown = settingsValue.trim();
+    try {
+      parsedValue = JSON.parse(settingsValue.trim());
+    } catch {
+      // Not valid JSON - keep it as the raw string (e.g. a plain non-quoted string value).
+    }
+    try {
+      await adminApi.put("/admin/settings/values", { key: settingsKey.trim(), scopeType: "seller", scopeId: params.sellerId, value: parsedValue });
+      setSettingsValue("");
+      await lookupSetting();
+    } catch (err) {
+      setSettingsError(err instanceof AdminApiError ? err.message : "Couldn't set that override.");
     }
   }
 
@@ -255,6 +305,32 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
           Reason: <input value={clawbackNotes} onChange={(e) => setClawbackNotes(e.target.value)} />
         </label>{" "}
         <button onClick={clawback}>Clawback (FR-33.10)</button>
+      </p>
+
+      <h2>Settings overrides</h2>
+      <p>
+        Override any existing boolean/numeric Settings Registry key for this seller only - the seller-scope override
+        wins over any plan/global default, and only for this seller (SRS §5.54/FR-54.4). E.g. <code>catalog.listing_blocked</code>.
+      </p>
+      {settingsError && <p style={{ color: "crimson" }}>{settingsError}</p>}
+      <p>
+        <label>
+          Settings key: <input value={settingsKey} onChange={(e) => setSettingsKey(e.target.value)} placeholder="catalog.listing_blocked" />
+        </label>{" "}
+        <button onClick={lookupSetting}>Look up</button>
+      </p>
+      {settingsLookup && (
+        <p>
+          Type: {settingsLookup.valueType} - effective value: {JSON.stringify(settingsLookup.effectiveValue)} - winning scope:{" "}
+          {settingsLookup.winningScope}
+        </p>
+      )}
+      <p>
+        <label>
+          New value for this seller (JSON, e.g. <code>true</code> or <code>5</code>):{" "}
+          <input value={settingsValue} onChange={(e) => setSettingsValue(e.target.value)} />
+        </label>{" "}
+        <button onClick={overrideSettingForSeller}>Override for this seller</button>
       </p>
 
       <h2>Trust &amp; Safety</h2>
