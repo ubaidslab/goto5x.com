@@ -15,10 +15,18 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       valueType: "number",
       allowedScopes: ["global", "plan", "seller"],
       defaultValue: 1,
-      validation: { min: 0, max: 100 },
-      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16).",
+      validation: { min: 0, max: 2 },
+      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
     },
-    update: {},
+    // Unlike every other definition in these seed files, this one refreshes
+    // `validation` on every boot (not just `update: {}`) - the 2% cap is a
+    // launch-blocker guarantee (v0.33, FR-7.4) that must retroactively
+    // tighten an already-seeded environment's old max:100, not just apply
+    // to fresh DBs.
+    update: {
+      validation: { min: 0, max: 2 },
+      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
+    },
   });
 
   await prisma.settingsDefinition.upsert({

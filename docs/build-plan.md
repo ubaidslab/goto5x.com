@@ -3496,14 +3496,32 @@ as the right order after research — no changes:
     `price === "0" ? "Free"` price-label helpers are not a leftover
     (correct for Team plans' genuine Rs 0 base + per-seat pricing).
     Re-verified full suite + real CI green on the follow-up commit.
-- **Module 45 — Commission rate hard cap (🟠).** Small and isolated
-  (a `SettingsDefinition.validation.max` change plus a rejection test) —
-  research confirmed both the generic min/max validation mechanism and
-  the admin high-impact-confirmation UI already exist and already cover
-  this exact key, so this is genuinely a data/seed fix, not new
-  mechanism. Slotted right after Module 44 since it shares the same
+- **Module 45 — Commission rate hard cap (🟠). BUILT.** Small and
+  isolated (a `SettingsDefinition.validation.max` change plus a rejection
+  test) — research confirmed both the generic min/max validation
+  mechanism and the admin high-impact-confirmation UI already exist and
+  already cover this exact key, so this is genuinely a data/seed fix, not
+  new mechanism. Slotted right after Module 44 since it shares the same
   `billing.seed.ts` file and per-tier commission values Module 44 is
   already touching.
+  - `billing.commission_rate_percent`'s `validation.max` tightened
+    100 → 2 in `billing.seed.ts`. Unlike every other `SettingsDefinition`
+    seed in the codebase, this one's `upsert` gets a real `update:` block
+    (not the usual no-op `update: {}`) so the tightened cap retroactively
+    applies to an already-provisioned environment, not only a fresh DB —
+    a disclosed, deliberate deviation from the established seed
+    convention, justified by this being a launch-blocker financial
+    guarantee rather than an ordinary tunable.
+  - Zero new mechanism: `SettingsService.validateValue()`'s existing
+    generic min/max check and the admin settings screen's existing
+    `isHighImpact()` (already matching every `billing.`-prefixed key)
+    both needed no code changes.
+  - New e2e test proving a write above 2% is rejected (400) at both
+    seller and global scope, and never persisted. Fixed one pre-existing
+    test that exercised the override mechanism with a since-invalid 48%
+    value (moved to 1.5%, same proof, now within the cap).
+  - Verified: full local unit suite (38/38, 186/186), full local e2e
+    suite, and a real CI-verified green run on the pushed commit.
 - **Module 46 — Self-fulfilled stock protection (🟠, real oversell
   bug).** Independent of Modules 44/45 — touches checkout/inventory, not
   plans/billing. Kept in the founder's given order (before wallet

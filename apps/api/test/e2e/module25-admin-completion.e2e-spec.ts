@@ -184,16 +184,44 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     await request(app.getHttpServer())
       .put("/admin/settings/values")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ key: "billing.commission_rate_percent", scopeType: "seller", scopeId: sellerId, value: 48 });
+      // v0.33/FR-7.4 - billing.commission_rate_percent is hard-capped at 2,
+      // so this override must stay within it (see the dedicated over-cap
+      // rejection test below for the boundary itself).
+      .send({ key: "billing.commission_rate_percent", scopeType: "seller", scopeId: sellerId, value: 1.5 });
 
     const afterOverride = await request(app.getHttpServer())
       .get(`/admin/settings/resolve?key=billing.commission_rate_percent&sellerId=${sellerId}`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(afterOverride.body.winningScope).toBe("seller");
-    expect(afterOverride.body.effectiveValue).toBe(48);
+    expect(afterOverride.body.effectiveValue).toBe(1.5);
     const sellerEntry = afterOverride.body.chain.find((c: { scope: string }) => c.scope === "seller");
     expect(sellerEntry.hasOverride).toBe(true);
     expect(sellerEntry.updatedByEmail).toBe(adminEmail);
+  });
+
+  it("rejects a commission-rate override above the 2% hard cap, at any scope (v0.33/FR-7.4, Module 45)", async () => {
+    const { sellerId } = await signup("commission-cap-seller@example.com");
+    const { token: adminToken } = await createAndLoginAdmin("commission-cap-admin@example.com");
+
+    const sellerScoped = await request(app.getHttpServer())
+      .put("/admin/settings/values")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ key: "billing.commission_rate_percent", scopeType: "seller", scopeId: sellerId, value: 5 });
+    expect(sellerScoped.status).toBe(400);
+    expect(sellerScoped.body.message.message).toMatch(/above the maximum 2/);
+
+    const globalScoped = await request(app.getHttpServer())
+      .put("/admin/settings/values")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ key: "billing.commission_rate_percent", scopeType: "global", value: 2.01 });
+    expect(globalScoped.status).toBe(400);
+    expect(globalScoped.body.message.message).toMatch(/above the maximum 2/);
+
+    // Confirms the endpoint never persisted the rejected value.
+    const resolved = await request(app.getHttpServer())
+      .get(`/admin/settings/resolve?key=billing.commission_rate_percent&sellerId=${sellerId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(resolved.body.winningScope).toBe("default");
   });
 
   it("the wallet manual-adjust action credits/debits with a reason, rejects a zero amount or missing reason, and is audit-logged (P0)", async () => {

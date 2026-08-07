@@ -5048,6 +5048,10 @@ going forward, per FR-6.28.
 - [x] A higher-tier plan's commission rate correctly overrides a lower
       tier's via Settings Registry precedence (FR-7.4) — proven between
       First Month's 2% and Starter's own explicit override
+- [x] **v0.33 (Module 45):** `billing.commission_rate_percent`'s hard 2%
+      ceiling rejects a write above it at every allowed scope (global,
+      plan, seller) — proven directly against `SettingsService`'s
+      generic min/max validation, not a new mechanism (FR-7.4)
 - [x] A plan change applied mid-cycle takes effect at the next billing
       cycle, not immediately (FR-7.5). **v0.33:** every seller now has a
       real billing cycle from signup (First Month), so even the FIRST

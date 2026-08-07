@@ -115,6 +115,34 @@ module (Module 44).
   Product Feed API) and a 4th WhatsApp deep-link generator, both
   Growth+-plan-gated.
 
+## Module 45: Commission Rate Hard Cap
+
+SRS §5.7, FR-7.4 amended (v0.33). `billing.commission_rate_percent`'s
+`SettingsDefinition.validation.max` tightens from 100 to a real business
+ceiling of **2** — a data/seed change, not new mechanism:
+`SettingsService.validateValue()` already enforces `validation.min`/`max`
+generically at every scope (global/plan/seller), and the admin settings
+screen's existing `isHighImpact()` check already matches every
+`billing.`-prefixed key, so a bad edit already surfaces an old-vs-new
+confirm dialog before it applies. Unlike every other `SettingsDefinition`
+seed in the codebase (which use a no-op `update: {}` so re-seeding never
+touches an already-provisioned row), this one's `update` block refreshes
+`validation` on every boot — the 2% ceiling is a launch-blocker guarantee
+that must retroactively tighten an environment that already ran the old
+seed once, not just apply to a fresh database.
+
+### Tests
+- New e2e test (`module25-admin-completion.e2e-spec.ts`): an
+  admin-initiated write above 2% is rejected with a 400 at both seller
+  and global scope, and the rejected value is never persisted (confirmed
+  via a follow-up resolve call still showing `winningScope: "default"`).
+- Fixed one pre-existing test that exercised the settings-override
+  mechanism using a since-invalid value (48%) for this key — moved to
+  1.5%, still within the new cap, no change to what the test proves.
+
+Verified: full local unit suite (38/38 suites, 186/186 tests) and full
+local e2e suite, plus a real CI-verified green run on the pushed commit.
+
 ## Module 44: No Free Plan — First Month Entry Pricing
 
 SRS §5.7/§5.23/§5.39, FR-7.1-7.4/7.8/7.19, FR-23.1-23.5 (v0.33). Retires
