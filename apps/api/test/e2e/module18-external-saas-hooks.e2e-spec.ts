@@ -237,13 +237,13 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       expect(theme).not.toBeNull();
     });
 
-    it("FR-24.5: a Free-Plan seller with a marketplace entitlement can select it despite the plan-tier gate excluding premium templates", async () => {
+    it("FR-24.5: an entry-tier seller with a marketplace entitlement can select it despite the plan-tier gate excluding premium templates", async () => {
       const adminToken = await fullyVerifiedAdminToken("t-fr245-admin@example.com");
       const { secret } = await registerClient(adminToken, "template_store");
       const seller = await signupLoginAndCreateStore("t-fr245-seller@example.com", "t-fr245-store");
 
-      // Premium-tier gate is off by default (v1.0) - confirm the Free-Plan
-      // seller genuinely cannot select an ordinary premium theme.
+      // Premium-tier gate is off by default (v1.0) - confirm the entry-tier
+      // (First Month) seller genuinely cannot select an ordinary premium theme.
       const premiumTheme = await superuser.theme.findFirstOrThrow({ where: { name: "Studio" } });
       const rejectedPremium = await request(app.getHttpServer())
         .patch(`/stores/${seller.storeId}/theme-settings`)
@@ -366,33 +366,33 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       expect(JSON.stringify(list.body)).not.toContain("tokenHash");
     });
 
-    it("the eligibility endpoint answers correctly for a paid vs. Free-plan seller, returns only the boolean, and rejects an unsigned call", async () => {
+    it("the eligibility endpoint answers correctly for an active vs. cancelled seller (v0.33 - every plan is paid, so eligibility now tracks subscription status), returns only the boolean, and rejects an unsigned call", async () => {
       const seller = await signupLoginAndCreateStore("eligibility@example.com", "eligibility-store");
       const adminToken = await fullyVerifiedAdminToken("eligibility-admin@example.com");
       const { secret } = await registerClient(adminToken, "template_store");
 
+      // A freshly-signed-up seller is on First Month (v0.33 - always paid) with an active subscription.
       const timestamp1 = String(Date.now());
       const query1 = `sellerId=${seller.sellerId}`;
-      const freeCheck = await request(app.getHttpServer())
+      const activeCheck = await request(app.getHttpServer())
         .get(`/external/eligibility?${query1}`)
         .set("x-uzeyn-client-type", "template_store")
         .set("x-uzeyn-timestamp", timestamp1)
         .set("x-uzeyn-signature", sign(secret, timestamp1, query1));
-      expect(freeCheck.status).toBe(200);
-      expect(freeCheck.body).toEqual({ eligible: false });
+      expect(activeCheck.status).toBe(200);
+      expect(activeCheck.body).toEqual({ eligible: true });
 
-      // Move the seller onto a paid plan directly (Module 14's own concern, not this module's focus).
-      const paidPlan = await superuser.plan.findFirstOrThrow({ where: { tierOrder: { gt: 0 } } });
-      await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: paidPlan.id } });
+      // Cancel the subscription directly (Module 14's own concern, not this module's focus).
+      await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { status: "cancelled" } });
 
       const timestamp2 = String(Date.now());
-      const paidCheck = await request(app.getHttpServer())
+      const cancelledCheck = await request(app.getHttpServer())
         .get(`/external/eligibility?${query1}`)
         .set("x-uzeyn-client-type", "template_store")
         .set("x-uzeyn-timestamp", timestamp2)
         .set("x-uzeyn-signature", sign(secret, timestamp2, query1));
-      expect(paidCheck.status).toBe(200);
-      expect(paidCheck.body).toEqual({ eligible: true });
+      expect(cancelledCheck.status).toBe(200);
+      expect(cancelledCheck.body).toEqual({ eligible: false });
 
       const unsigned = await request(app.getHttpServer()).get(`/external/eligibility?${query1}`);
       expect(unsigned.status).toBe(401);

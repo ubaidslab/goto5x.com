@@ -136,8 +136,10 @@ export class SubscriptionsService {
   /**
    * FR-7.5 - a plan change never applies immediately mid-cycle. The one
    * exception consistent with that same rule: a seller with no active cycle
-   * yet (Free Plan, currentPeriodEnd null) has no cycle to wait for, so the
-   * change applies now and starts a real cycle if the new plan is paid.
+   * yet (currentPeriodEnd null - e.g. a desponsored team member) has no
+   * cycle to wait for, so the change applies now and starts a real cycle.
+   * Every seller now gets a real currentPeriodEnd from signup (v0.33's
+   * First Month), so this branch no longer fires for ordinary signups.
    * Disclosed decision (no explicit SRS text pins this edge case) - see
    * docs/build-plan.md's Module 14 note.
    */

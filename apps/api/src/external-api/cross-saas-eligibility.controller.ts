@@ -35,8 +35,9 @@ export class CrossSaasEligibilityController {
     const subscription = await this.subscriptions.getSubscription(sellerId).catch(() => null);
     if (!subscription) throw new NotFoundException("Seller not found.");
 
-    // FR-7.1 - the Free (individual) plan is always tierOrder 0; any other
-    // plan (a higher individual tier, or a Team plan) is a paid plan.
-    return { eligible: subscription.plan.tierOrder > 0 };
+    // v0.33 - every plan (individual or team) is now a paid plan (no more
+    // Free tier at tierOrder 0), so "on an active paid plan" collapses to
+    // the subscription itself being active rather than cancelled.
+    return { eligible: subscription.status === "active" };
   }
 }

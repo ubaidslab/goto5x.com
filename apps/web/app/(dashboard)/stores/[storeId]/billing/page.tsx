@@ -240,8 +240,8 @@ export default function BillingPage() {
                 Leave team
               </Button>
               <p className="mt-2 text-xs text-ink-muted">
-                Leaving is always available and never suspends your store - you downgrade to Free at the end of the
-                current period.
+                Leaving is always available and never suspends your store - you downgrade to Starter at the end of
+                the current period.
               </p>
             </CardBody>
           </Card>

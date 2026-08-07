@@ -212,6 +212,32 @@ no-op commit re-triggers it — no functional change.)
   `module32-gift-cards.e2e-spec.ts`, `guardrails.e2e-spec.ts`,
   `teams.e2e-spec.ts`, `branding.e2e-spec.ts`, `trust-safety.e2e-spec.ts`).
 
+### Follow-up (founder-requested verification pass, commit `6a03467`+)
+Founder asked for explicit confirmation that no code path still resolves
+or depends on a "Free" plan - a targeted audit (not an assumption) found
+one genuine functional bug and several stale UI strings, both fixed here:
+- **Bug**: `CrossSaasEligibilityController` (FR-24.14) still gated on
+  `plan.tierOrder > 0` to mean "on a paid plan" - since First Month is now
+  tierOrder 0 and paid, this incorrectly marked every seller in their
+  first month as ineligible for the cross-SaaS discount. Fixed to check
+  `subscription.status === "active"` instead, since every plan is paid
+  now and the distinction collapses to active vs. cancelled.
+- **Stale copy** (no behavior change, just wrong text): the team-leave
+  page said a member "downgrades to Free" (now Starter, matching
+  `scheduleDowngradeToStarterAtPeriodEnd`); the customizer branding
+  toggle said branding removal was "Mandatory on the Free plan" (now
+  correctly states Pro/Team-only, matching the Module 44 branding fix).
+- **Not changed** (confirmed correct, not a Free-Plan leftover): the
+  `price === "0" ? "Free" : ...` price-label helpers on the marketing/
+  pricing/billing pages - these remain accurate for Team plans, which
+  are genuinely seat-priced with a Rs 0 base price by design (unrelated
+  to the retired individual Free Plan); no individual plan has price 0
+  anymore, so this branch is simply unreachable for individual plans.
+- Test coverage: rewrote `module18-external-saas-hooks.e2e-spec.ts`'s
+  eligibility test to assert active-vs-cancelled instead of the retired
+  free-vs-paid distinction; verified full suite (51/51 suites, 396/396
+  tests) plus unit suite (38/38 suites, 186/186 tests) still green.
+
 ## Module 37: Advanced Granular Admin Control
 
 SRS §5.54/§14.54, FR-54.1-54.6. Four narrow, audit-logged admin controls

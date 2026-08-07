@@ -257,7 +257,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                   </label>
                   {!branding.removable && (
                     <p className="text-xs text-ink-muted">
-                      Mandatory on the Free plan. Upgrade to a paid plan to remove it.
+                      Only removable on the Pro plan (or any Team plan). Upgrade to remove it.
                     </p>
                   )}
                 </>
