@@ -115,6 +115,107 @@ module (Module 44).
   Product Feed API) and a 4th WhatsApp deep-link generator, both
   Growth+-plan-gated.
 
+## Phase B item 5: Key Rotation + Breach Runbook
+
+Pre-launch audit finding. There was no documented procedure if an
+encryption key leaked, and no utility to actually rotate one. Every
+encrypted-at-rest domain (CNIC, Google Drive refresh tokens, external-API
+client secrets, seller SMTP credentials, admin email credentials) turned
+out to already share the exact same AES-256-GCM implementation under five
+independent keys, so one generic rotation utility covers all five domains
+rather than five near-duplicate scripts.
+
+### Added
+- `apps/api/scripts/rotate-encryption-key.ts` — `npx ts-node scripts/
+  rotate-encryption-key.ts <domain> <oldKeyBase64> <newKeyBase64>
+  [--dry-run]`. Decrypts every row for the given domain with the old key
+  and re-encrypts with the new key, one atomic operation per row/column —
+  a decrypt/encrypt failure on one row is logged and skipped, never
+  partially written, and the process exits non-zero if any row failed.
+  `--dry-run` decrypts with the old key and reports success/failure
+  without writing, so the key you have on hand can be confirmed correct
+  before touching production data. Connects directly via
+  `DATABASE_ADMIN_URL` (the same BYPASSRLS role `PrismaAdminService`
+  uses) since it must touch every seller's/admin's row, not one tenant's.
+- `apps/api/scripts/rotate-encryption-key.spec.ts` (9 tests) — proves the
+  decrypt-with-old/re-encrypt-with-new/decrypt-with-new round trip for
+  all three distinct crypto implementations in the codebase (the five
+  domains map onto three; CNIC/Drive-token/external-API-secret all reuse
+  `encryptDriveToken`/`decryptDriveToken` verbatim), plus that the old key
+  can no longer decrypt post-rotation ciphertext and the new key can't
+  decrypt not-yet-rotated ciphertext (proves rotation actually changes
+  something, not a silent no-op).
+- `docs/launch-runbook.md` new "§3a Encryption Key Rotation + Breach
+  Response" section: a domain/env-var/table.column inventory table, a
+  routine-rotation checklist (dry-run first, backup, rotate, restart,
+  verify, destroy the old key), and a breach-response checklist covering
+  enabling maintenance mode (`platform.maintenance_mode_enabled`, existing
+  FR-8.7 mechanism), force-logging-out every session platform-wide (Redis
+  `FLUSHALL` — sessions live in the same Redis store as the rate-limiter/
+  settings cache, both of which regenerate harmlessly), rotating the
+  leaked key, rotating anything the leaked plaintext itself could unlock
+  (Drive token, external API secret, SMTP passwords) domain by domain,
+  rotating `JWT_ACCESS_SECRET` if the breach extended beyond the
+  encryption keys, an audit-log review, disabling maintenance mode, and a
+  writeup step.
+
+## Phase B item 4: RLS Defense-in-Depth Tests
+
+Pre-launch audit finding. Tenant isolation rests on `TenantPrismaService.
+run()` validating a `sellerId` as a syntactically-correct UUID before
+interpolating it into a raw `SET LOCAL app.current_seller_id = '...'`
+statement — the one place in the codebase that builds SQL by string
+concatenation, because Postgres's wire protocol can't parameterize `SET
+LOCAL`. It was already correctly guarded, but had no dedicated test — a
+future refactor could weaken or remove the guard with nothing failing.
+
+### Added
+- `apps/api/src/prisma/tenant-prisma.service.spec.ts` (new, 16 tests, unit-
+  level with a fake Prisma client — no real DB needed since the guard
+  throws before ever opening a transaction). Proves 14 malicious/malformed
+  inputs are rejected (SQL fragment, valid-UUID-then-SQL-fragment, empty
+  string, whitespace, `null`, `undefined`, a Cyrillic-homoglyph string
+  shaped like a UUID, a 10,000-character oversized string, malformed
+  hyphenation, a bare numeric id, an embedded quote, a trailing newline, a
+  leading space) and — for every one — that `$transaction()` is never even
+  called, not just that the eventual query fails. Two positive controls
+  (lowercase/uppercase valid UUIDs) confirm the guard doesn't over-reject
+  and that the exact expected value reaches `$executeRawUnsafe()`.
+
+No production code changed — the mechanism was already correct.
+
+## Phase B item 3: Wallet Transaction History Pagination
+
+Pre-launch audit finding. `WalletService.getTransactionHistory()` returned
+every `LedgerEntry` for a seller with no limit — fine at today's volume,
+but degrades for a high-volume seller who accumulates thousands of
+commission/fee rows over the store's lifetime.
+
+### Changed
+- `WalletService.getTransactionHistory(sellerId, page, limit)` now takes
+  optional `page`/`limit` (default 1/20, `limit` capped at 100) and returns
+  `{ items, page, limit, total, totalPages }` instead of a bare array —
+  real offset pagination (`skip`/`take` + a parallel `count()`), not a
+  client-side slice.
+- `SupplierWalletService.getTransactionHistory()` — same fix, same shape,
+  for consistency (the supplier wallet has no frontend history view today,
+  but carries the identical unbounded-growth risk).
+- `GET /sellers/me/wallet/transactions` and `GET /suppliers/me/wallet/transactions`
+  accept `?page=&limit=` query params.
+- `AdminSellerOverviewService` (Seller-360 page) updated to call the new
+  signature directly (`getTransactionHistory(sellerId, 1, 20)`) instead of
+  fetching everything and slicing to 20 client-side.
+- Seller dashboard wallet screen (`apps/web/.../wallet/page.tsx`) — added
+  Previous/Next controls and a "Page X of Y" indicator; requests one page
+  at a time instead of every transaction on load.
+
+### Tests
+- New pagination test in `test/e2e/module20-wallet-supplier-portal.e2e-spec.ts`:
+  5 distinct-amount top-ups, `limit=2`, proves `total`/`totalPages` are
+  correct, each page returns the right newest-first slice with no overlap,
+  and a past-the-end page returns empty (not an error) with `total`/
+  `totalPages` still correct.
+
 ## Phase B item 1: Rate-Limit Re-Audit (Modules 22-47)
 
 Pre-launch audit finding. Rate limiting was last audited at Module 21;

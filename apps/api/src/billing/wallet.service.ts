@@ -57,6 +57,17 @@ export interface WalletTransactionLine {
   label: string;
 }
 
+export interface WalletTransactionPage {
+  items: WalletTransactionLine[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+const DEFAULT_TRANSACTION_PAGE_LIMIT = 20;
+const MAX_TRANSACTION_PAGE_LIMIT = 100;
+
 /** Module 20 (SRS §5.6e). "extends Module 11's ledger" per the founder's own instruction - same LedgerEntry table, new entry types, computed here. */
 @Injectable()
 export class WalletService {
@@ -124,21 +135,47 @@ export class WalletService {
     return entry;
   }
 
-  /** FR-6.27 - every credit/debit, plain language, newest first. */
-  async getTransactionHistory(sellerId: string): Promise<WalletTransactionLine[]> {
-    const entries = await this.prismaAdmin.ledgerEntry.findMany({
-      where: { sellerId },
-      orderBy: { createdAt: "desc" },
-      include: { order: { select: { id: true } } },
-    });
-    return entries.map((e) => ({
-      id: e.id,
-      type: e.type,
-      amount: signedContribution(e.type, Number(e.amount)),
-      currency: e.currency,
-      createdAt: e.createdAt,
-      label: this.labelFor(e.type, e.order?.id ?? null),
-    }));
+  /**
+   * FR-6.27 - every credit/debit, plain language, newest first. Phase B
+   * pre-launch audit finding: this used to return every ledger entry with
+   * no limit, which degrades for a high-volume seller (thousands of
+   * commission/fee rows over time). Page/limit, same shape a future
+   * cursor-based rewrite could still slot behind if offset pagination ever
+   * gets too slow at real scale - not needed at v1.0's volume.
+   */
+  async getTransactionHistory(
+    sellerId: string,
+    page = 1,
+    limit = DEFAULT_TRANSACTION_PAGE_LIMIT,
+  ): Promise<WalletTransactionPage> {
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(MAX_TRANSACTION_PAGE_LIMIT, Math.max(1, Math.floor(limit)));
+
+    const [entries, total] = await Promise.all([
+      this.prismaAdmin.ledgerEntry.findMany({
+        where: { sellerId },
+        orderBy: { createdAt: "desc" },
+        include: { order: { select: { id: true } } },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prismaAdmin.ledgerEntry.count({ where: { sellerId } }),
+    ]);
+
+    return {
+      items: entries.map((e) => ({
+        id: e.id,
+        type: e.type,
+        amount: signedContribution(e.type, Number(e.amount)),
+        currency: e.currency,
+        createdAt: e.createdAt,
+        label: this.labelFor(e.type, e.order?.id ?? null),
+      })),
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+    };
   }
 
   private labelFor(type: LedgerEntryType, orderId: string | null): string {

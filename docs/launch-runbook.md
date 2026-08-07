@@ -74,6 +74,91 @@ calls, real third-party services).
       missing, so this is fail-closed by construction, not something to
       manually double-check line by line.
 
+## 3a. Encryption Key Rotation + Breach Response
+
+Every value UZEYN encrypts at rest — a seller's CNIC, a Google Drive
+refresh token, an external-API client's signing secret, a seller's
+connected SMTP password, a linked admin email account's IMAP/SMTP
+passwords — uses the same AES-256-GCM implementation (`iv:authTag:
+ciphertext`, each base64) under five independent keys, one per domain, so
+a leak of one key never exposes another domain's secrets:
+
+| Domain | Env var | Table.column |
+|---|---|---|
+| Seller CNIC | `IDENTITY_ENCRYPTION_KEY` | `sellers.cnic_encrypted` |
+| Google Drive refresh token | `DRIVE_TOKEN_ENCRYPTION_KEY` | `google_drive_connections.refresh_token_encrypted` |
+| External API client secret | `EXTERNAL_API_SECRET_ENCRYPTION_KEY` | `external_api_clients.signing_secret_ref` |
+| Seller connected SMTP credential | `SMTP_CREDENTIAL_ENCRYPTION_KEY` | `seller_verification_emails.smtp_password_encrypted` |
+| Linked admin email account credentials | `ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY` | `admin_email_accounts.imap_password_encrypted`, `.smtp_password_encrypted` |
+
+### Routine rotation (no breach — a key is simply due for rotation)
+
+1. Generate the new key: `openssl rand -base64 32`.
+2. `--dry-run` first, always: `npx ts-node scripts/rotate-encryption-key.ts <domain> <oldKeyBase64> <newKeyBase64> --dry-run` (see `<domain>` values in the table above's own key). This decrypts every row with the *old* key and reports success/failure without writing anything — confirms the old key you have on hand is actually still correct before you touch production data.
+3. Take a fresh DB backup (§6 below) — this is a bulk UPDATE across a real table.
+4. Run for real (same command, no `--dry-run`). The script decrypts each row with the old key and re-encrypts with the new key as one operation per row; a row that fails to decrypt is logged and skipped (never partially written), and the script exits non-zero if anything failed — investigate any failures before proceeding.
+5. Update the env var for that domain to the new key value everywhere the API runs, then restart the API (`docker compose restart api worker` or your deploy's equivalent) — until restart, the running process still has the old key in memory and will reject rows you just re-encrypted.
+6. Confirm: hit the feature that reads that domain (e.g. the seller wallet/Google Drive settings screen, an admin email inbox) for a real row and confirm it still decrypts correctly.
+7. Securely destroy the old key value (remove it from wherever it was stored — password manager entry, old `.env` backup, shell history).
+
+### Breach response (a key is confirmed or suspected leaked)
+
+Work through this in order — earlier steps stop the bleeding, later steps clean up:
+
+1. **Enable maintenance mode immediately** if the breach could let an
+   attacker take further destructive action through the API (not always
+   necessary for a pure at-rest-key leak with no other compromise
+   indicators — use judgment, but default to yes under uncertainty):
+   `PUT /admin/settings/values` with `{"key": "platform.maintenance_mode_enabled", "scopeType": "global", "value": true}`,
+   and set `platform.maintenance_admin_ip_allowlist` to your own current
+   IP so you can keep working. `MaintenanceModeMiddleware` then blocks
+   every request except `/health` and allowlisted IPs (FR-8.7).
+2. **Force-logout every active session platform-wide.** Sessions are
+   Redis-backed under `session:*` and `user-sessions:*` keys, the same
+   store `RateLimitService`/`SettingsService`'s cache use — the whole
+   store safely regenerates its rate-limit counters and settings cache on
+   next use, so a full flush is the fast, correct move during an incident:
+   `redis-cli -h <host> FLUSHALL`. Every seller/admin/supplier is logged
+   out immediately; a fresh login is required, which is exactly what you
+   want if credentials could be compromised.
+   (Narrower alternative if you want to preserve rate-limit state: `redis-cli --scan --pattern 'session:*' | xargs -L 100 redis-cli del` and the same for `user-sessions:*`.)
+3. **Rotate the leaked key** using the routine-rotation steps above —
+   this is the actual "reissue the key" step; do not skip the `--dry-run`
+   even under pressure, it's the only thing standing between you and a
+   half-rotated table.
+4. **Rotate anything downstream that the leaked plaintext could itself
+   unlock**, domain by domain:
+   - CNIC: NADRA-issued identity data cannot be "rotated" — this is a PII
+     exposure, not a secret-rotation problem. Follow your jurisdiction's
+     breach-notification obligations for the affected sellers.
+   - Google Drive refresh token: revoke the leaked token from the
+     seller's own Google Account (Security → Third-party access) if you
+     have reason to believe the plaintext (not just the ciphertext) was
+     exposed — rotating the encryption key alone does not invalidate an
+     already-leaked plaintext refresh token.
+   - External API client secret: same reasoning — rotating the
+     encryption key protects future ciphertext, but if the plaintext
+     secret leaked, the affected client must generate a new one (the
+     external-API client registry admin screen supports this).
+   - SMTP credentials (seller or admin email): change the actual mailbox
+     password at the provider (Gmail/Outlook/etc.), then re-save it
+     through the dashboard so the new plaintext gets encrypted under the
+     now-rotated key.
+5. **Rotate `JWT_ACCESS_SECRET`** if there's any indication the breach
+   extended beyond the encryption keys above (e.g. broader server
+   compromise) — this invalidates every access token platform-wide, on
+   top of step 2's session flush, closing the gap for any token minted
+   between the flush and the actual fix.
+6. **Audit `admin_audit_logs` and `platform_events`** for the affected
+   window for anything an attacker might have done with compromised
+   access before containment.
+7. **Disable maintenance mode** once rotation is confirmed complete and
+   verified (step 6 of routine rotation) — same `PUT /admin/settings/values`
+   call with `value: false`.
+8. **Write up what happened** — which key, how it leaked (if known), what
+   was rotated, when maintenance mode was on, and any founder/legal
+   notification obligations triggered by step 4's CNIC case.
+
 ## 4. Bring the stack up
 
 - [ ] `docker compose up --build -d` from the repo root on the VPS.

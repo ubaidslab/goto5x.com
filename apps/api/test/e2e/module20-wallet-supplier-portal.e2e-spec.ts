@@ -209,8 +209,54 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       const history = await request(app.getHttpServer())
         .get("/sellers/me/wallet/transactions")
         .set("Authorization", `Bearer ${token}`);
-      expect(history.body.some((t: { label: string }) => t.label === "Top-up verified")).toBe(true);
-      expect(history.body.some((t: { label: string }) => t.label.startsWith("Commission"))).toBe(true);
+      expect(history.body.items.some((t: { label: string }) => t.label === "Top-up verified")).toBe(true);
+      expect(history.body.items.some((t: { label: string }) => t.label.startsWith("Commission"))).toBe(true);
+    });
+  });
+
+  describe("Wallet transaction history pagination (Phase B pre-launch audit finding)", () => {
+    it("getTransactionHistory() paginates instead of returning every entry, newest first", async () => {
+      const { token } = await signupLoginAndCreatePublishedStore("wallet-page@example.com", "wallet-page-store");
+      const adminToken = await createAndLoginAdmin("wallet-page-admin@example.com");
+
+      // 5 distinct-amount top-ups, sequential so createdAt strictly increases.
+      for (const amount of [100, 200, 300, 400, 500]) {
+        await topUpAndVerify(token, adminToken, amount);
+      }
+
+      const page1 = await request(app.getHttpServer())
+        .get("/sellers/me/wallet/transactions?page=1&limit=2")
+        .set("Authorization", `Bearer ${token}`);
+      expect(page1.body.total).toBe(5);
+      expect(page1.body.totalPages).toBe(3);
+      expect(page1.body.page).toBe(1);
+      expect(page1.body.limit).toBe(2);
+      expect(page1.body.items).toHaveLength(2);
+      // Newest first - the last two top-ups verified (500, 400).
+      expect(page1.body.items.map((t: { amount: number }) => t.amount)).toEqual([500, 400]);
+
+      const page2 = await request(app.getHttpServer())
+        .get("/sellers/me/wallet/transactions?page=2&limit=2")
+        .set("Authorization", `Bearer ${token}`);
+      expect(page2.body.items.map((t: { amount: number }) => t.amount)).toEqual([300, 200]);
+      // No overlap between pages.
+      const page1Ids = page1.body.items.map((t: { id: string }) => t.id);
+      const page2Ids = page2.body.items.map((t: { id: string }) => t.id);
+      expect(page1Ids.some((id: string) => page2Ids.includes(id))).toBe(false);
+
+      const page3 = await request(app.getHttpServer())
+        .get("/sellers/me/wallet/transactions?page=3&limit=2")
+        .set("Authorization", `Bearer ${token}`);
+      expect(page3.body.items).toHaveLength(1);
+      expect(page3.body.items[0].amount).toBe(100);
+
+      // Past the last page - empty, not an error, still correct total/totalPages.
+      const page4 = await request(app.getHttpServer())
+        .get("/sellers/me/wallet/transactions?page=4&limit=2")
+        .set("Authorization", `Bearer ${token}`);
+      expect(page4.body.items).toHaveLength(0);
+      expect(page4.body.total).toBe(5);
+      expect(page4.body.totalPages).toBe(3);
     });
   });
 

@@ -9,6 +9,24 @@ function signedContribution(type: SupplierLedgerEntryType, amount: number): numb
   return type === "topup_credit" ? amount : -amount;
 }
 
+export interface SupplierWalletTransactionPage {
+  items: {
+    id: string;
+    type: SupplierLedgerEntryType;
+    amount: number;
+    currency: string;
+    createdAt: Date;
+    label: string;
+  }[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+const DEFAULT_TRANSACTION_PAGE_LIMIT = 20;
+const MAX_TRANSACTION_PAGE_LIMIT = 100;
+
 /**
  * Module 20 (SRS FR-7.10 supplement). A supplier's own small wallet - only
  * ever pays its own Premium-tier plan fee, so this is a dedicated ledger
@@ -33,19 +51,39 @@ export class SupplierWalletService {
     return round2(entries.reduce((sum, e) => sum + signedContribution(e.type, Number(e.amount)), 0));
   }
 
-  async getTransactionHistory(supplierId: string) {
-    const entries = await this.prismaAdmin.supplierWalletEntry.findMany({
-      where: { supplierId },
-      orderBy: { createdAt: "desc" },
-    });
-    return entries.map((e) => ({
-      id: e.id,
-      type: e.type,
-      amount: signedContribution(e.type, Number(e.amount)),
-      currency: e.currency,
-      createdAt: e.createdAt,
-      label: e.type === "topup_credit" ? "Top-up verified" : "Monthly plan fee",
-    }));
+  /** Phase B pre-launch audit finding - same unbounded-growth fix as WalletService.getTransactionHistory(). */
+  async getTransactionHistory(
+    supplierId: string,
+    page = 1,
+    limit = DEFAULT_TRANSACTION_PAGE_LIMIT,
+  ): Promise<SupplierWalletTransactionPage> {
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(MAX_TRANSACTION_PAGE_LIMIT, Math.max(1, Math.floor(limit)));
+
+    const [entries, total] = await Promise.all([
+      this.prismaAdmin.supplierWalletEntry.findMany({
+        where: { supplierId },
+        orderBy: { createdAt: "desc" },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prismaAdmin.supplierWalletEntry.count({ where: { supplierId } }),
+    ]);
+
+    return {
+      items: entries.map((e) => ({
+        id: e.id,
+        type: e.type,
+        amount: signedContribution(e.type, Number(e.amount)),
+        currency: e.currency,
+        createdAt: e.createdAt,
+        label: e.type === "topup_credit" ? "Top-up verified" : "Monthly plan fee",
+      })),
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+    };
   }
 
   async requestTopUp(supplierId: string, amount: number, currency: string) {

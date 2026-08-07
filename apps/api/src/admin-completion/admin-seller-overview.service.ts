@@ -46,7 +46,7 @@ export class AdminSellerOverviewService {
     ] = await Promise.all([
       this.prismaAdmin.store.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" } }),
       this.wallet.getBalance(sellerId),
-      this.wallet.getTransactionHistory(sellerId),
+      this.wallet.getTransactionHistory(sellerId, 1, 20),
       this.invoices.listForSeller(sellerId),
       this.prismaAdmin.programParticipant.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" } }),
       this.monitors.cancellationRateFlags(),
@@ -104,7 +104,7 @@ export class AdminSellerOverviewService {
         createdAt: seller.createdAt,
       },
       stores,
-      wallet: { balance, currency: "PKR", recentLedger: recentLedger.slice(0, 20) },
+      wallet: { balance, currency: "PKR", recentLedger: recentLedger.items },
       invoices: invoiceRows,
       programs,
       trustSafety,

@@ -3624,12 +3624,30 @@ CI-verified one at a time:
    the CNIC is required (fraud prevention + payout compliance), that it's
    encrypted at rest, never shown to anyone in full, never shared, only
    last-4 ever displayed, and what completing it unlocks. No backend change.
-3. **Wallet transaction history pagination.** `getTransactionHistory()`
-   currently unbounded — pending.
-4. **RLS defense-in-depth tests.** Explicit tests proving non-UUID
-   `SET LOCAL` inputs are always rejected — pending.
-5. **Key rotation + breach runbook.** Documented rotation procedure + utility
-   + breach-response runbook section — pending.
+3. **Wallet transaction history pagination — BUILT.** `WalletService.
+   getTransactionHistory()` (and `SupplierWalletService`'s equivalent) now
+   take `page`/`limit` (default 20, capped 100) and return `{items, page,
+   limit, total, totalPages}` via real `skip`/`take` + `count()`, not a
+   client-side slice. Seller wallet dashboard screen gained Previous/Next
+   controls; the admin Seller-360 page's recent-activity panel updated to
+   the new signature. New e2e pagination test.
+4. **RLS defense-in-depth tests — BUILT.** New `tenant-prisma.service.spec.ts`
+   (16 unit tests, no DB required) proves `TenantPrismaService.run()`'s
+   UUID guard rejects 14 malicious/malformed `sellerId` inputs (SQL
+   fragments, empty/whitespace, null/undefined, unicode homoglyphs,
+   oversized strings, malformed hyphenation, embedded quotes/newlines) and
+   that `$transaction()` is never called for any of them, plus 2 positive
+   controls proving valid UUIDs still work correctly. No production code
+   changed — the mechanism was already correct, now it's pinned by tests.
+5. **Key rotation + breach runbook — BUILT.** New generic
+   `scripts/rotate-encryption-key.ts` (decrypt-with-old/re-encrypt-with-new,
+   `--dry-run`, non-zero exit on any row failure) covers all five encrypted
+   domains, since they all turned out to share one AES-256-GCM
+   implementation under independent keys. 9 round-trip unit tests. New
+   `docs/launch-runbook.md` §3a: routine-rotation checklist + full
+   breach-response checklist (maintenance mode, Redis session flush, key
+   rotation, downstream plaintext rotation, JWT secret rotation, audit
+   review, writeup).
 
 ---
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentSupplierId } from "../common/decorators/current-supplier.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -29,8 +29,12 @@ export class SellerWalletController {
   }
 
   @Get("transactions")
-  listTransactions(@CurrentSellerId() sellerId: string) {
-    return this.wallet.getTransactionHistory(sellerId);
+  listTransactions(
+    @CurrentSellerId() sellerId: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.wallet.getTransactionHistory(sellerId, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
   }
 
   @Get("topup-requests")
@@ -60,8 +64,16 @@ export class SupplierWalletController {
   }
 
   @Get("transactions")
-  listTransactions(@CurrentSupplierId() supplierId: string) {
-    return this.supplierWallet.getTransactionHistory(supplierId);
+  listTransactions(
+    @CurrentSupplierId() supplierId: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.supplierWallet.getTransactionHistory(
+      supplierId,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+    );
   }
 
   @Get("topup-requests")

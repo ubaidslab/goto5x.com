@@ -18,6 +18,14 @@ interface Transaction {
   label: string;
 }
 
+interface TransactionPage {
+  items: Transaction[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 interface TopUpRequest {
   id: string;
   amount: number;
@@ -35,20 +43,26 @@ const PRESETS = [500, 1000, 2500, 5000];
  */
 export default function WalletPage({ params }: { params: { storeId: string } }) {
   const [balance, setBalance] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[] | null>(null);
+  const [transactionPage, setTransactionPage] = useState<TransactionPage | null>(null);
+  const [page, setPage] = useState(1);
   const [topUps, setTopUps] = useState<TopUpRequest[] | null>(null);
   const [amount, setAmount] = useState<string>("");
   const [instructions, setInstructions] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
 
-  function loadAll() {
+  function loadBalanceAndTopUps() {
     api.get<{ balance: number }>("/sellers/me/wallet").then((r) => setBalance(r.balance)).catch(() => {});
-    api.get<Transaction[]>("/sellers/me/wallet/transactions").then(setTransactions).catch(() => setTransactions([]));
     api.get<TopUpRequest[]>("/sellers/me/wallet/topup-requests").then(setTopUps).catch(() => setTopUps([]));
   }
 
-  useEffect(loadAll, []);
+  useEffect(loadBalanceAndTopUps, []);
+  useEffect(() => {
+    api
+      .get<TransactionPage>(`/sellers/me/wallet/transactions?page=${page}&limit=20`)
+      .then(setTransactionPage)
+      .catch(() => setTransactionPage({ items: [], page: 1, limit: 20, total: 0, totalPages: 1 }));
+  }, [page]);
 
   async function requestTopUp(value: number) {
     setError(null);
@@ -58,7 +72,15 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
       const result = await api.post<{ instructions: string }>("/sellers/me/wallet/topup-requests", { amount: value });
       setInstructions(result.instructions);
       setAmount("");
-      loadAll();
+      loadBalanceAndTopUps();
+      if (page === 1) {
+        api
+          .get<TransactionPage>("/sellers/me/wallet/transactions?page=1&limit=20")
+          .then(setTransactionPage)
+          .catch(() => {});
+      } else {
+        setPage(1);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit that top-up request.");
     } finally {
@@ -66,7 +88,7 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
     }
   }
 
-  if (balance === null || transactions === null || topUps === null) return <PageSpinner />;
+  if (balance === null || transactionPage === null || topUps === null) return <PageSpinner />;
 
   return (
     <div className="space-y-6">
@@ -138,12 +160,12 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
       )}
 
       <Card>
-        <CardHeader title="Transaction history" />
+        <CardHeader title="Transaction history" description={transactionPage.total > 0 ? `${transactionPage.total} total` : undefined} />
         <CardBody className="divide-y divide-border">
-          {transactions.length === 0 ? (
+          {transactionPage.items.length === 0 ? (
             <p className="py-4 text-sm text-ink-muted">No wallet activity yet.</p>
           ) : (
-            transactions.map((t) => (
+            transactionPage.items.map((t) => (
               <div key={t.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                 <div>
                   <p className="text-sm font-medium text-ink">{t.label}</p>
@@ -157,6 +179,29 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
             ))
           )}
         </CardBody>
+        {transactionPage.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-border px-6 py-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={transactionPage.page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <p className="text-xs text-ink-muted">
+              Page {transactionPage.page} of {transactionPage.totalPages}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={transactionPage.page >= transactionPage.totalPages}
+              onClick={() => setPage((p) => Math.min(transactionPage.totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

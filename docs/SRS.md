@@ -2035,7 +2035,12 @@ period/suspend cycle.
   custom amount, FR-6.23) and a full transaction history — every credit
   and debit, in plain language ("Top-up verified", "Commission — Order
   #1234", "Monthly plan fee — Growth", never a raw ledger-entry-type
-  string) — are both one click away.
+  string) — are both one click away. **Paginated** (Phase B pre-launch
+  audit finding — `page`/`limit` query params, default 20/page, capped at
+  100/page; a high-volume seller's history no longer returns every ledger
+  row in one unbounded response) — Previous/Next controls on the dashboard
+  screen, same pagination shape reused by the admin Seller-360 page's
+  recent-activity panel.
 - FR-6.28: **§5.6c's monthly invoice-generation job, overdue sweep, and
   suspend-on-nonpayment mechanism are DORMANT**, preserved as working code
   behind their existing settings/scheduler, simply unscheduled — a future
@@ -5453,6 +5458,44 @@ going forward, per FR-6.28.
       the scanning mechanism itself works by pinning a real known-vulnerable
       package (`minimist@0.0.8`) in a throwaway fixture and asserting the
       audit catches it
+- [x] **RLS defense-in-depth tests, Phase B pre-launch (founder audit).**
+      Tenant isolation ultimately rests on `TenantPrismaService.run()`
+      (`apps/api/src/prisma/tenant-prisma.service.ts`) — the ONE place in the
+      codebase that builds SQL by string concatenation (`SET LOCAL app.
+      current_seller_id = '...'`, required because Postgres's wire protocol
+      cannot parameterize `SET LOCAL`), guarded by a syntactic UUID regex
+      check before interpolation. This was already correct, but had no
+      dedicated test proving it — a future refactor could have silently
+      weakened or removed the guard with nothing going red. New unit suite
+      `tenant-prisma.service.spec.ts` (16 tests) proves: a SQL-fragment
+      string, a valid UUID immediately followed by a SQL fragment, an empty
+      string, whitespace-only, `null`, `undefined`, a Cyrillic-homoglyph
+      string shaped like a UUID, an oversized string (valid-UUID prefix +
+      10,000 trailing characters), malformed hyphenation, a bare numeric id,
+      an embedded quote, a trailing newline, and a leading space are ALL
+      rejected — and, critically, that `$transaction()` is never even
+      called for any of them (the rejection happens before the raw SQL is
+      ever built, not merely as a query that happens to fail). Two positive
+      controls (lowercase and uppercase valid UUIDs) confirm the guard
+      doesn't over-reject and that the exact expected value reaches
+      `$executeRawUnsafe()`.
+- [x] **Key rotation + breach runbook, Phase B pre-launch (founder audit).**
+      All five encrypted-at-rest domains (CNIC, Google Drive refresh
+      tokens, external-API client secrets, seller SMTP credentials, admin
+      email credentials) turned out to already share one AES-256-GCM
+      implementation under five independent keys — a new generic
+      `scripts/rotate-encryption-key.ts` utility (decrypt-with-old,
+      re-encrypt-with-new, one atomic operation per row, `--dry-run`
+      support, non-zero exit on any row failure) covers all five rather
+      than five near-duplicate scripts, proven correct by 9 round-trip
+      unit tests. `docs/launch-runbook.md` gained a dedicated "Encryption
+      Key Rotation + Breach Response" section: routine rotation
+      (dry-run → backup → rotate → restart → verify → destroy the old
+      key) and full breach response (maintenance mode via the existing
+      FR-8.7 mechanism, platform-wide session force-logout via Redis
+      `FLUSHALL`, key rotation, downstream plaintext-exposure rotation per
+      domain, `JWT_ACCESS_SECRET` rotation if warranted, an audit-log
+      review, and a writeup step).
 
 ### 14.13 Customers (CRM)
 - [x] A checkout — storefront or manual (FR-17.1) — auto-creates or matches a
