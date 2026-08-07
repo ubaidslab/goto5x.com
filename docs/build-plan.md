@@ -3486,6 +3486,16 @@ as the right order after research — no changes:
     plan-scoped override and real billing cycle.
   - Verified: full local typecheck (api + web), full local e2e suite, and
     a real CI-verified green run on the pushed commit.
+  - Follow-up (founder-requested verification, commit `b227002`): a
+    targeted audit for any surviving Free-Plan resolution found one real
+    bug - `CrossSaasEligibilityController` (FR-24.14) still gated on
+    `tierOrder > 0` meaning "paid," wrongly marking every First-Month
+    seller ineligible since First Month is tierOrder 0. Fixed to check
+    `subscription.status === "active"`. Also fixed two stale UI strings
+    ("downgrade to Free", "Mandatory on the Free plan"); confirmed the
+    `price === "0" ? "Free"` price-label helpers are not a leftover
+    (correct for Team plans' genuine Rs 0 base + per-seat pricing).
+    Re-verified full suite + real CI green on the follow-up commit.
 - **Module 45 — Commission rate hard cap (🟠).** Small and isolated
   (a `SettingsDefinition.validation.max` change plus a rejection test) —
   research confirmed both the generic min/max validation mechanism and
