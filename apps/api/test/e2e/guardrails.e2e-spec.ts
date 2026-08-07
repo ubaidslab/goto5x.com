@@ -4,7 +4,7 @@ import request from "supertest";
 import { DormantStoreService } from "../../src/guardrails/dormant-store.service";
 import { UnitEconomicsService } from "../../src/guardrails/unit-economics.service";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const PASSWORD = "correct-horse-battery";
@@ -172,12 +172,8 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
       const { sellerId: sellerAId } = await signupAndCreateStore("unit-econ-a@example.com", "unit-econ-a-store");
       const { sellerId: sellerBId } = await signupAndCreateStore("unit-econ-b@example.com", "unit-econ-b-store");
 
-      await superuser.ledgerEntry.create({
-        data: { sellerId: sellerAId, type: "commission_accrued", amount: 10, currency: "PKR" },
-      });
-      await superuser.ledgerEntry.create({
-        data: { sellerId: sellerBId, type: "commission_accrued", amount: 5, currency: "PKR" },
-      });
+      await seedLedgerEntry(superuser, { sellerId: sellerAId, type: "commission_accrued", amount: 10, currency: "PKR" });
+      await seedLedgerEntry(superuser, { sellerId: sellerBId, type: "commission_accrued", amount: 5, currency: "PKR" });
       await app.get(SettingsService).setValue("finance.monthly_infra_cost", "global", null, 8, ADMIN_ID);
 
       const summary = await app.get(UnitEconomicsService).computeSummary();

@@ -143,14 +143,14 @@ export class PlanFeeDebitService {
       const fee = Number(subscription.plan.price);
 
       if (balance >= fee) {
-        await this.prismaAdmin.ledgerEntry.create({
-          data: {
+        await this.prismaAdmin.$transaction((tx) =>
+          this.wallet.postLedgerEntry(tx, {
             sellerId: subscription.sellerId!,
             type: "wallet_plan_fee_debit",
             amount: round2(fee),
             currency: subscription.plan.currency,
-          },
-        });
+          }),
+        );
         await this.prismaAdmin.subscription.update({
           where: { id: subscription.id },
           data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.plan.billingInterval as "monthly" | "yearly") },
@@ -191,9 +191,9 @@ export class PlanFeeDebitService {
       const total = round2(activeMemberCount * Number(team.plan.seatPrice ?? 0));
       if (total <= 0) continue;
 
-      await this.prismaAdmin.ledgerEntry.create({
-        data: { sellerId: team.leaderSellerId, type: "wallet_team_seat_fee_debit", amount: total, currency: team.plan.currency },
-      });
+      await this.prismaAdmin.$transaction((tx) =>
+        this.wallet.postLedgerEntry(tx, { sellerId: team.leaderSellerId, type: "wallet_team_seat_fee_debit", amount: total, currency: team.plan.currency }),
+      );
       debited += 1;
     }
     return debited;
@@ -217,9 +217,9 @@ export class PlanFeeDebitService {
       });
       if (already) continue;
 
-      await this.prismaAdmin.ledgerEntry.create({
-        data: { sellerId, type: "wallet_device_slot_fee_debit", amount: round2(addOnPrice), currency: "PKR" },
-      });
+      await this.prismaAdmin.$transaction((tx) =>
+        this.wallet.postLedgerEntry(tx, { sellerId, type: "wallet_device_slot_fee_debit", amount: round2(addOnPrice), currency: "PKR" }),
+      );
       debited += 1;
     }
     return debited;

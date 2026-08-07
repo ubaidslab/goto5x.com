@@ -5,6 +5,8 @@ import { Worker } from "bullmq";
 import { AppModule } from "../app.module";
 import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
 import { WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME } from "../billing/wallet-low-balance-sweep.queue";
+import { WalletReconciliationService } from "../billing/wallet-reconciliation.service";
+import { WALLET_RECONCILIATION_QUEUE_NAME } from "../billing/wallet-reconciliation.queue";
 import { PlanFeeDebitService } from "../billing/plan-fee-debit.service";
 import { PLAN_FEE_DEBIT_QUEUE_NAME } from "../billing/plan-fee-debit.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
@@ -41,6 +43,7 @@ async function main() {
   const cart = appContext.get(CartService);
   const walletGraceLadder = appContext.get(WalletGraceLadderService);
   const planFeeDebit = appContext.get(PlanFeeDebitService);
+  const walletReconciliation = appContext.get(WalletReconciliationService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
   const storeHealth = appContext.get(StoreHealthScoreService);
@@ -136,6 +139,20 @@ async function main() {
     console.error(`wallet-low-balance-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 47 (new FR-6.29) - the daily wallet-balance reconciliation
+  // sweep: recomputes each seller's true ledger sum and flags (never
+  // auto-corrects) any drift from the maintained WalletBalance cache.
+  const walletReconciliationWorker = new Worker(
+    WALLET_RECONCILIATION_QUEUE_NAME,
+    async () => walletReconciliation.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  walletReconciliationWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`wallet-reconciliation job ${job?.id} failed:`, err);
+  });
+
   // Module 14 (FR-23.2) - dormant-store lifecycle sweep.
   const dormantStoreWorker = new Worker(
     DORMANT_STORE_QUEUE_NAME,
@@ -220,7 +237,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47).",
   );
 
   const shutdown = async () => {
@@ -229,6 +246,7 @@ async function main() {
     await cartAbandonmentWorker.close();
     await planFeeDebitWorker.close();
     await walletLowBalanceSweepWorker.close();
+    await walletReconciliationWorker.close();
     await dormantStoreWorker.close();
     await productImportWorker.close();
     await storeHealthSweepWorker.close();

@@ -76,9 +76,7 @@ export class VerificationApplicationService {
 
     const application = await this.prismaAdmin.$transaction(async (tx) => {
       if (feeAmount > 0) {
-        await tx.ledgerEntry.create({
-          data: { sellerId, type: "verification_fee_debit", amount: feeAmount, currency: CURRENCY },
-        });
+        await this.wallet.postLedgerEntry(tx, { sellerId, type: "verification_fee_debit", amount: feeAmount, currency: CURRENCY });
       }
       return tx.verifiedStoreApplication.create({
         data: {
@@ -162,13 +160,11 @@ export class VerificationApplicationService {
         data: { status: "rejected", decidedBy: adminUserId, decidedAt: new Date(), decisionNotes: notes },
       });
       if (refundOnReject && Number(application.feeAmount) > 0) {
-        await tx.ledgerEntry.create({
-          data: {
-            sellerId: application.sellerId,
-            type: "verification_fee_refund_credit",
-            amount: application.feeAmount,
-            currency: application.currency,
-          },
+        await this.wallet.postLedgerEntry(tx, {
+          sellerId: application.sellerId,
+          type: "verification_fee_refund_credit",
+          amount: Number(application.feeAmount),
+          currency: application.currency,
         });
       }
     });

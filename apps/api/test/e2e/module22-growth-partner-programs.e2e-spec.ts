@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
@@ -211,7 +211,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       expect(commissionAfterTopup).toHaveLength(0);
 
       // An order/GMV-driven commission_accrued entry on the REFERRED seller's own store must also never generate referral commission.
-      await superuser.ledgerEntry.create({ data: { sellerId: referred.sellerId, type: "commission_accrued", amount: 500, currency: "PKR" } });
+      await seedLedgerEntry(superuser, { sellerId: referred.sellerId, type: "commission_accrued", amount: 500, currency: "PKR" });
       const commissionAfterGmv = await superuser.ledgerEntry.findMany({
         where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
       });
@@ -267,7 +267,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
         .set("Authorization", `Bearer ${token}`)
         .send({ programType: "student_referral" });
       // Give this seller balance some other way, to isolate the "not approved" gate specifically.
-      await superuser.ledgerEntry.create({ data: { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" } });
+      await seedLedgerEntry(superuser, { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" });
 
       const res = await request(app.getHttpServer())
         .post("/sellers/me/growth-programs/withdrawals")
@@ -280,7 +280,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       const adminToken = await createAndLoginAdmin("growth-admin-3@example.com");
       const { token, sellerId } = await signup("withdraw-suspended@example.com");
       await applyApproveAmbassador(token, sellerId, ADMIN_ID);
-      await superuser.ledgerEntry.create({ data: { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" } });
+      await seedLedgerEntry(superuser, { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" });
 
       const participant = await superuser.programParticipant.findFirstOrThrow({ where: { sellerId, programType: "ambassador" } });
       await request(app.getHttpServer())
@@ -298,7 +298,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
     it("double-request on the same balance: a second request cannot be created while one is outstanding", async () => {
       const { token, sellerId } = await signup("withdraw-double@example.com");
       await applyApproveAmbassador(token, sellerId, ADMIN_ID);
-      await superuser.ledgerEntry.create({ data: { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" } });
+      await seedLedgerEntry(superuser, { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" });
 
       const first = await request(app.getHttpServer())
         .post("/sellers/me/growth-programs/withdrawals")
@@ -317,7 +317,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       const adminToken = await createAndLoginAdmin("growth-admin-4@example.com");
       const { token, sellerId } = await signup("withdraw-reject@example.com");
       await applyApproveAmbassador(token, sellerId, ADMIN_ID);
-      await superuser.ledgerEntry.create({ data: { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" } });
+      await seedLedgerEntry(superuser, { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" });
 
       const first = await request(app.getHttpServer())
         .post("/sellers/me/growth-programs/withdrawals")
@@ -350,7 +350,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       const adminToken = await createAndLoginAdmin("growth-admin-5@example.com");
       const { token, sellerId } = await signup("withdraw-clawback@example.com");
       await applyApproveAmbassador(token, sellerId, ADMIN_ID);
-      await superuser.ledgerEntry.create({ data: { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" } });
+      await seedLedgerEntry(superuser, { sellerId, type: "program_reward_credit", amount: 5000, currency: "PKR" });
 
       const requestRes = await request(app.getHttpServer())
         .post("/sellers/me/growth-programs/withdrawals")

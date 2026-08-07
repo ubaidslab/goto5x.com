@@ -5036,6 +5036,43 @@ going forward, per FR-6.28.
       restores instantly via the same existing restore path — there is no
       separate "floor" restore threshold (FR-6.26)
 
+### 14.6f Wallet Balance — Running Total & Reconciliation (built Module 47, v0.33 — FR-6.21 amended, new FR-6.29)
+- [x] `WalletBalance.balance` (one row per seller) is updated atomically —
+      via Prisma's `increment`/`decrement`, a single database-level
+      `UPDATE`, never a read-then-write in application code — in the SAME
+      transaction as every `LedgerEntry` insert, through the one function
+      that does both (`WalletService.postLedgerEntry()`); every prior
+      direct `ledgerEntry.create()` call site in the codebase (15 of them)
+      was refactored to go through it, so no write path can bypass the
+      cache update (FR-6.21 amended)
+- [x] The ledger stays the append-only source of truth; `getBalance()` is
+      now an O(1) read of the cache, never a re-aggregation — proven by
+      `computeLedgerBalance()` (the old from-scratch recomputation,
+      retained for reconciliation only) matching the cache exactly after a
+      mix of credits and debits
+- [x] The migration backfills `wallet_balances` from every existing
+      seller's ledger sum, then hard-fails (rolls back) if even one
+      backfilled row doesn't exactly match an independently recomputed
+      ledger sum — the cached column is never considered "live" without
+      this verification passing
+- [x] A daily reconciliation sweep (`WalletReconciliationService`,
+      settings-driven interval, default 24h) recomputes each seller's true
+      ledger sum and compares it to the cached column; a mismatch is
+      **never auto-corrected** — only recorded as an append-only
+      `WalletReconciliationDrift` row and surfaced as a new admin
+      notification-center line, for a human to review (new FR-6.29)
+- [x] **The race fix, proven with real concurrency, not sequential
+      calls:** two commission debits fired via `Promise.all` against two
+      real HTTP `mark-as-paid` requests for the same seller both land
+      exactly once each (no lost update under Postgres's atomic
+      `UPDATE ... SET balance = balance + $delta`), and the negative-float
+      floor check — reading the freshly-updated balance after each debit —
+      correctly detects the case where neither debit alone crosses the
+      floor but the two combined do (FR-6.21/FR-6.26)
+- [x] The publish gate and the low-balance grace ladder are unaffected by
+      the running-total swap — both still read correct values off the new
+      cached balance (FR-6.21/FR-6.25)
+
 ### 14.7 Subscription Plans, Pricing & Billing (built Module 14; no-Free-Plan/First-Month rework v0.33 Module 44)
 - [x] Plan CRUD from the admin UI creates/edits/retires a plan without a deploy
       (FR-8.2). Scoped narrowly to plan groups/tiers — the rest of FR-8.2's

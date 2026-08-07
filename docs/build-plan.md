@@ -3556,12 +3556,49 @@ as the right order after research — no changes:
     re-run, not a Module 46 regression), plus a real CI-verified green
     run on the pushed commit.
 - **Module 47 — Wallet running balance + reconciliation (race fix +
-  scaling).** Depends on nothing built in 44-46, but is naturally after
-  them since Module 44's plan-fee/`orders_paused` unification and Module
-  45's commission cap both flow through the same wallet debit path this
-  module is hardening — sequencing it last among the correctness fixes
-  means it's hardening a wallet-debit surface that's already reached its
-  final v0.33 shape, not a moving target.
+  scaling). BUILT.** Depends on nothing built in 44-46, but is naturally
+  after them since Module 44's plan-fee/`orders_paused` unification and
+  Module 45's commission cap both flow through the same wallet debit path
+  this module is hardening — sequencing it last among the correctness
+  fixes means it's hardening a wallet-debit surface that's already
+  reached its final v0.33 shape, not a moving target. Flagged by the
+  founder as the highest-risk change in the batch (it touches money);
+  built with five explicit requirements, each proven directly.
+  - New `WalletBalance` (running-total cache, one row per seller) and
+    `WalletReconciliationDrift` (append-only findings log) tables, same
+    direct seller-scoped RLS as `ledger_entries`.
+  - `WalletService.postLedgerEntry(tx, data)` — the ONE function that
+    creates a wallet-relevant `LedgerEntry`; writes the ledger row and
+    atomically `increment`s `WalletBalance.balance` (a single DB-level
+    `UPDATE`, never read-then-write) in the same caller-supplied
+    transaction. Every one of the 15 prior direct
+    `prisma.ledgerEntry.create()` call sites across billing/,
+    growth-programs/, and verification/ was refactored to call this
+    instead — architecturally, no write path can bypass the cache update.
+  - Migration backfills `wallet_balances` from every seller's ledger sum,
+    then runs a hard-failing verification `DO` block (rolls back the
+    whole migration on any mismatch) before the column is trusted.
+  - `WalletReconciliationService` + a new daily BullMQ sweep (same
+    queue/scheduler/worker pattern as the existing plan-fee-debit/
+    low-balance sweeps): recomputes each seller's true ledger sum,
+    compares to the cache, and — critically — never auto-corrects a
+    mismatch, only logs it, records a `WalletReconciliationDrift` row,
+    and surfaces it as a new admin-notification-center line.
+  - Real-concurrency race-fix test: two commission debits fired via
+    `Promise.all` (real HTTP `mark-as-paid` requests, not sequential
+    calls) both land exactly once each with no lost update, and the
+    negative-float floor correctly detects a combined-but-not-individual
+    crossing.
+  - Research-first discipline surfaced a real gap: 10 pre-existing e2e
+    test call sites across 4 files seeded `LedgerEntry` rows directly via
+    the superuser Prisma client (a legitimate test shortcut the old
+    re-aggregating `getBalance()` was immune to), which the cache swap
+    silently broke. Fixed with a new shared `seedLedgerEntry()` test
+    helper (`test/e2e/setup.ts`) that keeps the cache in sync using the
+    same exported `signedContribution()` sign-mapping production code
+    uses — not two parallel implementations that could drift apart.
+  - Verified: full local unit suite (38/38, 186/186 tests) and full local
+    e2e suite, plus a real CI-verified green run on the pushed commit.
 - **Module 48 — Facebook/Instagram Shop feed + WhatsApp catalog links
   (Growth+).** The only net-new feature in this batch (the other five are
   fixes/corrections) — correctly last, and its Growth-tier gate depends

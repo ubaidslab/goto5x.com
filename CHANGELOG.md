@@ -115,6 +115,80 @@ module (Module 44).
   Product Feed API) and a 4th WhatsApp deep-link generator, both
   Growth+-plan-gated.
 
+## Module 47: Wallet Balance Running Total & Reconciliation
+
+SRS §5.6e, FR-6.21 amended, new FR-6.29 (v0.33). The highest-risk module in
+the deep-audit Phase A batch — it touches money. `WalletService.getBalance()`
+re-summed a seller's entire ledger history from scratch on every call (nine
+read call sites: checkout's floor check, the grace-ladder sweep, the publish
+gate, the withdrawal request gate, and the seller-360/wallet-screen reads) —
+both a scaling problem and a correctness one, since two concurrent debits
+reading the same stale re-aggregated balance could both pass a check that
+only one should have.
+
+### Added
+- `WalletBalance` (one row per seller, `balance` running total) and
+  `WalletReconciliationDrift` (append-only findings log) Prisma models, both
+  with the same direct seller-scoped RLS policy as `ledger_entries`.
+- `WalletService.postLedgerEntry(tx, data)` — the one function that creates
+  a wallet-relevant `LedgerEntry`. It writes the ledger row and atomically
+  increments/decrements `WalletBalance.balance` (via Prisma's `increment`,
+  a single database-level `UPDATE`, never a read-then-write) in the same
+  transaction, always caller-supplied so it composes with whatever else that
+  transaction is doing. Every one of the 15 prior direct
+  `prisma.ledgerEntry.create()` call sites across `billing/`,
+  `growth-programs/`, and `verification/` was refactored to call this
+  instead, so the cache can never drift from a write path that forgot to
+  update it.
+- `WalletService.computeLedgerBalance()` — the old from-scratch
+  re-aggregation, retained but now used only by the reconciliation sweep,
+  never on a hot path.
+- `WalletReconciliationService` + a settings-driven daily sweep
+  (`billing.wallet_reconciliation_interval_hours`, default 24h, same
+  BullMQ queue/scheduler/worker pattern as the existing plan-fee-debit and
+  low-balance sweeps): recomputes every seller's true ledger sum and
+  compares it to the cached column. A mismatch is **never auto-corrected**
+  — only logged, recorded as a `WalletReconciliationDrift` row, and
+  surfaced as a new "wallet balance drift detected" line in the admin
+  notification center and the system-status queue list, for a human to
+  review.
+- `test/e2e/setup.ts`'s `seedLedgerEntry()` — a test-only helper that seeds
+  a `LedgerEntry` directly (several existing e2e specs do this to set up
+  scenario state quickly) while also keeping `WalletBalance` in sync, using
+  the exact same `signedContribution()` sign-mapping `postLedgerEntry()`
+  uses (exported from `wallet.service.ts` for this purpose, so the two can
+  never drift apart). Every pre-existing direct-seed call site (10 of them
+  across 4 test files) was migrated to it — a real gap this refactor
+  surfaced: a raw ledger insert that bypasses `postLedgerEntry()` now
+  silently leaves the cache stale, which the old re-aggregating
+  `getBalance()` was immune to by construction.
+
+### Migration
+- Backfills `wallet_balances` for every existing seller from their ledger
+  sum, then runs a hard-failing verification `DO` block that recomputes the
+  same sum independently and rolls back the entire migration if even one
+  row doesn't match exactly — the cached column is never considered "live"
+  without this passing.
+
+### Tests
+- Four new e2e tests: balance correctness after mixed credits/debits
+  (matches an independent `computeLedgerBalance()` recomputation); the race
+  fix, proven with two real concurrent HTTP `mark-as-paid` requests via
+  `Promise.all` (not sequential calls) — both debits land exactly once each
+  with no lost update, and the negative-float floor correctly detects the
+  combined-but-not-individual crossing; the reconciliation sweep detecting
+  a deliberately-introduced drift and never auto-correcting it; and the
+  publish gate / low-balance grace ladder still reading correct values off
+  the new cache.
+- Fixed 10 pre-existing direct-ledger-seed call sites across
+  `module20-wallet-supplier-portal`, `module22-growth-partner-programs`,
+  `module25-admin-completion`, and `guardrails` e2e specs (see `Added`
+  above) — all were genuinely broken by the cache swap until migrated to
+  `seedLedgerEntry()`.
+
+Verified: full local unit suite (38/38 suites, 186/186 tests) and full
+local e2e suite, plus a real CI-verified green run on the pushed commit.
+
 ## Module 46: Self-Fulfilled Stock Protection
 
 SRS §5.39, FR-39.5 corrected (v0.33). Checkout's atomic oversell-protection

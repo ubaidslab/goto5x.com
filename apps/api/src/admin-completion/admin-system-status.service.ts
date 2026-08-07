@@ -8,6 +8,7 @@ import { INVOICE_GENERATION_QUEUE_NAME } from "../billing/invoice-generation.que
 import { INVOICE_OVERDUE_QUEUE_NAME } from "../billing/invoice-overdue.queue";
 import { PLAN_FEE_DEBIT_QUEUE_NAME } from "../billing/plan-fee-debit.queue";
 import { WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME } from "../billing/wallet-low-balance-sweep.queue";
+import { WALLET_RECONCILIATION_QUEUE_NAME } from "../billing/wallet-reconciliation.queue";
 import { DATA_EXPORT_QUEUE_NAME } from "../data-export/data-export.queue";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DOMAIN_VERIFICATION_QUEUE_NAME } from "../domains/domain-verification.queue";
@@ -22,6 +23,7 @@ const QUEUE_NAMES = [
   INVOICE_OVERDUE_QUEUE_NAME,
   PLAN_FEE_DEBIT_QUEUE_NAME,
   WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME,
+  WALLET_RECONCILIATION_QUEUE_NAME,
   DATA_EXPORT_QUEUE_NAME,
   PRODUCT_IMPORT_QUEUE_NAME,
   DOMAIN_VERIFICATION_QUEUE_NAME,

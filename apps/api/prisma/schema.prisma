@@ -354,6 +354,10 @@ model Seller {
   dataExports                 SellerDataExport[]
   verificationEmails          SellerVerificationEmail[]
   staffAccounts               StaffAccount[]
+  // Module 47 (SRS §5.6e, FR-6.21 amended, new FR-6.29) - the running-total
+  // wallet balance cache and its append-only reconciliation-drift log.
+  walletBalance               WalletBalance?
+  walletReconciliationDrifts  WalletReconciliationDrift[]
 
   @@map("sellers")
 }
@@ -2235,6 +2239,44 @@ model LedgerEntry {
 
   @@index([sellerId, createdAt], name: "idx_ledger_seller_created")
   @@map("ledger_entries")
+}
+
+// Module 47 (SRS §5.6e, FR-6.21 amended v0.33) - the ledger stays the
+// append-only source of truth; this is its verified, race-free running-
+// total cache, one row per seller, updated atomically (via Prisma's
+// `increment`/`decrement`) in the SAME transaction as every LedgerEntry
+// insert - see WalletService.postLedgerEntry(), the ONE function that
+// writes a wallet-relevant LedgerEntry, so this column can never drift
+// from a write path that forgets to update it. `balance` can legitimately
+// go negative (commission always accrues; the negative-float floor pauses
+// stores AFTER the fact, it never blocks the debit itself - FR-6.26).
+model WalletBalance {
+  sellerId  String   @id @map("seller_id") @db.Uuid
+  balance   Decimal  @default(0) @db.Decimal(12, 2)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@map("wallet_balances")
+}
+
+// Module 47 (new FR-6.29) - the daily reconciliation job's append-only
+// findings log. A detected mismatch is NEVER auto-corrected here (the
+// founder's explicit requirement) - only recorded, for admin review via
+// the notification center; the drift itself is fixed by a human, not by
+// this table.
+model WalletReconciliationDrift {
+  id            String   @id @default(uuid()) @db.Uuid
+  sellerId      String   @map("seller_id") @db.Uuid
+  cachedBalance Decimal  @map("cached_balance") @db.Decimal(12, 2)
+  ledgerBalance Decimal  @map("ledger_balance") @db.Decimal(12, 2)
+  driftAmount   Decimal  @map("drift_amount") @db.Decimal(12, 2)
+  detectedAt    DateTime @default(now()) @map("detected_at") @db.Timestamptz
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([detectedAt])
+  @@map("wallet_reconciliation_drifts")
 }
 
 enum BalanceBucket {

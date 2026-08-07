@@ -35,6 +35,7 @@ export class AdminNotificationsService {
       growthContentSubmissions,
       growthWithdrawals,
       careerApplicants,
+      walletReconciliationDrifts,
     ] = await Promise.all([
       this.prismaAdmin.walletTopUpRequest.count({ where: { requestedAt: { gt: since } } }),
       this.prismaAdmin.verifiedStoreApplication.count({ where: { createdAt: { gt: since } } }),
@@ -43,6 +44,10 @@ export class AdminNotificationsService {
       this.prismaAdmin.programContentSubmission.count({ where: { createdAt: { gt: since } } }),
       this.prismaAdmin.payoutRequest.count({ where: { requestedAt: { gt: since } } }),
       this.prismaAdmin.jobApplication.count({ where: { createdAt: { gt: since } } }),
+      // Module 47 (new FR-6.29) - the daily reconciliation sweep's findings
+      // are never auto-corrected, only flagged; this is that "flag loudly,
+      // admin-visible" surface.
+      this.prismaAdmin.walletReconciliationDrift.count({ where: { detectedAt: { gt: since } } }),
     ]);
 
     const items: NotificationItem[] = [
@@ -53,6 +58,7 @@ export class AdminNotificationsService {
       { label: "New growth program content submissions", count: growthContentSubmissions, href: "/admin/growth-programs/content-submissions" },
       { label: "New growth program withdrawal requests", count: growthWithdrawals, href: "/admin/growth-programs/withdrawals" },
       { label: "New job applicants", count: careerApplicants, href: "/admin/careers" },
+      { label: "New wallet balance drift detected", count: walletReconciliationDrifts, href: "/admin/status" },
     ].filter((item) => item.count > 0);
 
     return {

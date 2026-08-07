@@ -15,6 +15,8 @@ import { PlanFeeDebitService } from "./plan-fee-debit.service";
 import { PlanFeeDebitScheduler } from "./plan-fee-debit.scheduler";
 import { ProgramCommissionService } from "./program-commission.service";
 import { WalletLowBalanceSweepScheduler } from "./wallet-low-balance-sweep.scheduler";
+import { WalletReconciliationService } from "./wallet-reconciliation.service";
+import { WalletReconciliationScheduler } from "./wallet-reconciliation.scheduler";
 import {
   AdminWalletController,
   SellerWalletController,
@@ -54,7 +56,9 @@ import {
     PlanFeeDebitScheduler,
     WalletLowBalanceSweepScheduler,
     ProgramCommissionService,
+    WalletReconciliationService,
+    WalletReconciliationScheduler,
   ],
-  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService],
+  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService],
 })
 export class BillingModule {}

@@ -102,6 +102,22 @@ export async function seedWalletSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Module 47 (new FR-6.29) - the daily wallet-balance reconciliation
+  // sweep, same "settings-driven interval hours" pattern as the two
+  // schedulers above (default 24h = daily, per the founder's requirement).
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.wallet_reconciliation_interval_hours" },
+    create: {
+      key: "billing.wallet_reconciliation_interval_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 24,
+      validation: { min: 1, max: 168 },
+      description: "How often the wallet-balance reconciliation sweep runs - recomputes each seller's true ledger sum and flags any drift from the cached WalletBalance column for admin review (SRS new FR-6.29).",
+    },
+    update: {},
+  });
+
   // Module 20 (FR-7.10 supplement) - the actual gate the Supplier Premium
   // Plan's fee gets checked against, resolved with the same plan-scope
   // mechanism every other plan-gated feature already uses (FR-8.1) - see

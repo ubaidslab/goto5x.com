@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { SettingsService } from "../settings-registry/settings.service";
 import { round2 } from "../orders/money.util";
+import { WalletService } from "./wallet.service";
 
 interface OrderLike {
   id: string;
@@ -19,7 +20,10 @@ interface OrderLike {
  */
 @Injectable()
 export class LedgerService {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly wallet: WalletService,
+  ) {}
 
   /**
    * Called from inside OrdersService.markAsPaid()'s existing transaction -
@@ -45,14 +49,12 @@ export class LedgerService {
     const ratePercent = Math.max(0, baseRatePercent - (await this.launchCampaignDiscountPercent(tx, sellerId)));
     const amount = round2((commissionBase * ratePercent) / 100);
 
-    await tx.ledgerEntry.create({
-      data: {
-        sellerId,
-        orderId: order.id,
-        type: "commission_accrued",
-        amount,
-        currency,
-      },
+    await this.wallet.postLedgerEntry(tx, {
+      sellerId,
+      orderId: order.id,
+      type: "commission_accrued",
+      amount,
+      currency,
     });
   }
 
@@ -89,14 +91,12 @@ export class LedgerService {
     amount: number,
     currency: string,
   ): Promise<void> {
-    await tx.ledgerEntry.create({
-      data: {
-        sellerId,
-        orderId,
-        type: "commission_waived",
-        amount: -Math.abs(amount),
-        currency,
-      },
+    await this.wallet.postLedgerEntry(tx, {
+      sellerId,
+      orderId,
+      type: "commission_waived",
+      amount: -Math.abs(amount),
+      currency,
     });
   }
 }

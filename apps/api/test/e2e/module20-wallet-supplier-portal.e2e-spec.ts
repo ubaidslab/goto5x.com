@@ -4,7 +4,7 @@ import request from "supertest";
 import { WalletGraceLadderService } from "../../src/billing/wallet-grace-ladder.service";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
@@ -350,9 +350,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       });
       // Spend the whole balance on commission so nothing is left for the fee.
       const balance = (await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`)).body.balance;
-      await superuser.ledgerEntry.create({
-        data: { sellerId, type: "wallet_plan_fee_debit", amount: balance, currency: "PKR" },
-      });
+      await seedLedgerEntry(superuser, { sellerId, type: "wallet_plan_fee_debit", amount: balance, currency: "PKR" });
 
       const secondCycle = new Date(aMonthLater.getTime() + 31 * 24 * 60 * 60 * 1000);
       const secondSweep = await planFeeDebit.runMonthlyDebitSweep(secondCycle);

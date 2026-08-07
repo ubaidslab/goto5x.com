@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { LedgerEntryType } from "@prisma/client";
+import { LedgerEntry, LedgerEntryType, Prisma } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { EventsService } from "../events/events.service";
@@ -40,7 +40,8 @@ const CREDIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
   "admin_manual_credit",
 ]);
 
-function signedContribution(type: LedgerEntryType, amount: number): number {
+/** Exported so test fixtures that seed a LedgerEntry directly (bypassing the API) can keep WalletBalance in sync too - see test/e2e/setup.ts's seedLedgerEntry(). */
+export function signedContribution(type: LedgerEntryType, amount: number): number {
   if (CREDIT_TYPES.has(type)) return amount;
   if (type === "commission_waived") return -amount; // amount is already negative - this adds back
   if (DEBIT_TYPES.has(type)) return -amount;
@@ -66,12 +67,61 @@ export class WalletService {
     private readonly topUpAdapter: ManualBankTransferTopUpAdapter,
   ) {}
 
+  /**
+   * Module 47 (SRS §5.6e, FR-6.21 amended v0.33) - O(1) read of the
+   * maintained WalletBalance cache, not a re-aggregation. A seller with no
+   * wallet activity yet has no WalletBalance row (postLedgerEntry() creates
+   * one on its first write) - that's balance 0, same as an empty ledger sum
+   * always was.
+   */
   async getBalance(sellerId: string): Promise<number> {
+    const row = await this.prismaAdmin.walletBalance.findUnique({ where: { sellerId } });
+    return row ? round2(Number(row.balance)) : 0;
+  }
+
+  /**
+   * Module 47 (new FR-6.29) - the independent, from-scratch ledger
+   * re-aggregation WalletService.getBalance() used to do on every call,
+   * before this module. Used ONLY by WalletReconciliationService's daily
+   * sweep, which compares this against the cached column - never called on
+   * any hot path, so its O(n) cost is fine here.
+   */
+  async computeLedgerBalance(sellerId: string): Promise<number> {
     const entries = await this.prismaAdmin.ledgerEntry.findMany({
       where: { sellerId },
       select: { type: true, amount: true },
     });
     return round2(entries.reduce((sum, e) => sum + signedContribution(e.type, Number(e.amount)), 0));
+  }
+
+  /**
+   * Module 47 (SRS §5.6e, FR-6.21 amended v0.33) - the ONE function that
+   * creates a wallet-relevant LedgerEntry. Every prior direct
+   * `prisma.ledgerEntry.create()` call site in the codebase now goes
+   * through this instead, so the WalletBalance cache can never drift from a
+   * write path that forgot to update it: the ledger insert and the atomic
+   * balance increment/decrement always happen in the SAME transaction
+   * (`tx`, always caller-supplied - this never opens its own transaction,
+   * so a caller doing other work in the same transaction stays atomic with
+   * both writes here). `tx.walletBalance.upsert()`'s `update.increment` is
+   * a single `UPDATE ... SET balance = balance + $delta` at the database
+   * level - not a read-then-write in application code - so two concurrent
+   * callers debiting/crediting the same seller can never lose an update to
+   * each other, regardless of how many run at once (FR-6.21's "correctness
+   * problem" this module fixes).
+   */
+  async postLedgerEntry(
+    tx: Prisma.TransactionClient,
+    data: { sellerId: string; type: LedgerEntryType; amount: number; currency: string; orderId?: string; invoiceId?: string },
+  ): Promise<LedgerEntry> {
+    const entry = await tx.ledgerEntry.create({ data });
+    const delta = signedContribution(data.type, data.amount);
+    await tx.walletBalance.upsert({
+      where: { sellerId: data.sellerId },
+      create: { sellerId: data.sellerId, balance: delta },
+      update: { balance: { increment: delta } },
+    });
+    return entry;
   }
 
   /** FR-6.27 - every credit/debit, plain language, newest first. */
@@ -171,13 +221,11 @@ export class WalletService {
         where: { id: topUpId },
         data: { status: "verified", verifiedAt: new Date(), verifiedBy: adminUserId },
       });
-      await tx.ledgerEntry.create({
-        data: {
-          sellerId: request.ownerId,
-          type: "wallet_topup_credit",
-          amount: request.amount,
-          currency: request.currency,
-        },
+      await this.postLedgerEntry(tx, {
+        sellerId: request.ownerId,
+        type: "wallet_topup_credit",
+        amount: Number(request.amount),
+        currency: request.currency,
       });
     });
 
@@ -239,9 +287,9 @@ export class WalletService {
     }
 
     const type: LedgerEntryType = amount > 0 ? "admin_manual_credit" : "admin_manual_debit";
-    const entry = await this.prismaAdmin.ledgerEntry.create({
-      data: { sellerId, type, amount: round2(Math.abs(amount)), currency },
-    });
+    const entry = await this.prismaAdmin.$transaction((tx) =>
+      this.postLedgerEntry(tx, { sellerId, type, amount: round2(Math.abs(amount)), currency }),
+    );
 
     await this.auditLog.record({
       adminUserId,

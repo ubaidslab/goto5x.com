@@ -3,6 +3,7 @@ import { ReferralProgramType } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { round2 } from "../orders/money.util";
+import { WalletService } from "./wallet.service";
 
 /**
  * SRS §5.33 FR-33.4/FR-33.9 - lives in BillingModule (not GrowthProgramsModule)
@@ -24,6 +25,7 @@ export class ProgramCommissionService {
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
+    private readonly wallet: WalletService,
   ) {}
 
   async accrueReferralCommissionIfApplicable(referredSellerId: string, planFeeAmount: number, currency: string): Promise<void> {
@@ -38,9 +40,9 @@ export class ProgramCommissionService {
     const amount = round2((planFeeAmount * ratePercent) / 100);
     if (amount <= 0) return;
 
-    await this.prismaAdmin.ledgerEntry.create({
-      data: { sellerId: participant.sellerId, type: "program_commission_credit", amount, currency },
-    });
+    await this.prismaAdmin.$transaction((tx) =>
+      this.wallet.postLedgerEntry(tx, { sellerId: participant.sellerId, type: "program_commission_credit", amount, currency }),
+    );
   }
 
   private async commissionRatePercentFor(programType: ReferralProgramType): Promise<number> {

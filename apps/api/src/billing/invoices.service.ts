@@ -5,6 +5,7 @@ import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { round2 } from "../orders/money.util";
+import { WalletService } from "./wallet.service";
 
 /** The billing period this invoice run is for: the full previous calendar month. */
 function previousCalendarMonth(now: Date): { periodStart: Date; periodEnd: Date } {
@@ -29,6 +30,7 @@ export class InvoicesService {
     private readonly settings: SettingsService,
     private readonly auditLog: AuditLogService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly wallet: WalletService,
   ) {}
 
   /** Seller's own invoice list/detail (own dashboard, not admin). */
@@ -220,9 +222,9 @@ export class InvoicesService {
     });
     if (!accrued) throw new NotFoundException("No accrued commission found for that order.");
 
-    const entry = await this.prismaAdmin.ledgerEntry.create({
-      data: { sellerId, orderId, type: "commission_waived", amount: -Math.abs(amount), currency: accrued.currency },
-    });
+    const entry = await this.prismaAdmin.$transaction((tx) =>
+      this.wallet.postLedgerEntry(tx, { sellerId, orderId, type: "commission_waived", amount: -Math.abs(amount), currency: accrued.currency }),
+    );
 
     await this.auditLog.record({
       adminUserId,

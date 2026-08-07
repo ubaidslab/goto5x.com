@@ -1,8 +1,9 @@
 import { ValidationPipe, INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { PrismaClient } from "@prisma/client";
+import { LedgerEntryType, PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
+import { signedContribution } from "../../src/billing/wallet.service";
 import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
 import { seedCampaignsSettings } from "../../src/campaigns/campaigns.seed";
 import { seedCareersSettings } from "../../src/careers/careers.seed";
@@ -157,4 +158,29 @@ export async function resetRedis(): Promise<void> {
   const redis = new Redis(process.env.REDIS_URL!);
   await redis.flushall();
   await redis.quit();
+}
+
+/**
+ * Module 47 - a test-only LedgerEntry seeder that ALSO updates the
+ * WalletBalance cache, mirroring WalletService.postLedgerEntry() exactly
+ * (same signedContribution() sign mapping, imported directly rather than
+ * re-implemented, so the two can never drift apart). Several existing e2e
+ * specs seed scenario state by writing a LedgerEntry directly via the
+ * superuser Prisma client rather than going through the real top-up/
+ * checkout/etc. HTTP flow - a legitimate test shortcut, but one that would
+ * silently leave WalletBalance at 0 (and getBalance() reading that stale
+ * cache) if it used `prisma.ledgerEntry.create()` directly post-Module-47.
+ * Use this instead wherever a test needs to seed a ledger row directly.
+ */
+export async function seedLedgerEntry(
+  prisma: PrismaClient,
+  data: { sellerId: string; type: LedgerEntryType; amount: number; currency: string; orderId?: string; invoiceId?: string },
+): Promise<void> {
+  await prisma.ledgerEntry.create({ data });
+  const delta = signedContribution(data.type, data.amount);
+  await prisma.walletBalance.upsert({
+    where: { sellerId: data.sellerId },
+    create: { sellerId: data.sellerId, balance: delta },
+    update: { balance: { increment: delta } },
+  });
 }

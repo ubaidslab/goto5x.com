@@ -4,6 +4,7 @@ import { AuditLogService } from "../admin/audit-log.service";
 import { round2 } from "../orders/money.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
+import { WalletService } from "../billing/wallet.service";
 
 interface CertificateTierThreshold {
   name: string;
@@ -24,6 +25,7 @@ export class ProgramRewardService {
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
     private readonly auditLog: AuditLogService,
+    private readonly wallet: WalletService,
   ) {}
 
   /**
@@ -64,9 +66,9 @@ export class ProgramRewardService {
       const rewardAmount = subscription ? Number(subscription.plan.price) : 0;
       if (rewardAmount <= 0) continue;
 
-      await this.prismaAdmin.ledgerEntry.create({
-        data: { sellerId: ambassador.sellerId, type: "program_reward_credit", amount: rewardAmount, currency: subscription!.plan.currency },
-      });
+      await this.prismaAdmin.$transaction((tx) =>
+        this.wallet.postLedgerEntry(tx, { sellerId: ambassador.sellerId, type: "program_reward_credit", amount: rewardAmount, currency: subscription!.plan.currency }),
+      );
       rewarded += 1;
     }
     return { rewarded };
@@ -173,9 +175,9 @@ export class ProgramRewardService {
 
     if (rewardAmount > 0) {
       const participant = await this.prismaAdmin.programParticipant.findUniqueOrThrow({ where: { id: submission.participantId } });
-      await this.prismaAdmin.ledgerEntry.create({
-        data: { sellerId: participant.sellerId, type: "program_reward_credit", amount: rewardAmount, currency: "PKR" },
-      });
+      await this.prismaAdmin.$transaction((tx) =>
+        this.wallet.postLedgerEntry(tx, { sellerId: participant.sellerId, type: "program_reward_credit", amount: rewardAmount, currency: "PKR" }),
+      );
     }
 
     await this.auditLog.record({

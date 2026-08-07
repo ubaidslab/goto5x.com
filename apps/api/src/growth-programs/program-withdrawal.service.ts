@@ -94,9 +94,9 @@ export class ProgramWithdrawalService {
   async markPaid(adminUserId: string, payoutId: string, paymentReference: string | undefined): Promise<PayoutRequest> {
     const before = await this.requireStatus(payoutId, ["approved", "processing"]);
 
-    await this.prismaAdmin.ledgerEntry.create({
-      data: { sellerId: before.sellerId, type: "payout_debit", amount: Number(before.amount), currency: before.currency },
-    });
+    await this.prismaAdmin.$transaction((tx) =>
+      this.wallet.postLedgerEntry(tx, { sellerId: before.sellerId, type: "payout_debit", amount: Number(before.amount), currency: before.currency }),
+    );
     const after = await this.prismaAdmin.payoutRequest.update({
       where: { id: payoutId },
       data: { status: "paid", paidAt: new Date(), paymentReference: paymentReference ?? null },
@@ -126,9 +126,9 @@ export class ProgramWithdrawalService {
    * pause.
    */
   async clawback(adminUserId: string, sellerId: string, amount: number, notes: string): Promise<void> {
-    await this.prismaAdmin.ledgerEntry.create({
-      data: { sellerId, type: "program_clawback_debit", amount, currency: "PKR" },
-    });
+    await this.prismaAdmin.$transaction((tx) =>
+      this.wallet.postLedgerEntry(tx, { sellerId, type: "program_clawback_debit", amount, currency: "PKR" }),
+    );
     await this.auditLog.record({
       adminUserId,
       action: "growth_programs.clawback",

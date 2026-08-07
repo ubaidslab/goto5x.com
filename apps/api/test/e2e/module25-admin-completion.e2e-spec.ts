@@ -1,7 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
@@ -154,7 +154,7 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     const { token, storeId, sellerId } = await createStore("s360-seller@example.com", "s360-store");
     const { token: adminToken } = await createAndLoginAdmin("s360-admin@example.com");
 
-    await superuser.ledgerEntry.create({ data: { sellerId, type: "wallet_topup_credit", amount: 1000, currency: "PKR" } });
+    await seedLedgerEntry(superuser, { sellerId, type: "wallet_topup_credit", amount: 1000, currency: "PKR" });
     await superuser.programParticipant.create({ data: { sellerId, programType: "ambassador", status: "pending" } });
     await request(app.getHttpServer())
       .post(`/admin/sellers/${sellerId}/lifecycle`)
