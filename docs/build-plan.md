@@ -3651,5 +3651,102 @@ CI-verified one at a time:
 
 ---
 
+## Professional Seller Readiness (Modules 49-58)
+
+Founder rationale: positioning is beginner-friendly, but revenue comes from
+Growth/Pro sellers, and the platform can't yet handle their daily workload.
+Ships before the UI/design phase. SRS v0.34 documents the full FR-by-FR
+detail (§5.56-5.65, §14.55-14.64); this section is the build-order/slotting
+record, researched against the live codebase before sequencing — four
+parallel research passes covered all ten founder-specified items before any
+FR was written, so every dependency claim below is grounded in what the
+code actually does today, not assumption.
+
+The founder's own numbering (1-10) is **not** the build order — it's
+reordered here purely on dependency grounds, confirmed safe by research
+(no item skipped ahead of a prerequisite it turned out to actually need):
+
+- **Module 49 — Multi-Store Per Seller (§5.56, item 1).** Built first: it's
+  the most self-contained item in the batch (research confirmed the
+  schema/RLS/URL-routing already fully support it — this module is a
+  plan-limit gate plus a switcher UI, not new tenancy work) and touches
+  nothing any other module in this batch depends on.
+- **Module 50 — Product Organization at Scale (§5.57, item 6, reordered
+  ahead of item 2).** Built before bulk product operations deliberately —
+  both modules touch the same product-list page and endpoint; adding
+  filters/search/pagination first, then bulk-select on top of an
+  already-filterable list, avoids re-touching the same frontend page twice
+  with potentially conflicting layouts.
+- **Module 51 — Bulk Product Operations (§5.58, item 2).** Depends on
+  Module 50's filtered/paginated list (a bulk action's confirmation count
+  needs to reflect a filtered selection accurately). Also closes the
+  pre-existing `ProductsService.update()` moderation gap found during
+  research (FR-58.3) — bulk operations multiply that gap's exposure, so
+  it's closed here rather than filed as a separate item.
+- **Module 52 — Bulk Order Operations, Tracking Entry & Advanced Search
+  (§5.59, item 3).** Independent of 49-51; the first module to touch
+  `Order.status` transitions formally (new `orderNumber` schema field,
+  first centralized transition map). Sequenced here, before returns,
+  because Module 53 needs that transition map to add
+  `refunded`/`partially_refunded` safely.
+- **Module 53 — Returns & Refunds Workflow (§5.60, item 4).** Depends on
+  Module 52's transition-map groundwork. The most financially sensitive
+  module in the batch — promotes the `return_requests` table already
+  reserved in `docs/database-schema.md`'s v1.1-ahead section and wires the
+  long-dormant `refund_adjustment` ledger enum value into
+  `WalletService`'s sign-convention sets for the first time. Built with
+  the same discipline as Phase B's key-rotation/RLS-defense work: every
+  reversal path proven against the Financial Truth Invariant explicitly,
+  not assumed correct by construction.
+- **Module 54 — Analytics Depth (§5.61, item 5, reordered after item 4).**
+  Depends on Module 53: return rate (overall and per-product) is one of
+  the founder's explicitly requested metrics, and there is no return data
+  to rate until Module 53 exists. Building analytics before returns would
+  mean either shipping an incomplete metric or redoing this module later —
+  research confirmed no other item in the batch has this kind of hard
+  data dependency, so this is the one deliberate reordering beyond the
+  page-sharing logic above.
+- **Module 55 — Seller Notifications (§5.62, item 7, reordered after item
+  5).** The daily sales summary email is explicitly meant to reuse
+  Module 54's new time-bucketed queries rather than duplicate them —
+  sequencing after 54 means there's something to reuse when this module
+  starts.
+- **Module 56 — One-Click Full Export, Pro Gate (§5.63, item 8).** Small
+  and fully independent (confirmed by research: Module 24's export engine
+  already does everything except the plan-tier check) — slotted here as a
+  fast, low-risk module between the two remaining larger, independent
+  items.
+- **Module 57 — Invoice/Receipt Customization, limited (§5.64, item 9).**
+  Independent; small (three new `Store` fields plus wiring one already-
+  existing-but-unused `Seller.businessName` field into the template).
+- **Module 58 — Advanced Store SEO Control (§5.65, item 10).** Built last
+  — the largest remaining item and the only one requiring genuinely new
+  infrastructure with no in-repo precedent (an HTML-sanitization
+  allowlist utility; research confirmed none exists anywhere in this
+  codebase today). Independent of every other module in this batch, so
+  its position is pure sizing/risk sequencing, not a dependency
+  requirement.
+
+**Confirmed by research, stated once here rather than repeated in every
+module below:** none of the ten items require a UI/design-system change —
+this entire batch ships on the existing (pre-design-pass) component set,
+consistent with the founder's instruction that it ships *before* the
+UI/design phase. Two items introduce genuinely new tooling with no
+existing pattern to extend: Module 54 needs a frontend charting library
+(none installed in `apps/web` today), and Module 58 needs an HTML-
+sanitization dependency (none installed anywhere today) — both flagged
+explicitly in SRS §5.61/§5.65 so neither is mistaken for reusing an
+existing mechanism.
+
+### Phase C — remaining pre-launch/pre-design audit items (unaffected)
+
+Modules 38-43 and 48 (Built-in Email Verification, Shopify Migration,
+Cost-Savings Calculator, Badge Engine, Retention Layer, Community &
+Belonging, Facebook/Instagram Shop Feed) remain pending, unaffected by this
+insertion — they stay queued after Module 58 unless the founder resequences
+them.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

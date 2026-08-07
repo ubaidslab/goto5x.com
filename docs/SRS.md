@@ -1,7 +1,7 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.33 (Build-phase amendment — deep-audit Phase A launch blockers)
-**Date:** 2026-08-06
+**Version:** 0.34 (Build-phase amendment — Professional Seller Readiness)
+**Date:** 2026-08-07
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -969,6 +969,164 @@ built):**
 - Module 10/11's scope is correspondingly simplified - see
   `docs/build-plan.md`'s revised module sequence for the concrete
   renumbering.
+
+**Changelog v0.33 → v0.34 (approved after Phase B closed — "PROFESSIONAL
+SELLER READINESS," founder rationale: positioning is beginner-friendly but
+revenue comes from Growth/Pro sellers, and the platform can't yet handle
+their daily workload; ships before the UI/design phase):** ten new FR
+groups, §5.56-5.65, all researched against the live codebase before being
+specified so each one states precisely what's reused vs. genuinely new -
+see `docs/build-plan.md`'s "Professional Seller Readiness (Modules 49-58)"
+section for the dependency-ordered build sequence and full research
+findings.
+- **§5.56 Multi-Store Per Seller (FR-56.x, plan-gated).** The schema, RLS,
+  and dashboard URL structure (`/stores/[storeId]/...`) already support one
+  seller owning multiple stores with full tenant isolation - confirmed, not
+  assumed. What's missing is a plan-tier store-count limit (First
+  Month/Starter 1, Growth 2, Pro 3-5, Settings-Registry-driven, same
+  `staff.max_accounts`-style per-seller-scoped pattern) and a store-switcher
+  UI over the already-existing `GET /stores` endpoint.
+- **§5.57 Product Organization at Scale (FR-57.x, tags + filters).**
+  Free-form seller-defined product tags (net-new `Product.tags` array
+  column + GIN index - not to be confused with the existing, unrelated
+  `Order.tags` field from FR-17.3) plus a dashboard product-list
+  search/filter bar (SKU, tag, stock status reusing Module 28's existing
+  low-stock-threshold computation, price range, category, moderation
+  state) - the list endpoint has none of this today. Slotted **before**
+  §5.58 (bulk product operations) since both touch the same page and
+  bulk-select is easiest to add on top of an already-filterable list, not
+  the reverse.
+- **§5.58 Bulk Product Operations (FR-58.x).** Multi-select on the (now
+  filterable) product list - price update (fixed/%), stock update,
+  category/collection assign, publish/unpublish, archive/delete, tag
+  assign - with a confirmation step stating exact affected-row counts. Per
+  the admin moderation queue's own precedent (Module 25 P2), this reuses
+  the existing single-item endpoints via a client-side fan-out rather than
+  new bulk-specific backend endpoints, wrapped in the CSV-import module's
+  existing discipline that every write goes through the same
+  service/moderation/plan-limit path a manual edit would. **Closes a real,
+  pre-existing gap surfaced by this research, not created by it:**
+  `ProductsService.update()` currently never re-checks moderation on
+  publish or price changes, single-item or bulk - FR-58.3 closes this for
+  both paths at once, since bulk operations multiply the exposure of an
+  already-live gap.
+- **§5.59 Bulk Order Operations, Tracking Entry & Advanced Search
+  (FR-59.x).** Multi-select bulk mark-as-paid/status-change/fulfill (each
+  routed through the existing single-order `markAsPaid()`/tracking methods
+  per order, never a bare `updateMany`, to preserve the Financial Truth
+  Invariant's commission-accrual and customer-stats side effects); three
+  tracking-entry paths (CSV upload, inline quick-entry in the orders list,
+  the existing per-order detail entry, kept unchanged); and advanced
+  search/filters (date+time range, status, payment state, verification
+  state, courier, customer, amount range, with per-filter result counts) -
+  none of which exist on the orders list endpoint today (`?status=`,
+  `?bucket=`, `?tag=` only). **New schema: `Order.orderNumber`** (a
+  per-store sequential human-readable identifier, backfilled for existing
+  orders) - orders are UUID-only today, and a CSV mapping "order number →
+  courier/tracking" needs something a seller can actually read and type.
+- **§5.60 Returns & Refunds Workflow (FR-60.x, launch-critical).** Buyer-
+  initiated return request (new Server Action on the existing order-status
+  page, modeled directly on FR-14.1's review-submission pattern - same
+  confirmed-order gate, same public-token auth) → seller approve/reject
+  with a reason → refund recorded via a compensating `refund_adjustment`
+  ledger entry (an enum value that has existed since v1.0's schema but was
+  never wired into `WalletService`'s sign-convention sets until now - a
+  live gap this amendment closes, not new architecture) → new `refunded`/
+  `partially_refunded` `Order.status` values, excluded from the P&L
+  engine's and unit-economics dashboard's existing `CONFIRMED_OR_BEYOND`
+  gates, so a refunded sale stops counting as revenue everywhere at the
+  same instant its ledger reversal lands, per the Financial Truth
+  Invariant's "exactly one signal for 'this is a real sale', applied
+  uniformly" clause (§3.12). Partial refunds supported (a `refundAmount`
+  distinct from the order total). Admin can override seller decisions.
+  This promotes and completes the `return_requests` table already reserved
+  in `docs/database-schema.md`'s v1.1-ahead section (formerly deferred
+  FR-22.3) rather than inventing new schema from nothing. Slotted **after**
+  §5.59 since it depends on that module's order-status-transition
+  groundwork (today there is no formal allowed-transitions map anywhere in
+  Orders - this is the first module that needs one).
+- **§5.61 Analytics Depth (FR-61.x, seller-facing).** Top products by
+  revenue/units, sales-over-time charts (day/week/month), repeat-customer
+  rate (derivable directly from the existing `Customer.ordersCount`/
+  `totalSpent` columns Module 33 already populates), return rate (overall
+  and per-product - this is why §5.61 is slotted **after** §5.60, not
+  before: there is no return data to rate until returns exist), average
+  order value, best sales days/times. All queryable from existing schema -
+  no new tables - but genuinely new query/aggregation code (Module 17's
+  analytics and Module 31's P&L engine are both admin-facing/single-period,
+  with zero time-bucketing logic to reuse) and a **new frontend charting
+  library** (none is installed today - both existing "analytics" pages are
+  plain HTML tables). Every query applies the same `status: {not:
+  "pending"}`-or-stricter filter the Financial Truth Invariant already
+  requires elsewhere, so a new analytics surface doesn't become the one
+  place that invariant quietly doesn't apply.
+- **§5.62 Seller Notifications (FR-62.x, transactional + admin
+  newsletter).** Four transactional emails, all genuinely new (new-order
+  alert, daily sales summary - reusing §5.61's new time-bucketed queries,
+  which is why this module is slotted **after** it - low-stock alert,
+  payment/verification events); an admin-composed newsletter capability
+  (informational, 2-3/week, sent from the admin terminal, with per-seller
+  opt-out) modeled on Module 34's background-job-send + unsubscribe-token
+  infrastructure but with the **platform's** own SMTP as sender, not a
+  seller's connected mailbox - a materially different, new code path, not
+  a reuse of Module 36's admin inbox (which is a personal 1:1 reply tool,
+  not a broadcast mechanism, despite the adjacent name). New
+  `SellerNotificationPreference` opt-out fields (no seller-side
+  notification-preference model exists today - `Customer.unsubscribedAt`
+  is the closest analog and is a different table for a different
+  audience). Templates editable via Settings Registry where sensible,
+  extending that mechanism's existing `valueType: "string"` capability to
+  a new use case (email bodies), not a proven template-specific pattern in
+  this codebase yet - flagged so nobody assumes otherwise.
+- **§5.63 One-Click Full Export, Pro Gate (FR-63.x).** Module 24's
+  on-demand export already produces one bundle covering products + orders
+  + customers + inventory together, with Drive/email delivery - exactly
+  the founder's ask. The only real gap is that `requestOnDemandExport()`
+  has no plan-tier check at all today (only a time-based cooldown) - this
+  wires in the same `SubscriptionsService.getPlanContext()` +
+  Settings-Registry `allowedScopes: ["global","plan"]` pattern used
+  everywhere else in this SRS. No new export engine, confirmed.
+- **§5.64 Invoice/Receipt Customization, limited (FR-64.x).** New
+  `Store.taxNumber`, `Store.invoiceFooterText`, `Store.invoiceTermsText`
+  fields, plus wiring the already-existing-but-currently-unused
+  `Seller.businessName` field into the invoice template
+  (`invoice-template.ts`, currently hardcoded, one v1.0 template).
+  `Store.logoMediaId` already renders on invoices today - no change needed
+  there. UZEYN's own branding on the template stays mandatory and
+  non-removable at every plan tier, unaffected by any of the new seller-
+  controlled fields - this is a constraint on the template renderer, not a
+  new mechanism.
+- **§5.65 Advanced Store SEO Control (FR-65.x, plan-gated where
+  sensible).** Extends the existing `resolveSeoFallback()` cascade
+  (already the SRS's own binding "one, not a second parallel set of SEO
+  data" mechanism, per FR-16.6) rather than adding a competing resolver:
+  canonical URL, per-page robots directives, OG/social-share image+title+
+  description override, structured-data toggle, and sitemap-inclusion
+  control, added to `Product` and `Collection` (both already have
+  `seoTitle`/`seoDescription` to extend) plus store-level defaults on
+  `Store`. Custom URL slugs: `Collection.slug` already exists and is
+  already seller-set - this closes the update path if one is missing.
+  **`Product.slug` is genuinely new** and is additive only (a new nullable,
+  unique-per-store column used for canonical-URL purposes) - v1.0's
+  `/storefront/products/[productId]` UUID route is **not** replaced or
+  migrated, to keep this module's scope bounded and avoid a redirect/
+  legacy-URL project nobody asked for. The custom head-tag field is
+  **sanitized to an explicit allowlist** (`meta`, `link`, and
+  `script[type="application/ld+json"]` only, nothing else, ever) using a
+  new sanitization dependency - no such utility exists anywhere in this
+  codebase today (`ContentPage.bodyHtml`, the closest precedent, renders
+  admin-authored HTML completely unsanitized, which is an acceptable trust
+  boundary for admin-only input and an unacceptable one for seller input
+  that could reach a buyer's browser) - this field is genuinely new
+  infrastructure, not an extension of an existing safe pattern, and is
+  scoped store-wide, not per-product, to keep the sanitization surface and
+  UI both bounded.
+- **Not building now (roadmap notes only, founder-specified):**
+  customer-visible order notes, multi-currency display, draft products
+  beyond what exists.
+- See `docs/build-plan.md` for the full ten-module dependency-ordered
+  build sequence (Modules 49-58) and the complete per-item research
+  findings this amendment is grounded in.
 
 ---
 
@@ -4388,6 +4546,360 @@ existing machinery rather than building new integrations)
 
 ---
 
+### 5.56 Multi-Store Per Seller (new, v0.34 — Professional Seller Readiness
+item 1; plan-gated)
+- FR-56.1: **Plan-tier store-count limit.** A new Settings Registry key
+  `stores.max_per_seller` (`allowedScopes: ["global", "plan"]`), seeded per
+  tier — First Month/Starter: 1, Growth: 2, Pro: 3-5 (founder to pick the
+  exact Pro ceiling at seed time) — resolved via
+  `SubscriptionsService.getPlanContext(sellerId)` exactly like FR-52.1's
+  `staff.max_accounts` (per-seller-scoped count, not per-store), and
+  enforced as a new check in `StoresService.create()`, which today only
+  checks slug uniqueness. A seller at their limit gets a clear "upgrade to
+  add another store" response, never a silent failure.
+- FR-56.2: **Tenant isolation holds per store, unchanged.** Confirmed by
+  research, not newly built: `TenantPrismaService.run()` keys RLS off
+  `sellerId`, and every per-store service method already does its own
+  explicit `store.sellerId === sellerId` application-layer check inside the
+  RLS-scoped transaction. A seller with 2+ stores already cannot leak one
+  store's data into another's dashboard view today — this FR is a
+  confirmation, not new work, and exists so a future refactor can't
+  silently weaken it (same discipline as FR-RLS-defense-in-depth from
+  Phase B item 4).
+- FR-56.3: **Store switcher.** A new dashboard UI element (not present
+  today) that calls the already-existing `GET /stores` endpoint
+  (`StoresService.listOwn`) and lets a seller switch between their stores
+  without re-authenticating — the URL structure
+  (`/stores/[storeId]/...`) already supports this; only the switcher
+  affordance itself is new.
+- FR-56.4: **Per-store settings/limits are unaffected.** Product limits
+  (`catalog.product_limit`), payment instructions, theme, and every other
+  store-scoped Settings Registry value remain independently resolved per
+  `storeId` — multi-store does not pool or share any per-store limit
+  across a seller's stores unless a specific FR says otherwise (it
+  doesn't). One exception, already true today and unchanged: the wallet is
+  per-seller, not per-store (§14.6e), by original design.
+
+### 5.57 Product Organization at Scale (new, v0.34 — Professional Seller
+Readiness item 6, built ahead of §5.58 since both touch the product list)
+- FR-57.1: **Free-form product tags.** New `Product.tags String[]
+  @default([])` column with a GIN index (`idx_products_tags`), seller-
+  defined and dashboard-private by default (not automatically exposed on
+  the public storefront — see FR-57.4 for the explicit opt-in). Distinct
+  from the existing `Order.tags` field (FR-17.3) and from `Collection`
+  (FR-2.5's curated, page-having groupings) — tags have no dedicated page,
+  are lightweight labels only.
+- FR-57.2: **Dashboard product-list filters.** SKU/title search, tag
+  filter, stock-status filter (in/low/out — reusing Module 28's existing
+  `inventory.low_stock_threshold`-driven computation, no new threshold
+  logic), price range, category, and moderation state — none of which
+  exist on `ProductsService.list()` today (it is an unfiltered,
+  unpaginated `findMany`). Pagination added at the same time (`page`/
+  `limit`, matching Phase B item 3's `WalletService` pagination shape:
+  `{items, page, limit, total, totalPages}`).
+- FR-57.3: **Filters compose.** All filters (FR-57.2) can be combined in a
+  single request (e.g. tag + stock-status + price-range together), with a
+  live result count — this is also what §5.58's bulk-operation
+  confirmation step relies on to show an accurate "N items will change"
+  count for a filtered selection.
+- FR-57.4: **Storefront tag exposure is a seller opt-in, off by default.**
+  If a seller wants tags to double as a public storefront filter (extending
+  the existing raw-SQL `StorefrontService.search()` the same way its
+  `collectionId` `EXISTS` clause already works), that is a separate,
+  explicit per-tag or per-store setting — tags are private/dashboard-only
+  until a seller turns this on, since public exposure has different
+  index/performance and content-moderation implications than a private
+  organizational tool.
+
+### 5.58 Bulk Product Operations (new, v0.34 — Professional Seller Readiness
+item 2)
+- FR-58.1: **Multi-select on the (now filterable, per §5.57) product
+  list.** Select-all, select-page, and individual checkboxes, mirroring
+  the admin moderation queue's existing selection-state pattern
+  (`apps/web/app/(admin)/admin/moderation/page.tsx`) as the UI template.
+- FR-58.2: **Bulk actions.** Price update (fixed amount or percentage,
+  applied to every variant of every selected product), stock update,
+  category/collection assign, publish/unpublish, archive/delete, tag
+  assign (§5.57). Implementation reuses the existing single-item
+  `ProductsService`/`ProductVariantsService` endpoints via a client-side
+  fan-out (the admin moderation queue's own precedent — no new
+  bulk-specific backend endpoint per action), so every bulk write passes
+  through the exact same moderation gate, plan-limit check, and audit
+  trail a manual single-item edit already does. Per-item failures are
+  reported individually (a bulk action is not all-or-nothing at the
+  network layer — each item's own endpoint call succeeds or fails on its
+  own merits, and the UI reports which).
+- FR-58.3: **Closes a pre-existing moderation gap, for both single-item
+  and bulk edits.** `ProductsService.update()` today never re-checks
+  moderation on a `status` (publish) or price change — this was true
+  before this amendment and is not a bulk-operations-specific bug, but
+  bulk operations multiply its exposure (mass-publish, mass-price-change).
+  This FR adds a moderation re-check (reusing
+  `decideModerationStatus()`/the existing keyword/restricted-category
+  logic, not a new engine) to the shared update path both single-item and
+  bulk edits go through — closing the gap once, for both.
+- FR-58.4: **Confirmation step.** Before any bulk action executes, the UI
+  shows the exact count and a short preview (e.g. first 5 affected product
+  titles) of what will change, and requires an explicit confirm — no bulk
+  action fires from a single click with no confirmation, matching the
+  admin moderation queue's existing reason-before-reject discipline for
+  destructive actions.
+- FR-58.5: **Plan limits still apply.** A bulk publish/duplicate/move
+  operation that would push a store over `catalog.product_limit` is
+  rejected per-item (with a clear count of how many succeeded vs. were
+  blocked by the limit), never silently over-limit.
+
+### 5.59 Bulk Order Operations, Tracking Entry & Advanced Search (new,
+v0.34 — Professional Seller Readiness item 3)
+- FR-59.1: **`Order.orderNumber`, new schema.** A per-store sequential,
+  human-readable identifier (e.g. `#1042`), backfilled for all existing
+  orders by `placedAt` order per store, unique per `(storeId,
+  orderNumber)`. Orders are addressed by UUID only today — this is a
+  prerequisite for FR-59.4's CSV upload, where a seller needs something
+  they can actually read and type, not a raw UUID.
+- FR-59.2: **Bulk order actions.** Multi-select on the orders list →
+  bulk mark-as-paid, bulk status change, bulk fulfill. Each selected order
+  is individually routed through the existing `OrdersService.markAsPaid()`
+  / tracking / fulfillment methods — never a bare `updateMany` — because
+  those methods are the sole place commission accrual
+  (`LedgerService.accrueCommission`), customer stats
+  (`CustomersService.recordCompletedOrder`), and the Financial Truth
+  Invariant's `order.placed` event all fire; a bulk action that bypassed
+  them would silently break P&L, commission, and analytics for every order
+  in the batch.
+- FR-59.3: **Three tracking-entry paths, all three, same underlying
+  write.** (a) CSV upload mapping `orderNumber → courier, trackingId`,
+  parsed via the existing `csv.util.ts`/`import-jobs.service.ts`
+  machinery (modeled on the ad-spend-import bulk-upsert shape, the
+  simplest existing analog), each row calling the existing
+  `uploadTracking()` per order-item; (b) inline quick-entry directly in
+  the orders list — type, tab, next row, no page reloads, same
+  `uploadTracking()` call per row on blur/tab; (c) the existing per-order
+  detail entry, unchanged. Because an order can have multiple items, a CSV
+  row or quick-entry row applies its courier/tracking to every
+  not-yet-shipped item on that order — a seller who needs different
+  couriers per item on one order still uses path (c).
+- FR-59.4: **Advanced order search/filters.** Date **and time** range
+  (not date-only), status, payment state (from `Payment.status`),
+  verification state (from `OrderVerification.status`), courier, customer,
+  amount range — combinable, each returning a live result count. None of
+  this exists today (`?status=`, `?bucket=`, `?tag=` only, no date
+  filtering, no pagination on the list endpoint) — pagination added at the
+  same time, same shape as FR-57.2.
+- FR-59.5: **First formal order-status transition map.** Adding
+  `refunded`/`partially_refunded` (§5.60) safely requires this module to
+  introduce the first centralized allowed-transitions structure for
+  `Order.status` — today transitions are ad hoc per-method preconditions
+  (`markAsPaid` only proceeds from `pending`, `editOrder`'s
+  `EDITABLE_STATUSES`, etc.), which was sufficient while every transition
+  was linear/one-directional. This map is what FR-59.2's bulk status
+  change validates against, and what §5.60 extends.
+
+### 5.60 Returns & Refunds Workflow (new, v0.34 — Professional Seller
+Readiness item 4, launch-critical; promotes and completes the
+`return_requests` table already reserved in `docs/database-schema.md`'s
+v1.1-ahead section, formerly deferred FR-22.3)
+- FR-60.1: **`ReturnRequest`, new schema.** `id, storeId, orderId,
+  buyerReason, status (requested/approved/rejected/completed),
+  requestedAt, resolvedAt, resolvedBy (nullable FK, admin or seller
+  actor), refundAmount (Decimal, may be less than order total — partial
+  refunds), refundedItems (which order items/quantities are covered),
+  sellerNote, adminOverride (bool)` — the exact shape
+  `database-schema.md` already reserved, extended with the partial-refund
+  fields the founder's spec adds.
+- FR-60.2: **Buyer-initiated return request.** A new action on the
+  existing public order-status page, modeled directly on FR-14.1's review-
+  submission Server Action (same reasons: avoids the per-tenant-subdomain
+  CORS problem, keeps the mutation server-to-server) and the same
+  Financial Truth Invariant gate reviews already use — only a confirmed
+  (actually paid) order can have a return requested against it.
+- FR-60.3: **Seller approve/reject with reason.** Extends FR-59.5's new
+  transition map: `requested → approved` or `requested → rejected`, seller-
+  actioned, reason required on reject (same discipline as the admin
+  moderation queue's reject-reason requirement).
+- FR-60.4: **Refund recorded via compensating ledger entry — the
+  Financial Truth Invariant's reversal path.** On `approved →
+  completed`, a new `refund_adjustment` `LedgerEntry` (an enum value that
+  has existed in the schema since v1.0 but was never wired into
+  `WalletService`'s `DEBIT_TYPES`/`CREDIT_TYPES` sign-convention sets —
+  this FR closes that gap) is posted through `WalletService.
+  postLedgerEntry()` (never a raw `LedgerEntry.create`, to keep the
+  `WalletBalance` running-total cache correct), sized to reverse the
+  commission portion of the refunded amount, mirroring
+  `LedgerService.waiveCommission()`'s existing negative-entry-against-a-
+  specific-`orderId` pattern. A compensating decrement is also applied to
+  `Customer.ordersCount`/`totalSpent` (no reversal counterpart exists on
+  `CustomersService` today — this FR adds one). `Order.status` moves to
+  `refunded` (full) or `partially_refunded` (FR-60.1's `refundAmount` <
+  order total), both **excluded** from `PnLService`'s and
+  `UnitEconomicsService`'s existing `CONFIRMED_OR_BEYOND`-style gates, so
+  a refunded order stops counting as revenue in P&L, unit-economics, and
+  analytics (§5.61) at the same instant the ledger reversal lands — one
+  signal, applied uniformly, per §3.12.
+- FR-60.5: **Admin override.** An admin can approve/reject/complete a
+  return request regardless of the seller's own decision (or lack of one),
+  audit-logged with before/after values, same discipline as every other
+  admin override in this SRS (e.g. FR-54.4).
+- FR-60.6: **Status visible to buyer.** The public order-status page (and
+  its shared `computeOrderTimeline()` function, extended with a new
+  `returned`/`refunded` timeline stage rather than a second parallel
+  status source) reflects the return's current state.
+
+### 5.61 Analytics Depth (new, v0.34 — Professional Seller Readiness item
+5, seller-facing; slotted after §5.60 since return rate needs return data
+to exist)
+- FR-61.1: **Top products by revenue/units.** New `OrderItem.groupBy`
+  aggregation (`by: ["productId"], _sum: {unitPrice, quantity}` joined to
+  product title) — the same idiom Module 17's existing top-sellers-by-
+  commission query already uses, applied to a new dimension. No new
+  schema.
+- FR-61.2: **Sales over time, charted (day/week/month).** New time-
+  bucketed aggregation on `Order.placedAt`/`totalAmount` — genuinely new
+  query code; neither Module 17's admin analytics nor Module 31's P&L
+  engine has any bucketing logic today (P&L returns one aggregate total
+  per requested range, not a series).
+- FR-61.3: **Repeat-customer rate.** Derived directly from the existing
+  `Customer.ordersCount`/`totalSpent` columns (`count(ordersCount >= 2) /
+  count(*)`, store-scoped) — no new schema, Module 33 already maintains
+  these live.
+- FR-61.4: **Return rate, overall and per product.** `count(ReturnRequest
+  in ["approved","completed"]) / count(Order)`, overall and grouped by
+  the returned order's items' `productId` — depends on §5.60 existing.
+- FR-61.5: **Average order value, best sales days/times.** AOV = average
+  `totalAmount` over confirmed-or-beyond orders in a period; best
+  days/times = the same time-bucketing as FR-61.2, bucketed by day-of-week
+  / hour-of-day instead of calendar period.
+- FR-61.6: **Charts, not spreadsheets — Simplicity Invariant (§3.13).** A
+  new charting library is introduced (none exists in `apps/web` today —
+  both existing "analytics" surfaces are plain HTML tables); the seller-
+  facing analytics page renders charts for FR-61.1/61.2/61.5 and simple
+  stat tiles for FR-61.3/61.4, not raw tables.
+- FR-61.7: **Financial Truth Invariant applies uniformly here too.** Every
+  query in this section applies the same `status: {not: "pending"}` (or
+  P&L's stricter `CONFIRMED_OR_BEYOND`) filter already binding elsewhere —
+  a new analytics surface is not a place that invariant quietly stops
+  applying.
+
+### 5.62 Seller Notifications (new, v0.34 — Professional Seller Readiness
+item 7; slotted after §5.61 since the daily sales summary reuses its
+queries)
+- FR-62.1: **Transactional emails, all four genuinely new.** New-order
+  alert (immediate, to the seller — order emails today only ever go to
+  the buyer), daily sales summary (built on §5.61's new time-bucketed
+  queries), low-stock alert (Module 28's `isLowStock` computation exists
+  today for dashboard display only — this wires it to an email trigger on
+  the relevant stock-quantity change), payment/verification events
+  (extends the existing `sendDormantStoreWarning`/
+  `sendWalletLowBalanceWarning` account-health-email pattern in
+  `email.service.ts` to order-payment/verification events specifically).
+- FR-62.2: **Admin-composed platform newsletter.** Informational only
+  (updates, tips, announcements), sent from the admin terminal, 2-3/week
+  cadence expected but not rate-limited by the system beyond the existing
+  admin-action rate limits. Modeled on Module 34's background-job-send +
+  unsubscribe-token infrastructure, but sent from the **platform's own**
+  SMTP identity, not a seller's connected mailbox — a new code path, not a
+  reuse of Module 36's admin inbox (which is 1:1 personal reply only, no
+  broadcast capability, despite the adjacent naming).
+- FR-62.3: **Per-seller opt-out.** New `SellerNotificationPreference`-
+  style fields (or a small dedicated table) — no seller-side notification-
+  preference model exists today; `Customer.unsubscribedAt` is the closest
+  analog and belongs to a different audience (Module 34's customer
+  campaigns). Newsletter opt-out is independent per seller and does not
+  affect transactional emails (FR-62.1), which are not opt-outable (they
+  concern the seller's own store operations).
+- FR-62.4: **Templates editable via Settings where sensible.** Extends the
+  Settings Registry's existing `valueType: "string"` capability to hold
+  email-template bodies for the newsletter and, where practical, the
+  transactional templates — this is a new use of an existing mechanism,
+  not a proven template-specific pattern in this codebase yet (every
+  current email body, e.g. `email.service.ts`, `invoice-template.ts`, is a
+  hardcoded template-literal function).
+
+### 5.63 One-Click Full Export, Pro Gate (new, v0.34 — Professional Seller
+Readiness item 8)
+- FR-63.1: **No new export engine.** Module 24's `data-export.service.ts`
+  already bundles products + orders + customers + inventory into one
+  on-demand export with Drive-upload-or-email-fallback delivery — exactly
+  what this item asks for. This FR is exposure/gating only.
+- FR-63.2: **Pro-tier plan gate.** `requestOnDemandExport()` today enforces
+  only a time-based cooldown (`data_export.on_demand_min_interval_hours`,
+  resolved with no plan context at all). This FR injects
+  `SubscriptionsService.getPlanContext(sellerId)` and adds a new Settings
+  Registry key (`allowedScopes: ["global", "plan"]`, mirroring
+  `email_campaigns.monthly_send_limit`'s seed shape) gating the endpoint
+  to Pro tier and above, checked before the existing cooldown check. A
+  sub-Pro seller gets a clear upgrade prompt, not a degraded export.
+
+### 5.64 Invoice/Receipt Customization, limited (new, v0.34 — Professional
+Seller Readiness item 9)
+- FR-64.1: **New `Store` fields.** `taxNumber` (NTN or equivalent),
+  `invoiceFooterText`, `invoiceTermsText` — all optional, seller-editable
+  via the existing store settings screen pattern. Confirmed absent from
+  schema today (no tax/NTN, footer, or terms field exists anywhere).
+- FR-64.2: **`Seller.businessName` wired into the invoice template.** The
+  field already exists on `Seller` but is currently unused by
+  `invoice-template.ts` — this FR renders it (seller-controlled business
+  name, distinct from the store's own display name) alongside the new
+  FR-64.1 fields when present.
+- FR-64.3: **Logo unchanged.** `Store.logoMediaId` already renders on
+  invoices today (Module 15.5) — no new mechanism needed, confirmed by
+  research.
+- FR-64.4: **UZEYN branding stays mandatory and non-removable, every plan
+  tier.** None of FR-64.1-64.3's seller-controlled fields can hide,
+  replace, or crowd out the platform's own invoice branding — this is a
+  hard constraint on the template renderer itself, not a per-plan toggle.
+  Sellers control their own details only, never the platform's.
+
+### 5.65 Advanced Store SEO Control (new, v0.34 — Professional Seller
+Readiness item 10; plan-gated where sensible)
+- FR-65.1: **Extends the existing SEO fallback cascade, not a second
+  resolver.** `resolveSeoFallback()` is already this SRS's binding "one
+  set of SEO data, no parallel copy" mechanism (FR-16.6) — every new field
+  below is added to its cascade, at `Product`, `Collection`, and new
+  store-level defaults on `Store`, not a competing lookup path.
+- FR-65.2: **New per-item fields:** canonical URL override, robots
+  directives (index/noindex, follow/nofollow — per product/collection, not
+  just the store-wide `robots.ts` default that exists today), OG/social-
+  share image override (new field, referencing the existing `MediaAsset`
+  pipeline) + OG title/description override (independent of
+  `seoTitle`/`seoDescription`, which already exist and remain the plain-
+  meta-tag source), structured-data toggle (on/off per item — the
+  JSON-LD block already exists per FR-16.6, this makes emitting it
+  optional), sitemap-inclusion toggle (per product/collection — `sitemap.
+  ts` already exists and is dynamic; this adds a per-item include/exclude
+  a seller can set).
+- FR-65.3: **Custom URL slugs.** `Collection.slug` already exists and is
+  already seller-set at creation (confirmed by research) — this FR adds
+  an update path if the current API lacks one. `Product.slug` is genuinely
+  new: a nullable, unique-per-store column, additive only — v1.0's
+  `/storefront/products/[productId]` UUID route is **not** replaced or
+  redirected; a slug is a canonical-URL/SEO enhancement layered on top,
+  not a routing migration. Scope deliberately bounded here — a full
+  slug-based-primary-route migration is out of scope for this FR.
+- FR-65.4: **Sanitized custom head-tag field, store-scoped.** A raw HTML
+  field for arbitrary `<head>` injection (e.g. a third-party verification
+  meta tag), sanitized to an explicit allowlist —
+  `meta`, `link`, and `script[type="application/ld+json"]` only, every
+  other tag and every inline event handler stripped, using a new
+  sanitization dependency (no HTML-sanitization utility exists anywhere in
+  this codebase today; `ContentPage.bodyHtml`, the nearest precedent,
+  renders admin-authored HTML completely unsanitized, an acceptable trust
+  boundary for admin-only input and not an acceptable one for seller
+  input that reaches a buyer's browser). Scoped to the **store** level,
+  not per-product, to keep both the sanitization surface and the settings
+  UI bounded — a seller who needs page-specific structured data uses
+  FR-65.2's per-item structured-data toggle instead.
+- FR-65.5: **Plan-gated where sensible.** The basic per-item meta title/
+  description (already existing, unchanged) stays available to every
+  tier; canonical URL, robots directives, OG override, structured-data
+  toggle, sitemap control, custom slugs, and the custom head-tag field are
+  gated Growth+ via the same Settings-Registry plan-gating pattern used
+  throughout this SRS (FR-7.1's template), consistent with this batch's
+  overall "Growth/Pro sellers are the paying, professional audience"
+  premise.
+
+---
+
 ## 6. Non-Functional Requirements
 
 | Category | Requirement |
@@ -6623,6 +7135,146 @@ going forward, per FR-6.28.
       Module 25 e2e test).
 - [x] All four controls above produce an `AdminAuditLog` row with
       before/after values (FR-54.5).
+
+### 14.55 Multi-Store Per Seller (new, v0.34, not yet built)
+- [ ] A seller at their plan's store-count limit cannot create another
+      store (clear upgrade-prompt response, not a silent failure);
+      raising the plan lifts the limit immediately (FR-56.1).
+- [ ] A seller who owns two stores cannot see or mutate the other store's
+      data from either store's dashboard view — proven by an explicit
+      cross-store e2e assertion, not just relying on the pre-existing RLS
+      guarantee (FR-56.2).
+- [ ] The store switcher correctly lists and switches between all of a
+      seller's stores, sourced from the existing `GET /stores` endpoint
+      (FR-56.3).
+
+### 14.56 Product Organization at Scale (new, v0.34, not yet built)
+- [ ] Products can be tagged with free-form seller-defined tags, tags
+      persist and are removable, and the tag filter on the product list
+      returns exactly the tagged products (FR-57.1).
+- [ ] SKU/title search, stock-status, price-range, category, and
+      moderation-state filters each work independently and in combination,
+      with pagination, on the product list (FR-57.2/57.3).
+- [ ] Tags are dashboard-private by default; a storefront-facing product
+      search does not surface tag-based filtering unless the seller has
+      explicitly opted a store or tag in (FR-57.4).
+
+### 14.57 Bulk Product Operations (new, v0.34, not yet built)
+- [ ] A bulk price update (fixed and percentage), stock update,
+      category/collection assign, publish/unpublish, archive/delete, and
+      tag assign each apply correctly to every selected product and no
+      unselected one (FR-58.1/58.2).
+- [ ] A bulk publish or price change on a product still triggers the same
+      moderation re-check a single-item edit now also triggers — proven by
+      an e2e test asserting a keyword-violating bulk publish is blocked
+      exactly like a single-item one would be (FR-58.3).
+- [ ] The confirmation step shows the exact affected-row count before any
+      bulk action executes, and no bulk action fires without it
+      (FR-58.4).
+- [ ] A bulk operation that would push a store over its plan's product
+      limit is rejected per-item with an accurate succeeded/blocked count,
+      never silently over-limit (FR-58.5).
+
+### 14.58 Bulk Order Operations, Tracking Entry & Advanced Search (new,
+v0.34, not yet built)
+- [ ] Every order has a unique, human-readable `orderNumber`; existing
+      orders were correctly backfilled in `placedAt` order per store
+      (FR-59.1).
+- [ ] Bulk mark-as-paid/status-change/fulfill on a multi-order selection
+      produces the exact same commission-accrual, customer-stats, and
+      event-emission side effects as performing each action individually —
+      proven by comparing ledger/customer state after a bulk action against
+      the same set of actions performed one at a time (FR-59.2).
+- [ ] All three tracking-entry paths (CSV upload, inline quick-entry,
+      per-order detail) write through the same `uploadTracking()` path and
+      produce identical `TrackingUpdate`/timeline state regardless of
+      which path was used (FR-59.3).
+- [ ] Advanced search correctly combines date+time range, status, payment
+      state, verification state, courier, customer, and amount-range
+      filters, each with an accurate result count (FR-59.4).
+- [ ] The new order-status transition map rejects an invalid bulk status
+      change (e.g. `pending → delivered` with nothing in between) the same
+      way it would reject that transition on a single order (FR-59.5).
+
+### 14.59 Returns & Refunds Workflow (new, v0.34, not yet built —
+launch-critical)
+- [ ] A buyer can submit a return request from the order-status page only
+      for a confirmed (actually paid) order, never a pending one
+      (FR-60.2).
+- [ ] A seller can approve or reject a return request; reject requires a
+      reason (FR-60.3).
+- [ ] Completing an approved return posts a `refund_adjustment` ledger
+      entry through `WalletService.postLedgerEntry()`, correctly reverses
+      the commission portion, correctly decrements `Customer.ordersCount`/
+      `totalSpent`, and moves `Order.status` to `refunded` or
+      `partially_refunded` — proven by an e2e test asserting the order no
+      longer counts as revenue in P&L/unit-economics/analytics
+      immediately after completion, closing the loop the Financial Truth
+      Invariant requires (FR-60.1/60.4).
+- [ ] A partial refund's `refundAmount` correctly differs from the full
+      order total and the order lands in `partially_refunded`, not
+      `refunded` (FR-60.4).
+- [ ] An admin can approve/reject/complete a return regardless of the
+      seller's own action, audit-logged with before/after values
+      (FR-60.5).
+- [ ] The buyer-facing order-status timeline reflects the return's current
+      state (FR-60.6).
+
+### 14.60 Analytics Depth, seller-facing (new, v0.34, not yet built)
+- [ ] Top products by revenue and by units, sales-over-time (day/week/
+      month), average order value, and best sales days/times all compute
+      correctly against a known seeded order set (FR-61.1/61.2/61.5).
+- [ ] Repeat-customer rate and return rate (overall and per product)
+      compute correctly, including a store with zero returns (0%, not a
+      divide-by-zero error) (FR-61.3/61.4).
+- [ ] Every analytics figure excludes pending/unconfirmed orders — proven
+      by an e2e test seeding a pending order and asserting it does not
+      appear in any metric (FR-61.7).
+- [ ] The seller-facing analytics page renders charts, not raw tables, for
+      the time-series and top-products metrics (FR-61.6).
+
+### 14.61 Seller Notifications (new, v0.34, not yet built)
+- [ ] A new order triggers an immediate seller email; a daily sales
+      summary, a low-stock alert, and a payment/verification-event email
+      each fire correctly under their respective trigger conditions
+      (FR-62.1).
+- [ ] An admin can compose and send a newsletter to all non-opted-out
+      sellers from the admin terminal; an opted-out seller does not
+      receive it (FR-62.2/62.3).
+- [ ] Newsletter opt-out does not suppress transactional emails
+      (FR-62.3).
+
+### 14.62 One-Click Full Export, Pro Gate (new, v0.34, not yet built)
+- [ ] A sub-Pro seller's export request returns a clear upgrade prompt,
+      not a partial or degraded export; a Pro seller's request proceeds
+      exactly as Module 24's existing export already works, subject to
+      the existing cooldown (FR-63.2).
+
+### 14.63 Invoice/Receipt Customization, limited (new, v0.34, not yet
+built)
+- [ ] A seller's tax/NTN number, invoice footer text, invoice terms text,
+      and business name each render on generated invoices when set, and
+      are absent (not blank placeholders) when unset (FR-64.1/64.2).
+- [ ] UZEYN's own invoice branding is present and unmodified on every
+      generated invoice regardless of which of the above fields a seller
+      has set, at every plan tier (FR-64.4).
+
+### 14.64 Advanced Store SEO Control (new, v0.34, not yet built)
+- [ ] Canonical URL, robots directives, OG override, structured-data
+      toggle, and sitemap-inclusion each correctly override the existing
+      fallback chain's default when set on a product or collection, and
+      correctly fall through to the existing default when unset
+      (FR-65.1/65.2).
+- [ ] A seller-set `Product.slug` is unique per store and does not break
+      or replace the existing UUID-based storefront route (FR-65.3).
+- [ ] The custom head-tag field strips any tag or attribute outside the
+      `meta`/`link`/`script[type="application/ld+json"]` allowlist —
+      proven by an e2e/unit test asserting a `<script src=...>` or
+      `onerror=` injection attempt is stripped, not merely escaped
+      (FR-65.4).
+- [ ] The advanced SEO fields are inaccessible below Growth tier, with a
+      clear upgrade prompt, while the pre-existing basic meta title/
+      description remain available to every tier (FR-65.5).
 
 ---
 

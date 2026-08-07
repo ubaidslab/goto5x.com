@@ -8,6 +8,21 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## SRS v0.34: Professional Seller Readiness (docs-only amendment)
+
+Ten new FR groups (§5.56-5.65, `docs/SRS.md`) plus matching §14.55-14.64
+checklists and a new `docs/build-plan.md` slotting section (Modules
+49-58), specifying multi-store per seller, product tags/filters, bulk
+product operations, bulk order operations + tracking entry + advanced
+search, a returns/refunds workflow, seller-facing analytics depth, seller
+notifications (transactional + admin newsletter), a Pro-gated one-click
+full export, limited invoice/receipt customization, and advanced store
+SEO control — all researched against the live codebase (four parallel
+research passes) before being specified, so each FR states precisely what
+already exists vs. what's genuinely new. Build order is dependency-driven,
+not the founder's original 1-10 listing — see `docs/build-plan.md` for the
+full reasoning. Docs-only; no code changed in this commit.
+
 ## UZEYN rename pass
 
 Full rename pass — `goto5x`/`eyosto` → **UZEYN** — across the repo: code,
