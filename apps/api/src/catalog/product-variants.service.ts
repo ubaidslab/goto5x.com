@@ -25,6 +25,7 @@ export class ProductVariantsService {
           price: dto.price,
           compareAtPrice: dto.compareAtPrice,
           stockQuantity: dto.stockQuantity ?? 0,
+          trackInventory: dto.trackInventory ?? true,
           attributes: (dto.attributes ?? {}) as Prisma.InputJsonValue,
           baseCost: dto.baseCost,
         },

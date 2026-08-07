@@ -82,7 +82,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     return login.body.accessToken as string;
   }
 
-  async function createSelfProduct(token: string, storeId: string, price: number, stockQuantity = 100) {
+  async function createSelfProduct(token: string, storeId: string, price: number, stockQuantity = 100, trackInventory = true) {
     const product = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products`)
       .set("Authorization", `Bearer ${token}`)
@@ -90,7 +90,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     const variant = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products/${product.body.id}/variants`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ sku: `SKU-${Date.now()}-${Math.random()}`, price, stockQuantity });
+      .send({ sku: `SKU-${Date.now()}-${Math.random()}`, price, stockQuantity, trackInventory });
     return { productId: product.body.id as string, variantId: variant.body.id as string };
   }
 
@@ -411,6 +411,72 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     expect(listing.stockQuantity).toBe(0);
   });
 
+  it("FR-39.5 (Module 46): oversell protection now also covers self-fulfilled items - two concurrent checkouts against the last unit only one succeeds, and the loser never decremented stock", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("oversell-self-fulfilled@example.com", "oversell-self-store");
+    const { productId, variantId } = await createSelfProduct(token, storeId, 500, 1);
+
+    const cartA = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({ hostname, buyerEmail: "buyer-a@example.com", items: [{ productId, variantId, quantity: 1 }] });
+    const cartB = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({ hostname, buyerEmail: "buyer-b@example.com", items: [{ productId, variantId, quantity: 1 }] });
+
+    const [checkoutA, checkoutB] = await Promise.all([
+      request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cartA.body.sessionToken, shippingAddress }),
+      request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cartB.body.sessionToken, shippingAddress }),
+    ]);
+    const statuses = [checkoutA.status, checkoutB.status].sort();
+    expect(statuses).toEqual([201, 409]);
+
+    const variant = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+    expect(variant.stockQuantity).toBe(0);
+  });
+
+  it("FR-39.5 (Module 46): a variant with trackInventory: false has unlimited stock - checkout never checks or decrements it", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("untracked-variant@example.com", "untracked-variant-store");
+    const { productId, variantId } = await createSelfProduct(token, storeId, 500, 0, false);
+
+    const cart = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId, variantId, quantity: 5 }] });
+    const checkout = await request(app.getHttpServer())
+      .post("/storefront/checkout")
+      .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+    expect(checkout.status).toBe(201);
+
+    const variant = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+    expect(variant.stockQuantity).toBe(0); // unchanged - never decremented
+  });
+
+  it("FR-39.5 (Module 46): a mixed cart (one self-fulfilled item oversold, one healthy) rejects the whole order and leaves both variants' stock untouched", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("oversell-mixed-cart@example.com", "oversell-mixed-store");
+    const scarce = await createSelfProduct(token, storeId, 500, 0);
+    const healthy = await createSelfProduct(token, storeId, 300, 10);
+
+    const cart = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({
+        hostname,
+        buyerEmail: "buyer@example.com",
+        items: [
+          { productId: healthy.productId, variantId: healthy.variantId, quantity: 1 },
+          { productId: scarce.productId, variantId: scarce.variantId, quantity: 1 },
+        ],
+      });
+    const checkout = await request(app.getHttpServer())
+      .post("/storefront/checkout")
+      .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+    expect(checkout.status).toBe(409);
+
+    const healthyVariant = await superuser.productVariant.findUniqueOrThrow({ where: { id: healthy.variantId } });
+    expect(healthyVariant.stockQuantity).toBe(10); // reserved then released, never left decremented
+  });
+
   it("FR-5.3: a suspended store blocks new carts/checkouts, but its existing orders remain fulfillable from the seller dashboard", async () => {
     const { token, storeId, hostname } = await signupLoginAndCreateStore("suspended-store@example.com", "suspended-store-store");
     const { productId, variantId } = await createSelfProduct(token, storeId, 1000);
@@ -530,7 +596,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     const orderId = checkout.body.id as string;
 
     const stockAfterOrder = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
-    expect(stockAfterOrder.stockQuantity).toBe(10); // checkout of a self-fulfilled item doesn't reserve stock up front
+    expect(stockAfterOrder.stockQuantity).toBe(8); // 10 - 2 (Module 46: checkout now reserves self-fulfilled stock up front, same as supplier items)
 
     const detail = await request(app.getHttpServer())
       .get(`/stores/${storeId}/orders/${orderId}`)
@@ -545,7 +611,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     expect(edit.body.totalAmount).toBe("2000"); // 500 * 4
 
     const stockAfterIncrease = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
-    expect(stockAfterIncrease.stockQuantity).toBe(8); // 10 - (4-2)
+    expect(stockAfterIncrease.stockQuantity).toBe(6); // 8 - (4-2)
 
     await request(app.getHttpServer())
       .post(`/stores/${storeId}/orders/${orderId}/mark-as-paid`)

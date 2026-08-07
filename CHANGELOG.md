@@ -115,6 +115,62 @@ module (Module 44).
   Product Feed API) and a 4th WhatsApp deep-link generator, both
   Growth+-plan-gated.
 
+## Module 46: Self-Fulfilled Stock Protection
+
+SRS §5.39, FR-39.5 corrected (v0.33). Checkout's atomic oversell-protection
+decrement — `updateMany({ where: { stockQuantity: { gte: quantity } },
+data: { stockQuantity: { decrement: quantity } } })`, checking
+`result.count` — was wired only to supplier-fulfilled items
+(`SupplierListing.stockQuantity`); a self-fulfilled item's
+`ProductVariant.stockQuantity` was never checked or decremented at
+checkout at all, so two concurrent buyers could both "successfully"
+order the last unit of a self-fulfilled product. Closes that gap with
+the exact same mechanism, now applied to `ProductVariant.stockQuantity`
+too.
+
+### Added
+- `ProductVariant.trackInventory` (`Boolean @default(true)`) — an
+  opt-out: `true` (default) means checkout enforces oversell protection
+  on that variant exactly like a supplier item; `false` marks it
+  untracked/unlimited-stock, preserving the pre-Module-46 behavior for
+  sellers who don't want stock enforcement on a given variant (e.g.
+  made-to-order items).
+- `CheckoutService.reserveSelfFulfilledStock()` /
+  `releaseSelfFulfilledStock()` — mirror the existing
+  `reserveSupplierStock`/`releaseSupplierStock` pair. Runs after
+  supplier reservation in `placeOrder()`; on its own failure it releases
+  both its own partial reservations and the already-successful supplier
+  reservation, and the outer catch block calls it too, so a mixed cart
+  (supplier + self-fulfilled items) stays atomic across both fulfillment
+  paths.
+- `trackInventory` exposed on the variant create/update DTOs and on the
+  Module 28 Inventory screen's `listInventory()` response;
+  `isLowStock` now additionally requires `trackInventory` so an
+  untracked variant is never flagged low-stock.
+
+### Tests
+- Three new e2e tests (`orders.e2e-spec.ts`): concurrent checkout against
+  the last unit of a self-fulfilled item (only one succeeds, loser never
+  decremented stock); a `trackInventory: false` variant has unlimited
+  stock and is never checked/decremented; a mixed cart with one oversold
+  self-fulfilled item rejects the whole order and leaves every variant's
+  stock untouched.
+- Fixed one pre-existing test (`FR-17.5`) whose own comment literally
+  documented the bug this module fixes ("checkout of a self-fulfilled
+  item doesn't reserve stock up front") — updated its stock-quantity
+  assertions to the corrected checkout-decrement behavior.
+- Swept every other e2e spec file for a self-fulfilled-item stock
+  assertion made after a checkout call; `orders.e2e-spec.ts` was the
+  only file with one.
+
+Verified: full local unit suite (38/38 suites, 186/186 tests) and full
+local e2e suite (50/51 suites; the one unrelated failure,
+`domains.e2e-spec.ts`'s real HTTPS handshake to `www.github.com`, is a
+pre-existing sandbox network limitation confirmed by isolated re-run —
+not a Module 46 regression, since that file never touches
+orders/checkout code), plus a real CI-verified green run on the pushed
+commit.
+
 ## Module 45: Commission Rate Hard Cap
 
 SRS §5.7, FR-7.4 amended (v0.33). `billing.commission_rate_percent`'s

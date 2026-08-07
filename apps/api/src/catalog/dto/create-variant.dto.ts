@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsObject, IsOptional, IsString, Min, MinLength } from "class-validator";
+import { IsBoolean, IsInt, IsNumber, IsObject, IsOptional, IsString, Min, MinLength } from "class-validator";
 
 export class CreateVariantDto {
   @IsString()
@@ -18,6 +18,11 @@ export class CreateVariantDto {
   @IsInt()
   @Min(0)
   stockQuantity?: number;
+
+  /** Module 46 (SRS §5.39, FR-39.5) - defaults true (oversell-protected) if omitted; a seller sets false for untracked/unlimited stock. */
+  @IsOptional()
+  @IsBoolean()
+  trackInventory?: boolean;
 
   @IsOptional()
   @IsObject()

@@ -6228,10 +6228,13 @@ going forward, per FR-6.28.
       product/variant field, and reuses the existing import job/error-
       reporting shape (FR-39.3) rather than a new, parallel import path —
       proven by diffing untouched fields (e.g. `price`) before/after.
-- [x] Checkout's existing oversell-protection decrement behavior is
-      provably unchanged after this module — the existing Module 9
-      oversell e2e test(s) still pass unmodified, and no new code path in
-      this module decrements stock outside that existing logic (FR-39.5).
+- [x] ~~Checkout's existing oversell-protection decrement behavior is
+      provably unchanged after this module...~~ **Superseded, v0.33
+      (Module 46):** this bullet's premise was wrong — the v0.33 deep
+      audit found checkout's atomic decrement was wired only to
+      supplier-fulfilled items, never to a self-fulfilled
+      `ProductVariant.stockQuantity`, a real oversell bug. See the
+      corrected FR-39.5 and the new checklist bullet under §14.39a below.
 - [x] The low-stock threshold is Settings-Registry-driven per store
       (FR-39.2), proven by an e2e test changing the threshold and
       asserting a variant crosses in/out of the flagged set accordingly.
@@ -6239,6 +6242,26 @@ going forward, per FR-6.28.
       private, ownership-checked download path as every other Data Export
       artifact (FR-39.6, reaffirms FR-36.5) — no new, less-guarded read
       path introduced for this one file type.
+
+### 14.39a Self-Fulfilled Stock Protection (built, Module 46, v0.33 — FR-39.5 corrected)
+- [x] Checkout applies the same atomic conditional-decrement pattern
+      already used for supplier items (`updateMany` gated on
+      `stockQuantity >= quantity`, FR-4.5) to a self-fulfilled
+      `ProductVariant.stockQuantity` too, closing the real oversell gap
+      the v0.33 audit found — proven by an e2e test where two concurrent
+      checkouts against the last unit of a self-fulfilled item leave only
+      one order confirmed and the loser's decrement never applied.
+- [x] The new `trackInventory` opt-out (default `true`) genuinely
+      disables the check/decrement for a variant marked untracked/
+      unlimited-stock — proven by an e2e test placing an order against a
+      `trackInventory: false` variant with `stockQuantity` far below the
+      ordered quantity and asserting it still succeeds with stock
+      unchanged.
+- [x] A mixed cart (self-fulfilled + supplier items, one oversold) is
+      atomic across both fulfillment paths — a failure on either side
+      releases both an already-successful supplier reservation and any
+      already-successful self-fulfilled reservation, leaving every
+      variant's stock exactly as it was before checkout was attempted.
 
 ### 14.40 Delivery-Time Badges (built, Module 29, v0.31 build order)
 - [x] A supplier-sourced product's card and detail page both render the

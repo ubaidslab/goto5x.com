@@ -40,7 +40,8 @@ export class InventoryService {
           productStatus: v.product.status,
           sku: v.sku,
           stockQuantity: v.stockQuantity,
-          isLowStock: v.stockQuantity <= threshold,
+          trackInventory: v.trackInventory,
+          isLowStock: v.trackInventory && v.stockQuantity <= threshold,
         })),
       };
     });

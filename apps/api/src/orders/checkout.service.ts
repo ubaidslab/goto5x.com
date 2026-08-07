@@ -150,6 +150,7 @@ export class CheckoutService {
     }
 
     const reserved = await this.reserveSupplierStock(priced);
+    const reservedVariants = await this.reserveSelfFulfilledStock(priced, reserved);
     // Declared outside the try block (unlike discountAmount/discountCodeId
     // below) so the catch handler can release a reservation that outlived
     // the order it was meant for - see the release call in catch.
@@ -358,9 +359,11 @@ export class CheckoutService {
       return { order: { ...order, invoicePdfUrl }, paymentInstructions };
     } catch (err) {
       // A rejected order (invalid/expired discount, DB error) must never
-      // leave supplier stock decremented - or a gift card balance
-      // debited - for an order that was never created.
+      // leave supplier stock decremented - or a self-fulfilled variant's
+      // stock decremented, or a gift card balance debited - for an order
+      // that was never created.
       await this.releaseSupplierStock(reserved);
+      await this.releaseSelfFulfilledStock(reservedVariants);
       if (giftCardReservation) {
         await this.giftCards.releaseReservation(giftCardReservation.giftCardId, giftCardReservation.amount);
       }
@@ -392,6 +395,48 @@ export class CheckoutService {
   private async releaseSupplierStock(reserved: { supplierListingId: string; quantity: number }[]): Promise<void> {
     for (const r of reserved) {
       await this.supplierListings.incrementStock(r.supplierListingId, r.quantity);
+    }
+  }
+
+  /**
+   * Module 46 (SRS §5.39, FR-39.5 corrected) - the same atomic
+   * conditional-decrement pattern as reserveSupplierStock(), applied to
+   * ProductVariant.stockQuantity for self-fulfilled items
+   * (`item.trackInventory === true`; a supplier-fulfilled item's
+   * trackInventory is null and is skipped here since reserveSupplierStock()
+   * already reserved it against the supplier listing's own stock, and
+   * `trackInventory === false` means the seller has opted this variant out
+   * of oversell protection entirely). On its own failure, also releases the
+   * supplier reservation this same request already made, since that
+   * succeeded before this method ran.
+   */
+  private async reserveSelfFulfilledStock(
+    priced: PricedItem[],
+    supplierReserved: { supplierListingId: string; quantity: number }[],
+  ): Promise<{ variantId: string; quantity: number }[]> {
+    const reserved: { variantId: string; quantity: number }[] = [];
+    for (const item of priced) {
+      if (item.trackInventory !== true) continue;
+      const result = await this.prismaAdmin.productVariant.updateMany({
+        where: { id: item.variantId, stockQuantity: { gte: item.quantity } },
+        data: { stockQuantity: { decrement: item.quantity } },
+      });
+      if (result.count === 0) {
+        await this.releaseSelfFulfilledStock(reserved);
+        await this.releaseSupplierStock(supplierReserved);
+        throw new ConflictException(`"${item.title}" no longer has enough stock available.`);
+      }
+      reserved.push({ variantId: item.variantId, quantity: item.quantity });
+    }
+    return reserved;
+  }
+
+  private async releaseSelfFulfilledStock(reserved: { variantId: string; quantity: number }[]): Promise<void> {
+    for (const r of reserved) {
+      await this.prismaAdmin.productVariant.update({
+        where: { id: r.variantId },
+        data: { stockQuantity: { increment: r.quantity } },
+      });
     }
   }
 }

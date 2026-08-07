@@ -3523,11 +3523,38 @@ as the right order after research — no changes:
   - Verified: full local unit suite (38/38, 186/186), full local e2e
     suite, and a real CI-verified green run on the pushed commit.
 - **Module 46 — Self-fulfilled stock protection (🟠, real oversell
-  bug).** Independent of Modules 44/45 — touches checkout/inventory, not
-  plans/billing. Kept in the founder's given order (before wallet
-  balance) since it's a correctness bug with direct customer-facing
+  bug). BUILT.** Independent of Modules 44/45 — touches checkout/
+  inventory, not plans/billing. Kept in the founder's given order (before
+  wallet balance) since it's a correctness bug with direct customer-facing
   impact (double-selling the last unit), same severity class as the
   commission cap.
+  - New `ProductVariant.trackInventory` boolean (`@default(true)`) plus
+    migration; `true` means checkout's atomic conditional-decrement
+    pattern (`updateMany` gated on `stockQuantity >= quantity`, the exact
+    mechanism FR-4.5 already used for supplier items) now applies to that
+    variant too; `false` opts a variant out to untracked/unlimited-stock,
+    unchanged from pre-Module-46 behavior.
+  - `CheckoutService` gained `reserveSelfFulfilledStock()` /
+    `releaseSelfFulfilledStock()`, mirroring the existing supplier
+    reservation/release pair exactly, wired into `placeOrder()` so a
+    mixed cart (supplier + self-fulfilled) stays atomic across both
+    fulfillment paths — a failure on either side releases both.
+  - `trackInventory` exposed on the variant create/update DTOs and the
+    Module 28 Inventory screen's `listInventory()` response;
+    `isLowStock` now additionally requires `trackInventory`.
+  - Three new e2e tests (concurrent self-fulfilled oversell, untracked-
+    variant unlimited stock, mixed-cart partial-release-on-failure); one
+    pre-existing test (`FR-17.5`) fixed — its own comment had documented
+    the exact bug this module closes, so its stock-quantity assertions
+    were updated to the corrected checkout-decrement behavior. Swept
+    every other e2e file for a self-fulfilled stock assertion made after
+    checkout; `orders.e2e-spec.ts` was the only one.
+  - Verified: full local unit suite (38/38, 186/186 tests) and full local
+    e2e suite (50/51 suites — the one unrelated failure,
+    `domains.e2e-spec.ts`'s real HTTPS handshake to `www.github.com`, is
+    a pre-existing sandbox network limitation confirmed by isolated
+    re-run, not a Module 46 regression), plus a real CI-verified green
+    run on the pushed commit.
 - **Module 47 — Wallet running balance + reconciliation (race fix +
   scaling).** Depends on nothing built in 44-46, but is naturally after
   them since Module 44's plan-fee/`orders_paused` unification and Module

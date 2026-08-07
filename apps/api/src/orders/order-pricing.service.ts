@@ -14,6 +14,8 @@ export interface PricedItem {
   supplierId: string | null;
   supplierListingId: string | null;
   supportedCountries: string[] | null;
+  /** Module 46 (FR-39.5) - null for a supplier-fulfilled item (checkout's oversell check for those runs on the supplier listing's own stock instead, see CheckoutService.reserveSupplierStock). */
+  trackInventory: boolean | null;
 }
 
 /**
@@ -76,6 +78,7 @@ export class OrderPricingService {
         supplierId: supplierListing?.supplierId ?? null,
         supplierListingId: supplierListing?.id ?? null,
         supportedCountries: supplierListing?.supportedCountries ?? null,
+        trackInventory: supplierListing ? null : variant.trackInventory,
       };
     });
   }
