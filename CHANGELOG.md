@@ -115,6 +115,26 @@ module (Module 44).
   Product Feed API) and a 4th WhatsApp deep-link generator, both
   Growth+-plan-gated.
 
+## Phase B item 2: CNIC Trust Messaging
+
+Pre-launch audit finding (psychology fix, tiny effort, high impact). The
+CNIC-capture step (Module 12, FR-30.1) was already correctly built — encrypted
+at rest, never returned in full by any API response, masked to last-4 in the
+seller's own view — but the seller was never told any of that at the point
+they're asked to hand over a national ID number, a widely distrusted request.
+
+### Changed
+- `apps/(dashboard)/stores/[storeId]/settings/page.tsx` — the Identity
+  verification card now states, before the CNIC is entered: why it's required
+  (fraud prevention + payout compliance), that it's encrypted at rest, never
+  shown to anyone in full, never shared, only the last 4 digits are ever
+  displayed, and what completing it unlocks (checkout for the store). The
+  `Field`'s own `hint` text carries the encrypted/last-4 line so it's visible
+  on every visit, not just the first.
+
+No backend/schema change — copy-only, reusing the existing `Field` component's
+`hint` slot.
+
 ## Module 47: Wallet Balance Running Total & Reconciliation
 
 SRS §5.6e, FR-6.21 amended, new FR-6.29 (v0.33). The highest-risk module in

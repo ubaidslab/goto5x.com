@@ -3604,6 +3604,25 @@ as the right order after research — no changes:
   fixes/corrections) — correctly last, and its Growth-tier gate depends
   on Module 44's tier data existing first.
 
+### Phase B — remaining pre-launch audit findings (smaller, sequenced after Phase A)
+
+Founder-ordered list of five smaller pre-launch findings, built and
+CI-verified one at a time:
+
+1. **Rate-limit re-audit (Modules 22-47).** Full controller inventory against
+   `RateLimitService.enforcePerHour` coverage — audited.
+2. **CNIC trust messaging — BUILT.** Copy-only change to the Identity
+   verification card (Module 12's dashboard settings screen): explains why
+   the CNIC is required (fraud prevention + payout compliance), that it's
+   encrypted at rest, never shown to anyone in full, never shared, only
+   last-4 ever displayed, and what completing it unlocks. No backend change.
+3. **Wallet transaction history pagination.** `getTransactionHistory()`
+   currently unbounded — pending.
+4. **RLS defense-in-depth tests.** Explicit tests proving non-UUID
+   `SET LOCAL` inputs are always rejected — pending.
+5. **Key rotation + breach runbook.** Documented rotation procedure + utility
+   + breach-response runbook section — pending.
+
 ---
 
 *Update this document as each module is approved and built — it is the running

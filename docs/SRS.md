@@ -5794,6 +5794,12 @@ going forward, per FR-6.28.
 - [x] The stored CNIC is encrypted at rest; no log line, error message, or
       API response ever contains the plaintext value; the seller's own view
       shows only a masked (last-4) form (FR-30.1)
+- [x] The CNIC input itself explains, in plain language, why it's required
+      (fraud prevention + payout compliance), that it's encrypted at rest,
+      never shown to anyone in full, never shared, and that only the last 4
+      digits are ever displayed — plus what completing it unlocks (checkout)
+      (FR-30.1, pre-launch audit finding — trust-messaging psychology fix,
+      Module 12's dashboard settings screen)
 - [x] Saving a payment instrument without both the declared account title
       and the explicit "registered in my own name" checkbox is rejected
       (FR-30.2)
