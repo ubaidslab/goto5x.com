@@ -3609,8 +3609,16 @@ as the right order after research — no changes:
 Founder-ordered list of five smaller pre-launch findings, built and
 CI-verified one at a time:
 
-1. **Rate-limit re-audit (Modules 22-47).** Full controller inventory against
-   `RateLimitService.enforcePerHour` coverage — audited.
+1. **Rate-limit re-audit (Modules 22-47) — BUILT.** Full controller inventory
+   against `RateLimitService.enforcePerHour` coverage; 11 gaps found and
+   closed (checkout — highest severity, cart create, storefront unlock,
+   gift-card purchase, seller+admin MFA verify, campaign creation, admin
+   email test-connection/reply, review submission, careers apply), each
+   with a new Settings-Registry-tunable limit. Staff login reconfirmed
+   already adequate; order-verification OTP and data-export cooldowns
+   reconfirmed as already-adequate equivalent mechanisms. Three low-severity
+   findings deliberately left as-is with reasoning recorded (SRS §14.12).
+   7 new e2e tests proving each new limit fires a real 429.
 2. **CNIC trust messaging — BUILT.** Copy-only change to the Identity
    verification card (Module 12's dashboard settings screen): explains why
    the CNIC is required (fraud prevention + payout compliance), that it's

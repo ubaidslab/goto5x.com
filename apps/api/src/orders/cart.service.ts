@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { CreateCartDto } from "./dto/create-cart.dto";
@@ -21,9 +22,14 @@ export class CartService {
     private readonly storefront: StorefrontService,
     private readonly pricing: OrderPricingService,
     private readonly settings: SettingsService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
-  async create(dto: CreateCartDto) {
+  async create(dto: CreateCartDto, ip: string) {
+    // Phase B pre-launch audit finding - public, unauthenticated cart-row creation.
+    const cartLimit = await this.settings.resolve<number>("orders.cart_create_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`cart-create-ip:${ip}`, cartLimit);
+
     const store = await this.storefront.loadActiveStoreOrThrow(dto.hostname);
     // Validates every item resolves to a real product/variant in this store
     // before a cart row is ever written - same fail-fast reasoning as

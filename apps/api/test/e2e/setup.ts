@@ -5,6 +5,7 @@ import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
 import { signedContribution } from "../../src/billing/wallet.service";
 import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
+import { seedAdminEmailSettings } from "../../src/admin-email/admin-email.seed";
 import { seedCampaignsSettings } from "../../src/campaigns/campaigns.seed";
 import { seedCareersSettings } from "../../src/careers/careers.seed";
 import { seedDataExportSettings } from "../../src/data-export/data-export.seed";
@@ -13,6 +14,7 @@ import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedWalletSettings } from "../../src/billing/wallet.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
+import { seedGiftCardsSettings } from "../../src/gift-cards/gift-cards.seed";
 import { seedGrowthProgramsSettings } from "../../src/growth-programs/growth-programs.seed";
 import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
 import { seedInventorySettings } from "../../src/inventory/inventory.seed";
@@ -21,6 +23,7 @@ import { seedMessagingSettings } from "../../src/messaging/messaging.seed";
 import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import { seedOrderVerificationSettings } from "../../src/orders/order-verification.seed";
 import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
+import { seedReviewsSettings } from "../../src/reviews/reviews.seed";
 import {
   seedModule1Settings,
   seedModule3Settings,
@@ -143,6 +146,9 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedCampaignsSettings(prisma);
   // Module 35 - depends on the same paid plan rows for its plan-tier quota key.
   await seedStaffSettings(prisma);
+  await seedAdminEmailSettings(prisma);
+  await seedGiftCardsSettings(prisma);
+  await seedReviewsSettings(prisma);
 }
 
 /**

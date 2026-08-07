@@ -7,6 +7,7 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { CustomerSegmentsService } from "../customer-segments/customer-segments.service";
 import { EventsService } from "../events/events.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { sendCampaignEmail } from "./campaign-mailer.util";
@@ -33,6 +34,7 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
     private readonly customerSegments: CustomerSegmentsService,
     private readonly events: EventsService,
     private readonly config: ConfigService,
+    private readonly rateLimit: RateLimitService,
   ) {
     this.encryptionKey = Buffer.from(config.getOrThrow<string>("SMTP_CREDENTIAL_ENCRYPTION_KEY"), "base64");
   }
@@ -53,6 +55,12 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
    * gate.
    */
   async create(sellerId: string, storeId: string, dto: CreateCampaignDto) {
+    // Phase B pre-launch audit finding - the monthly quota below bounds
+    // total volume but not burst/cadence; this caps how often a seller can
+    // trigger a send, distinct from how much they're allowed to send.
+    const createLimit = await this.settings.resolve<number>("email_campaigns.create_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`campaign-create:${sellerId}`, createLimit);
+
     const segment = await this.customerSegments.getOne(sellerId, storeId, dto.segmentId);
     const eligibleCount = segment.members.filter((m) => !m.unsubscribedAt).length;
 

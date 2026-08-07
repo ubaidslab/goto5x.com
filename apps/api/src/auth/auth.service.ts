@@ -272,6 +272,14 @@ export class AuthService {
     userAgent: string | undefined,
   ): Promise<TokenPair> {
     const payload = this.verifySellerPreAuthToken(preAuthToken);
+
+    // Phase B pre-launch audit finding - a 6-digit TOTP code is a genuinely
+    // guessable space; rate-limit the verify attempt itself, dual-keyed
+    // (account + IP) the same as login, before ever calling authenticator.check.
+    const mfaVerifyLimit = await this.settings.resolve<number>("auth.mfa_verify_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`mfa-verify:${payload.sub}`, mfaVerifyLimit);
+    await this.rateLimit.enforcePerHour(`mfa-verify-ip:${ip}`, mfaVerifyLimit);
+
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: payload.sub },
       include: { seller: true, supplier: true },

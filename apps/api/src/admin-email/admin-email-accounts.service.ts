@@ -4,6 +4,8 @@ import { ImapFlow } from "imapflow";
 import * as nodemailer from "nodemailer";
 import { AuditLogService } from "../admin/audit-log.service";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { decryptAdminEmailCredential, encryptAdminEmailCredential } from "./admin-email-credential-crypto.util";
 import { LinkAdminEmailAccountDto } from "./dto/link-admin-email-account.dto";
 
@@ -36,6 +38,8 @@ export class AdminEmailAccountsService {
   constructor(
     private readonly prisma: PrismaRuntimeService,
     private readonly auditLog: AuditLogService,
+    private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
     config: ConfigService,
   ) {
     this.encryptionKey = Buffer.from(config.getOrThrow<string>("ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY"), "base64");
@@ -91,7 +95,12 @@ export class AdminEmailAccountsService {
   }
 
   /** FR-53.5 - "test-connection", a distinct on-demand action from add/remove. */
-  async testConnection(id: string): Promise<{ imapOk: boolean; smtpOk: boolean; error?: string }> {
+  async testConnection(id: string, adminUserId: string | undefined): Promise<{ imapOk: boolean; smtpOk: boolean; error?: string }> {
+    // Phase B pre-launch audit finding - opens real IMAP+SMTP connections on
+    // demand; no cooldown beyond the generic 100/min IP throttle previously.
+    const testConnLimit = await this.settings.resolve<number>("admin_email.test_connection_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`admin-email-test-connection:${adminUserId ?? "unknown"}`, testConnLimit);
+
     const account = await this.prisma.adminEmailAccount.findUnique({ where: { id } });
     if (!account) throw new NotFoundException("Linked email account not found.");
 

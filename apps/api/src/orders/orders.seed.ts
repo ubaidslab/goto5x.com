@@ -27,6 +27,34 @@ export async function seedOrdersSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.checkout_rate_limit_per_hour" },
+    create: {
+      key: "orders.checkout_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 30,
+      validation: { min: 1, max: 10000 },
+      description:
+        "Maximum POST /storefront/checkout calls per IP per hour (Phase B pre-launch audit finding - public, unauthenticated, creates a real order and is the entry point for gift-card/discount-code guessing; highest-severity gap in the rate-limit re-audit).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.cart_create_rate_limit_per_hour" },
+    create: {
+      key: "orders.cart_create_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 60,
+      validation: { min: 1, max: 10000 },
+      description:
+        "Maximum POST /storefront/cart calls per IP per hour (Phase B pre-launch audit finding - public, unauthenticated cart-row creation).",
+    },
+    update: {},
+  });
 }
 
 if (require.main === module) {

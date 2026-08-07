@@ -88,8 +88,18 @@ export class AdminAuthService {
   async verifyMfaAndIssueSession(
     preAuthToken: string,
     code: string,
+    ip: string,
   ): Promise<{ accessToken: string; sessionId: string; refreshToken: string }> {
     const payload = this.verifyPreAuthToken(preAuthToken);
+
+    // Phase B pre-launch audit finding - same fix as the seller MFA verify
+    // flow (AuthService.verifyMfaAndIssueSession()): a 6-digit TOTP code is
+    // a genuinely guessable space, and admin sessions have BYPASSRLS access,
+    // so this is if anything the more sensitive of the two to close.
+    const mfaVerifyLimit = await this.settings.resolve<number>("auth.mfa_verify_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`admin-mfa-verify:${payload.sub}`, mfaVerifyLimit);
+    await this.rateLimit.enforcePerHour(`admin-mfa-verify-ip:${ip}`, mfaVerifyLimit);
+
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: payload.sub },
       include: { adminUser: true },

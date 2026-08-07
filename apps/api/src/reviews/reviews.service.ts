@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ReviewStatus } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 
 function round1(n: number): number {
@@ -18,10 +20,22 @@ export class ReviewsService {
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
   ) {}
 
   /** FR-14.1/14.2 - identified via the order-status link (FR-5.4) rather than an account. */
-  async submit(token: string, input: { productId: string; buyerName: string; rating: number; body: string }) {
+  async submit(
+    token: string,
+    input: { productId: string; buyerName: string; rating: number; body: string },
+    ip: string,
+  ) {
+    // Phase B pre-launch audit finding - public, token-gated but with no
+    // submission cap of its own; dual-keyed (token + IP) before the write.
+    const submissionLimit = await this.settings.resolve<number>("reviews.submission_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`review-submit-token:${token}`, submissionLimit);
+    await this.rateLimit.enforcePerHour(`review-submit-ip:${ip}`, submissionLimit);
+
     const order = await this.prismaAdmin.order.findUnique({
       where: { statusLookupToken: token },
       include: { items: true },

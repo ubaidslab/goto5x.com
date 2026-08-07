@@ -2,6 +2,8 @@ import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { IssueGiftCardDto } from "./dto/issue-gift-card.dto";
@@ -25,10 +27,16 @@ export class GiftCardsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prismaAdmin: PrismaAdminService,
     private readonly storefront: StorefrontService,
+    private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
   ) {}
 
   /** FR-49.2 (buyer-purchase path) - creates a `pending_payment` card; unusable until FR-49.3's payment confirmation. */
-  async purchase(dto: PurchaseGiftCardDto) {
+  async purchase(dto: PurchaseGiftCardDto, ip: string) {
+    // Phase B pre-launch audit finding - public, unauthenticated row creation.
+    const purchaseLimit = await this.settings.resolve<number>("gift_cards.purchase_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`gift-card-purchase-ip:${ip}`, purchaseLimit);
+
     const store = await this.storefront.loadActiveStoreOrThrow(dto.hostname);
     return this.createWithUniqueCode(store.id, {
       storeId: store.id,

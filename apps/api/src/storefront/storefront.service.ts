@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { BrandingService } from "../branding/branding.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { resolveSeoFallback } from "./seo-fallback.util";
 
@@ -45,6 +46,7 @@ export class StorefrontService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly branding: BrandingService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   /**
@@ -144,11 +146,18 @@ export class StorefrontService {
     }
   }
 
-  async unlock(hostname: string, password: string): Promise<{ unlockToken: string }> {
+  async unlock(hostname: string, password: string, ip: string): Promise<{ unlockToken: string }> {
     const store = await this.loadActiveStoreOrThrow(hostname);
     if (store.accessMode !== "password_protected" || !store.accessPasswordHash) {
       throw new ForbiddenException("This store is not password-protected.");
     }
+
+    // Phase B pre-launch audit finding - no attempt cap beyond the generic
+    // 100/min IP throttle; dual-keyed (IP + store) before the bcrypt compare.
+    const unlockLimit = await this.settings.resolve<number>("storefront.unlock_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`storefront-unlock-ip:${ip}`, unlockLimit);
+    await this.rateLimit.enforcePerHour(`storefront-unlock-store:${store.id}`, unlockLimit);
+
     if (!(await bcrypt.compare(password, store.accessPasswordHash))) {
       throw new UnauthorizedException("Incorrect password.");
     }

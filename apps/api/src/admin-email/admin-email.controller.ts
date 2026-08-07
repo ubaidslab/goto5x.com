@@ -32,8 +32,8 @@ export class AdminEmailController {
   }
 
   @Post("accounts/:id/test-connection")
-  testConnection(@Param("id") id: string) {
-    return this.accounts.testConnection(id);
+  testConnection(@CurrentUser() user: JwtAccessPayload, @Param("id") id: string) {
+    return this.accounts.testConnection(id, user.adminUserId);
   }
 
   @Get("inbox")
@@ -42,7 +42,7 @@ export class AdminEmailController {
   }
 
   @Post("reply")
-  reply(@Body() dto: SendAdminEmailReplyDto) {
-    return this.mail.sendReply(dto);
+  reply(@CurrentUser() user: JwtAccessPayload, @Body() dto: SendAdminEmailReplyDto) {
+    return this.mail.sendReply(dto, user.adminUserId);
   }
 }

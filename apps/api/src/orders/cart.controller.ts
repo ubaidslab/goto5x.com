@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Request } from "express";
 import { CartService } from "./cart.service";
 import { CreateCartDto } from "./dto/create-cart.dto";
 import { UpdateCartDto } from "./dto/update-cart.dto";
@@ -13,8 +14,8 @@ export class CartController {
   constructor(private readonly cart: CartService) {}
 
   @Post()
-  create(@Body() dto: CreateCartDto) {
-    return this.cart.create(dto);
+  create(@Body() dto: CreateCartDto, @Req() req: Request) {
+    return this.cart.create(dto, req.ip ?? "unknown");
   }
 
   @Get(":sessionToken")

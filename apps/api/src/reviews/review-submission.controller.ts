@@ -1,4 +1,5 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
+import { Body, Controller, Param, Post, Req } from "@nestjs/common";
+import { Request } from "express";
 import { SubmitReviewDto } from "./dto/submit-review.dto";
 import { ReviewsService } from "./reviews.service";
 
@@ -8,7 +9,7 @@ export class ReviewSubmissionController {
   constructor(private readonly reviews: ReviewsService) {}
 
   @Post()
-  submit(@Param("token") token: string, @Body() dto: SubmitReviewDto) {
-    return this.reviews.submit(token, dto);
+  submit(@Param("token") token: string, @Body() dto: SubmitReviewDto, @Req() req: Request) {
+    return this.reviews.submit(token, dto, req.ip ?? "unknown");
   }
 }

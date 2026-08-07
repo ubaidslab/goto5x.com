@@ -110,6 +110,20 @@ export async function seedModule4Settings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "storefront.unlock_rate_limit_per_hour" },
+    create: {
+      key: "storefront.unlock_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 20,
+      validation: { min: 1, max: 1000 },
+      description:
+        "Maximum POST /storefront/unlock attempts per IP and per store per hour (Phase B pre-launch audit finding - the password-gate check has no attempt cap beyond the generic 100/min IP throttle, FR-16.5).",
+    },
+    update: {},
+  });
 }
 
 /**

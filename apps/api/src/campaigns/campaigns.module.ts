@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { CustomerSegmentsModule } from "../customer-segments/customer-segments.module";
 import { PlansModule } from "../plans/plans.module";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { EmailCampaignsController } from "./email-campaigns.controller";
 import { EmailCampaignsService } from "./email-campaigns.service";
@@ -15,7 +16,7 @@ import { StorefrontCampaignsController } from "./storefront-campaigns.controller
 @Module({
   imports: [SettingsModule, PlansModule, CustomerSegmentsModule],
   controllers: [EmailCampaignsController, StorefrontCampaignsController],
-  providers: [EmailCampaignsService],
+  providers: [EmailCampaignsService, RateLimitService],
   exports: [EmailCampaignsService],
 })
 export class CampaignsModule {}

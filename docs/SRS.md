@@ -5399,6 +5399,40 @@ going forward, per FR-6.28.
       `ThrottlerGuard` (100 req/60s/IP); payout-request endpoints don't exist
       in v1.0 - payouts are dormant per §5.6b, confirmed via a full
       controller-route grep, not assumed
+- [x] **Rate-limit re-audit, Phase B pre-launch (SRS/founder audit,
+      ~15 modules shipped since the Module 21 audit above).** A full
+      controller inventory across Modules 22-47 against `RateLimitService.
+      enforcePerHour()` coverage found 11 new gaps, all closed with the same
+      dual-key-where-applicable pattern and a Settings-Registry-tunable
+      limit: `POST /storefront/checkout` (highest severity - public,
+      unauthenticated, creates a real order; `orders.
+      checkout_rate_limit_per_hour`), `POST /storefront/cart` (`orders.
+      cart_create_rate_limit_per_hour`), `POST /storefront/unlock`
+      (password-gate brute force; `storefront.
+      unlock_rate_limit_per_hour`), `POST /storefront/gift-cards/purchase`
+      (`gift_cards.purchase_rate_limit_per_hour`), `POST /auth/mfa/verify`
+      and `POST /admin/auth/mfa/verify` (a 6-digit TOTP code is a genuinely
+      guessable space; shared key `auth.mfa_verify_rate_limit_per_hour`),
+      `POST /stores/:storeId/campaigns` (bounds burst/cadence, distinct from
+      the existing monthly-volume quota; `email_campaigns.
+      create_rate_limit_per_hour`), `POST /admin/email/accounts/:id/
+      test-connection` and `POST /admin/email/reply` (real outbound
+      IMAP/SMTP/email actions with no prior cap; `admin_email.
+      test_connection_rate_limit_per_hour` / `admin_email.
+      reply_rate_limit_per_hour`), `POST /storefront/order-status/:token/
+      reviews` (`reviews.submission_rate_limit_per_hour`), and
+      `POST /careers/:jobPostingId/apply` (`careers.
+      apply_rate_limit_per_hour`). Staff login (Module 35) was re-confirmed
+      already correctly rate-limited. Order-verification OTP resend/attempt-
+      caps (Module 26) and on-demand data-export cooldowns (Module 24) were
+      re-confirmed as already-adequate equivalent mechanisms, not
+      `enforcePerHour`-based but functionally the same. Three low-severity
+      findings were deliberately left as-is with reasoning recorded: email-
+      verification tokens (256-bit, brute force infeasible), the cross-SaaS
+      eligibility endpoint (HMAC-signed, not truly public), and a seller's
+      own order-verification resend (requires seller auth, low abuse
+      ceiling). New e2e suite `phaseb-item1-rate-limits.e2e-spec.ts` proves
+      each new limit fires a real 429 once exceeded.
 - [x] Secrets (gateway keys, supplier API credentials, Drive OAuth secrets, and
       both external-SaaS signing secrets) are confirmed stored in an encrypted
       secrets store, never in a committed env file (Module 21) — `.env`/

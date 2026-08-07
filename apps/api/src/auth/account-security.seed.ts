@@ -46,4 +46,18 @@ export async function seedAccountSecuritySettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "auth.mfa_verify_rate_limit_per_hour" },
+    create: {
+      key: "auth.mfa_verify_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 10,
+      validation: { min: 1, max: 1000 },
+      description:
+        "Maximum TOTP code attempts per account and per IP per hour on /auth/mfa/verify and /admin/auth/mfa/verify (Phase B pre-launch audit finding - a 6-digit code is a genuinely guessable space with a valid preAuthToken, unlike the 256-bit email-verification token).",
+    },
+    update: {},
+  });
 }

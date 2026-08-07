@@ -21,7 +21,7 @@ export class AdminAuthController {
 
   @Post("mfa/verify")
   @HttpCode(HttpStatus.OK)
-  verifyMfa(@Body() dto: AdminMfaVerifyDto) {
-    return this.adminAuth.verifyMfaAndIssueSession(dto.preAuthToken, dto.code);
+  verifyMfa(@Body() dto: AdminMfaVerifyDto, @Req() req: Request) {
+    return this.adminAuth.verifyMfaAndIssueSession(dto.preAuthToken, dto.code, req.ip ?? "unknown");
   }
 }

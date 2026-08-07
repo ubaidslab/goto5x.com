@@ -20,6 +20,20 @@ export async function seedCampaignsSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "email_campaigns.create_rate_limit_per_hour" },
+    create: {
+      key: "email_campaigns.create_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 10,
+      validation: { min: 1, max: 1000 },
+      description:
+        "Maximum POST /campaigns calls per seller per hour (Phase B pre-launch audit finding - email_campaigns.monthly_send_limit bounds total volume but not burst/cadence; a full-quota send can otherwise fire in one call with no throttling of how often campaigns are created).",
+    },
+    update: {},
+  });
 }
 
 if (require.main === module) {

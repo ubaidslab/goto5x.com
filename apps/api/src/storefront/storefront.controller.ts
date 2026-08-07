@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
+import { Request } from "express";
 import { StorefrontService } from "./storefront.service";
 
 /**
@@ -25,10 +26,10 @@ export class StorefrontController {
   }
 
   @Post("unlock")
-  unlock(@Body("hostname") hostname: string, @Body("password") password: string) {
+  unlock(@Body("hostname") hostname: string, @Body("password") password: string, @Req() req: Request) {
     this.assertHostname(hostname);
     if (!password) throw new BadRequestException("A `password` is required.");
-    return this.storefront.unlock(hostname, password);
+    return this.storefront.unlock(hostname, password, req.ip ?? "unknown");
   }
 
   @Get("products")

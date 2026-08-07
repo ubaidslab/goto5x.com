@@ -4,6 +4,7 @@ import { JobApplication, JobApplicationStatus } from "@prisma/client";
 import { AuditLogService } from "../admin/audit-log.service";
 import { ObjectStorageService } from "../media/object-storage.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { JobPostingService } from "./job-posting.service";
 
@@ -27,6 +28,7 @@ export class JobApplicationService {
     private readonly settings: SettingsService,
     private readonly auditLog: AuditLogService,
     private readonly jobPostings: JobPostingService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   async apply(
@@ -35,7 +37,13 @@ export class JobApplicationService {
     applicantEmail: string,
     applicantPhone: string | undefined,
     cv: CvFile,
+    ip: string,
   ): Promise<JobApplication> {
+    // Phase B pre-launch audit finding - public, unauthenticated; accepts a
+    // 5MB file upload per call with no prior rate limit.
+    const applyLimit = await this.settings.resolve<number>("careers.apply_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`careers-apply-ip:${ip}`, applyLimit);
+
     await this.jobPostings.requireOpen(jobPostingId);
 
     const key = `careers/${jobPostingId}/${randomUUID()}-${cv.originalname}`;

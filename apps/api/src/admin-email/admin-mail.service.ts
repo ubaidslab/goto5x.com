@@ -4,6 +4,8 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import * as nodemailer from "nodemailer";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { decryptAdminEmailCredential } from "./admin-email-credential-crypto.util";
 import { SendAdminEmailReplyDto } from "./dto/send-admin-email-reply.dto";
 
@@ -31,6 +33,8 @@ export class AdminMailService {
 
   constructor(
     private readonly prisma: PrismaRuntimeService,
+    private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
     config: ConfigService,
   ) {
     this.encryptionKey = Buffer.from(config.getOrThrow<string>("ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY"), "base64");
@@ -94,7 +98,15 @@ export class AdminMailService {
   }
 
   /** FR-53.3 - always sends via the originating account's own SMTP credentials. */
-  async sendReply(dto: SendAdminEmailReplyDto): Promise<void> {
+  async sendReply(dto: SendAdminEmailReplyDto, adminUserId: string | undefined): Promise<void> {
+    // Phase B pre-launch audit finding - sends a real outbound email via a
+    // linked business account's own SMTP credentials to a caller-supplied
+    // `to` address; no rate limit beyond the generic 100/min IP throttle
+    // previously, so a compromised admin session could spam arbitrary
+    // recipients from UZEYN's own domains.
+    const replyLimit = await this.settings.resolve<number>("admin_email.reply_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`admin-email-reply:${adminUserId ?? "unknown"}`, replyLimit);
+
     const account = await this.prisma.adminEmailAccount.findUniqueOrThrow({ where: { id: dto.accountId } });
     const transporter = nodemailer.createTransport({
       host: account.smtpHost,

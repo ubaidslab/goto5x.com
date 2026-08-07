@@ -1,6 +1,8 @@
 import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { OrderSource } from "@prisma/client";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { CustomersService } from "../customers/customers.service";
 import { GiftCardsService } from "../gift-cards/gift-cards.service";
 import { InvoicePdfService } from "../invoices/invoice-pdf.service";
@@ -64,9 +66,18 @@ export class CheckoutService {
     private readonly customers: CustomersService,
     private readonly invoicePdf: InvoicePdfService,
     private readonly orderVerification: OrderVerificationService,
+    private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
   ) {}
 
-  async checkout(dto: CheckoutDto) {
+  async checkout(dto: CheckoutDto, ip: string) {
+    // Phase B pre-launch audit finding - public, unauthenticated; creates a
+    // real order (decrements stock, sends email, renders a PDF invoice) and
+    // is the entry point for gift-card/discount-code guessing. Was the
+    // highest-severity gap found in the rate-limit re-audit.
+    const checkoutLimit = await this.settings.resolve<number>("orders.checkout_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`checkout-ip:${ip}`, checkoutLimit);
+
     const store = await this.storefront.loadActiveStoreOrThrow(dto.hostname);
     const cart = await this.prismaAdmin.cart.findUnique({ where: { sessionToken: dto.sessionToken } });
     if (!cart || cart.storeId !== store.id) throw new NotFoundException("Cart not found.");

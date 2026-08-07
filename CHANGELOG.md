@@ -115,6 +115,63 @@ module (Module 44).
   Product Feed API) and a 4th WhatsApp deep-link generator, both
   Growth+-plan-gated.
 
+## Phase B item 1: Rate-Limit Re-Audit (Modules 22-47)
+
+Pre-launch audit finding. Rate limiting was last audited at Module 21;
+~15 modules shipped since. A background research pass produced a full
+controller inventory across every module built since then, cross-referenced
+against `RateLimitService.enforcePerHour()` coverage, and found 11 real
+gaps — most severe: `POST /storefront/checkout` had **no rate limit at
+all**, despite being public, unauthenticated, and creating a real order
+(decrements stock, sends email, renders a PDF invoice, and is the entry
+point for gift-card/discount-code guessing).
+
+### Added
+- Eleven new `enforcePerHour()` call sites, each keyed the same way existing
+  ones are (account/seller/admin id and/or IP, dual-keyed where the
+  existing login pattern warrants it) and each limit resolved from a new
+  Settings Registry key rather than hardcoded:
+  - `orders.checkout_rate_limit_per_hour` — `POST /storefront/checkout`
+    (highest severity: public, unauthenticated, real order creation).
+  - `orders.cart_create_rate_limit_per_hour` — `POST /storefront/cart`.
+  - `storefront.unlock_rate_limit_per_hour` — `POST /storefront/unlock`
+    (password-gate brute force, dual-keyed IP + store).
+  - `gift_cards.purchase_rate_limit_per_hour` — `POST /storefront/gift-cards/purchase`.
+  - `auth.mfa_verify_rate_limit_per_hour` — `POST /auth/mfa/verify` and
+    `POST /admin/auth/mfa/verify` (a 6-digit TOTP code is a genuinely
+    guessable space with a valid pre-auth token; admin is the more
+    sensitive of the two given BYPASSRLS access).
+  - `email_campaigns.create_rate_limit_per_hour` — `POST /stores/:storeId/campaigns`
+    (bounds burst/cadence — the existing `email_campaigns.
+    monthly_send_limit` bounds total volume but not how fast a full-quota
+    send can fire).
+  - `admin_email.test_connection_rate_limit_per_hour` and `admin_email.
+    reply_rate_limit_per_hour` — `POST /admin/email/accounts/:id/test-connection`
+    and `POST /admin/email/reply` (real IMAP/SMTP connections and a real
+    outbound email send via a linked account's own credentials, previously
+    uncapped beyond the generic 100/min IP throttle).
+  - `reviews.submission_rate_limit_per_hour` — `POST /storefront/order-status/:token/reviews`.
+  - `careers.apply_rate_limit_per_hour` — `POST /careers/:jobPostingId/apply`.
+
+### Verified adequate, no change
+- Staff login (Module 35) was already correctly rate-limited, dual-keyed,
+  confirmed by direct code citation.
+- Order-verification OTP resend cooldown/attempt-cap (Module 26) and
+  on-demand data-export cooldown (Module 24) are functionally equivalent
+  mechanisms to `enforcePerHour`, already adequate.
+- Email-verification tokens (256-bit, brute force infeasible), the
+  cross-SaaS eligibility endpoint (HMAC-signed), and a seller's own
+  order-verification resend (requires seller auth) were deliberately left
+  unthrottled — low severity, reasoning recorded in SRS §14.12.
+
+### Tests
+- New `test/e2e/phaseb-item1-rate-limits.e2e-spec.ts` — 7 tests, each
+  lowering the relevant Settings Registry key's default to a small number
+  directly on its `SettingsDefinition` row, then proving the endpoint
+  returns a real HTTP 429 once exceeded (checkout, storefront unlock, gift
+  card purchase, admin MFA verify, campaign creation, admin email
+  test-connection, admin email reply).
+
 ## Phase B item 2: CNIC Trust Messaging
 
 Pre-launch audit finding (psychology fix, tiny effort, high impact). The

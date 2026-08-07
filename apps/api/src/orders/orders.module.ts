@@ -4,6 +4,7 @@ import { CustomersModule } from "../customers/customers.module";
 import { EventsModule } from "../events/events.module";
 import { GiftCardsModule } from "../gift-cards/gift-cards.module";
 import { InvoicesModule } from "../invoices/invoices.module";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { EmailService } from "../notifications/email.service";
 import { OrderVerificationModule } from "../order-verification/order-verification.module";
 import { SettingsModule } from "../settings-registry/settings.module";
@@ -47,6 +48,7 @@ import { OrdersService } from "./orders.service";
     OrdersOverviewService,
     CartAbandonmentScheduler,
     EmailService,
+    RateLimitService,
   ],
   exports: [CartService, CheckoutService],
 })

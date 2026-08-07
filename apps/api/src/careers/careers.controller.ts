@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Req, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { Request } from "express";
 import { ApplyJobDto } from "./dto/apply-job.dto";
 import { JobApplicationService } from "./job-application.service";
 import { JobPostingService } from "./job-posting.service";
@@ -34,6 +35,7 @@ export class CareersController {
     @Param("jobPostingId") jobPostingId: string,
     @Body() dto: ApplyJobDto,
     @UploadedFile() cv: Express.Multer.File,
+    @Req() req: Request,
   ) {
     if (!cv) throw new BadRequestException('No file uploaded (expected multipart field "cv").');
     if (!ALLOWED_CV_MIME_TYPES.has(cv.mimetype)) {
@@ -45,6 +47,7 @@ export class CareersController {
       dto.applicantEmail,
       dto.applicantPhone,
       { buffer: cv.buffer, mimetype: cv.mimetype, originalname: cv.originalname },
+      req.ip ?? "unknown",
     );
   }
 }

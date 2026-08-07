@@ -26,4 +26,18 @@ export async function seedCareersSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "careers.apply_rate_limit_per_hour" },
+    create: {
+      key: "careers.apply_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 10,
+      validation: { min: 1, max: 1000 },
+      description:
+        "Maximum POST /careers/:jobPostingId/apply calls per IP per hour (Phase B pre-launch audit finding - public, unauthenticated, accepts a 5MB file upload per call with no prior rate limit).",
+    },
+    update: {},
+  });
 }
