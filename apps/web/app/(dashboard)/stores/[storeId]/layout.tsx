@@ -21,6 +21,7 @@ export default function StoreDashboardLayout({
   params: { storeId: string };
 }) {
   const [store, setStore] = useState<Store | null>(null);
+  const [stores, setStores] = useState<Store[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState("default");
   const [hasSuppliers, setHasSuppliers] = useState(false);
 
@@ -30,6 +31,16 @@ export default function StoreDashboardLayout({
       .then(setStore)
       .catch(() => {});
   }, [params.storeId]);
+
+  // SRS §5.56/FR-56.3 - the store switcher's source list. Fetched once per
+  // mount (not per storeId) since it's the seller's whole store set, not
+  // scoped to the currently-open one.
+  useEffect(() => {
+    api
+      .get<Store[]>("/stores")
+      .then(setStores)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     api
@@ -60,7 +71,7 @@ export default function StoreDashboardLayout({
         </div>
       )}
       <div className="app-shell-surface flex flex-1">
-        <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} />
+        <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} />
         <main className="flex-1 overflow-y-auto px-10 py-8">
           <div className="mx-auto max-w-5xl">
             <PlatformMessages />

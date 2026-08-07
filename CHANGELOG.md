@@ -8,6 +8,26 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 49: Multi-Store Per Seller
+
+### Added
+- `stores.max_per_seller` Settings Registry key (`allowedScopes:
+  ["global", "plan"]`, global default 1, Growth override 2, Pro/team-Scale
+  override 5), enforced in `StoresService.create()` before any store row
+  is written.
+- Store switcher in the dashboard sidebar (`Sidebar.tsx`), consuming the
+  already-existing `GET /stores` endpoint; renders only when a seller owns
+  more than one store, otherwise unchanged (plain store-name label).
+
+### Tests
+- Three new e2e tests in `tenancy.e2e-spec.ts`: the store-count limit
+  blocks a second store on First Month/Starter and lifts immediately on
+  upgrade to Growth; an explicit cross-store isolation assertion for a
+  seller who owns two stores (product created in store A is invisible and
+  unmutable from store B's dashboard context, not just relying on the
+  pre-existing RLS guarantee); the switcher's `GET /stores` list is exactly
+  the seller's own stores.
+
 ## SRS v0.34: Professional Seller Readiness (docs-only amendment)
 
 Ten new FR groups (§5.56-5.65, `docs/SRS.md`) plus matching §14.55-14.64

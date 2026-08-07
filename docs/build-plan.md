@@ -3666,11 +3666,23 @@ The founder's own numbering (1-10) is **not** the build order — it's
 reordered here purely on dependency grounds, confirmed safe by research
 (no item skipped ahead of a prerequisite it turned out to actually need):
 
-- **Module 49 — Multi-Store Per Seller (§5.56, item 1).** Built first: it's
-  the most self-contained item in the batch (research confirmed the
-  schema/RLS/URL-routing already fully support it — this module is a
+- **Module 49 — Multi-Store Per Seller (§5.56, item 1). BUILT.** Built
+  first: it's the most self-contained item in the batch (research confirmed
+  the schema/RLS/URL-routing already fully support it — this module is a
   plan-limit gate plus a switcher UI, not new tenancy work) and touches
-  nothing any other module in this batch depends on.
+  nothing any other module in this batch depends on. `stores.max_per_seller`
+  (Settings Registry, global default 1, Growth override 2, Pro/team-Scale
+  override 5) gates `StoresService.create()`, mirroring
+  `StaffAccountsService`'s existing `staff.max_accounts` check-then-act
+  shape exactly. The store switcher (dashboard sidebar) is a thin
+  dropdown over the already-existing `GET /stores` endpoint — no new
+  backend list endpoint needed. Cross-store isolation was proven, not
+  assumed: RLS keys off `sellerId`, and every per-store service already
+  does its own explicit `store.sellerId === sellerId` check, so a seller
+  who owns two stores already couldn't leak one into the other before this
+  module — a new e2e test pins that guarantee explicitly rather than
+  relying on it implicitly. 3 new e2e tests; full local unit suite
+  (211/211) clean.
 - **Module 50 — Product Organization at Scale (§5.57, item 6, reordered
   ahead of item 2).** Built before bulk product operations deliberately —
   both modules touch the same product-list page and endpoint; adding

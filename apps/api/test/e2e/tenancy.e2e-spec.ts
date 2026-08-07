@@ -100,3 +100,137 @@ describe("Tenant isolation on stores (e2e) - SRS §3.2/§14.2/§14.12 release ga
     await runtime.$disconnect();
   });
 });
+
+describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)", () => {
+  let app: INestApplication;
+  let superuser: PrismaClient;
+
+  beforeAll(async () => {
+    superuser = superuserPrismaForTests();
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await superuser.$disconnect();
+  });
+
+  afterEach(async () => {
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+  });
+
+  async function signupAndLogin(email: string) {
+    await request(app.getHttpServer())
+      .post("/auth/signup")
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email, password: "correct-horse-battery" });
+    const token = login.body.accessToken as string;
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+    return { token, sellerId: seller.id as string };
+  }
+
+  async function upgradeToGrowth(sellerId: string) {
+    const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", name: "Growth" } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: growthPlan.id } });
+  }
+
+  it("a First Month/Starter seller (limit 1) is blocked from creating a second store with a clear message, and the block lifts immediately on upgrade to Growth (limit 2)", async () => {
+    const { token, sellerId } = await signupAndLogin("multistore-limit@example.com");
+
+    const first = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Store One", slug: "multistore-one" });
+    expect(first.status).toBe(201);
+
+    const second = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Store Two", slug: "multistore-two" });
+    expect(second.status).toBe(400);
+    expect(second.body.message.message).toMatch(/store limit \(1\) has been reached/i);
+
+    await upgradeToGrowth(sellerId);
+
+    const afterUpgrade = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Store Two", slug: "multistore-two" });
+    expect(afterUpgrade.status).toBe(201);
+
+    const third = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Store Three", slug: "multistore-three" });
+    expect(third.status).toBe(400);
+    expect(third.body.message.message).toMatch(/store limit \(2\) has been reached/i);
+  });
+
+  it("a seller who owns two stores cannot see or mutate one store's data from the other store's dashboard context (explicit cross-store assertion, not just relying on the RLS guarantee)", async () => {
+    const { token, sellerId } = await signupAndLogin("multistore-isolation@example.com");
+    await upgradeToGrowth(sellerId);
+
+    const createFirst = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Isolation Store One", slug: "isolation-one" });
+    const createSecond = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Isolation Store Two", slug: "isolation-two" });
+    const storeOneId = createFirst.body.id;
+    const storeTwoId = createSecond.body.id;
+
+    const productInStoreOne = await request(app.getHttpServer())
+      .post(`/stores/${storeOneId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Store One Only Product", description: "x", status: "draft" });
+    expect(productInStoreOne.status).toBe(201);
+    const productId = productInStoreOne.body.id;
+
+    // The same seller's OWN second store must not see or be able to mutate
+    // the first store's product - RLS (seller-scoped) alone would permit
+    // this; the storeId === store.sellerId... check inside each service is
+    // what has to catch it.
+    const listInStoreTwo = await request(app.getHttpServer())
+      .get(`/stores/${storeTwoId}/products`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(listInStoreTwo.body.items ?? listInStoreTwo.body).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: productId })]),
+    );
+
+    const crossStoreRead = await request(app.getHttpServer())
+      .get(`/stores/${storeTwoId}/products/${productId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(crossStoreRead.status).toBe(404);
+
+    const crossStoreUpdate = await request(app.getHttpServer())
+      .patch(`/stores/${storeTwoId}/products/${productId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Hijacked from store two" });
+    expect(crossStoreUpdate.status).toBe(404);
+
+    const unchanged = await superuser.product.findUniqueOrThrow({ where: { id: productId } });
+    expect(unchanged.title).toBe("Store One Only Product");
+  });
+
+  it("the store switcher lists exactly the seller's own stores via GET /stores", async () => {
+    const { token, sellerId } = await signupAndLogin("multistore-switcher@example.com");
+    await upgradeToGrowth(sellerId);
+
+    await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Switcher One", slug: "switcher-one" });
+    await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Switcher Two", slug: "switcher-two" });
+
+    const list = await request(app.getHttpServer()).get("/stores").set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    expect(list.body.map((s: any) => s.slug).sort()).toEqual(["switcher-one", "switcher-two"]);
+  });
+});

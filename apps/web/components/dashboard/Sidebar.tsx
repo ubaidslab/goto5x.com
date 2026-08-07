@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { navItems } from "./nav-items";
 
 /**
@@ -19,23 +19,52 @@ function Wordmark() {
   );
 }
 
+interface StoreSummary {
+  id: string;
+  name: string;
+}
+
 export function Sidebar({
   storeId,
   storeName,
   showSuppliers = false,
+  stores = [],
 }: {
   storeId: string;
   storeName?: string;
   showSuppliers?: boolean;
+  /** SRS §5.56/FR-56.3 - the seller's full store list, for the switcher below. Only rendered as a dropdown when there's more than one (a single-store seller sees the same plain label as before). */
+  stores?: StoreSummary[];
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const visibleItems = navItems.filter((item) => !item.conditional || (item.label === "Suppliers" && showSuppliers));
 
   return (
     <aside className="flex h-screen w-60 flex-shrink-0 flex-col border-r border-border bg-surface px-3 py-5">
       <Wordmark />
 
-      {storeName && <p className="mt-5 truncate px-2 text-xs font-medium uppercase tracking-wide text-ink-faint">{storeName}</p>}
+      {stores.length > 1 ? (
+        <div className="mt-5 px-2">
+          <label htmlFor="store-switcher" className="sr-only">
+            Switch store
+          </label>
+          <select
+            id="store-switcher"
+            value={storeId}
+            onChange={(e) => router.push(`/stores/${e.target.value}`)}
+            className="w-full rounded-md border border-border bg-canvas px-2 py-1.5 text-xs font-medium text-ink"
+          >
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        storeName && <p className="mt-5 truncate px-2 text-xs font-medium uppercase tracking-wide text-ink-faint">{storeName}</p>
+      )}
 
       <nav className="mt-2 flex flex-1 flex-col gap-0.5">
         {visibleItems.map((item) => {

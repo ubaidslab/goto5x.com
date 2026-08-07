@@ -31,6 +31,7 @@ import {
 } from "../../src/settings-registry/settings.seed";
 import { seedStaffSettings } from "../../src/staff/staff.seed";
 import { seedStoreHealthSettings } from "../../src/store-health/store-health.seed";
+import { seedStoresSettings } from "../../src/tenancy/stores.seed";
 import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
 import { seedBuiltInThemes, seedModule4Settings, seedTemplatesBrandingSettings } from "../../src/theme-engine/themes.seed";
 import { seedSellerAgreementV1, seedTrustSafetySettings } from "../../src/trust-safety/trust-safety.seed";
@@ -146,6 +147,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedCampaignsSettings(prisma);
   // Module 35 - depends on the same paid plan rows for its plan-tier quota key.
   await seedStaffSettings(prisma);
+  // Module 49 (SRS §5.56/FR-56.1) - same paid-plan-row dependency as staff above.
+  await seedStoresSettings(prisma);
   await seedAdminEmailSettings(prisma);
   await seedGiftCardsSettings(prisma);
   await seedReviewsSettings(prisma);

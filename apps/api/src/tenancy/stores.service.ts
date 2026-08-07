@@ -3,6 +3,8 @@ import * as bcrypt from "bcryptjs";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { MediaAssetsService, UploadableFile } from "../media/media-assets.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
 
@@ -29,9 +31,19 @@ export class StoresService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly events: EventsService,
     private readonly mediaAssets: MediaAssetsService,
+    private readonly subscriptions: SubscriptionsService,
+    private readonly settings: SettingsService,
   ) {}
 
+  /** SRS §5.56/FR-56.1 - plan-tier store-count gate, same check-then-act shape as StaffAccountsService.create()'s staff.max_accounts gate. Per-seller count (a store has no owner other than the seller creating it), never per-store. */
   async create(sellerId: string, dto: CreateStoreDto) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const maxStores = await this.settings.resolve<number>("stores.max_per_seller", planContext);
+    const existingCount = await this.tenantPrisma.run(sellerId, (tx) => tx.store.count({ where: { sellerId } }));
+    if (existingCount >= maxStores) {
+      throw new BadRequestException(`Your plan's store limit (${maxStores}) has been reached.`);
+    }
+
     const store = await this.tenantPrisma.run(sellerId, async (tx) => {
       const existingSlug = await tx.store.findUnique({ where: { slug: dto.slug } });
       if (existingSlug) {

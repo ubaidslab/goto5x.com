@@ -210,8 +210,16 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       // v0.33 (FR-7.3/FR-23.5) - the per-identity free-store limit was
       // removed along with the Free Plan itself (no more free stores to
       // limit); this test creates a second store for the same (CNIC-less)
-      // seller purely to exercise name-consistency across two stores, which
-      // no longer needs any settings override to allow.
+      // seller purely to exercise name-consistency across two stores.
+      // v0.34/Module 49 (FR-56.1) reintroduced a *plan-tier* store-count
+      // limit (a different mechanism, not the old per-identity one) -
+      // First Month/Starter is capped at 1, so this seller needs a Growth
+      // upgrade before a second store is legitimately allowed.
+      const matchUser = await superuser.user.findUniqueOrThrow({ where: { email: "name-match@example.com" } });
+      const matchSeller = await superuser.seller.findUniqueOrThrow({ where: { userId: matchUser.id } });
+      const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", name: "Growth" } });
+      await superuser.subscription.update({ where: { sellerId: matchSeller.id }, data: { planId: growthPlan.id } });
+
       const mismatchStoreId = await createStore(matchToken, "name-mismatch-store");
       const mismatching = await request(app.getHttpServer())
         .patch(`/stores/${mismatchStoreId}/payment-instructions`)

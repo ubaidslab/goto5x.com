@@ -7136,15 +7136,15 @@ going forward, per FR-6.28.
 - [x] All four controls above produce an `AdminAuditLog` row with
       before/after values (FR-54.5).
 
-### 14.55 Multi-Store Per Seller (new, v0.34, not yet built)
-- [ ] A seller at their plan's store-count limit cannot create another
+### 14.55 Multi-Store Per Seller (built, Module 49, v0.34)
+- [x] A seller at their plan's store-count limit cannot create another
       store (clear upgrade-prompt response, not a silent failure);
       raising the plan lifts the limit immediately (FR-56.1).
-- [ ] A seller who owns two stores cannot see or mutate the other store's
+- [x] A seller who owns two stores cannot see or mutate the other store's
       data from either store's dashboard view — proven by an explicit
       cross-store e2e assertion, not just relying on the pre-existing RLS
       guarantee (FR-56.2).
-- [ ] The store switcher correctly lists and switches between all of a
+- [x] The store switcher correctly lists and switches between all of a
       seller's stores, sourced from the existing `GET /stores` endpoint
       (FR-56.3).
 
