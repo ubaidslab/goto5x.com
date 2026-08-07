@@ -120,7 +120,9 @@ module (Module 44).
 SRS §5.7/§5.23/§5.39, FR-7.1-7.4/7.8/7.19, FR-23.1-23.5 (v0.33). Retires
 the Free Plan everywhere it had become load-bearing and replaces it with
 First Month, a real paid entry tier — first module of the deep-audit
-Phase A launch-blocker batch.
+Phase A launch-blocker batch. (Commit `48cd391`; CI run for that commit
+never registered due to a missed webhook delivery, so this follow-up
+no-op commit re-triggers it — no functional change.)
 
 ### Added
 - New `Plan.regularPrice` column (nullable `Decimal(12,2)`) — the
