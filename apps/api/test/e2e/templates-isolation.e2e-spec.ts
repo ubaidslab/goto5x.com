@@ -266,7 +266,10 @@ describe("Template isolation - THE ISOLATION RULE (e2e)", () => {
     // WalletService.getBalance() derives balance from LedgerEntry rows
     // (Module 20 "extends Module 11's ledger") - the commission_accrued
     // entry markAsPaid() just wrote is a real debit, not a no-op.
-    expect(baseline.walletBalanceDelta).toBe(-baseline.commission);
+    // v0.35/FR-6.30 - commission is dormant at 0% by default, so this is
+    // toBeCloseTo (not toBe) to avoid a spurious -0 !== 0 Object.is
+    // mismatch when commission is exactly zero.
+    expect(baseline.walletBalanceDelta).toBeCloseTo(-baseline.commission, 5);
     expect(baseline.poweredByVisible).toBe(true);
 
     for (const templateName of restTemplates) {

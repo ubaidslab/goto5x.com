@@ -75,6 +75,13 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     const { token, storeId, sellerId } = await createUnpublishedStore(email, slug);
     await makeReadyExceptWallet(token, storeId, sellerId);
     await superuser.store.update({ where: { id: storeId }, data: { publishedAt: new Date() } });
+    // v0.35/FR-6.30 - every plan's commissionPercent override is now
+    // seeded at 0% (UZEYN is subscription-only); this module tests the
+    // commission-debit/negative-float mechanics themselves, which need a
+    // nonzero rate to exercise, so a seller-scoped override (highest
+    // precedence, beats First Month's own now-zeroed plan-scoped
+    // override) is set for every seller this helper creates.
+    await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
     return { token, storeId, sellerId };
   }
 
