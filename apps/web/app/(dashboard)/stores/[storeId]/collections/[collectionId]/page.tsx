@@ -42,8 +42,8 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
   useEffect(refresh, [params.storeId, params.collectionId]);
   useEffect(() => {
     api
-      .get<StoreProduct[]>(`/stores/${params.storeId}/products`)
-      .then(setStoreProducts)
+      .get<{ items: StoreProduct[] }>(`/stores/${params.storeId}/products?limit=100`)
+      .then((page) => setStoreProducts(page.items))
       .catch(() => setStoreProducts([]));
   }, [params.storeId]);
 

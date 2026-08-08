@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ModerationStatus, Prisma } from "@prisma/client";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { ModerationService } from "../moderation/moderation.service";
@@ -6,6 +7,18 @@ import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
+import { ProductListQueryDto } from "./dto/product-list-query.dto";
+
+const DEFAULT_PRODUCT_PAGE_LIMIT = 20;
+const MAX_PRODUCT_PAGE_LIMIT = 100;
+
+export interface ProductListPage {
+  items: unknown[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
 /**
  * Every method verifies `storeId` belongs to the calling seller before
@@ -71,6 +84,7 @@ export class ProductsService {
           categoryId: dto.categoryId,
           status: dto.status ?? "draft",
           moderationStatus: decision.status,
+          tags: dto.tags ?? [],
         },
       });
     });
@@ -92,15 +106,88 @@ export class ProductsService {
     return product;
   }
 
-  async list(sellerId: string, storeId: string) {
+  /**
+   * SRS §5.57/FR-57.2/57.3 - search/tag/stock-status/price-range/category/
+   * moderation-state filters, all combinable, plus pagination (same
+   * {items,page,limit,total,totalPages} shape as Phase B item 3's
+   * WalletService.getTransactionHistory()). Stock status is derived from
+   * the store's own `inventory.low_stock_threshold` (Module 28), using a
+   * "worst variant wins" rule: a product is "out" if any trackable variant
+   * is at 0, "low" if any trackable variant is at/under the threshold but
+   * none are at 0, and "in" otherwise (including products with no
+   * trackable variants at all) - simple enough to explain to a seller in
+   * one sentence, per the Simplicity Invariant.
+   */
+  async list(sellerId: string, storeId: string, query: ProductListQueryDto = {}): Promise<ProductListPage> {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.product.findMany({
-        where: { storeId },
-        include: { variants: true },
-        orderBy: { createdAt: "desc" },
-      });
+
+      const page = query.page ?? 1;
+      const limit = Math.min(query.limit ?? DEFAULT_PRODUCT_PAGE_LIMIT, MAX_PRODUCT_PAGE_LIMIT);
+
+      const conditions: Prisma.ProductWhereInput[] = [{ storeId }];
+
+      if (query.search) {
+        conditions.push({
+          OR: [
+            { title: { contains: query.search, mode: "insensitive" } },
+            { variants: { some: { sku: { contains: query.search, mode: "insensitive" } } } },
+          ],
+        });
+      }
+      if (query.tag) {
+        conditions.push({ tags: { has: query.tag } });
+      }
+      if (query.categoryId) {
+        conditions.push({ categoryId: query.categoryId });
+      }
+      if (query.moderationStatus) {
+        conditions.push({ moderationStatus: query.moderationStatus as ModerationStatus });
+      }
+      if (query.minPrice != null || query.maxPrice != null) {
+        conditions.push({
+          variants: {
+            some: {
+              price: {
+                ...(query.minPrice != null ? { gte: query.minPrice } : {}),
+                ...(query.maxPrice != null ? { lte: query.maxPrice } : {}),
+              },
+            },
+          },
+        });
+      }
+      if (query.stockStatus) {
+        const threshold = await this.settings.resolve<number>("inventory.low_stock_threshold", { storeId });
+        const atOrUnderThreshold: Prisma.ProductWhereInput = {
+          variants: { some: { trackInventory: true, stockQuantity: { lte: threshold } } },
+        };
+        const anyOut: Prisma.ProductWhereInput = {
+          variants: { some: { trackInventory: true, stockQuantity: { lte: 0 } } },
+        };
+        if (query.stockStatus === "in") {
+          conditions.push({ NOT: atOrUnderThreshold });
+        } else if (query.stockStatus === "low") {
+          conditions.push(atOrUnderThreshold, { NOT: anyOut });
+        } else {
+          conditions.push(anyOut);
+        }
+      }
+
+      const where: Prisma.ProductWhereInput = { AND: conditions };
+
+      const [items, total] = await Promise.all([
+        tx.product.findMany({
+          where,
+          include: { variants: true },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        tx.product.count({ where }),
+      ]);
+
+      return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
     });
   }
 

@@ -142,8 +142,8 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   }, [params.storeId, params.orderId, order?.status]);
   useEffect(() => {
     api
-      .get<ProductLookup[]>(`/stores/${params.storeId}/products`)
-      .then(setProducts)
+      .get<{ items: ProductLookup[] }>(`/stores/${params.storeId}/products?limit=100`)
+      .then((page) => setProducts(page.items))
       .catch(() => setProducts([]));
   }, [params.storeId]);
 

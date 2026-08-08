@@ -569,6 +569,12 @@ model Product {
   // this - see StorefrontService's shared moderation-visible WHERE clause.
   moderationStatus ModerationStatus         @default(not_required) @map("moderation_status")
   moderationNotes  String?                  @map("moderation_notes")
+  // Module 50 (SRS §5.57/FR-57.1) - free-form seller-defined tags, dashboard-
+  // private by default (FR-57.4). GIN index added via raw SQL in the
+  // migration (see idx_products_search's own precedent above) since Prisma's
+  // `@@index` can't declare an index type without the extendedIndexes
+  // preview feature, which this schema doesn't otherwise need.
+  tags             String[]                 @default([])
   // Module 5 (Discovery & Merchandising, FR-16.2). Populated by a raw-SQL
   // GENERATED ALWAYS AS ... STORED column (migration) - Prisma can't manage
   // a generated column's value, so it's Unsupported here (read via

@@ -7148,16 +7148,21 @@ going forward, per FR-6.28.
       seller's stores, sourced from the existing `GET /stores` endpoint
       (FR-56.3).
 
-### 14.56 Product Organization at Scale (new, v0.34, not yet built)
-- [ ] Products can be tagged with free-form seller-defined tags, tags
+### 14.56 Product Organization at Scale (built, Module 50, v0.34)
+- [x] Products can be tagged with free-form seller-defined tags, tags
       persist and are removable, and the tag filter on the product list
       returns exactly the tagged products (FR-57.1).
-- [ ] SKU/title search, stock-status, price-range, category, and
+- [x] SKU/title search, stock-status, price-range, category, and
       moderation-state filters each work independently and in combination,
       with pagination, on the product list (FR-57.2/57.3).
-- [ ] Tags are dashboard-private by default; a storefront-facing product
-      search does not surface tag-based filtering unless the seller has
-      explicitly opted a store or tag in (FR-57.4).
+- [x] Tags are dashboard-private by default (FR-57.4's first clause) - no
+      storefront-facing tag filter exists at all in this module, so there
+      is nothing to opt into yet. FR-57.4's storefront opt-in itself is
+      deferred, not built - it was additional scope this amendment added
+      beyond the founder's original ask ("product tags, plus dashboard
+      search/filter"), and the dashboard-only feature fully satisfies that
+      ask on its own. Revisit if a seller-facing need for public tag
+      browsing surfaces later.
 
 ### 14.57 Bulk Product Operations (new, v0.34, not yet built)
 - [ ] A bulk price update (fixed and percentage), stock update,

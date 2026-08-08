@@ -3684,11 +3684,28 @@ reordered here purely on dependency grounds, confirmed safe by research
   relying on it implicitly. 3 new e2e tests; full local unit suite
   (211/211) clean.
 - **Module 50 — Product Organization at Scale (§5.57, item 6, reordered
-  ahead of item 2).** Built before bulk product operations deliberately —
-  both modules touch the same product-list page and endpoint; adding
-  filters/search/pagination first, then bulk-select on top of an
-  already-filterable list, avoids re-touching the same frontend page twice
-  with potentially conflicting layouts.
+  ahead of item 2). BUILT.** Built before bulk product operations
+  deliberately — both modules touch the same product-list page and
+  endpoint; adding filters/search/pagination first, then bulk-select on
+  top of an already-filterable list, avoids re-touching the same frontend
+  page twice with potentially conflicting layouts. `Product.tags`
+  (`text[]`, GIN-indexed) plus a full rewrite of `ProductsService.list()`
+  from an unfiltered `findMany` to combinable search/tag/stock-status/
+  price-range/category/moderation-state filters with real pagination
+  (same `{items,page,limit,total,totalPages}` shape as Phase B item 3's
+  wallet pagination). Stock status derives from the store's existing
+  `inventory.low_stock_threshold` via a "worst trackable variant wins"
+  rule. The response-shape change (array → paginated envelope) had four
+  other frontend consumers besides the products list page itself (order
+  product-lookup, dashboard home, theme customizer preview, collections
+  picker) — all four updated to fetch `?limit=100` and read `.items`,
+  caught by grepping every direct consumer before shipping rather than
+  after a report of something breaking. FR-57.4's storefront tag-browsing
+  opt-in deliberately deferred — additional scope this amendment added
+  beyond the founder's original dashboard-only ask, not requested, no
+  seller-facing need for it yet. 5 new e2e tests; 2 pre-existing e2e
+  assertions fixed (they asserted the old array shape); full local unit
+  suite (211/211) clean.
 - **Module 51 — Bulk Product Operations (§5.58, item 2).** Depends on
   Module 50's filtered/paginated list (a bulk action's confirmation count
   needs to reflect a filtered selection accurately). Also closes the

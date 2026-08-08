@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CreateProductDto } from "./dto/create-product.dto";
+import { ProductListQueryDto } from "./dto/product-list-query.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { ProductsService } from "./products.service";
 
@@ -16,8 +17,8 @@ export class ProductsController {
   }
 
   @Get()
-  list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
-    return this.products.list(sellerId, storeId);
+  list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Query() query: ProductListQueryDto) {
+    return this.products.list(sellerId, storeId, query);
   }
 
   @Get(":productId")

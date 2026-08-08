@@ -209,3 +209,231 @@ describe("Catalog: products & variants (e2e) - SRS FR-2.1, §14.2", () => {
     expect(withBadCategory.status).toBe(404);
   });
 });
+
+describe("Product Organization at Scale (e2e) - SRS §5.57/FR-57.1-57.3 (Module 50)", () => {
+  let app: INestApplication;
+  let superuser: PrismaClient;
+
+  beforeAll(async () => {
+    superuser = superuserPrismaForTests();
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await superuser.$disconnect();
+  });
+
+  afterEach(async () => {
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+  });
+
+  async function signupLoginAndCreateStore(email: string, slug: string) {
+    await request(app.getHttpServer())
+      .post("/auth/signup")
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email, password: "correct-horse-battery" });
+    const token = login.body.accessToken as string;
+    const store = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: `Store for ${email}`, slug });
+    return { token, storeId: store.body.id as string };
+  }
+
+  it("tags: set at creation, replaced (not merged) on update, and filterable via ?tag=", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("tags-owner@example.com", "tags-store");
+
+    const created = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Red Summer Shirt", tags: ["red", "summer"] });
+    expect(created.status).toBe(201);
+    expect(created.body.tags).toEqual(["red", "summer"]);
+    const productId = created.body.id;
+
+    const other = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Blue Winter Coat", tags: ["blue", "winter"] });
+    expect(other.status).toBe(201);
+
+    const filteredBySummer = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?tag=summer`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(filteredBySummer.body.items.map((p: any) => p.id)).toEqual([productId]);
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/products/${productId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ tags: ["clearance"] });
+    expect(updated.status).toBe(200);
+    expect(updated.body.tags).toEqual(["clearance"]);
+
+    const noLongerSummer = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?tag=summer`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(noLongerSummer.body.items).toEqual([]);
+  });
+
+  it("search matches title and SKU; price range and category filters work; all filters compose (FR-57.3)", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("filters-owner@example.com", "filters-store");
+    const category = await superuser.category.create({ data: { name: "Apparel", slug: "apparel-filters-test" } });
+
+    const shirt = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Cotton Shirt", categoryId: category.id });
+    await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products/${shirt.body.id}/variants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ sku: "SHIRT-001", price: 1000, stockQuantity: 10 });
+
+    const mug = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Ceramic Mug" });
+    await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products/${mug.body.id}/variants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ sku: "MUG-777", price: 5000, stockQuantity: 10 });
+
+    const byTitle = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?search=shirt`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(byTitle.body.items.map((p: any) => p.id)).toEqual([shirt.body.id]);
+
+    const bySku = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?search=777`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(bySku.body.items.map((p: any) => p.id)).toEqual([mug.body.id]);
+
+    const byPriceRange = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?minPrice=2000&maxPrice=6000`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(byPriceRange.body.items.map((p: any) => p.id)).toEqual([mug.body.id]);
+
+    const byCategory = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?categoryId=${category.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(byCategory.body.items.map((p: any) => p.id)).toEqual([shirt.body.id]);
+
+    // Composed: title search AND category - both must match the same product.
+    const composed = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?search=shirt&categoryId=${category.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(composed.body.items.map((p: any) => p.id)).toEqual([shirt.body.id]);
+
+    const composedMismatch = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?search=mug&categoryId=${category.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(composedMismatch.body.items).toEqual([]);
+  });
+
+  it("moderation-state filter matches the exact status", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("modstate-owner@example.com", "modstate-store");
+    const product = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Needs Review" });
+    await superuser.product.update({ where: { id: product.body.id }, data: { moderationStatus: "pending" } });
+
+    const pendingOnly = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?moderationStatus=pending`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(pendingOnly.body.items.map((p: any) => p.id)).toEqual([product.body.id]);
+
+    const approvedOnly = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?moderationStatus=approved`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(approvedOnly.body.items).toEqual([]);
+  });
+
+  it("stock status - worst-trackable-variant rule: out beats low beats in (FR-57.2)", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("stock-owner@example.com", "stock-store");
+
+    const outProduct = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Out Of Stock Item" });
+    await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products/${outProduct.body.id}/variants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ sku: "OUT-1", price: 100, stockQuantity: 0 });
+
+    const lowProduct = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Low Stock Item" });
+    await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products/${lowProduct.body.id}/variants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ sku: "LOW-1", price: 100, stockQuantity: 3 }); // default threshold is 5
+
+    const inProduct = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "In Stock Item" });
+    await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products/${inProduct.body.id}/variants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ sku: "IN-1", price: 100, stockQuantity: 50 });
+
+    const out = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?stockStatus=out`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(out.body.items.map((p: any) => p.id)).toEqual([outProduct.body.id]);
+
+    const low = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?stockStatus=low`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(low.body.items.map((p: any) => p.id)).toEqual([lowProduct.body.id]);
+
+    const inStock = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?stockStatus=in`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(inStock.body.items.map((p: any) => p.id)).toEqual([inProduct.body.id]);
+  });
+
+  it("pagination: page/limit/total/totalPages are correct and pages don't overlap", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("paged-owner@example.com", "paged-store");
+    for (let i = 0; i < 5; i++) {
+      await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: `Product ${i}` });
+    }
+
+    const pageOne = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?page=1&limit=2`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(pageOne.body).toMatchObject({ page: 1, limit: 2, total: 5, totalPages: 3 });
+    expect(pageOne.body.items).toHaveLength(2);
+
+    const pageTwo = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?page=2&limit=2`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(pageTwo.body.items).toHaveLength(2);
+    const pageOneIds = pageOne.body.items.map((p: any) => p.id);
+    const pageTwoIds = pageTwo.body.items.map((p: any) => p.id);
+    expect(pageOneIds.some((id: string) => pageTwoIds.includes(id))).toBe(false);
+
+    const pageThree = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?page=3&limit=2`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(pageThree.body.items).toHaveLength(1);
+
+    const pageFour = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products?page=4&limit=2`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(pageFour.body.items).toEqual([]);
+    expect(pageFour.body.total).toBe(5);
+  });
+});

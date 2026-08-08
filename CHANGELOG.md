@@ -8,6 +8,40 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 50: Product Organization at Scale
+
+### Added
+- `Product.tags` (`text[]`, GIN-indexed) - free-form seller-defined tags,
+  dashboard-private by default. Set at creation, replaced (not merged) on
+  update via `UpdateProductDto`.
+- `ProductsService.list()` rewritten from an unfiltered, unpaginated
+  `findMany` to accept search (title/SKU), tag, stock-status (in/low/out,
+  a "worst trackable variant wins" rule derived from the store's existing
+  `inventory.low_stock_threshold`), price range, category, and moderation-
+  state filters - all combinable - plus real pagination (`{items, page,
+  limit, total, totalPages}`, same shape as Phase B item 3's wallet
+  pagination).
+- Dashboard product-list filter bar + Previous/Next pagination controls;
+  a Tags field on the product create/edit form (comma-separated, same
+  pattern as the existing order-tags editor).
+
+### Changed
+- `GET /stores/:storeId/products` response shape changed from a plain
+  array to the paginated envelope above. Four other dashboard pages that
+  consumed the old array shape (order product-lookup, dashboard home
+  recent-products widget, theme customizer product preview, collections
+  product-picker) updated to read `.items` with `?limit=100`, since they
+  need "all products for a picker," not a paginated view.
+
+### Tests
+- 5 new e2e tests in `catalog.e2e-spec.ts`: tags set/replace/filter;
+  search+price-range+category filters composing correctly (FR-57.3);
+  moderation-state filter; the stock-status worst-variant-wins rule
+  (out/low/in); pagination correctness with no cross-page overlap.
+- Fixed 2 pre-existing e2e assertions (`moderation.e2e-spec.ts`,
+  `module37-granular-admin-control.e2e-spec.ts`) that asserted the old
+  plain-array response shape.
+
 ## Module 49: Multi-Store Per Seller
 
 ### Added

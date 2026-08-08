@@ -95,12 +95,12 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
       .catch(() => {});
 
     api
-      .get<Array<{ id: string; title: string; description: string | null; averageRating: string; reviewCount: number; variants?: unknown[]; seoTitle?: string; seoDescription?: string | null }>>(
-        `/stores/${params.storeId}/products`,
-      )
-      .then((list) =>
+      .get<{
+        items: Array<{ id: string; title: string; description: string | null; averageRating: string; reviewCount: number; variants?: unknown[]; seoTitle?: string; seoDescription?: string | null }>;
+      }>(`/stores/${params.storeId}/products?limit=100`)
+      .then((page) =>
         setProducts(
-          list.map((p) => ({
+          page.items.map((p) => ({
             id: p.id,
             title: p.title,
             description: p.description,

@@ -123,7 +123,7 @@ describe("Advanced Granular Admin Control (e2e) - SRS §5.54, §14.54", () => {
     const existingListing = await request(app.getHttpServer())
       .get(`/stores/${storeId}/products`)
       .set("Authorization", `Bearer ${token}`);
-    expect(existingListing.body.map((p: any) => p.id)).toContain(firstProduct.body.id);
+    expect(existingListing.body.items.map((p: any) => p.id)).toContain(firstProduct.body.id);
 
     const auditLogs = await request(app.getHttpServer())
       .get("/admin/audit-logs")

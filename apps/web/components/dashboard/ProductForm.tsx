@@ -14,6 +14,8 @@ export interface ProductFormValues {
   status: "draft" | "active" | "archived";
   seoTitle: string;
   seoDescription: string;
+  /** SRS §5.57/FR-57.1 - free-form seller-defined tags, dashboard-private by default. */
+  tags: string[];
 }
 
 interface Category {
@@ -28,6 +30,7 @@ const empty: ProductFormValues = {
   status: "draft",
   seoTitle: "",
   seoDescription: "",
+  tags: [],
 };
 
 /**
@@ -47,6 +50,7 @@ export function ProductForm({
   onSubmit: (values: ProductFormValues) => Promise<void>;
 }) {
   const [values, setValues] = useState<ProductFormValues>({ ...empty, ...initialValues });
+  const [tagsInput, setTagsInput] = useState((initialValues?.tags ?? []).join(", "));
   const [categories, setCategories] = useState<Category[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +71,11 @@ export function ProductForm({
     setError(null);
     setSaving(true);
     try {
-      await onSubmit(values);
+      const tags = tagsInput
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      await onSubmit({ ...values, tags });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -113,6 +121,10 @@ export function ProductForm({
           </Select>
         </Field>
       </div>
+
+      <Field label="Tags" hint="Comma-separated, your own organizational labels - not shown to buyers unless you turn on storefront tag browsing.">
+        <Input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="e.g. bestseller, summer, cotton" />
+      </Field>
 
       <Disclosure label="Advanced: SEO">
         <Field label="SEO title" hint="Leave blank to use the product title.">

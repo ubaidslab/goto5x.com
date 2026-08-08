@@ -179,7 +179,10 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   }
 
   useEffect(() => {
-    api.get<Product[]>(`/stores/${params.storeId}/products`).then(setProducts).catch(() => setProducts([]));
+    api
+      .get<{ items: Product[] }>(`/stores/${params.storeId}/products?limit=100`)
+      .then((page) => setProducts(page.items))
+      .catch(() => setProducts([]));
     api.get<Order[]>(`/stores/${params.storeId}/orders`).then(setOrders).catch(() => setOrders([]));
     refreshOnboarding();
     refreshStore();

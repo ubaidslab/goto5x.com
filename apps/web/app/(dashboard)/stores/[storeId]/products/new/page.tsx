@@ -16,6 +16,7 @@ export default function NewProductPage({ params }: { params: { storeId: string }
       status: values.status,
       seoTitle: values.seoTitle || undefined,
       seoDescription: values.seoDescription || undefined,
+      tags: values.tags,
     });
     router.push(`/stores/${params.storeId}/products/${created.id}`);
   }

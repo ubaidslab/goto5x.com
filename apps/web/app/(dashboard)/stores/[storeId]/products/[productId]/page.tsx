@@ -21,6 +21,7 @@ interface ProductResponse {
   seoDescription: string | null;
   sourceType: "self" | "supplier";
   variants: Variant[];
+  tags: string[];
 }
 
 export default function EditProductPage({ params }: { params: { storeId: string; productId: string } }) {
@@ -45,6 +46,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
       status: values.status,
       seoTitle: values.seoTitle || undefined,
       seoDescription: values.seoDescription || undefined,
+      tags: values.tags,
     });
     load();
   }
@@ -70,6 +72,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
             status: product.status,
             seoTitle: product.seoTitle ?? "",
             seoDescription: product.seoDescription ?? "",
+            tags: product.tags,
           }}
           submitLabel="Save changes"
           onSubmit={handleSave}

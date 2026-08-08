@@ -212,7 +212,7 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
     const list = await request(app.getHttpServer())
       .get(`/stores/${storeId}/products`)
       .set("Authorization", `Bearer ${token}`);
-    expect(list.body).toEqual([]);
+    expect(list.body.items).toEqual([]);
   });
 
   it("a restricted keyword queues the listing (not a hard block) once past probation (FR-27.1)", async () => {
