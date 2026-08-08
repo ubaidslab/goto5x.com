@@ -4,11 +4,13 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { ImportJobType } from "@prisma/client";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
@@ -72,9 +74,25 @@ export class DataPortabilityController {
     });
   }
 
+  /** SRS §5.59/FR-59.3(a) - tracking-only import (OrderNumber/Courier/TrackingId columns), same job/error-report machinery as above. */
+  @Post("tracking-import-jobs")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async createTrackingImportJob(
+    @CurrentSellerId() sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("storeId") storeId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file").');
+    return this.importJobs.createTrackingImportJob(sellerId, storeId, user.sub, {
+      buffer: file.buffer,
+      originalname: file.originalname,
+    });
+  }
+
   @Get("import-jobs")
-  list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
-    return this.importJobs.list(sellerId, storeId);
+  list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Query("type") type?: ImportJobType) {
+    return this.importJobs.list(sellerId, storeId, type);
   }
 
   @Get("import-jobs/:jobId")

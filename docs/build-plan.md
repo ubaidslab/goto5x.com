@@ -3726,11 +3726,39 @@ reordered here purely on dependency grounds, confirmed safe by research
   e2e tests for the moderation gate; full local unit suite (211/211)
   clean.
 - **Module 52 — Bulk Order Operations, Tracking Entry & Advanced Search
-  (§5.59, item 3).** Independent of 49-51; the first module to touch
+  (§5.59, item 3). BUILT.** Independent of 49-51; the first module to touch
   `Order.status` transitions formally (new `orderNumber` schema field,
   first centralized transition map). Sequenced here, before returns,
   because Module 53 needs that transition map to add
-  `refunded`/`partially_refunded` safely.
+  `refunded`/`partially_refunded` safely. `Order.orderNumber` assigned
+  atomically at creation time from a new `Store.nextOrderNumber` counter
+  (plain `UPDATE ... increment`, serialized by Postgres's own row lock —
+  same technique as Module 46's atomic stock decrement, no application
+  locking needed); existing orders backfilled in `placedAt` order per
+  store by the migration. The new transition map
+  (`order-status-transitions.util.ts`) + `OrdersService.changeStatus()`
+  is the first writer of `cancelled`/`disputed`/`completed` — deliberately
+  excludes `confirmed`/`shipped`/`delivered` as targets, since those stay
+  reachable only via `markAsPaid()`/the tracking paths/
+  `markItemDelivered()`, which keep `OrderItem.fulfillmentStatus` in sync
+  (a plain status flip would desynchronize it). Bulk mark-as-paid and bulk
+  fulfill route through the pre-existing single-order endpoints unchanged
+  — no new bulk-specific backend route for either, same client-side
+  fan-out precedent as Module 51; bulk cancel/dispute/complete call the
+  new `changeStatus()` endpoint. All three tracking-entry paths (CSV
+  upload, inline quick-entry, the unchanged per-item detail entry) share
+  one write core (`writeTrackingForItem()`) via a new order-level
+  `uploadTrackingForOrder()` method that CSV and quick-entry both call.
+  Advanced search/filters (date+time range, status, payment state,
+  verification state, courier, customer, amount range) plus pagination
+  added to the orders-list endpoint, same `{items,page,limit,total,
+  totalPages}` envelope as Module 50's products list — the response-shape
+  change was caught against every direct consumer before shipping (orders
+  list page, dashboard-home widget, 5 pre-existing e2e assertions) per the
+  same discipline Module 50 established. 9 new e2e tests in a dedicated
+  `module52-bulk-order-ops.e2e-spec.ts`, plus 2 new unit specs (transition
+  map, CSV parser); full local unit suite (208/208) and full local e2e
+  suite (433/433 across 54 suites) both clean.
 - **Module 53 — Returns & Refunds Workflow (§5.60, item 4).** Depends on
   Module 52's transition-map groundwork. The most financially sensitive
   module in the batch — promotes the `return_requests` table already

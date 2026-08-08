@@ -2,12 +2,14 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ProductVariantsService } from "../catalog/product-variants.service";
 import { ProductsService } from "../catalog/products.service";
+import { OrdersService } from "../orders/orders.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { parseAdSpendImportCsv } from "./ad-spend-import.util";
 import { csvHeader, parseCsv } from "./csv.util";
 import { parseProductImportCsv, RowError } from "./product-import.util";
 import { parseStockImportCsv } from "./stock-import.util";
+import { parseTrackingImportCsv } from "./tracking-import.util";
 
 /**
  * FR-18.1/18.2 - the worker-invoked half of product CSV import. Runs with no
@@ -27,6 +29,7 @@ export class ProductImportService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly products: ProductsService,
     private readonly variants: ProductVariantsService,
+    private readonly orders: OrdersService,
   ) {}
 
   async process(importJobId: string, createdByUserId?: string): Promise<void> {
@@ -38,6 +41,9 @@ export class ProductImportService {
     }
     if (job.type === "ad_spend_import") {
       return this.processAdSpendImport(job);
+    }
+    if (job.type === "tracking_import") {
+      return this.processTrackingImport(job, createdByUserId);
     }
 
     const rowErrors: RowError[] = [];
@@ -231,6 +237,76 @@ export class ProductImportService {
       });
     } catch (err) {
       this.logger.error(`Ad-spend import job ${job.id} failed: ${(err as Error).message}`);
+      await this.prismaAdmin.importJob.update({
+        where: { id: job.id },
+        data: {
+          status: "failed",
+          unmappedFields,
+          errorLog: [...rowErrors, { row: 0, message: (err as Error).message }] as unknown as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * SRS §5.59/FR-59.3(a) - resolves each row's human-readable `OrderNumber`
+   * to an actual order in this store, then routes it through
+   * `OrdersService.uploadTrackingForOrder()` - the SAME order-level tracking
+   * write the inline quick-entry endpoint (FR-59.3(b)) calls, so a CSV row
+   * and a quick-entry row apply tracking identically. A row whose
+   * OrderNumber doesn't match any order, or whose order has no not-yet-
+   * shipped items left, is reported and skipped, never fails the whole
+   * import.
+   */
+  private async processTrackingImport(job: { id: string; storeId: string; fileUrl: string }, createdByUserId?: string): Promise<void> {
+    const rowErrors: RowError[] = [];
+    let unmappedFields: string[] = [];
+
+    try {
+      const store = await this.prismaAdmin.store.findUniqueOrThrow({
+        where: { id: job.storeId },
+        select: { sellerId: true },
+      });
+      if (!createdByUserId) throw new Error("Tracking import job is missing the uploading user's id.");
+
+      const csvText = await (await fetch(job.fileUrl)).text();
+      const rows = parseCsv(csvText);
+      const header = csvHeader(csvText);
+      const parsed = parseTrackingImportCsv(rows, header);
+      unmappedFields = parsed.unmappedFields;
+      rowErrors.push(...parsed.rowErrors);
+
+      for (const entry of parsed.rows) {
+        try {
+          const order = await this.prismaAdmin.order.findFirst({
+            where: { storeId: job.storeId, orderNumber: entry.orderNumber },
+            select: { id: true },
+          });
+          if (!order) {
+            rowErrors.push({ row: entry.row, message: `No order with OrderNumber "${entry.orderNumber}" in this store - skipped.` });
+            continue;
+          }
+          await this.orders.uploadTrackingForOrder(store.sellerId, job.storeId, order.id, createdByUserId, {
+            trackingId: entry.trackingId,
+            carrier: entry.carrier,
+          });
+        } catch (err) {
+          rowErrors.push({ row: entry.row, message: `OrderNumber "${entry.orderNumber}": ${(err as Error).message}` });
+        }
+      }
+
+      await this.prismaAdmin.importJob.update({
+        where: { id: job.id },
+        data: {
+          status: "completed",
+          unmappedFields,
+          errorLog: rowErrors as unknown as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Tracking import job ${job.id} failed: ${(err as Error).message}`);
       await this.prismaAdmin.importJob.update({
         where: { id: job.id },
         data: {

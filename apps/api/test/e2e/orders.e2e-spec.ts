@@ -205,8 +205,8 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
       const list = await request(app.getHttpServer())
         .get(`/stores/${storeId}/orders`)
         .set("Authorization", `Bearer ${token}`);
-      expect(list.body.map((o: any) => o.id)).toContain(orderId);
-      expect(list.body.find((o: any) => o.id === orderId).status).toBe("pending");
+      expect(list.body.items.map((o: any) => o.id)).toContain(orderId);
+      expect(list.body.items.find((o: any) => o.id === orderId).status).toBe("pending");
 
       const eventsBeforePaid = await superuser.platformEvent.findMany({ where: { eventType: "order.placed", entityId: orderId } });
       expect(eventsBeforePaid).toHaveLength(0);
@@ -575,13 +575,13 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
       .get(`/stores/${storeId}/orders`)
       .query({ tag: "urgent" })
       .set("Authorization", `Bearer ${token}`);
-    expect(filtered.body.map((o: any) => o.id)).toEqual([checkout.body.id]);
+    expect(filtered.body.items.map((o: any) => o.id)).toEqual([checkout.body.id]);
 
     const notMatching = await request(app.getHttpServer())
       .get(`/stores/${storeId}/orders`)
       .query({ tag: "nope" })
       .set("Authorization", `Bearer ${token}`);
-    expect(notMatching.body).toEqual([]);
+    expect(notMatching.body.items).toEqual([]);
   });
 
   it("FR-17.5: editing an order's item quantity adjusts stock in both directions and recomputes the total; a shipped order cannot be edited", async () => {
@@ -724,6 +724,7 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     await superuser.order.create({
       data: {
         storeId: storeA.id,
+        orderNumber: 1,
         buyerEmail: "x@example.com",
         statusLookupToken: "db-level-test-token",
         shippingAddress: {},

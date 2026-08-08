@@ -273,9 +273,23 @@ export class CheckoutService {
           params.shippingAddress.phone,
         );
 
+        // Module 52 (SRS §5.59/FR-59.1) - atomically claims this order's
+        // human-readable number. A plain UPDATE ... increment is Postgres's
+        // own row-lock serialization at work: two concurrent checkouts
+        // against the same store can never be assigned the same number,
+        // with no extra application-level locking needed (same reasoning
+        // as Module 46's atomic conditional-decrement stock protection,
+        // applied here to an increment instead).
+        const storeSequence = await tx.store.update({
+          where: { id: params.storeId },
+          data: { nextOrderNumber: { increment: 1 } },
+        });
+        const orderNumber = storeSequence.nextOrderNumber - 1;
+
         const created = await tx.order.create({
           data: {
             storeId: params.storeId,
+            orderNumber,
             customerId: customer.id,
             buyerEmail: params.buyerEmail,
             buyerWhatsapp: params.buyerWhatsapp,

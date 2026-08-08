@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { OrderStatus } from "@prisma/client";
 import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -10,12 +9,15 @@ import { StaffScopeGuard } from "../common/guards/staff-scope.guard";
 import { JwtAccessPayload } from "../common/types";
 import { CheckoutService } from "./checkout.service";
 import { AddOrderNoteDto } from "./dto/add-order-note.dto";
+import { ChangeOrderStatusDto } from "./dto/change-order-status.dto";
 import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
 import { EditOrderDto } from "./dto/edit-order.dto";
+import { OrderListQueryDto } from "./dto/order-list-query.dto";
 import { UpdateOrderCostsDto } from "./dto/update-order-costs.dto";
 import { UpdateOrderTagsDto } from "./dto/update-order-tags.dto";
+import { UploadOrderTrackingDto } from "./dto/upload-order-tracking.dto";
 import { UploadTrackingDto } from "./dto/upload-tracking.dto";
-import { OrderBucket, OrdersOverviewService } from "./orders-overview.service";
+import { OrdersOverviewService } from "./orders-overview.service";
 import { OrdersService } from "./orders.service";
 
 /** A staff session needs the `orders` scope to reach any route here (SRS §5.52/FR-52.2). */
@@ -36,14 +38,8 @@ export class OrdersController {
   }
 
   @Get()
-  list(
-    @CurrentSellerId() sellerId: string,
-    @Param("storeId") storeId: string,
-    @Query("status") status?: OrderStatus,
-    @Query("bucket") bucket?: OrderBucket,
-    @Query("tag") tag?: string,
-  ) {
-    return this.orders.list(sellerId, storeId, { status, bucket, tag });
+  list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Query() query: OrderListQueryDto) {
+    return this.orders.list(sellerId, storeId, query);
   }
 
   @Get(":orderId")
@@ -94,6 +90,22 @@ export class OrdersController {
     return this.orders.updateTags(sellerId, storeId, orderId, dto.tags);
   }
 
+  /**
+   * SRS §5.59/FR-59.2/FR-59.5 - the bulk-status-change action's single-order
+   * building block (the frontend fans a bulk change out into one call per
+   * selected order). Only accepts `cancelled`/`disputed`/`completed` -
+   * see ChangeOrderStatusDto's own doc comment.
+   */
+  @Patch(":orderId/status")
+  changeStatus(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Param("orderId") orderId: string,
+    @Body() dto: ChangeOrderStatusDto,
+  ) {
+    return this.orders.changeStatus(sellerId, storeId, orderId, dto);
+  }
+
   @Patch(":orderId/costs")
   updateCosts(
     @CurrentSellerId() sellerId: string,
@@ -112,6 +124,24 @@ export class OrdersController {
     @Body() dto: EditOrderDto,
   ) {
     return this.orders.editOrder(sellerId, storeId, orderId, dto);
+  }
+
+  /**
+   * SRS §5.59/FR-59.3 (a)+(b) - the order-level tracking-entry path shared
+   * by the orders-list inline quick-entry UI and the CSV tracking-import
+   * worker: applies one courier/tracking pair to every not-yet-shipped item
+   * on the order. Path (c), the existing per-item endpoint below, is
+   * unchanged for a seller who needs different couriers per item.
+   */
+  @Post(":orderId/tracking")
+  uploadTrackingForOrder(
+    @CurrentSellerId() sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("storeId") storeId: string,
+    @Param("orderId") orderId: string,
+    @Body() dto: UploadOrderTrackingDto,
+  ) {
+    return this.orders.uploadTrackingForOrder(sellerId, storeId, orderId, user.sub, dto);
   }
 
   @Post(":orderId/items/:itemId/tracking")

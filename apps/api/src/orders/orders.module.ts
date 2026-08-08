@@ -50,6 +50,6 @@ import { OrdersService } from "./orders.service";
     EmailService,
     RateLimitService,
   ],
-  exports: [CartService, CheckoutService],
+  exports: [CartService, CheckoutService, OrdersService],
 })
 export class OrdersModule {}

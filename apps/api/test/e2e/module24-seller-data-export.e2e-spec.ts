@@ -117,9 +117,11 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
   async function seedOneOfEach(storeId: string) {
     const category = await superuser.category.create({ data: { name: "Export Test", slug: `export-${Date.now()}-${Math.random()}` } });
     await superuser.product.create({ data: { storeId, categoryId: category.id, title: "Export Product", status: "active" } });
+    const existingOrderCount = await superuser.order.count({ where: { storeId } });
     await superuser.order.create({
       data: {
         storeId,
+        orderNumber: existingOrderCount + 1,
         buyerEmail: "buyer@example.com",
         statusLookupToken: `tok-${storeId}-${Date.now()}`,
         shippingAddress: {},

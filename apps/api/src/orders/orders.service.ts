@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, Prisma } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
 import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
 import { CustomersService } from "../customers/customers.service";
@@ -10,13 +10,26 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { PrintifyAdapter } from "../suppliers/printify/printify.adapter";
+import { ChangeOrderStatusDto } from "./dto/change-order-status.dto";
 import { EditOrderDto } from "./dto/edit-order.dto";
+import { OrderListQueryDto } from "./dto/order-list-query.dto";
 import { round2 } from "./money.util";
+import { isOrderStatusTransitionAllowed } from "./order-status-transitions.util";
 import { computeOrderTimeline } from "./order-timeline.util";
 import { computeOrderTotals } from "./order-totals.util";
 import { OrderBucket, orderBucketWhereClause } from "./orders-overview.service";
 
 const EDITABLE_STATUSES: OrderStatus[] = ["pending", "confirmed"];
+const DEFAULT_ORDER_PAGE_LIMIT = 20;
+const MAX_ORDER_PAGE_LIMIT = 100;
+
+export interface OrderListPage {
+  items: unknown[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
 /**
  * The seller dashboard's half of Orders/Cart/Checkout (FR-5.1, FR-17.x).
@@ -44,25 +57,76 @@ export class OrdersService {
   ) {}
 
   /**
-   * `bucket` (SRS §5.38/FR-38.2) reuses the exact same predicate the
-   * Command Center's own counts are built from (`orderBucketWhereClause`)
-   * - clicking a bucket count is provably the same filter, never a
-   * separately-maintained one that could drift.
+   * SRS §5.59/FR-59.4 - date+time range, status, payment state, verification
+   * state, courier, customer, and amount-range filters, all combinable, plus
+   * pagination (same {items,page,limit,total,totalPages} envelope as
+   * ProductsService.list()/FR-57.2). `bucket`/`tag` are the pre-existing
+   * Command Center filters (FR-38.2/FR-17.3), kept unchanged and combinable
+   * with the new ones.
    */
-  async list(sellerId: string, storeId: string, filters: { status?: OrderStatus; bucket?: OrderBucket; tag?: string }) {
+  async list(sellerId: string, storeId: string, query: OrderListQueryDto = {}): Promise<OrderListPage> {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.order.findMany({
-        where: {
-          storeId,
-          ...(filters.status ? { status: filters.status } : {}),
-          ...(filters.bucket ? orderBucketWhereClause(filters.bucket) : {}),
-          ...(filters.tag ? { tags: { has: filters.tag } } : {}),
-        },
-        include: { items: true },
-        orderBy: { placedAt: "desc" },
-      });
+
+      const page = query.page ?? 1;
+      const limit = Math.min(query.limit ?? DEFAULT_ORDER_PAGE_LIMIT, MAX_ORDER_PAGE_LIMIT);
+
+      const conditions: Prisma.OrderWhereInput[] = [{ storeId }];
+
+      if (query.status) conditions.push({ status: query.status });
+      if (query.bucket) conditions.push(orderBucketWhereClause(query.bucket));
+      if (query.tag) conditions.push({ tags: { has: query.tag } });
+      if (query.dateFrom || query.dateTo) {
+        conditions.push({
+          placedAt: {
+            ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+            ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
+          },
+        });
+      }
+      if (query.paymentStatus) {
+        conditions.push({ payments: { some: { status: query.paymentStatus } } });
+      }
+      if (query.verificationStatus) {
+        conditions.push({ verification: { status: query.verificationStatus } });
+      }
+      if (query.courier) {
+        conditions.push({
+          items: { some: { trackingUpdates: { some: { carrier: { contains: query.courier, mode: "insensitive" } } } } },
+        });
+      }
+      if (query.customer) {
+        conditions.push({
+          OR: [
+            { buyerEmail: { contains: query.customer, mode: "insensitive" } },
+            { customer: { name: { contains: query.customer, mode: "insensitive" } } },
+          ],
+        });
+      }
+      if (query.minAmount != null || query.maxAmount != null) {
+        conditions.push({
+          totalAmount: {
+            ...(query.minAmount != null ? { gte: query.minAmount } : {}),
+            ...(query.maxAmount != null ? { lte: query.maxAmount } : {}),
+          },
+        });
+      }
+
+      const where: Prisma.OrderWhereInput = { AND: conditions };
+
+      const [items, total] = await Promise.all([
+        tx.order.findMany({
+          where,
+          include: { items: true },
+          orderBy: { placedAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        tx.order.count({ where }),
+      ]);
+
+      return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
     });
   }
 
@@ -206,6 +270,35 @@ export class OrdersService {
     });
   }
 
+  /**
+   * SRS §5.59/FR-59.2/FR-59.5 - the first writer of `cancelled`/`disputed`/
+   * `completed`, validated against order-status-transitions.util.ts's new
+   * centralized map. This is also FR-59.2's bulk-status-change action's
+   * single-order building block - the frontend fans a bulk change out into
+   * one call per selected order (same client-side fan-out precedent as
+   * Module 51's bulk product actions), never a bare `updateMany`.
+   */
+  async changeStatus(sellerId: string, storeId: string, orderId: string, dto: ChangeOrderStatusDto) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order || order.storeId !== storeId) throw new NotFoundException("Order not found.");
+      if (!isOrderStatusTransitionAllowed(order.status, dto.status)) {
+        throw new BadRequestException(`An order with status "${order.status}" cannot be changed to "${dto.status}".`);
+      }
+      const updated = await tx.order.update({ where: { id: orderId }, data: { status: dto.status } });
+      await tx.orderTimelineEvent.create({
+        data: {
+          storeId,
+          orderId,
+          eventType: "status_changed",
+          beforeValue: { status: order.status },
+          afterValue: { status: dto.status },
+        },
+      });
+      return updated;
+    });
+  }
+
   /** Module 31 (SRS §5.42/FR-42.1) - optional per-order courier/handling cost inputs for the P&L engine; either field left undefined is untouched, not reset to null. */
   async updateCosts(sellerId: string, storeId: string, orderId: string, dto: { courierCost?: number; handlingCost?: number }) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
@@ -329,32 +422,88 @@ export class OrdersService {
       if (!item || item.storeId !== storeId || item.orderId !== orderId) {
         throw new NotFoundException("Order item not found.");
       }
-      await tx.trackingUpdate.create({
-        data: { storeId, orderItemId, trackingId: input.trackingId, carrier: input.carrier, uploadedBy },
-      });
-      await tx.orderItem.update({ where: { id: orderItemId }, data: { fulfillmentStatus: "shipped" } });
-      await tx.orderTimelineEvent.create({
-        data: { storeId, orderId, eventType: "tracking_uploaded", afterValue: { orderItemId, trackingId: input.trackingId } },
-      });
-
-      const siblings = await tx.orderItem.findMany({ where: { orderId } });
-      const allShippedOrBeyond = siblings.every((i) => ["shipped", "delivered", "completed"].includes(i.fulfillmentStatus));
-      let order = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
-      if (allShippedOrBeyond && order.status === "confirmed") {
-        order = await tx.order.update({ where: { id: orderId }, data: { status: "shipped" } });
-        await tx.orderTimelineEvent.create({
-          data: { storeId, orderId, eventType: "status_changed", beforeValue: { status: "confirmed" }, afterValue: { status: "shipped" } },
-        });
-      }
-      const store = await tx.store.findUniqueOrThrow({ where: { id: storeId } });
-      const domains = await tx.domain.findMany({ where: { storeId } });
-      return { order, storeName: store.name, domains, storeSlug: store.slug };
+      await this.writeTrackingForItem(tx, storeId, orderId, orderItemId, uploadedBy, input);
+      return this.bumpOrderToShippedIfReady(tx, storeId, orderId);
     });
 
     if (order.status === "shipped") {
       await this.notifyBuyer({ storeName, domains, storeSlug }, order, "shipped");
     }
     return order;
+  }
+
+  /**
+   * SRS §5.59/FR-59.3 (a)+(b) - the order-level tracking-entry path shared
+   * by the orders-list inline quick-entry endpoint and the CSV tracking-
+   * import worker: applies the SAME courier/tracking pair to every
+   * not-yet-shipped item on the order (writes one `TrackingUpdate` row per
+   * item, exactly as if the seller had entered each one individually via
+   * `uploadTracking()`), then runs the same confirmed->shipped bump check
+   * once. A seller who needs different couriers per item on one order still
+   * uses the unchanged per-item path (c), `uploadTracking()` above.
+   */
+  async uploadTrackingForOrder(
+    sellerId: string,
+    storeId: string,
+    orderId: string,
+    uploadedBy: string,
+    input: { trackingId: string; carrier?: string },
+  ) {
+    const { order, storeName, domains, storeSlug } = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const orderRow = await tx.order.findUnique({ where: { id: orderId } });
+      if (!orderRow || orderRow.storeId !== storeId) throw new NotFoundException("Order not found.");
+
+      const items = await tx.orderItem.findMany({
+        where: { orderId, fulfillmentStatus: { notIn: ["shipped", "delivered", "completed"] } },
+      });
+      if (items.length === 0) {
+        throw new BadRequestException("Every item on this order already has tracking.");
+      }
+      for (const item of items) {
+        await this.writeTrackingForItem(tx, storeId, orderId, item.id, uploadedBy, input);
+      }
+
+      return this.bumpOrderToShippedIfReady(tx, storeId, orderId);
+    });
+
+    if (order.status === "shipped") {
+      await this.notifyBuyer({ storeName, domains, storeSlug }, order, "shipped");
+    }
+    return order;
+  }
+
+  /** Writes one `TrackingUpdate` row and flips the item to `shipped` - the shared core both uploadTracking() and uploadTrackingForOrder() build on. */
+  private async writeTrackingForItem(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    orderId: string,
+    orderItemId: string,
+    uploadedBy: string,
+    input: { trackingId: string; carrier?: string },
+  ) {
+    await tx.trackingUpdate.create({
+      data: { storeId, orderItemId, trackingId: input.trackingId, carrier: input.carrier, uploadedBy },
+    });
+    await tx.orderItem.update({ where: { id: orderItemId }, data: { fulfillmentStatus: "shipped" } });
+    await tx.orderTimelineEvent.create({
+      data: { storeId, orderId, eventType: "tracking_uploaded", afterValue: { orderItemId, trackingId: input.trackingId } },
+    });
+  }
+
+  /** Bumps `confirmed` -> `shipped` once every item has reached shipped-or-beyond; returns the (possibly unchanged) order plus the buyer-notification context. */
+  private async bumpOrderToShippedIfReady(tx: Prisma.TransactionClient, storeId: string, orderId: string) {
+    const siblings = await tx.orderItem.findMany({ where: { orderId } });
+    const allShippedOrBeyond = siblings.every((i) => ["shipped", "delivered", "completed"].includes(i.fulfillmentStatus));
+    let order = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
+    if (allShippedOrBeyond && order.status === "confirmed") {
+      order = await tx.order.update({ where: { id: orderId }, data: { status: "shipped" } });
+      await tx.orderTimelineEvent.create({
+        data: { storeId, orderId, eventType: "status_changed", beforeValue: { status: "confirmed" }, afterValue: { status: "shipped" } },
+      });
+    }
+    const store = await tx.store.findUniqueOrThrow({ where: { id: storeId } });
+    const domains = await tx.domain.findMany({ where: { storeId } });
+    return { order, storeName: store.name, domains, storeSlug: store.slug };
   }
 
   /** Marks a single item delivered; bumps the order to `delivered` once every item has reached that stage. */

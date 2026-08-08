@@ -463,6 +463,15 @@ model Store {
   // "never cleared once set" discipline as onboardingCompletedAt.
   publishedAt           DateTime?       @map("published_at") @db.Timestamptz
 
+  // Module 52 (SRS §5.59/FR-59.1) - the next human-readable Order.orderNumber
+  // this store will assign, atomically incremented (via a plain UPDATE ...
+  // increment, which Postgres serializes per-row) inside the same
+  // transaction that creates the order in CheckoutService.placeOrder() - the
+  // sole place any order is ever created. Starts at 1 for a brand-new store;
+  // backfilled for existing stores to (max existing orderNumber + 1) by this
+  // module's migration.
+  nextOrderNumber       Int             @default(1) @map("next_order_number")
+
   // Module 23 (SRS §5.34, FR-34.1's disclosed schema gap) - freeform,
   // seller-editable, shown on the storefront; exists purely so the Store
   // Health Score's "profile completeness" input has a real policy-text
@@ -1622,6 +1631,13 @@ model Cart {
 model Order {
   id                String      @id @default(uuid()) @db.Uuid
   storeId           String      @map("store_id") @db.Uuid
+  // Module 52 (SRS §5.59/FR-59.1) - a per-store sequential, human-readable
+  // identifier (displayed as "#1042"), assigned atomically from
+  // Store.nextOrderNumber at creation time in CheckoutService.placeOrder().
+  // Orders were UUID-addressed only before this - FR-59.3's CSV tracking
+  // upload needs something a seller can actually read and type into a
+  // spreadsheet cell, not a raw UUID.
+  orderNumber       Int         @map("order_number")
   customerId        String?     @map("customer_id") @db.Uuid
   buyerId           String?     @map("buyer_id") @db.Uuid
   buyerEmail        String      @map("buyer_email")
@@ -1677,6 +1693,7 @@ model Order {
   // the audit trail, not a single mutable pointer.
   giftCardRedemptions GiftCardRedemption[]
 
+  @@unique([storeId, orderNumber], name: "uniq_orders_store_order_number")
   @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
   @@index([discountCodeId], name: "idx_orders_discount_code")
   @@index([customerId], name: "idx_orders_customer")
@@ -1835,6 +1852,13 @@ enum ImportJobType {
   // report machinery in a third narrow mode (PeriodStart/PeriodEnd/Amount
   // columns only, creating AdSpendEntry rows).
   ad_spend_import
+  // Module 52 (SRS §5.59/FR-59.3(a)) - the CSV tracking-entry path, same
+  // job/error-report machinery in a fourth narrow mode (OrderNumber/
+  // Courier/TrackingId columns only), applying each row's courier/tracking
+  // to every not-yet-shipped item on the matched order via the same
+  // OrdersService.uploadTrackingForOrder() the inline quick-entry path
+  // (FR-59.3(b)) also calls.
+  tracking_import
 }
 
 enum ImportJobStatus {

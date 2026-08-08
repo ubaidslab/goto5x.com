@@ -7196,26 +7196,56 @@ going forward, per FR-6.28.
       that could actually interact with the limit; noted here as scope
       that was never built, not a gap silently left open.
 
-### 14.58 Bulk Order Operations, Tracking Entry & Advanced Search (new,
-v0.34, not yet built)
-- [ ] Every order has a unique, human-readable `orderNumber`; existing
-      orders were correctly backfilled in `placedAt` order per store
-      (FR-59.1).
-- [ ] Bulk mark-as-paid/status-change/fulfill on a multi-order selection
-      produces the exact same commission-accrual, customer-stats, and
-      event-emission side effects as performing each action individually —
-      proven by comparing ledger/customer state after a bulk action against
-      the same set of actions performed one at a time (FR-59.2).
-- [ ] All three tracking-entry paths (CSV upload, inline quick-entry,
-      per-order detail) write through the same `uploadTracking()` path and
-      produce identical `TrackingUpdate`/timeline state regardless of
-      which path was used (FR-59.3).
-- [ ] Advanced search correctly combines date+time range, status, payment
-      state, verification state, courier, customer, and amount-range
-      filters, each with an accurate result count (FR-59.4).
-- [ ] The new order-status transition map rejects an invalid bulk status
-      change (e.g. `pending → delivered` with nothing in between) the same
-      way it would reject that transition on a single order (FR-59.5).
+### 14.58 Bulk Order Operations, Tracking Entry & Advanced Search (built,
+Module 52, v0.34)
+- [x] Every order has a unique, human-readable `orderNumber`, assigned
+      atomically from a new per-store `Store.nextOrderNumber` counter at
+      creation time (a plain `UPDATE ... increment`, serialized by
+      Postgres's own row lock — no application-level locking needed, same
+      reasoning as Module 46's atomic stock decrement); existing orders
+      were backfilled in `placedAt` order per store by the migration, with
+      the per-store counter seeded to one past each store's highest
+      backfilled number — proven by a dedicated e2e test asserting two
+      independent stores each start their own sequence at 1 (FR-59.1).
+- [x] Bulk mark-as-paid and bulk fulfill route through the pre-existing
+      `POST .../mark-as-paid` and `POST .../items/:itemId/deliver`
+      endpoints unchanged — no new bulk-specific backend route for either,
+      so the exact same commission-accrual/customer-stats/event-emission
+      code path already covered by orders.e2e-spec.ts/module27's tests
+      runs per order, true by construction rather than by a new
+      comparison test. Bulk status-change is a genuinely new capability
+      (cancelled/disputed/completed have no prior writer) — its new
+      single-order building block, `OrdersService.changeStatus()`, is
+      what FR-59.5's transition map gates. All three bulk actions are a
+      client-side fan-out over the selected orders (same precedent as
+      Module 51's bulk product actions), never a bare `updateMany`
+      (FR-59.2).
+- [x] All three tracking-entry paths share one write core
+      (`writeTrackingForItem()`): the existing per-item detail endpoint
+      (c, unchanged), a new order-level endpoint that applies one
+      courier/tracking pair to every not-yet-shipped item on the order
+      used by both inline quick-entry (b) and the CSV import worker (a,
+      resolving each row's human-readable `OrderNumber` to the matching
+      order) — proven by a dedicated e2e test exercising the CSV path
+      end-to-end (valid row applies tracking + bumps the order to
+      `shipped`; an unmatched `OrderNumber` is reported as a row error,
+      not a failed import) plus a quick-entry test asserting the identical
+      write shape (FR-59.3).
+- [x] Advanced search combines date+time range, status, payment state,
+      verification state, courier, customer, and amount-range filters, all
+      AND-combinable, plus pagination in the same `{items,page,limit,
+      total,totalPages}` envelope as FR-57.2 — proven by e2e tests
+      combining minAmount+customer and asserting the exact matching
+      order, plus a no-cross-page-overlap pagination test (FR-59.4).
+- [x] The new order-status transition map (`order-status-transitions.
+      util.ts`) is the first centralized structure for `Order.status`;
+      `changeStatus()` rejects any transition not in it (e.g.
+      `pending → disputed`) with 400 and leaves the order unchanged —
+      proven by a dedicated e2e test. Deliberately excludes `confirmed`/
+      `shipped`/`delivered` as *targets* (those stay reachable only via
+      `markAsPaid()`/the tracking paths/`markItemDelivered()`, which keep
+      `OrderItem.fulfillmentStatus` in sync — a plain status flip would
+      desynchronize it) (FR-59.5).
 
 ### 14.59 Returns & Refunds Workflow (new, v0.34, not yet built —
 launch-critical)

@@ -98,6 +98,7 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
       const order = await superuser.order.create({
         data: {
           storeId,
+          orderNumber: 1,
           buyerEmail: "buyer@example.com",
           statusLookupToken: `tok-${storeId}-1`,
           shippingAddress: {},
@@ -162,6 +163,7 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
       await superuser.order.create({
         data: {
           storeId,
+          orderNumber: 1,
           buyerEmail: "buyer@example.com",
           statusLookupToken: `tok-${storeId}-stale`,
           shippingAddress: {},

@@ -92,6 +92,31 @@ export class ImportJobsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * SRS §5.59/FR-59.3(a) - reuses this exact job/queue/error-report
+   * machinery in an "OrderNumber/Courier/TrackingId" mode, applying each
+   * row's tracking to every not-yet-shipped item on the matched order.
+   * `userId` travels through the job payload for the same reason it does on
+   * the stock-import job - `OrdersService.uploadTrackingForOrder()` records
+   * who uploaded each `TrackingUpdate` row.
+   */
+  async createTrackingImportJob(sellerId: string, storeId: string, userId: string, file: { buffer: Buffer; originalname: string }) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+
+      const key = `stores/${storeId}/imports/tracking-${Date.now()}-${file.originalname}`;
+      const fileUrl = await this.objectStorage.putObject(key, file.buffer, "text/csv");
+
+      const job = await tx.importJob.create({
+        data: { storeId, type: "tracking_import", status: "pending", fileUrl },
+      });
+
+      await this.queue!.add("process", { importJobId: job.id, createdByUserId: userId });
+      return job;
+    });
+  }
+
   async list(sellerId: string, storeId: string, type?: ImportJobType) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });

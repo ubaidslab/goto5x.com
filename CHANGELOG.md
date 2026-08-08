@@ -8,6 +8,59 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 52: Bulk Order Operations, Tracking Entry & Advanced Search
+
+### Added
+- `Order.orderNumber` - a per-store sequential, human-readable identifier
+  (`#1042`), assigned atomically at order-creation time from a new
+  `Store.nextOrderNumber` counter (a plain `UPDATE ... increment`,
+  serialized by Postgres's own row lock, same reasoning as Module 46's
+  atomic stock decrement). Existing orders backfilled in `placedAt` order
+  per store by the migration.
+- The first centralized `Order.status` transition map
+  (`order-status-transitions.util.ts`) and `OrdersService.changeStatus()`
+  - the first writer of `cancelled`/`disputed`/`completed`. Deliberately
+    excludes `confirmed`/`shipped`/`delivered` as targets: those stay
+    reachable only via `markAsPaid()`/the tracking paths/
+    `markItemDelivered()`, which also keep `OrderItem.fulfillmentStatus`
+    in sync - a plain status flip would desynchronize it.
+- Bulk order actions on the dashboard orders list - mark-as-paid, fulfill,
+  cancel, mark disputed, mark completed - via multi-select + a bulk-action
+  bar with an affected-count confirmation step, same client-side fan-out
+  precedent as Module 51's bulk product actions. Mark-as-paid and fulfill
+  reuse the pre-existing single-order endpoints unchanged; cancel/dispute/
+  complete call the new `changeStatus()` endpoint.
+- Three tracking-entry paths sharing one write core
+  (`writeTrackingForItem()`): the existing per-order-item detail entry
+  (unchanged), a new order-level endpoint
+  (`OrdersService.uploadTrackingForOrder()`) that applies one courier/
+  tracking pair to every not-yet-shipped item on an order, used by both a
+  new inline quick-entry row on the orders list and a new CSV tracking-
+  import path (`OrderNumber,Courier,TrackingId` columns, reusing the
+  existing `ImportJob`/BullMQ machinery in a fourth narrow mode).
+- Advanced order search/filters on the orders list endpoint: date+time
+  range, status, payment state, verification state, courier, customer,
+  and amount range, all combinable, plus pagination in the same
+  `{items,page,limit,total,totalPages}` envelope as Module 50's products
+  list. The pre-existing bucket/tag filters are unchanged and combinable
+  with the new ones.
+
+### Changed
+- `GET /stores/:storeId/orders` now returns the paginated envelope instead
+  of a plain array - every direct consumer (the orders list page, the
+  dashboard-home recent-orders widget, and 5 e2e test assertions) updated
+  to read `.items`.
+
+### Tests
+- 9 new e2e tests in `module52-bulk-order-ops.e2e-spec.ts`: per-store
+  sequential order numbering across two stores; the transition map's
+  allow/reject behavior including a rejected DTO value; quick-entry
+  tracking (apply-to-all-not-yet-shipped-items + reject-when-nothing-left);
+  CSV tracking import (valid row + unmatched-OrderNumber row error) via
+  the same write path as quick-entry; combinable advanced filters; and
+  pagination with no cross-page overlap. Plus a new unit spec for the
+  transition-map util and the CSV parser.
+
 ## Module 51: Bulk Product Operations
 
 ### Added

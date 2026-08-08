@@ -139,8 +139,8 @@ describe("Orders Command Center + Tracking Timeline (e2e) - SRS §5.38, §14.38"
     });
     expect(overview.body.total).toBe(7);
 
-    const allOrders = await request(app.getHttpServer()).get(`/stores/${storeId}/orders`).set("Authorization", `Bearer ${token}`);
-    expect(allOrders.body).toHaveLength(7);
+    const allOrders = await request(app.getHttpServer()).get(`/stores/${storeId}/orders?limit=100`).set("Authorization", `Bearer ${token}`);
+    expect(allOrders.body.items).toHaveLength(7);
   });
 
   it("each bucket's list-filter click-through returns exactly the orders counted in that bucket, never more/fewer (FR-38.2)", async () => {
@@ -155,12 +155,12 @@ describe("Orders Command Center + Tracking Timeline (e2e) - SRS §5.38, §14.38"
     const pendingList = await request(app.getHttpServer())
       .get(`/stores/${storeId}/orders?bucket=pending`)
       .set("Authorization", `Bearer ${token}`);
-    expect(pendingList.body.map((o: any) => o.id)).toEqual([plainPending.orderId]);
+    expect(pendingList.body.items.map((o: any) => o.id)).toEqual([plainPending.orderId]);
 
     const awaitingVerificationList = await request(app.getHttpServer())
       .get(`/stores/${storeId}/orders?bucket=awaitingVerification`)
       .set("Authorization", `Bearer ${token}`);
-    expect(awaitingVerificationList.body.map((o: any) => o.id)).toEqual([awaitingVerification.orderId]);
+    expect(awaitingVerificationList.body.items.map((o: any) => o.id)).toEqual([awaitingVerification.orderId]);
   });
 
   it(

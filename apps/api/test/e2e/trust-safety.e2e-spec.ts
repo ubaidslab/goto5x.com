@@ -380,6 +380,7 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
         const order = await superuser.order.create({
           data: {
             storeId: overStoreId,
+            orderNumber: i + 1,
             buyerEmail: "buyer@example.com",
             statusLookupToken: `token-cancel-${i}`,
             shippingAddress: {},
@@ -403,6 +404,7 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
         await superuser.order.create({
           data: {
             storeId: underStoreId,
+            orderNumber: i + 1,
             buyerEmail: "buyer@example.com",
             statusLookupToken: `token-clean-${i}`,
             shippingAddress: {},
@@ -433,6 +435,7 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
         await superuser.order.create({
           data: {
             storeId: overStoreId,
+            orderNumber: i + 1,
             buyerEmail: "buyer@example.com",
             statusLookupToken: `token-pending-${i}`,
             shippingAddress: {},

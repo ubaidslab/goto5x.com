@@ -183,7 +183,10 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
       .get<{ items: Product[] }>(`/stores/${params.storeId}/products?limit=100`)
       .then((page) => setProducts(page.items))
       .catch(() => setProducts([]));
-    api.get<Order[]>(`/stores/${params.storeId}/orders`).then(setOrders).catch(() => setOrders([]));
+    api
+      .get<{ items: Order[] }>(`/stores/${params.storeId}/orders?limit=100`)
+      .then((page) => setOrders(page.items))
+      .catch(() => setOrders([]));
     refreshOnboarding();
     refreshStore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
