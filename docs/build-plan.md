@@ -3792,10 +3792,20 @@ reordered here purely on dependency grounds, confirmed safe by research
   `PnLService.getOrderProfit()` and platform GMV/commission-earned both
   drop by the reversed amount immediately after completion), plus 3 new/
   extended unit specs (`wallet.service.spec.ts`, the transition-map spec's
-  refund cases, the timeline-util spec's refund-stage cases). Full local
-  unit suite and full local e2e suite both run; see the founder report for
-  the exact confirmed counts and the real CI job log line — never asserted
-  here without independent verification.
+  refund cases, the timeline-util spec's refund-stage cases). CI's first
+  run surfaced a real (if indirect) regression: `EmailService` had long
+  been declared as a separate local provider in seven feature modules
+  (never exported/global), and adding `ReturnsModule` as an eighth such
+  module flipped which of the seven instances `app.get(EmailService)`
+  resolves to in tests — silently breaking an unrelated Module 24
+  spy-based e2e test. Root-caused via `git log` (the immediately-prior
+  commit's CI run was clean) plus a local instance-identity trace, then
+  fixed properly rather than patched around: extracted a `NotificationsModule`
+  (`@Global()`, one process-wide `EmailService` singleton) and removed all
+  seven local declarations. Full local unit suite and full local e2e suite
+  both run; see the founder report for the exact confirmed counts and the
+  real CI job log line — never asserted here without independent
+  verification.
 - **Module 54 — Analytics Depth (§5.61, item 5, reordered after item 4).**
   Depends on Module 53: return rate (overall and per-product) is one of
   the founder's explicitly requested metrics, and there is no return data

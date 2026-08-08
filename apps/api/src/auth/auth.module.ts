@@ -7,7 +7,6 @@ import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
-import { EmailService } from "../notifications/email.service";
 import { AdminAuthController } from "./admin-auth.controller";
 import { AdminAuthService } from "./admin-auth.service";
 import { AuthController } from "./auth.controller";
@@ -25,7 +24,6 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
     SessionService,
     SecurityEventService,
     RateLimitService,
-    EmailService,
     JwtStrategy,
   ],
   // SecurityEventService is also exported: Module 2's Google Drive connection

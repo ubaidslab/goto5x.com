@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
-import { EmailService } from "../notifications/email.service";
 import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
@@ -47,7 +46,6 @@ import {
   providers: [
     LedgerService,
     InvoicesService,
-    EmailService,
     ManualBankTransferTopUpAdapter,
     WalletService,
     SupplierWalletService,

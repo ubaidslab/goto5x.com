@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { ModerationModule } from "../moderation/moderation.module";
-import { EmailService } from "../notifications/email.service";
 import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { StorefrontModule } from "../storefront/storefront.module";
@@ -38,7 +37,6 @@ import { SupplierSyncService } from "./supplier-sync.service";
     SupplierSyncService,
     SupplierSyncScheduler,
     PrintifyAdapter,
-    EmailService,
     { provide: PRINTIFY_CLIENT, useClass: PrintifyHttpClient },
   ],
   exports: [SupplierListingsService, SupplierSyncService, PrintifyAdapter],

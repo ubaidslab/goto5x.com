@@ -1,7 +1,6 @@
 import { Module } from "@nestjs/common";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { MediaModule } from "../media/media.module";
-import { EmailService } from "../notifications/email.service";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { DataExportController } from "./data-export.controller";
 import { DataExportService } from "./data-export.service";
@@ -15,7 +14,7 @@ import { DataExportService } from "./data-export.service";
 @Module({
   imports: [SettingsModule, MediaModule, InvoicesModule],
   controllers: [DataExportController],
-  providers: [DataExportService, EmailService],
+  providers: [DataExportService],
   exports: [DataExportService],
 })
 export class DataExportModule {}

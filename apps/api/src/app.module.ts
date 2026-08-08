@@ -34,6 +34,7 @@ import { MaintenanceModeMiddleware } from "./messaging/maintenance-mode.middlewa
 import { MediaModule } from "./media/media.module";
 import { MessagingModule } from "./messaging/messaging.module";
 import { ModerationModule } from "./moderation/moderation.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 import { OrderVerificationModule } from "./order-verification/order-verification.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PlansModule } from "./plans/plans.module";
@@ -68,6 +69,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT_PER_MINUTE) || 100 }]),
     PrismaModule,
     RedisModule,
+    NotificationsModule,
     EventsModule,
     AdminModule,
     SettingsModule,

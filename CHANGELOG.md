@@ -82,6 +82,20 @@ module (code + tests). Maintained on every future change.
   refund-target cases, `order-timeline.util.spec.ts`'s refund-stage
   cases).
 
+### Fixed
+- `EmailService` was independently `providers`-declared (non-exported,
+  non-singleton) in seven separate feature modules, so Nest instantiated
+  seven distinct instances; `app.get(EmailService)` (how e2e tests spy on
+  outbound email) resolves ambiguously across identically-registered
+  providers, and adding `ReturnsModule` as an eighth such module flipped
+  which instance won that resolution - silently breaking a pre-existing
+  Module 24 (Seller Data Export) spy-based e2e test that has nothing to do
+  with returns (caught by CI, not by this module's own suite). Fixed by
+  extracting a `NotificationsModule` (`@Global()`, exports `EmailService`
+  as one process-wide singleton) and removing the seven local
+  declarations - the correct fix for the latent anti-pattern, not a
+  workaround scoped to Module 53.
+
 ## Module 52: Bulk Order Operations, Tracking Entry & Advanced Search
 
 ### Added

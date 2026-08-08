@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { EmailService } from "../notifications/email.service";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { AdminAnalyticsController, AdminUnitEconomicsController } from "./admin-unit-economics.controller";
 import { DormantStoreScheduler } from "./dormant-store.scheduler";
@@ -9,7 +8,7 @@ import { UnitEconomicsService } from "./unit-economics.service";
 @Module({
   imports: [SettingsModule],
   controllers: [AdminUnitEconomicsController, AdminAnalyticsController],
-  providers: [DormantStoreService, DormantStoreScheduler, UnitEconomicsService, EmailService],
+  providers: [DormantStoreService, DormantStoreScheduler, UnitEconomicsService],
   exports: [DormantStoreService, UnitEconomicsService],
 })
 export class GuardrailsModule {}
