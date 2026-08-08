@@ -8,6 +8,80 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 53: Returns & Refunds Workflow
+
+### Added
+- `ReturnRequest` (new `return_requests` table, RLS-protected) - promotes
+  and completes the table `docs/database-schema.md` had reserved since the
+  v1.1-ahead section (formerly FR-22.3), extended with the founder's
+  partial-refund fields: `refundAmount`, `refundedItems`, `sellerNote`,
+  `adminOverride`, and a polymorphic `resolvedByType`/`resolvedByUserId`
+  actor pair (same shape as `EventLog.actorType`/`actorId` - no FK, since
+  the resolver is either a seller's dashboard user or an admin).
+- `refunded`/`partially_refunded` added to `Order.status`, and extended
+  into the centralized transition map
+  (`order-status-transitions.util.ts`) as new targets reachable from every
+  `confirmed`-or-beyond status (including a second partial-refund round
+  from `partially_refunded` itself) - reached only through
+  `ReturnsService`, never the generic bulk `changeStatus()` endpoint,
+  since a refund's ledger/customer-stats side effects can't be a bare
+  status flip.
+- `ReturnsService` (new `apps/api/src/returns/` module):
+  - `submitRequest()` - public, order-status-token-gated (same pattern as
+    Module 15's review submission), rate-limited, gated to a real
+    (confirmed+) purchase, blocks a second concurrent open request.
+  - `sellerDecide()`/`adminDecide()` - approve/reject, reject requires a
+    reason; the admin path is audit-logged with before/after values.
+  - `completeReturn()`/`adminComplete()` - both call one shared
+    `applyRefund()` core (same "one write core, not two parallel
+    implementations" discipline as Module 52's tracking paths): computes
+    the refund's proportional share of the order's net accrued
+    commission, reverses it via a new `LedgerService.
+    reverseCommissionForRefund()` (posts through the reserved-since-v1.0
+    `refund_adjustment` `LedgerEntry` type, wired into `WalletService`'s
+    sign-convention for the first time), records a `refunded` `Payment`
+    row alongside the original `succeeded` one (never overwritten),
+    decrements `Customer.totalSpent` always and `ordersCount` only on a
+    full refund (a partial refund didn't undo the purchase, only part of
+    its value - new `CustomersService.reverseCompletedOrder()`), moves
+    `Order.status` to `refunded`/`partially_refunded`, and writes a
+    `status_changed` timeline event. Tracks the running total already
+    refunded per order so a refund can never exceed what's left, across
+    any number of partial rounds.
+- The Financial Truth Invariant's reversal, applied uniformly: a
+  refunded/partially_refunded order drops out of `PnLService`'s
+  `CONFIRMED_OR_BEYOND` gate (same simplification for both - "one signal");
+  `UnitEconomicsService`'s GMV query and both platform-wide commission
+  aggregates now include `refund_adjustment`; `InvoicesService`'s monthly
+  sweep now also collects unattached `refund_adjustment` entries, so a
+  refund correctly reduces what a seller owes on their next invoice.
+- Buyer-facing: a return-request form on the order-status page (mirrors
+  the existing review-submission Server Action pattern), replaced by the
+  request's own status once one exists; `computeOrderTimeline()` gains a
+  `refunded` stage appended on top of whatever happy-path stages the order
+  actually reached before being refunded.
+- Seller-facing: a new "Returns & Refunds" dashboard page - approve/reject
+  with a reason field, then a refund-amount input to complete an approved
+  return.
+- Admin-facing: a new bare-functional `/admin/returns` override screen
+  (approve/reject/complete any request, any store).
+
+### Tests
+- 10 new e2e tests in `module53-returns-refunds.e2e-spec.ts`: the
+  pending-order rejection + duplicate-open-request rejection; reject-
+  requires-a-reason; reject-before-approved for completion; the full-
+  refund Financial Truth proof (ledger reversal amount, wallet credit,
+  customer stats, Payment rows, terminal status) plus a dedicated test
+  asserting the order drops out of `PnLService` (400) and platform
+  GMV/commission both fall by the reversed amount; the partial-refund
+  proportional-commission-reversal + `ordersCount` untouched case;
+  refund-exceeds-remaining rejection across two partial rounds reaching
+  full `refunded`; and the admin-override path with its two audit-log
+  entries. Plus new unit specs (`wallet.service.spec.ts`'s
+  `signedContribution` cases, `order-status-transitions.util.spec.ts`'s
+  refund-target cases, `order-timeline.util.spec.ts`'s refund-stage
+  cases).
+
 ## Module 52: Bulk Order Operations, Tracking Entry & Advanced Search
 
 ### Added

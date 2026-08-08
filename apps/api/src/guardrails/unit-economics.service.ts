@@ -62,17 +62,22 @@ export class UnitEconomicsService {
   async computeRealTimeAnalytics() {
     const [gmv, activeStoreCount, commissionResult, topSellerRows] = await Promise.all([
       this.prismaAdmin.order.aggregate({
-        where: { status: { not: "pending" } },
+        // Module 53 (FR-60.4) - a fully refunded order stops counting as
+        // GMV the same instant it stops counting as revenue/commission
+        // (the ledger reversal below); partially_refunded is excluded too,
+        // same "one signal, applied uniformly" simplification PnLService's
+        // CONFIRMED_OR_BEYOND already applies to both statuses.
+        where: { status: { notIn: ["pending", "refunded", "partially_refunded"] } },
         _sum: { totalAmount: true },
       }),
       this.prismaAdmin.store.count({ where: { status: "active" } }),
       this.prismaAdmin.ledgerEntry.aggregate({
-        where: { type: { in: ["commission_accrued", "commission_waived"] } },
+        where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] } },
         _sum: { amount: true },
       }),
       this.prismaAdmin.ledgerEntry.groupBy({
         by: ["sellerId"],
-        where: { type: { in: ["commission_accrued", "commission_waived"] } },
+        where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] } },
         _sum: { amount: true },
         orderBy: { _sum: { amount: "desc" } },
         take: 5,
@@ -106,7 +111,7 @@ export class UnitEconomicsService {
     ).map((s) => s.sellerId);
 
     const result = await this.prismaAdmin.ledgerEntry.aggregate({
-      where: { sellerId: { in: sellerIds }, type: { in: ["commission_accrued", "commission_waived"] } },
+      where: { sellerId: { in: sellerIds }, type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] } },
       _sum: { amount: true },
     });
     return Number(result._sum.amount ?? 0);

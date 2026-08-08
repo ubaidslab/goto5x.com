@@ -28,6 +28,7 @@ const NAV_LINKS: { href: string; label: string }[] = [
   { href: "/admin/sellers", label: "Sellers" },
   { href: "/admin/invoices", label: "Wallet top-ups" },
   { href: "/admin/commission-invoices", label: "Commission invoices" },
+  { href: "/admin/returns", label: "Returns & Refunds" },
   { href: "/admin/verification", label: "Verified Store" },
   { href: "/admin/moderation", label: "Moderation queue" },
   { href: "/admin/trust-safety", label: "Trust & Safety" },

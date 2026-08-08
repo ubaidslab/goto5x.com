@@ -1,7 +1,7 @@
 import { OrderStatus } from "@prisma/client";
 
 export interface OrderTimelineStage {
-  stage: "placed" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  stage: "placed" | "confirmed" | "shipped" | "delivered" | "cancelled" | "refunded";
   label: string;
   completedAt: Date | null;
 }
@@ -42,9 +42,26 @@ export function computeOrderTimeline(
     ];
   }
 
-  return HAPPY_PATH.map(({ stage, label, matchesStatus }) => ({
+  const happyPath = HAPPY_PATH.map(({ stage, label, matchesStatus }) => ({
     stage,
     label,
     completedAt: stage === "placed" ? order.placedAt : (matchesStatus.map(timestampFor).find((d) => d !== null) ?? null),
   }));
+
+  // Module 53 (SRS §5.60/FR-60.6) - a refund happens on top of the happy
+  // path (the order was genuinely placed/confirmed/shipped/etc. before it
+  // was refunded), so this appends rather than replaces - the buyer still
+  // sees how far the order got before it was returned.
+  if (order.status === "refunded" || order.status === "partially_refunded") {
+    return [
+      ...happyPath,
+      {
+        stage: "refunded",
+        label: order.status === "refunded" ? "Refunded" : "Partially refunded",
+        completedAt: timestampFor(order.status),
+      },
+    ];
+  }
+
+  return happyPath;
 }

@@ -44,4 +44,34 @@ describe("computeOrderTimeline", () => {
     expect(timeline.map((s) => s.stage)).toEqual(["placed", "cancelled"]);
     expect(timeline[1].label).toBe("Disputed");
   });
+
+  // Module 53 (SRS §5.60/FR-60.6)
+  it("appends a 'Refunded' stage on top of the happy path the order actually reached, for a fully refunded order", () => {
+    const events = [
+      { afterValue: { status: "confirmed" }, createdAt: confirmedAt },
+      { afterValue: { status: "shipped" }, createdAt: shippedAt },
+      { afterValue: { status: "completed" }, createdAt: deliveredAt },
+      { afterValue: { status: "refunded" }, createdAt: new Date("2026-01-05T00:00:00Z") },
+    ];
+    const timeline = computeOrderTimeline({ status: "refunded", placedAt }, events);
+    expect(timeline.map((s) => s.stage)).toEqual(["placed", "confirmed", "shipped", "delivered", "refunded"]);
+    expect(timeline.find((s) => s.stage === "delivered")?.completedAt).toEqual(deliveredAt);
+    const refundStage = timeline.find((s) => s.stage === "refunded");
+    expect(refundStage?.label).toBe("Refunded");
+    expect(refundStage?.completedAt).toEqual(new Date("2026-01-05T00:00:00Z"));
+  });
+
+  it("appends a 'Partially refunded' stage for a partially_refunded order, keeping the happy-path stages already reached", () => {
+    const events = [
+      { afterValue: { status: "confirmed" }, createdAt: confirmedAt },
+      { afterValue: { status: "partially_refunded" }, createdAt: shippedAt },
+    ];
+    const timeline = computeOrderTimeline({ status: "partially_refunded", placedAt }, events);
+    expect(timeline.map((s) => s.stage)).toEqual(["placed", "confirmed", "shipped", "delivered", "refunded"]);
+    expect(timeline.find((s) => s.stage === "confirmed")?.completedAt).toEqual(confirmedAt);
+    expect(timeline.find((s) => s.stage === "shipped")?.completedAt).toBeNull();
+    const refundStage = timeline.find((s) => s.stage === "refunded");
+    expect(refundStage?.label).toBe("Partially refunded");
+    expect(refundStage?.completedAt).toEqual(shippedAt);
+  });
 });

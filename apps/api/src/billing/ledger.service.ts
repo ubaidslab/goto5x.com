@@ -99,4 +99,33 @@ export class LedgerService {
       currency,
     });
   }
+
+  /**
+   * Module 53 (SRS §5.60/FR-60.4) - the Financial Truth Invariant's refund
+   * reversal path. Posts through the reserved-since-v1.0 `refund_adjustment`
+   * entry type (never wired into WalletService's sign-convention sets until
+   * this module), mirroring waiveCommission()'s negative-entry-against-a-
+   * specific-orderId shape exactly - a refund reversal and a discretionary
+   * waiver both give the seller back commission already charged, just for a
+   * different reason, so both use the same additive-only ledger idiom. A
+   * zero/negative amount is a no-op, not an error - ReturnsService computes
+   * this proportionally and a return with no net commission left to reverse
+   * (e.g. already fully waived) is a normal, not exceptional, case.
+   */
+  async reverseCommissionForRefund(
+    tx: Prisma.TransactionClient,
+    sellerId: string,
+    orderId: string,
+    amount: number,
+    currency: string,
+  ): Promise<void> {
+    if (amount <= 0) return;
+    await this.wallet.postLedgerEntry(tx, {
+      sellerId,
+      orderId,
+      type: "refund_adjustment",
+      amount: -Math.abs(amount),
+      currency,
+    });
+  }
 }

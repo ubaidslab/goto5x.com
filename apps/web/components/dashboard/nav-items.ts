@@ -22,6 +22,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: (id) => `/stores/${id}`, builtInModule10: true },
   { label: "Orders", href: (id) => `/stores/${id}/orders`, builtInModule10: true },
+  { label: "Returns & Refunds", href: (id) => `/stores/${id}/returns`, builtInModule10: false },
   { label: "Customers", href: (id) => `/stores/${id}/customers`, builtInModule10: true },
   { label: "Customer Segments", href: (id) => `/stores/${id}/customer-segments`, builtInModule10: false },
   { label: "Email Campaigns", href: (id) => `/stores/${id}/campaigns`, builtInModule10: false },

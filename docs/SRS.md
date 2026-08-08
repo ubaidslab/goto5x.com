@@ -7247,29 +7247,45 @@ Module 52, v0.34)
       `OrderItem.fulfillmentStatus` in sync — a plain status flip would
       desynchronize it) (FR-59.5).
 
-### 14.59 Returns & Refunds Workflow (new, v0.34, not yet built —
-launch-critical)
-- [ ] A buyer can submit a return request from the order-status page only
-      for a confirmed (actually paid) order, never a pending one
-      (FR-60.2).
-- [ ] A seller can approve or reject a return request; reject requires a
-      reason (FR-60.3).
-- [ ] Completing an approved return posts a `refund_adjustment` ledger
-      entry through `WalletService.postLedgerEntry()`, correctly reverses
+### 14.59 Returns & Refunds Workflow (built, Module 53, v0.34)
+- [x] A buyer can submit a return request from the order-status page only
+      for a confirmed (actually paid) order, never a pending one — gated
+      by `REFUND_ELIGIBLE_ORDER_STATUSES` (order-status-transitions.util.ts),
+      the same status set PnLService's CONFIRMED_OR_BEYOND already uses;
+      proven by an e2e test asserting 400 for a still-pending order and
+      201 for a confirmed one (FR-60.2).
+- [x] A seller can approve or reject a return request; reject requires a
+      reason — proven by an e2e test asserting 400 with no `sellerNote`
+      and 200 once one is supplied (FR-60.3).
+- [x] Completing an approved return posts a `refund_adjustment` ledger
+      entry through `WalletService.postLedgerEntry()` (via
+      `LedgerService.reverseCommissionForRefund()`), correctly reverses
       the commission portion, correctly decrements `Customer.ordersCount`/
       `totalSpent`, and moves `Order.status` to `refunded` or
       `partially_refunded` — proven by an e2e test asserting the order no
-      longer counts as revenue in P&L/unit-economics/analytics
+      longer counts as revenue in P&L (`getOrderProfit()` now 400,
+      "not confirmed+") and that platform GMV/commission-earned both drop
+      by the reversed amount in `UnitEconomicsService.computeRealTimeAnalytics()`
       immediately after completion, closing the loop the Financial Truth
       Invariant requires (FR-60.1/60.4).
-- [ ] A partial refund's `refundAmount` correctly differs from the full
+- [x] A partial refund's `refundAmount` correctly differs from the full
       order total and the order lands in `partially_refunded`, not
-      `refunded` (FR-60.4).
-- [ ] An admin can approve/reject/complete a return regardless of the
-      seller's own action, audit-logged with before/after values
-      (FR-60.5).
-- [ ] The buyer-facing order-status timeline reflects the return's current
-      state (FR-60.6).
+      `refunded`; a second partial-refund round on the same order is
+      supported (tracked via the running sum of prior `completed`
+      ReturnRequest.refundAmount for that order) and can bring it to fully
+      `refunded`; a refund exceeding what's still refundable is rejected
+      with 400 (FR-60.4).
+- [x] An admin can approve/reject/complete a return regardless of the
+      seller's own action, audit-logged with before/after values —
+      proven by an e2e test asserting two `AdminAuditLog` rows
+      (`returns.admin_decide`/`returns.admin_complete`) with the correct
+      before/after status (FR-60.5).
+- [x] The buyer-facing order-status timeline reflects the return's current
+      state — `computeOrderTimeline()` appends a `refunded` stage
+      ("Refunded"/"Partially refunded") on top of the happy-path stages
+      already reached, and the order-status page shows the return
+      request's own status (or the submission form) via the new
+      `canRequestReturn`/`returnRequests` fields (FR-60.6).
 
 ### 14.60 Analytics Depth, seller-facing (new, v0.34, not yet built)
 - [ ] Top products by revenue and by units, sales-over-time (day/week/

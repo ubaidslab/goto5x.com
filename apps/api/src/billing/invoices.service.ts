@@ -61,7 +61,10 @@ export class InvoicesService {
       by: ["sellerId"],
       where: {
         invoiceId: null,
-        type: { in: ["commission_accrued", "commission_waived"] },
+        // Module 53 (FR-60.4) - a refund's commission reversal is unattached
+        // (invoiceId: null) exactly like a waiver, so it must sweep into the
+        // seller's next invoice the same way, reducing what they owe.
+        type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] },
         createdAt: { gte: periodStart, lt: periodEnd },
       },
     });
@@ -78,7 +81,7 @@ export class InvoicesService {
           where: {
             sellerId,
             invoiceId: null,
-            type: { in: ["commission_accrued", "commission_waived"] },
+            type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] },
             createdAt: { gte: periodStart, lt: periodEnd },
           },
         });

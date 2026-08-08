@@ -518,6 +518,7 @@ model Store {
   giftCards                 GiftCard[]
   customerSegments          CustomerSegment[]
   emailCampaigns            EmailCampaign[]
+  returnRequests            ReturnRequest[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -1560,6 +1561,16 @@ enum OrderStatus {
   completed
   cancelled
   disputed
+  // Module 53 (SRS §5.60/FR-60.4) - terminal outcomes of a completed
+  // ReturnRequest. Deliberately excluded from PnLService's/
+  // UnitEconomicsService's CONFIRMED_OR_BEYOND-style revenue gates (both of
+  // them, per the FR text - a partially_refunded order's remaining kept
+  // amount is not re-attributed, it simply stops counting, the same "one
+  // signal, applied uniformly" simplification the Financial Truth Invariant
+  // calls for here) - see order-status-transitions.util.ts for the map that
+  // reaches these two states.
+  refunded
+  partially_refunded
 }
 
 enum OrderSource {
@@ -1692,12 +1703,55 @@ model Order {
   // checkout), but this stays a list for the same reason LedgerEntry does -
   // the audit trail, not a single mutable pointer.
   giftCardRedemptions GiftCardRedemption[]
+  // Module 53 (SRS §5.60/FR-60.1) - a list, never a single mutable pointer,
+  // since one order may go through multiple partial-refund rounds.
+  returnRequests      ReturnRequest[]
 
   @@unique([storeId, orderNumber], name: "uniq_orders_store_order_number")
   @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
   @@index([discountCodeId], name: "idx_orders_discount_code")
   @@index([customerId], name: "idx_orders_customer")
   @@map("orders")
+}
+
+enum ReturnRequestStatus {
+  requested
+  approved
+  rejected
+  completed
+}
+
+// Module 53 (SRS §5.60/FR-60.1) - promotes and completes the `return_requests`
+// table docs/database-schema.md already reserved (v1.1-ahead, formerly
+// FR-22.3), extended with the partial-refund fields the founder's Module 53
+// spec adds (refundAmount/refundedItems/adminOverride). `resolvedByType`/
+// `resolvedByUserId` are a plain polymorphic actor pair (no FK relation),
+// same shape as EventLog.actorType/actorId - the resolver is either a
+// seller's own dashboard user or an admin, never a single FK target.
+model ReturnRequest {
+  id               String              @id @default(uuid()) @db.Uuid
+  storeId          String              @map("store_id") @db.Uuid
+  orderId          String              @map("order_id") @db.Uuid
+  buyerReason      String              @map("buyer_reason")
+  status           ReturnRequestStatus @default(requested)
+  requestedAt      DateTime            @default(now()) @map("requested_at") @db.Timestamptz
+  resolvedAt       DateTime?           @map("resolved_at") @db.Timestamptz
+  resolvedByType   String?             @map("resolved_by_type")
+  resolvedByUserId String?             @map("resolved_by_user_id") @db.Uuid
+  // Set only once the return actually completes (approved -> completed);
+  // null for a still-open or rejected request - there is no refund to speak
+  // of yet.
+  refundAmount     Decimal?            @map("refund_amount") @db.Decimal(12, 2)
+  refundedItems    Json?               @map("refunded_items")
+  sellerNote       String?             @map("seller_note")
+  adminOverride    Boolean             @default(false) @map("admin_override")
+
+  store Store @relation(fields: [storeId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([storeId, status], name: "idx_return_requests_store_status")
+  @@index([orderId], name: "idx_return_requests_order")
+  @@map("return_requests")
 }
 
 // Module 15 (FR-13.1-13.3) - a per-store CRM record, auto-created/matched by
@@ -2248,14 +2302,16 @@ model LedgerEntry {
   orderId          String?         @map("order_id") @db.Uuid
   invoiceId        String?         @map("invoice_id") @db.Uuid
   type             LedgerEntryType
-  // Always stored as a positive magnitude except commission_waived (kept
-  // negative, its original Module 11 convention - see waiveCommission()).
-  // WalletService.getBalance() (Module 20) is the one place that maps
-  // entry type to a +/- sign when computing a balance; every debit type
-  // (commission_accrued, wallet_*_fee_debit) subtracts, wallet_topup_credit
-  // adds, and commission_waived's already-negative amount adds back (a
-  // waiver increases the balance). Nothing else computes a balance from
-  // this table directly.
+  // Always stored as a positive magnitude except commission_waived and
+  // refund_adjustment (both kept negative - waiveCommission()'s original
+  // Module 11 convention, extended by Module 53's reverseCommissionForRefund()
+  // to the second reserved-since-v1.0 entry type). WalletService.getBalance()
+  // (Module 20) is the one place that maps entry type to a +/- sign when
+  // computing a balance; every debit type (commission_accrued,
+  // wallet_*_fee_debit) subtracts, wallet_topup_credit adds, and
+  // commission_waived/refund_adjustment's already-negative amount adds back
+  // (a waiver or refund reversal increases the balance). Nothing else
+  // computes a balance from this table directly.
   amount           Decimal         @db.Decimal(12, 2)
   currency         String
   balanceBucket    BalanceBucket?  @map("balance_bucket")

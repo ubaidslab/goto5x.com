@@ -43,7 +43,9 @@ const CREDIT_TYPES: ReadonlySet<LedgerEntryType> = new Set([
 /** Exported so test fixtures that seed a LedgerEntry directly (bypassing the API) can keep WalletBalance in sync too - see test/e2e/setup.ts's seedLedgerEntry(). */
 export function signedContribution(type: LedgerEntryType, amount: number): number {
   if (CREDIT_TYPES.has(type)) return amount;
-  if (type === "commission_waived") return -amount; // amount is already negative - this adds back
+  // amount is already negative for both of these - this adds back (a waiver
+  // or a Module 53 refund's commission reversal both increase balance).
+  if (type === "commission_waived" || type === "refund_adjustment") return -amount;
   if (DEBIT_TYPES.has(type)) return -amount;
   return 0; // dormant §5.6c/§5.6 entry types never contribute to the v1.0 wallet balance
 }
@@ -186,6 +188,8 @@ export class WalletService {
         return orderId ? `Commission - Order ${orderId.slice(0, 8)}` : "Commission";
       case "commission_waived":
         return "Commission waived";
+      case "refund_adjustment":
+        return orderId ? `Refund - commission reversed for order ${orderId.slice(0, 8)}` : "Refund - commission reversed";
       case "wallet_plan_fee_debit":
         return "Monthly plan fee";
       case "wallet_team_seat_fee_debit":

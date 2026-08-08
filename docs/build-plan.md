@@ -3767,7 +3767,35 @@ reordered here purely on dependency grounds, confirmed safe by research
   `WalletService`'s sign-convention sets for the first time. Built with
   the same discipline as Phase B's key-rotation/RLS-defense work: every
   reversal path proven against the Financial Truth Invariant explicitly,
-  not assumed correct by construction.
+  not assumed correct by construction. **BUILT.** Two-migration split for
+  the new `OrderStatus` enum values (own migration, separate from the one
+  creating `return_requests`, per the Module 28/31/52 precedent) plus a
+  standard RLS-protected tenant table (copying Module 31's `ad_spend_entries`
+  shape). `ReturnsService.applyRefund()` is the one shared money-touching
+  core both the seller (`completeReturn()`) and admin (`adminComplete()`)
+  paths call — proportional commission reversal against the order's *net*
+  accrued commission (not re-derived from the rate, so a prior waiver is
+  respected), posted through a new `LedgerService.
+  reverseCommissionForRefund()` mirroring `waiveCommission()`'s existing
+  negative-entry-against-orderId shape exactly. `refund_adjustment` wired
+  into `WalletService.signedContribution()` and every platform-wide
+  commission-summing call site (`PnLService`, `UnitEconomicsService`,
+  `InvoicesService`'s monthly sweep). `Customer.ordersCount` decrements
+  only on a full refund (new `CustomersService.reverseCompletedOrder()`) —
+  a partial refund didn't undo the purchase, only part of its value, a
+  deliberate distinction from `totalSpent`, which always decrements by the
+  refunded amount. Admin overrides audit-logged with before/after values
+  (`returns.admin_decide`/`returns.admin_complete`), closing a gap an
+  early draft of this module missed and caught before shipping. 10 new
+  e2e tests in `module53-returns-refunds.e2e-spec.ts`, including a
+  dedicated Financial Truth proof (the refunded order stops appearing in
+  `PnLService.getOrderProfit()` and platform GMV/commission-earned both
+  drop by the reversed amount immediately after completion), plus 3 new/
+  extended unit specs (`wallet.service.spec.ts`, the transition-map spec's
+  refund cases, the timeline-util spec's refund-stage cases). Full local
+  unit suite and full local e2e suite both run; see the founder report for
+  the exact confirmed counts and the real CI job log line — never asserted
+  here without independent verification.
 - **Module 54 — Analytics Depth (§5.61, item 5, reordered after item 4).**
   Depends on Module 53: return rate (overall and per-product) is one of
   the founder's explicitly requested metrics, and there is no return data

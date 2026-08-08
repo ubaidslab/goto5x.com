@@ -39,6 +39,7 @@ import { OrdersModule } from "./orders/orders.module";
 import { PlansModule } from "./plans/plans.module";
 import { PnLModule } from "./pnl/pnl.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { ReturnsModule } from "./returns/returns.module";
 import { ReviewsModule } from "./reviews/reviews.module";
 import { SellersModule } from "./sellers/sellers.module";
 import { SettingsModule } from "./settings-registry/settings.module";
@@ -112,6 +113,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     CampaignsModule,
     StaffModule,
     AdminEmailModule,
+    ReturnsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

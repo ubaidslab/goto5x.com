@@ -20,3 +20,13 @@ export async function submitReview(
   });
   return { ok: res.ok };
 }
+
+/** FR-60.2 - same Server Action reasoning as submitReview() above: never a cross-origin browser fetch. */
+export async function submitReturnRequest(token: string, input: { reason: string }): Promise<{ ok: boolean }> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/order-status/${token}/returns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return { ok: res.ok };
+}

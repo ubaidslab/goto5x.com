@@ -52,6 +52,32 @@ export class CustomersService {
     });
   }
 
+  /**
+   * Module 53 (SRS §5.60/FR-60.4) - the compensating decrement
+   * recordCompletedOrder() above never had a counterpart for. `totalSpent`
+   * always decrements by the refunded amount (a partial refund genuinely
+   * reduced how much this customer spent); `ordersCount` only decrements
+   * when the order is now FULLY reversed - a partial refund didn't undo the
+   * purchase itself, only part of its value, so the order still counts as
+   * one real order for this customer. Called from inside ReturnsService's
+   * completeReturn()/adminComplete() transaction, the sole place a
+   * ReturnRequest actually completes.
+   */
+  async reverseCompletedOrder(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+    refundAmount: Prisma.Decimal | number | string,
+    fullyReversed: boolean,
+  ) {
+    await tx.customer.update({
+      where: { id: customerId },
+      data: {
+        totalSpent: { decrement: Number(refundAmount) },
+        ...(fullyReversed ? { ordersCount: { decrement: 1 } } : {}),
+      },
+    });
+  }
+
   /** FR-13.2 - searchable, sortable by total spent/order count. */
   async list(sellerId: string, storeId: string, filters: { search?: string; sort?: CustomerSort }) {
     return this.tenantPrisma.run(sellerId, async (tx) => {

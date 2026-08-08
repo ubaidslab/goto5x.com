@@ -30,7 +30,12 @@ export class PnLService {
     if (orderIds.length === 0) return new Map();
     const grouped = await tx.ledgerEntry.groupBy({
       by: ["orderId"],
-      where: { orderId: { in: orderIds }, type: { in: ["commission_accrued", "commission_waived"] } },
+      // Module 53 (FR-60.4) - refund_adjustment included for consistency
+      // with every other commission-summing call site, though in practice a
+      // refunded/partially_refunded order never reaches this query at all
+      // (CONFIRMED_OR_BEYOND above excludes both statuses outright - the
+      // Financial Truth Invariant's "one signal, applied uniformly").
+      where: { orderId: { in: orderIds }, type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] } },
       _sum: { amount: true },
     });
     return new Map(grouped.filter((g) => g.orderId !== null).map((g) => [g.orderId as string, Number(g._sum.amount ?? 0)]));

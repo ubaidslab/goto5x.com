@@ -189,13 +189,33 @@ export interface PublicOrderItem {
 }
 
 export interface OrderTimelineStage {
-  stage: "placed" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  stage: "placed" | "confirmed" | "shipped" | "delivered" | "cancelled" | "refunded";
   label: string;
   completedAt: string | null;
 }
 
+/** Module 53 (SRS §5.60/FR-60.1) - a buyer-facing projection of ReturnRequest. */
+export interface PublicReturnRequest {
+  id: string;
+  status: "requested" | "approved" | "rejected" | "completed";
+  buyerReason: string;
+  sellerNote: string | null;
+  refundAmount: string | null;
+  requestedAt: string;
+  resolvedAt: string | null;
+}
+
 export interface PublicOrderStatus {
-  status: "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
+  status:
+    | "pending"
+    | "confirmed"
+    | "shipped"
+    | "delivered"
+    | "completed"
+    | "cancelled"
+    | "disputed"
+    | "refunded"
+    | "partially_refunded";
   placedAt: string;
   timeline: OrderTimelineStage[];
   currency: string;
@@ -214,6 +234,9 @@ export interface PublicOrderStatus {
     codEnabled: boolean;
   } | null;
   items: PublicOrderItem[];
+  // Module 53 (SRS §5.60/FR-60.2/60.6)
+  canRequestReturn: boolean;
+  returnRequests: PublicReturnRequest[];
 }
 
 /** FR-5.4 - the buyer's only post-checkout reference; public, keyed purely by the unguessable token. */

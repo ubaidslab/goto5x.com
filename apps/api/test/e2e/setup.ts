@@ -24,6 +24,7 @@ import { seedOrdersSettings } from "../../src/orders/orders.seed";
 import { seedOrderVerificationSettings } from "../../src/orders/order-verification.seed";
 import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
 import { seedReviewsSettings } from "../../src/reviews/reviews.seed";
+import { seedReturnsSettings } from "../../src/returns/returns.seed";
 import {
   seedModule1Settings,
   seedModule3Settings,
@@ -152,6 +153,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedAdminEmailSettings(prisma);
   await seedGiftCardsSettings(prisma);
   await seedReviewsSettings(prisma);
+  await seedReturnsSettings(prisma);
 }
 
 /**

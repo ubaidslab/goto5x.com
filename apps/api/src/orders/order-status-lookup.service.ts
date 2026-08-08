@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { computeOrderTimeline } from "./order-timeline.util";
+import { REFUND_ELIGIBLE_ORDER_STATUSES } from "./order-status-transitions.util";
+
+const ACTIVE_RETURN_STATUSES = ["requested", "approved"];
 
 /**
  * FR-5.4 - buyers have no accounts (guest checkout), so this is their only
@@ -23,6 +26,9 @@ export class OrderStatusLookupService {
       include: {
         items: { include: { trackingUpdates: true, product: { select: { title: true } } } },
         timelineEvents: { where: { eventType: "status_changed" }, orderBy: { createdAt: "asc" } },
+        // Module 53 (SRS §5.60/FR-60.2/60.6) - so the buyer sees an existing
+        // request's state instead of the submission form once one exists.
+        returnRequests: { orderBy: { requestedAt: "desc" } },
       },
     });
     if (!order) throw new NotFoundException("Order not found.");
@@ -73,6 +79,21 @@ export class OrderStatusLookupService {
           carrier: t.carrier,
           uploadedAt: t.uploadedAt,
         })),
+      })),
+      // Module 53 (SRS §5.60/FR-60.2/60.6) - a buyer can submit a new return
+      // only while eligible AND no request is already open; otherwise the
+      // most recent request's own status is shown instead of the form.
+      canRequestReturn:
+        REFUND_ELIGIBLE_ORDER_STATUSES.includes(order.status) &&
+        !order.returnRequests.some((r) => ACTIVE_RETURN_STATUSES.includes(r.status)),
+      returnRequests: order.returnRequests.map((r) => ({
+        id: r.id,
+        status: r.status,
+        buyerReason: r.buyerReason,
+        sellerNote: r.sellerNote,
+        refundAmount: r.refundAmount,
+        requestedAt: r.requestedAt,
+        resolvedAt: r.resolvedAt,
       })),
     };
   }

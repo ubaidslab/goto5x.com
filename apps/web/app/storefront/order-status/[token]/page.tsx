@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { ReturnRequestForm } from "../return-request-form";
 import { ReviewForm } from "../review-form";
 
 export const dynamic = "force-dynamic";
@@ -118,6 +119,18 @@ export default async function OrderStatusPage({ params }: { params: { token: str
           <br />
           {address.phone}
         </p>
+
+        {(order.canRequestReturn || order.returnRequests.length > 0) && (
+          <>
+            <h2>Return &amp; refund</h2>
+            <ReturnRequestForm
+              token={params.token}
+              canRequestReturn={order.canRequestReturn}
+              currency={order.currency}
+              returnRequests={order.returnRequests}
+            />
+          </>
+        )}
 
         <h2>Leave a review</h2>
         <ReviewForm token={params.token} items={order.items.map((i) => ({ productId: i.productId, productTitle: i.productTitle }))} />
