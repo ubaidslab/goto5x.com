@@ -7164,21 +7164,37 @@ going forward, per FR-6.28.
       ask on its own. Revisit if a seller-facing need for public tag
       browsing surfaces later.
 
-### 14.57 Bulk Product Operations (new, v0.34, not yet built)
-- [ ] A bulk price update (fixed and percentage), stock update,
+### 14.57 Bulk Product Operations (built, Module 51, v0.34)
+- [x] A bulk price update (fixed and percentage), stock update,
       category/collection assign, publish/unpublish, archive/delete, and
       tag assign each apply correctly to every selected product and no
-      unselected one (FR-58.1/58.2).
-- [ ] A bulk publish or price change on a product still triggers the same
-      moderation re-check a single-item edit now also triggers — proven by
-      an e2e test asserting a keyword-violating bulk publish is blocked
-      exactly like a single-item one would be (FR-58.3).
-- [ ] The confirmation step shows the exact affected-row count before any
-      bulk action executes, and no bulk action fires without it
-      (FR-58.4).
-- [ ] A bulk operation that would push a store over its plan's product
-      limit is rejected per-item with an accurate succeeded/blocked count,
-      never silently over-limit (FR-58.5).
+      unselected one (FR-58.1/58.2) — each reuses the existing single-item
+      endpoint via a client-side fan-out (`Promise.allSettled`), the same
+      precedent the admin moderation queue's bulk approve/reject already
+      established; per-item failures (e.g. deleting a product that still
+      has variants) are reported without blocking the rest of the batch.
+- [x] A publish (draft → active), or an edit that leaves an already-active
+      listing active, still triggers the same moderation re-check a
+      single-item edit now also triggers, self-fulfilled products only —
+      proven by 4 new e2e tests: a keyword-violating publish is blocked
+      exactly like creation would be; a restricted-keyword edit on an
+      already-active listing queues it without blocking the edit; an
+      unrelated edit to an admin-approved product never silently
+      un-flags it; a supplier-sourced product's edits are correctly
+      exempt (FR-58.3).
+- [x] The confirmation step shows the exact affected-row count (plus a
+      preview of up to 5 titles) before any bulk action executes, and no
+      bulk action fires without an explicit Confirm click (FR-58.4).
+- [x] Plan-limit interaction (FR-58.5) — confirmed vacuous by construction,
+      not by a new enforcement mechanism: none of the seven bulk actions
+      built here (publish/unpublish/archive/delete/price/stock/category/
+      collection-assign/tag-assign) creates a new product, so
+      `catalog.product_limit` (which gates product *creation* only, per
+      Module 14) has no enforcement point among them — there is nothing
+      to bypass. The founder's original spec did not include bulk
+      "duplicate" or "move to another store," which would be the actions
+      that could actually interact with the limit; noted here as scope
+      that was never built, not a gap silently left open.
 
 ### 14.58 Bulk Order Operations, Tracking Entry & Advanced Search (new,
 v0.34, not yet built)

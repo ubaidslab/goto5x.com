@@ -33,6 +33,38 @@ export class ModerationService {
     sellerId: string,
     input: { title: string; description?: string | null; categoryId?: string | null; applyProbation?: boolean },
   ): Promise<ModerationDecision> {
+    return this.resolveDecision(tx, sellerId, input, input.applyProbation);
+  }
+
+  /**
+   * Module 51 (SRS §5.58/FR-58.3) - closes a pre-existing gap this
+   * amendment's research surfaced: `ProductsService.update()` never
+   * re-checked moderation on a publish (draft -> active) or on an edit to
+   * an already-active listing's title/description/category, single-item
+   * or bulk. Reuses the exact same `decideModerationStatus()` rules as
+   * creation - no new engine. Deliberately asymmetric with creation in one
+   * way: an "approved" (admin-reviewed) or already-"not_required" product
+   * is never silently un-flagged by this re-check - only two outcomes are
+   * ever written back: blocked outright (banned keyword, same as
+   * creation) or newly queued (`pending`, e.g. a restricted-keyword edit).
+   * A decision of "not_required" here is a no-op - it must never downgrade
+   * a human-approved product back to "not_required" as a side effect of
+   * an unrelated field edit.
+   */
+  async evaluateProductEdit(
+    tx: Prisma.TransactionClient,
+    sellerId: string,
+    input: { title: string; description?: string | null; categoryId?: string | null },
+  ): Promise<ModerationDecision> {
+    return this.resolveDecision(tx, sellerId, input, true);
+  }
+
+  private async resolveDecision(
+    tx: Prisma.TransactionClient,
+    sellerId: string,
+    input: { title: string; description?: string | null; categoryId?: string | null },
+    applyProbation: boolean | undefined,
+  ): Promise<ModerationDecision> {
     const [bannedKeywords, restrictedKeywords, restrictedCategoryIds, probationCount, seller, sellerStores] =
       await Promise.all([
         this.settings.resolve<string[]>("moderation.banned_keywords"),
@@ -60,7 +92,7 @@ export class ModerationService {
         bannedKeywords,
         restrictedKeywords,
         restrictedCategoryIds,
-        applyProbation: input.applyProbation,
+        applyProbation,
       });
     } catch (err) {
       if (err instanceof BannedKeywordError) {

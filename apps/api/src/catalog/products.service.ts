@@ -199,6 +199,14 @@ export class ProductsService {
     });
   }
 
+  /**
+   * SRS §5.58/FR-58.3 (Module 51) - a publish (draft -> active), or an
+   * edit that leaves an already-active listing active, re-runs moderation
+   * exactly like creation does, for self-fulfilled products. See
+   * ModerationService.evaluateProductEdit()'s own doc comment for the
+   * precise (deliberately asymmetric) rule: this can newly block or newly
+   * queue a listing, but never silently un-flags one.
+   */
   async update(sellerId: string, storeId: string, productId: string, dto: UpdateProductDto) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const existing = await tx.product.findUnique({ where: { id: productId } });
@@ -207,7 +215,21 @@ export class ProductsService {
         const category = await tx.category.findUnique({ where: { id: dto.categoryId } });
         if (!category) throw new NotFoundException("Category not found.");
       }
-      return tx.product.update({ where: { id: productId }, data: dto });
+
+      const nextStatus = dto.status ?? existing.status;
+      const data = { ...dto } as UpdateProductDto & { moderationStatus?: "pending" };
+      if (nextStatus === "active" && existing.sourceType === "self") {
+        const decision = await this.moderation.evaluateProductEdit(tx, sellerId, {
+          title: dto.title ?? existing.title,
+          description: dto.description ?? existing.description,
+          categoryId: dto.categoryId ?? existing.categoryId,
+        });
+        if (decision.status === "pending") {
+          data.moderationStatus = "pending";
+        }
+      }
+
+      return tx.product.update({ where: { id: productId }, data });
     });
   }
 

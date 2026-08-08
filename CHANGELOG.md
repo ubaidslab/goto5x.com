@@ -8,6 +8,37 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 51: Bulk Product Operations
+
+### Added
+- Multi-select (checkbox per row + select-all-on-page) on the product
+  list, with a bulk action bar: price update (fixed or percentage), stock
+  update (increment/decrement/set, audit-logged via the existing
+  `StockAdjustment` mechanism), category assign, collection assign, tag
+  assign (additive, not a replace), publish, unpublish, archive, and
+  delete. Every action reuses the existing single-item endpoint via a
+  client-side fan-out (`Promise.allSettled`) - no new bulk-specific
+  backend endpoint, same precedent the admin moderation queue's bulk
+  approve/reject already established.
+- A confirmation step before any bulk action executes, showing the exact
+  affected-row count and a preview of up to 5 product titles.
+- `ModerationService.evaluateProductEdit()` - closes a real, pre-existing
+  gap: `ProductsService.update()` never re-checked moderation on a
+  publish (draft → active) or on an edit to an already-active listing's
+  title/description/category, single-item or bulk. Reuses the same
+  `decideModerationStatus()` rules as creation. Deliberately asymmetric
+  with creation: can newly block (banned keyword) or newly queue
+  (`pending`), but never silently un-flags an already-approved product as
+  a side effect of an unrelated field edit. Scoped to self-fulfilled
+  products only - supplier-sourced listings have their own separate
+  moderation path.
+
+### Tests
+- 4 new e2e tests in `moderation.e2e-spec.ts` covering the update-time
+  moderation gate: banned-keyword publish block, restricted-keyword edit
+  queuing, the "never un-flag an approved product" asymmetric rule, and
+  the supplier-sourced exemption.
+
 ## Module 50: Product Organization at Scale
 
 ### Added

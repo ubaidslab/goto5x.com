@@ -3706,12 +3706,25 @@ reordered here purely on dependency grounds, confirmed safe by research
   seller-facing need for it yet. 5 new e2e tests; 2 pre-existing e2e
   assertions fixed (they asserted the old array shape); full local unit
   suite (211/211) clean.
-- **Module 51 — Bulk Product Operations (§5.58, item 2).** Depends on
-  Module 50's filtered/paginated list (a bulk action's confirmation count
-  needs to reflect a filtered selection accurately). Also closes the
-  pre-existing `ProductsService.update()` moderation gap found during
+- **Module 51 — Bulk Product Operations (§5.58, item 2). BUILT.** Depends
+  on Module 50's filtered/paginated list (a bulk action's confirmation
+  count needs to reflect a filtered selection accurately). Seven bulk
+  actions (price, stock, category assign, collection assign, tag assign,
+  publish/unpublish, archive, delete), each a client-side fan-out over
+  the existing single-item endpoint — no new bulk-specific backend
+  endpoint, matching the admin moderation queue's own precedent.
+  `ModerationService.evaluateProductEdit()` closes the pre-existing
+  `ProductsService.update()` moderation gap found during Module 50's
   research (FR-58.3) — bulk operations multiply that gap's exposure, so
-  it's closed here rather than filed as a separate item.
+  it's closed here rather than filed as a separate item — self-fulfilled
+  products only, asymmetric by design (can newly block or newly queue,
+  never silently un-flags an already-approved listing). FR-58.5's
+  plan-limit interaction turned out to be vacuous by construction: none
+  of the seven built actions creates a new product, so
+  `catalog.product_limit` has no enforcement point among them — recorded
+  as confirmed-vacuous in the SRS checklist, not silently skipped. 4 new
+  e2e tests for the moderation gate; full local unit suite (211/211)
+  clean.
 - **Module 52 — Bulk Order Operations, Tracking Entry & Advanced Search
   (§5.59, item 3).** Independent of 49-51; the first module to touch
   `Order.status` transitions formally (new `orderNumber` schema field,

@@ -312,4 +312,105 @@ describe("Listing Moderation Engine (e2e) - SRS §5.27/FR-27.x, §14.25", () => 
       expect(settings.status).toBe(403);
     },
   );
+
+  describe("Update-time moderation re-check (Module 51, FR-58.3) - closes the publish/edit bypass gap", () => {
+    it("a banned keyword injected into a draft's title blocks the publish (draft -> active) exactly like creation would, and the product stays draft/unflagged", async () => {
+      await overrideGlobalSetting("moderation.new_seller_probation_count", 0);
+      await overrideGlobalSetting("moderation.banned_keywords", ["contraband"]);
+      const { token, storeId } = await signupLoginAndCreateStore("edit-banned@example.com", "edit-banned-store");
+
+      const created = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Clean Title", status: "draft" });
+      expect(created.status).toBe(201);
+      const productId = created.body.id;
+
+      const publishWithBannedTitle = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/products/${productId}`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Contraband Special", status: "active" });
+      expect(publishWithBannedTitle.status).toBe(400);
+
+      const unchanged = await superuser.product.findUniqueOrThrow({ where: { id: productId } });
+      expect(unchanged.title).toBe("Clean Title");
+      expect(unchanged.status).toBe("draft");
+      expect(unchanged.moderationStatus).toBe("not_required");
+    });
+
+    it("a restricted keyword edit on an already-active listing queues it for review without blocking the edit itself (FR-58.3)", async () => {
+      await overrideGlobalSetting("moderation.new_seller_probation_count", 0);
+      await overrideGlobalSetting("moderation.restricted_keywords", ["vape"]);
+      const { token, storeId } = await signupLoginAndCreateStore("edit-restricted@example.com", "edit-restricted-store");
+
+      const created = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Clean Active Product", status: "active" });
+      expect(created.status).toBe(201);
+      expect(created.body.moderationStatus).toBe("not_required");
+      const productId = created.body.id;
+
+      const edit = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/products/${productId}`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "New Vape Flavors" });
+      expect(edit.status).toBe(200);
+      expect(edit.body.moderationStatus).toBe("pending");
+      expect(edit.body.title).toBe("New Vape Flavors");
+
+      const stillNotVisible = await superuser.product.findUniqueOrThrow({ where: { id: productId } });
+      expect(stillNotVisible.moderationStatus).toBe("pending");
+    });
+
+    it("an unrelated edit to an already admin-approved product never silently un-flags it back to not_required (FR-58.3's asymmetric rule)", async () => {
+      await overrideGlobalSetting("moderation.new_seller_probation_count", 1);
+      const { token, storeId } = await signupLoginAndCreateStore("edit-approved@example.com", "edit-approved-store");
+
+      const created = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "First Product Under Probation", status: "active" });
+      expect(created.body.moderationStatus).toBe("pending");
+      const productId = created.body.id;
+
+      const reviewerToken = await createAdminAndGetToken("approver@example.com", "approver-password-1", "reviewer");
+      const approve = await request(app.getHttpServer())
+        .post(`/admin/moderation/queue/${productId}/approve`)
+        .set("Authorization", `Bearer ${reviewerToken}`)
+        .send({});
+      expect(approve.body.moderationStatus).toBe("approved");
+
+      // An unrelated field edit (SEO title, nothing to do with the
+      // approved title/description/category) must not re-derive and
+      // overwrite the human-approved moderationStatus back to
+      // "not_required" as a side effect.
+      const unrelatedEdit = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/products/${productId}`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ seoTitle: "Great deals here" });
+      expect(unrelatedEdit.status).toBe(200);
+      expect(unrelatedEdit.body.moderationStatus).toBe("approved");
+    });
+
+    it("a supplier-sourced product's status edits are not subject to this self-fulfilled-only re-check", async () => {
+      await overrideGlobalSetting("moderation.banned_keywords", ["contraband"]);
+      const { token, storeId } = await signupLoginAndCreateStore("edit-supplier@example.com", "edit-supplier-store");
+      const product = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Clean Title", status: "draft" });
+      await superuser.product.update({ where: { id: product.body.id }, data: { sourceType: "supplier" } });
+
+      // A banned-keyword title on a supplier-sourced product's publish is
+      // not evaluated by this gate at all (supplier listings have their
+      // own separate seller-approval moderation path, per Module 8's
+      // amendment) - the update succeeds rather than 400ing.
+      const publish = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/products/${product.body.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Contraband Special", status: "active" });
+      expect(publish.status).toBe(200);
+    });
+  });
 });
