@@ -197,11 +197,17 @@ export async function seedPlansSettings(prisma: PrismaClient) {
  * application logic.
  */
 export async function seedPlansData(prisma: PrismaClient) {
+  // v0.35/FR-6.30 - every per-plan commissionPercent override is now 0.
+  // UZEYN is subscription-only; the commission engine stays fully intact
+  // (LedgerService.accrueCommission() still runs, still posts a
+  // commission_accrued entry - just for Rs. 0) and is re-activatable later
+  // by an admin editing this per-plan override or the global default, not
+  // a code change.
   const individualTiers = [
-    { name: "First Month", tierOrder: 0, price: 1499, regularPrice: 5799, billingInterval: "monthly" as const, commissionPercent: 2, productLimit: 100 },
-    { name: "Starter", tierOrder: 1, price: 5799, regularPrice: 6999, billingInterval: "monthly" as const, commissionPercent: 2, productLimit: 100 },
-    { name: "Growth", tierOrder: 2, price: 14999, regularPrice: 17999, billingInterval: "monthly" as const, commissionPercent: 1.5, productLimit: 500 },
-    { name: "Pro", tierOrder: 3, price: 27999, regularPrice: 34999, billingInterval: "monthly" as const, commissionPercent: 1, productLimit: 100_000 },
+    { name: "First Month", tierOrder: 0, price: 1499, regularPrice: 5799, billingInterval: "monthly" as const, commissionPercent: 0, productLimit: 100 },
+    { name: "Starter", tierOrder: 1, price: 5799, regularPrice: 6999, billingInterval: "monthly" as const, commissionPercent: 0, productLimit: 100 },
+    { name: "Growth", tierOrder: 2, price: 14999, regularPrice: 17999, billingInterval: "monthly" as const, commissionPercent: 0, productLimit: 500 },
+    { name: "Pro", tierOrder: 3, price: 27999, regularPrice: 34999, billingInterval: "monthly" as const, commissionPercent: 0, productLimit: 100_000 },
   ];
   for (const tier of individualTiers) {
     const { commissionPercent, productLimit, ...planFields } = tier;

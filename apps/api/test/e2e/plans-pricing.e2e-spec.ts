@@ -133,7 +133,22 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       // real publish flow (top-up + verify) in every test.
       await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
 
+      const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      // v0.35/FR-6.30 - every per-plan commissionPercent override is now
+      // seeded at 0% (UZEYN is subscription-only); this test's actual
+      // subject is the ladder/precedence MECHANISM (a plan-scoped override
+      // beats the global default, and a higher tier's own override takes
+      // precedence over a lower tier's), which still needs proving even
+      // though the launch defaults are dormant - so both overrides are set
+      // explicitly here rather than relied on from seed data.
+      await app.get(SettingsService).setValue(
+        "billing.commission_rate_percent",
+        "plan",
+        firstMonthPlan.id,
+        2,
+        "00000000-0000-0000-0000-000000000000",
+      );
       await app.get(SettingsService).setValue(
         "billing.commission_rate_percent",
         "plan",
@@ -141,8 +156,6 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         0.5,
         "00000000-0000-0000-0000-000000000000",
       );
-      // First Month's own seeded 2% override (plans.seed.ts) is what the
-      // first order below exercises - no extra setup needed for it.
 
       const category = await superuser.category.create({ data: { name: "Ladder", slug: `ladder-${Date.now()}` } });
       async function placeAndPay(price: number) {
@@ -242,6 +255,12 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
 
       const settings = app.get(SettingsService);
       const adminId = "00000000-0000-0000-0000-000000000000";
+      // v0.35/FR-6.30 - First Month's plan-scoped commissionPercent override
+      // is now seeded at 0%; set it explicitly here so this test can still
+      // prove the launch-campaign-discount-on-top-of-the-base-rate
+      // mechanism independent of the (now dormant) launch defaults.
+      const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await settings.setValue("billing.commission_rate_percent", "plan", firstMonthPlan.id, 2, adminId);
       await settings.setValue("billing.launch_campaign_discount_percent", "global", null, 1, adminId);
       await settings.setValue("billing.launch_campaign_seller_limit", "global", null, 1, adminId); // only the first-ever seller
 

@@ -32,7 +32,7 @@ const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: stri
     features: [
       "Full Starter feature set, discounted for your first billing cycle",
       "Up to 100 products",
-      "2% commission on sales",
+      "0% commission - keep every rupee you earn",
       "Auto-continues onto Starter after your first month",
     ],
   },
@@ -40,7 +40,7 @@ const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: stri
     description: "For getting your first store live and taking real orders.",
     features: [
       "Up to 100 products",
-      "2% commission on sales",
+      "0% commission - keep every rupee you earn",
       "Order verification (OTP/call/WhatsApp)",
       "Profit & loss dashboard",
       "Free custom domain connection",
@@ -53,7 +53,7 @@ const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: stri
     description: "For sellers ready to scale past a one-person operation.",
     features: [
       "Up to 500 products",
-      "1.5% commission on sales",
+      "0% commission - keep every rupee you earn",
       "3 staff accounts",
       "Email marketing campaigns",
       "Gift cards & customer segments",
@@ -66,7 +66,7 @@ const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: stri
     description: "For established stores that have outgrown the basics.",
     features: [
       "Unlimited products",
-      "1% commission on sales - the lowest tier",
+      "0% commission - keep every rupee you earn",
       "10 staff accounts",
       "@support.uzeyn.com custom email",
       "Remove the “Managed by UZEYN” mark",
@@ -166,7 +166,7 @@ export default function PricingPage() {
           <Reveal delay={0.15} className="mt-16 text-center">
             <p className="text-body text-ink-muted">
               Every UZEYN plan undercuts Shopify's equivalent tier - no forced app fees, no 2.9%+30¢
-              payment-processor markup on top, and a commission rate that only goes down as you grow.
+              payment-processor markup on top, and 0% commission - keep every rupee you earn.
             </p>
           </Reveal>
         </div>

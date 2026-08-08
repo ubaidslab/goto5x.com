@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { ReturnsService } from "../../src/returns/returns.service";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { UnitEconomicsService } from "../../src/guardrails/unit-economics.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
@@ -52,6 +53,15 @@ describe("Returns & Refunds Workflow (e2e) - SRS §5.60/§14.59 (Module 53)", ()
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
+    // v0.35/FR-6.30 - every plan's commissionPercent override is now
+    // seeded at 0% (UZEYN is subscription-only); this module's actual
+    // subject is the commission-REVERSAL mechanism on refund, which still
+    // needs a nonzero accrued amount to reverse to prove anything, so a
+    // seller-scoped override (highest precedence, beats the plan's own
+    // now-zeroed override) is set for every seller this helper creates.
+    await app
+      .get(SettingsService)
+      .setValue("billing.commission_rate_percent", "seller", storeRow.sellerId, 2, "00000000-0000-0000-0000-000000000000");
     return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.uzeyn.com` };
   }
 

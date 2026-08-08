@@ -138,7 +138,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
     <div>
       <PageHeader
         title="Profit & Loss"
-        description="True net profit, not just revenue - only confirmed sales count, minus commission, cost of goods, courier/handling, and ad spend."
+        description="True net profit, not just revenue - only confirmed sales count, minus cost of goods, courier/handling, and ad spend."
       />
 
       {error && <Alert tone="danger">{error}</Alert>}
@@ -195,10 +195,6 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                 <div className="flex justify-between text-ink-muted">
                   <span>Revenue</span>
                   <span className="text-ink">Rs {period.revenue.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-ink-muted">
-                  <span>Commission</span>
-                  <span className="text-ink">- Rs {period.commission.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Cost of goods</span>

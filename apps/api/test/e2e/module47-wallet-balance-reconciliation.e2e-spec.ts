@@ -72,6 +72,15 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     await superuser.storePaymentInstructions.update({ where: { storeId }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: sellerId }, data: { cnicHash: `hash-${sellerId}` } });
     await superuser.store.update({ where: { id: storeId }, data: { publishedAt: new Date() } });
+    // v0.35/FR-6.30 - every plan's commissionPercent override is now
+    // seeded at 0% (UZEYN is subscription-only); this module tests
+    // wallet-balance/ledger mechanics that need a real nonzero commission
+    // debit to exercise, so a seller-scoped override (highest precedence,
+    // beats the plan's own now-zeroed override) is set for every seller
+    // this helper creates.
+    await app
+      .get(SettingsService)
+      .setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
     return { token, storeId, sellerId };
   }
 
@@ -165,7 +174,10 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     const adminToken = await createAndLoginAdmin("race-fix-admin@example.com");
     const settings = app.get(SettingsService);
 
-    await settings.setValue("billing.commission_rate_percent", "global", null, 2, ADMIN_ID);
+    // v0.35/FR-6.30 - signupLoginAndCreatePublishedStore() already sets a
+    // seller-scoped 2% override for this seller (beats the global scope
+    // this line used to target, which the plan's own now-zeroed override
+    // would otherwise shadow anyway).
     await topUpAndVerify(token, adminToken, 5000);
 
     // Measure the real per-order commission debit (K) empirically via one

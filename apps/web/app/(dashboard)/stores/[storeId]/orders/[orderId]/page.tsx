@@ -432,10 +432,6 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                     <span className="text-ink">Rs {profit.revenue.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-ink-muted">
-                    <span>Commission</span>
-                    <span className="text-ink">- Rs {profit.commission.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-ink-muted">
                     <span>Cost of goods</span>
                     <span className="text-ink">- Rs {profit.cogs.toLocaleString()}</span>
                   </div>

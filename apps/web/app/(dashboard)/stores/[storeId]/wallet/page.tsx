@@ -94,7 +94,7 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
     <div className="space-y-6">
       <PageHeader
         title="Wallet"
-        description="Top up your wallet to publish your store and cover commission - no online gateway, just a simple bank transfer an admin verifies."
+        description="Top up your wallet to publish your store - no online gateway, just a simple bank transfer an admin verifies."
       />
 
       <Card>
