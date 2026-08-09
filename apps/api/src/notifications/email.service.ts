@@ -114,4 +114,40 @@ export class EmailService {
       `Your latest data export (products, orders, customers, and a summary PDF) is ready to download. Log in here, then go to Settings -> Data export: ${dashboardLoginUrl}\n\nThis is a convenience export for your own records - it is not a substitute for our own platform backups, which run automatically regardless.`,
     );
   }
+
+  /** Module 55 (SRS §5.62/FR-62.1) - immediate, to the seller, on every new order (order emails before this module only ever went to the buyer). */
+  async sendNewOrderAlertEmail(to: string, storeName: string, orderNumber: number, orderUrl: string, totalAmount: string, currency: string): Promise<void> {
+    await this.send(
+      to,
+      `New order #${orderNumber} on ${storeName}`,
+      `You've got a new order! Order #${orderNumber} for ${currency} ${totalAmount} just came in on ${storeName}. View it here: ${orderUrl}`,
+    );
+  }
+
+  /** Module 55 (FR-62.1) - built on Module 54's new time-bucketed analytics queries. Only sent to a store with at least one confirmed order that day. */
+  async sendDailySalesSummaryEmail(to: string, storeName: string, dateLabel: string, orderCount: number, revenue: string, currency: string, dashboardUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `${storeName}: your sales summary for ${dateLabel}`,
+      `${orderCount} order${orderCount === 1 ? "" : "s"} confirmed on ${storeName} for ${dateLabel}, totaling ${currency} ${revenue} in revenue. See the full breakdown: ${dashboardUrl}`,
+    );
+  }
+
+  /** Module 55 (FR-62.1) - wires Module 28's isLowStock computation to an actual email trigger; debounced by ProductVariant.lowStockAlertSentAt so a seller gets one alert per dip, not one per subsequent sale. */
+  async sendLowStockAlertEmail(to: string, storeName: string, productTitle: string, sku: string, stockQuantity: number, threshold: number, inventoryUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `Low stock: ${productTitle} on ${storeName}`,
+      `"${productTitle}" (SKU ${sku}) is down to ${stockQuantity} unit${stockQuantity === 1 ? "" : "s"} on ${storeName}, at or below your low-stock threshold of ${threshold}. Restock it here: ${inventoryUrl}`,
+    );
+  }
+
+  /** Module 55 (FR-62.1) - the order-verification-specific counterpart to sendDormantStoreWarning/sendWalletLowBalanceWarning above; fires when a buyer exhausts their OTP attempts, since the order can't confirm until the seller or buyer acts. */
+  async sendOrderVerificationFailedEmail(to: string, storeName: string, orderUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `Order verification failed on ${storeName}`,
+      `A buyer's order verification on ${storeName} failed after too many incorrect attempts. The order can't be confirmed until a fresh verification code is sent and completed. View it here: ${orderUrl}`,
+    );
+  }
 }

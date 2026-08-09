@@ -11,6 +11,7 @@ import { SellerAgreementService } from "../trust-safety/seller-agreement.service
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 import { MfaVerifyCodeDto } from "./dto/mfa-verify-code.dto";
 import { UpdateDashboardThemeDto } from "./dto/update-dashboard-theme.dto";
+import { UpdateNewsletterOptOutDto } from "./dto/update-newsletter-opt-out.dto";
 import { SetCnicDto } from "./dto/set-cnic.dto";
 import { SellersService } from "./sellers.service";
 
@@ -38,6 +39,13 @@ export class SellersController {
   @Patch("dashboard-theme")
   updateDashboardTheme(@CurrentSellerId() sellerId: string, @Body() dto: UpdateDashboardThemeDto) {
     return this.sellers.updateDashboardTheme(sellerId, dto.dashboardTheme);
+  }
+
+  // Module 55 (SRS §5.62/FR-62.3) - the same toggle a seller could otherwise
+  // only reach by clicking a newsletter's unsubscribe link.
+  @Patch("newsletter-opt-out")
+  updateNewsletterOptOut(@CurrentSellerId() sellerId: string, @Body() dto: UpdateNewsletterOptOutDto) {
+    return this.sellers.updateNewsletterOptOut(sellerId, dto.newsletterOptOut);
   }
 
   // SRS §5.30/FR-30.1 - CNIC can be added/changed any time after signup;

@@ -310,6 +310,14 @@ model Seller {
   // surfaced as a direct Module 12 dependency, built here (see build-plan.md).
   lifecycleStatus SellerLifecycleStatus @default(active) @map("lifecycle_status")
 
+  // Module 55 (SRS §5.62/FR-62.3) - independent per-seller opt-out for the
+  // admin-composed platform newsletter only; transactional emails (FR-62.1)
+  // are never opt-outable. Mirrors Customer.unsubscribedAt/unsubscribeToken
+  // (Module 34) but on a different table for a different audience - a
+  // seller's own account, not a store's customer.
+  newsletterOptOut         Boolean @default(false) @map("newsletter_opt_out")
+  newsletterUnsubscribeToken String? @unique @map("newsletter_unsubscribe_token")
+
   // Module 20 (SRS §5.6e, FR-6.25) - the wallet's low-balance grace
   // ladder tracking, same "sticky sent-at timestamp" pattern as
   // Store.dormantWarningSentAt (Module 14): set once a warning is sent so
@@ -410,6 +418,7 @@ model AdminUser {
   verifiedWalletTopUps     WalletTopUpRequest[]
   decidedVerifiedStoreApps VerifiedStoreApplication[]
   linkedEmailAccounts      AdminEmailAccount[]
+  platformNewsletters      PlatformNewsletter[]
 
   @@map("admin_users")
 }
@@ -1003,6 +1012,12 @@ model ProductVariant {
   // engine; null (not 0) when never entered, so PnLService can flag an
   // order's profit as incomplete rather than silently understating it.
   baseCost       Decimal? @map("base_cost") @db.Decimal(12, 2)
+  // Module 55 (SRS §5.62/FR-62.1) - debounces the low-stock alert email: set
+  // the instant a decrement first crosses at-or-below the store's
+  // `inventory.low_stock_threshold`, cleared back to null the instant a
+  // restock brings it back above threshold - so the seller gets exactly one
+  // alert per dip, not one per subsequent sale while it stays low.
+  lowStockAlertSentAt DateTime? @map("low_stock_alert_sent_at")
 
   product          Product           @relation(fields: [productId], references: [id])
   orderItems       OrderItem[]
@@ -1862,6 +1877,38 @@ model EmailCampaign {
 
   @@index([storeId, createdAt], name: "idx_email_campaigns_store_created")
   @@map("email_campaigns")
+}
+
+enum PlatformNewsletterStatus {
+  draft
+  sending
+  sent
+  failed
+}
+
+// Module 55 (SRS §5.62/FR-62.2) - the admin-composed platform newsletter.
+// Deliberately NOT store-scoped (no storeId, no RLS) - this is a
+// platform-wide broadcast to every seller, sent from UZEYN's own SMTP
+// identity (EmailService, the same one every other platform email already
+// uses), never a seller's connected mailbox - a materially different
+// audience/sender pair from EmailCampaign above despite the similar shape.
+model PlatformNewsletter {
+  id              String                   @id @default(uuid()) @db.Uuid
+  subject         String
+  body            String
+  status          PlatformNewsletterStatus @default(draft)
+  createdByAdminId String                  @map("created_by_admin_id") @db.Uuid
+  recipientCount  Int                      @default(0) @map("recipient_count")
+  sentCount       Int                      @default(0) @map("sent_count")
+  failedCount     Int                      @default(0) @map("failed_count")
+  failureReason   String?                  @map("failure_reason")
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  sentAt          DateTime?                @map("sent_at") @db.Timestamptz
+
+  createdByAdmin AdminUser @relation(fields: [createdByAdminId], references: [id])
+
+  @@index([createdAt], name: "idx_platform_newsletters_created")
+  @@map("platform_newsletters")
 }
 
 enum ReviewStatus {

@@ -1,10 +1,12 @@
 import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { OrderSource } from "@prisma/client";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { CustomersService } from "../customers/customers.service";
 import { GiftCardsService } from "../gift-cards/gift-cards.service";
+import { InventoryService } from "../inventory/inventory.service";
 import { InvoicePdfService } from "../invoices/invoice-pdf.service";
 import { EmailService } from "../notifications/email.service";
 import { OrderVerificationService } from "../order-verification/order-verification.service";
@@ -68,6 +70,8 @@ export class CheckoutService {
     private readonly orderVerification: OrderVerificationService,
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
+    private readonly inventory: InventoryService,
+    private readonly config: ConfigService,
   ) {}
 
   async checkout(dto: CheckoutDto, ip: string) {
@@ -111,6 +115,24 @@ export class CheckoutService {
       paymentInstructions,
       order.invoicePdfUrl,
     );
+
+    // Module 55 (SRS §5.62/FR-62.1) - the new-order alert, seller-facing;
+    // only wired into the storefront path, never createManualOrder() below
+    // (a seller doesn't need to be told about an order they just created
+    // themselves). Best-effort: a missing seller email/account row would
+    // throw and block the order response, so this is deliberately fetched
+    // and sent after the buyer's own confirmation email already succeeded.
+    const seller = await this.prismaAdmin.seller.findUnique({ where: { id: store.sellerId }, include: { user: true } });
+    if (seller) {
+      await this.email.sendNewOrderAlertEmail(
+        seller.user.email,
+        store.name,
+        order.orderNumber,
+        `${this.config.getOrThrow<string>("APP_BASE_URL")}/stores/${store.id}/orders/${order.id}`,
+        order.totalAmount.toString(),
+        order.currency,
+      );
+    }
 
     return order;
   }
@@ -452,6 +474,9 @@ export class CheckoutService {
         throw new ConflictException(`"${item.title}" no longer has enough stock available.`);
       }
       reserved.push({ variantId: item.variantId, quantity: item.quantity });
+      // Module 55 (FR-62.1) - checked right after the decrement that could
+      // have crossed the threshold; best-effort, never blocks checkout.
+      await this.inventory.checkAndAlertLowStock(item.variantId).catch(() => undefined);
     }
     return reserved;
   }

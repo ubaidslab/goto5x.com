@@ -3,6 +3,7 @@ import { BillingModule } from "../billing/billing.module";
 import { CustomersModule } from "../customers/customers.module";
 import { EventsModule } from "../events/events.module";
 import { GiftCardsModule } from "../gift-cards/gift-cards.module";
+import { InventoryModule } from "../inventory/inventory.module";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { OrderVerificationModule } from "../order-verification/order-verification.module";
@@ -36,6 +37,7 @@ import { OrdersService } from "./orders.service";
     InvoicesModule,
     OrderVerificationModule,
     GiftCardsModule,
+    InventoryModule,
   ],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [

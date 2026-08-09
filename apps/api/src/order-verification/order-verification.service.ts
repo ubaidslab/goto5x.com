@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { OrderVerificationChannel } from "@prisma/client";
+import { EmailService } from "../notifications/email.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { SettingsService } from "../settings-registry/settings.service";
@@ -40,6 +42,8 @@ export class OrderVerificationService {
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
     private readonly senderEmails: SellerVerificationEmailsService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
     whatsAppAdapter: WhatsAppOtpAdapter,
     emailAdapter: EmailOtpAdapter,
     prepaidAdapter: PrepaidConfirmationAdapter,
@@ -211,6 +215,7 @@ export class OrderVerificationService {
     });
     if (verification.attemptCount >= maxAttempts) {
       await this.prismaAdmin.orderVerification.update({ where: { orderId }, data: { status: "failed" } });
+      await this.alertSellerVerificationFailed(orderId, verification.storeId);
       throw new BadRequestException("Too many incorrect attempts - request a new code.");
     }
 
@@ -221,6 +226,7 @@ export class OrderVerificationService {
         where: { orderId },
         data: { attemptCount, status: failedNow ? "failed" : "pending" },
       });
+      if (failedNow) await this.alertSellerVerificationFailed(orderId, verification.storeId);
       throw new BadRequestException(
         failedNow ? "Too many incorrect attempts - request a new code." : "Incorrect verification code.",
       );
@@ -243,6 +249,30 @@ export class OrderVerificationService {
       },
     });
     return verified;
+  }
+
+  /**
+   * Module 55 (SRS §5.62/FR-62.1) - the order-payment/verification-events
+   * transactional alert, mirroring sendDormantStoreWarning/
+   * sendWalletLowBalanceWarning's account-health pattern in
+   * email.service.ts but scoped to a single order's verification gate,
+   * not the seller's whole account. Best-effort: a missing store/seller
+   * row never blocks the buyer-facing verification response.
+   */
+  private async alertSellerVerificationFailed(orderId: string, storeId: string): Promise<void> {
+    try {
+      const store = await this.prismaAdmin.store.findUnique({ where: { id: storeId } });
+      if (!store) return;
+      const seller = await this.prismaAdmin.seller.findUnique({ where: { id: store.sellerId }, include: { user: true } });
+      if (!seller) return;
+      await this.email.sendOrderVerificationFailedEmail(
+        seller.user.email,
+        store.name,
+        `${this.config.getOrThrow<string>("APP_BASE_URL")}/stores/${store.id}/orders/${orderId}`,
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to send verification-failed alert for order ${orderId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**

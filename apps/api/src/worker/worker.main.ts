@@ -27,6 +27,10 @@ import { DataExportService } from "../data-export/data-export.service";
 import { DATA_EXPORT_JOB_NAME, DATA_EXPORT_QUEUE_NAME } from "../data-export/data-export.queue";
 import { EmailCampaignsService } from "../campaigns/email-campaigns.service";
 import { EMAIL_CAMPAIGNS_QUEUE_NAME } from "../campaigns/campaigns.queue";
+import { DailySalesSummaryService } from "../seller-notifications/daily-sales-summary.service";
+import { DAILY_SALES_SUMMARY_QUEUE_NAME } from "../seller-notifications/daily-sales-summary.queue";
+import { PlatformNewsletterService } from "../seller-notifications/platform-newsletter.service";
+import { PLATFORM_NEWSLETTER_QUEUE_NAME } from "../seller-notifications/platform-newsletter.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -50,6 +54,8 @@ async function main() {
   const verificationReReview = appContext.get(VerificationReReviewService);
   const dataExport = appContext.get(DataExportService);
   const emailCampaigns = appContext.get(EmailCampaignsService);
+  const dailySalesSummary = appContext.get(DailySalesSummaryService);
+  const platformNewsletter = appContext.get(PlatformNewsletterService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -235,9 +241,41 @@ async function main() {
     console.error(`email-campaigns job ${job?.id} failed:`, err);
   });
 
+  // Module 55 (SRS §5.62, FR-62.1) - periodic sweep, one email per store
+  // with at least one confirmed order yesterday. DailySalesSummaryService
+  // itself never throws for the whole sweep (a single store's failure is
+  // caught and logged inside it), same discipline as every other sweep
+  // above.
+  const dailySalesSummaryWorker = new Worker(
+    DAILY_SALES_SUMMARY_QUEUE_NAME,
+    async () => dailySalesSummary.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  dailySalesSummaryWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`daily-sales-summary job ${job?.id} failed:`, err);
+  });
+
+  // Module 55 (SRS §5.62, FR-62.2) - per-newsletter send job, admin-
+  // triggered (not a periodic sweep). PlatformNewsletterService.
+  // processNewsletter() never throws (a send/seller failure is caught
+  // inside it and recorded on the newsletter row itself), same discipline
+  // as Module 34's campaign send processor above.
+  const platformNewsletterWorker = new Worker(
+    PLATFORM_NEWSLETTER_QUEUE_NAME,
+    async (job) => platformNewsletter.processNewsletter(job.data.newsletterId as string),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  platformNewsletterWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`platform-newsletter job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55).",
   );
 
   const shutdown = async () => {
@@ -253,6 +291,8 @@ async function main() {
     await verificationReReviewSweepWorker.close();
     await dataExportWorker.close();
     await emailCampaignsWorker.close();
+    await dailySalesSummaryWorker.close();
+    await platformNewsletterWorker.close();
     await appContext.close();
     process.exit(0);
   };

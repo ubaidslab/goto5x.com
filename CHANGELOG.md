@@ -8,6 +8,29 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 55: Seller Notifications
+
+### Added
+- Four transactional seller emails, all genuinely new: an immediate
+  new-order alert (storefront checkout only, never a seller's own manual
+  order); a daily sales summary sweep built on Module 54's time-bucketed
+  query idiom; a low-stock alert debounced by the new
+  `ProductVariant.lowStockAlertSentAt` flag (exactly one email per dip
+  below threshold, cleared on restock so the next dip alerts again); and
+  an order-verification-failure alert, scoped deliberately to the
+  verification gate's terminal `"failed"` status (max-OTP-attempts
+  exhausted) as the one unambiguous "payment/verification event" hook.
+- Admin-composed platform newsletter (`apps/api/src/seller-notifications`,
+  new `PlatformNewsletter` table, `/admin/newsletters` bare-functional
+  composer page) - sent from the platform's own SMTP identity via the
+  existing `EmailService`, background-job-send + unsubscribe-token
+  infrastructure modeled on Module 34's campaigns. Opt-out
+  (`Seller.newsletterOptOut`) is re-checked live at send time, never
+  cached from creation time, and never suppresses the four transactional
+  alerts above. Seller-facing opt-out toggle added to the store Settings
+  page; `/unsubscribe` extended with a `?type=newsletter` branch rather
+  than a second page.
+
 ## Module 54: Analytics Depth
 
 ### Added

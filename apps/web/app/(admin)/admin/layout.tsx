@@ -47,6 +47,7 @@ const NAV_LINKS: { href: string; label: string }[] = [
   { href: "/admin/content-pages", label: "Content pages" },
   { href: "/admin/messages", label: "Messages" },
   { href: "/admin/email", label: "Email" },
+  { href: "/admin/newsletters", label: "Newsletters" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

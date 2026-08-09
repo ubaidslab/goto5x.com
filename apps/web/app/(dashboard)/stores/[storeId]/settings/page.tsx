@@ -30,6 +30,7 @@ interface SellerProfile {
   cnicMasked: string | null;
   activationStatus: "auto_approved" | "pending_review" | "blocked";
   mfaEnabled: boolean;
+  newsletterOptOut: boolean;
 }
 
 interface SessionInfo {
@@ -105,6 +106,9 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [savingCnic, setSavingCnic] = useState(false);
   const [cnicSaved, setCnicSaved] = useState(false);
 
+  const [newsletterOptOut, setNewsletterOptOut] = useState(false);
+  const [savingNewsletterOptOut, setSavingNewsletterOptOut] = useState(false);
+
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaSecret, setMfaSecret] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
@@ -179,6 +183,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         setCnicMasked(profile.cnicMasked);
         setActivationStatus(profile.activationStatus);
         setMfaEnabled(profile.mfaEnabled);
+        setNewsletterOptOut(profile.newsletterOptOut);
       })
       .catch(() => {});
     api
@@ -341,6 +346,20 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't remove the logo.");
     } finally {
       setRemovingLogo(false);
+    }
+  }
+
+  /** Module 55 (SRS §5.62/FR-62.3) - the same flag a seller can also flip from a newsletter's unsubscribe link. */
+  async function toggleNewsletterOptOut() {
+    const next = !newsletterOptOut;
+    setSavingNewsletterOptOut(true);
+    try {
+      await api.patch("/sellers/me/newsletter-opt-out", { newsletterOptOut: next });
+      setNewsletterOptOut(next);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save that preference.");
+    } finally {
+      setSavingNewsletterOptOut(false);
     }
   }
 
@@ -589,6 +608,24 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               </Button>
             </form>
             {cnicSaved && <Alert tone="success">Saved.</Alert>}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Notifications"
+            description="Platform emails about your account - separate from the order and stock alerts your store sends automatically, which can't be turned off."
+          />
+          <CardBody>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={!newsletterOptOut}
+                disabled={savingNewsletterOptOut}
+                onChange={toggleNewsletterOptOut}
+              />
+              Send me the UZEYN newsletter (product updates, tips, and announcements)
+            </label>
           </CardBody>
         </Card>
 

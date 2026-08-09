@@ -3826,10 +3826,35 @@ reordered here purely on dependency grounds, confirmed safe by research
   (§3.13, FR-61.6) satisfied by charts, not raw tables. New nav item
   between Reviews and Profit & Loss.
 - **Module 55 — Seller Notifications (§5.62, item 7, reordered after item
-  5).** The daily sales summary email is explicitly meant to reuse
-  Module 54's new time-bucketed queries rather than duplicate them —
-  sequencing after 54 means there's something to reuse when this module
-  starts.
+  5). BUILT.** The daily sales summary email reuses Module 54's
+  `CONFIRMED_OR_BEYOND`-filtered query idiom directly (a single-day sum,
+  queried per-store with `PrismaAdminService` rather than looped through
+  `AnalyticsService`'s tenant-scoped API, since this is a platform-wide
+  sweep, not a single seller's dashboard request). New
+  `apps/api/src/seller-notifications` module: `DailySalesSummaryService`
+  (BullMQ scheduler, same `upsertJobScheduler` pattern as every other
+  periodic sweep) plus the admin-composed `PlatformNewsletterService`
+  (own BullMQ queue/worker, sent from the platform's own SMTP identity via
+  the existing `EmailService`, never a seller's connected mailbox). The
+  other three transactional alerts (new-order, low-stock, verification-
+  failure) are wired directly into their originating services
+  (`CheckoutService`, `InventoryService`, `OrderVerificationService`)
+  rather than living in the new module. Two build-time scoping decisions
+  (SRS §14.61 has the full detail): the "payment/verification event"
+  trigger is narrowed to order-verification's terminal `"failed"` status
+  only, and FR-62.4's Settings-editable-templates text is satisfied only
+  for the newsletter (per-newsletter subject/body composed at admin-send
+  time) this pass — the four transactional templates stay hardcoded, like
+  every other transactional email in the codebase. Schema: `Seller.
+  newsletterOptOut`/`newsletterUnsubscribeToken`,
+  `ProductVariant.lowStockAlertSentAt` (the low-stock debounce flag —
+  cleared on restock so each new dip alerts again), and a new
+  `PlatformNewsletter` table (no RLS — platform-wide admin data, not
+  tenant-scoped). Frontend: bare-functional `/admin/newsletters` composer
+  (same undesigned-view discipline as every other admin page), a
+  "Notifications" card with an opt-out toggle on the seller Settings page,
+  and the existing `/unsubscribe` page extended with a `?type=newsletter`
+  branch rather than duplicated as a second page.
 - **Module 56 — One-Click Full Export, Pro Gate (§5.63, item 8).** Small
   and fully independent (confirmed by research: Module 24's export engine
   already does everything except the plan-tier check) — slotted here as a

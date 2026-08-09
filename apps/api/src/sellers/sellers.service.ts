@@ -26,6 +26,7 @@ export class SellersService {
           dashboardTheme: true,
           activationStatus: true,
           lifecycleStatus: true,
+          newsletterOptOut: true,
           user: { select: { mfaEnabled: true } },
         },
       }),
@@ -57,6 +58,15 @@ export class SellersService {
       where: { id: sellerId },
       data: { dashboardTheme },
       select: { dashboardTheme: true },
+    });
+  }
+
+  /** Module 55 (SRS §5.62/FR-62.3) - the same flag PlatformNewsletterService.processNewsletter() re-checks live at send time. */
+  async updateNewsletterOptOut(sellerId: string, newsletterOptOut: boolean) {
+    return this.prisma.seller.update({
+      where: { id: sellerId },
+      data: { newsletterOptOut },
+      select: { newsletterOptOut: true },
     });
   }
 }

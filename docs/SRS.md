@@ -7564,16 +7564,36 @@ Module 52, v0.34)
       the time-series and top-products metrics (FR-61.6) — recharts, the
       first charting library added to `apps/web`.
 
-### 14.61 Seller Notifications (new, v0.34, not yet built)
-- [ ] A new order triggers an immediate seller email; a daily sales
+### 14.61 Seller Notifications (v0.34, BUILT as Module 55)
+- [x] A new order triggers an immediate seller email; a daily sales
       summary, a low-stock alert, and a payment/verification-event email
       each fire correctly under their respective trigger conditions
-      (FR-62.1).
-- [ ] An admin can compose and send a newsletter to all non-opted-out
+      (FR-62.1). The payment/verification-event trigger is deliberately
+      scoped narrow: only an order-verification's terminal `"failed"`
+      status (max-OTP-attempts exhausted) fires it — the one clean,
+      unambiguous "this order needs your attention" hook in
+      `OrderVerificationService.verifyOtp()`; the SRS text above names the
+      category but not an exact trigger, so this is a build-time scoping
+      decision, not a literal FR-62.1 requirement. The low-stock alert is
+      debounced by `ProductVariant.lowStockAlertSentAt` — exactly one email
+      per dip below threshold, cleared on restock — proven by a dedicated
+      e2e test (decrement-decrement-restock-decrement sequence).
+- [x] An admin can compose and send a newsletter to all non-opted-out
       sellers from the admin terminal; an opted-out seller does not
-      receive it (FR-62.2/62.3).
-- [ ] Newsletter opt-out does not suppress transactional emails
-      (FR-62.3).
+      receive it (FR-62.2/62.3). Opt-out is re-checked live at send time,
+      never cached from creation time — same discipline Module 34's
+      `processCampaign()` established for customer segments.
+- [x] Newsletter opt-out does not suppress transactional emails
+      (FR-62.3) — `Seller.newsletterOptOut` is read only by
+      `PlatformNewsletterService.processNewsletter()`; none of the four
+      FR-62.1 transactional sends check it.
+- Build-time scope note on FR-62.4: only the newsletter's subject/body are
+  Settings-Registry-editable-in-spirit (stored per-newsletter, composed
+  fresh each time via the admin terminal); the four transactional
+  templates in `email.service.ts` remain hardcoded template-literal
+  functions this pass, consistent with every other transactional email in
+  the codebase today. Extending Settings Registry to hold arbitrary email
+  template bodies is deferred, not silently dropped.
 
 ### 14.62 One-Click Full Export, Pro Gate (new, v0.34, not yet built)
 - [ ] A sub-Pro seller's export request returns a clear upgrade prompt,
