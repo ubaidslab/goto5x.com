@@ -29,7 +29,15 @@ export class InvoicePdfService {
       const key = `stores/${data.storeId}/invoices/${data.orderId}.pdf`;
       return await this.objectStorage.putObject(key, pdf, "application/pdf");
     } catch (err) {
-      this.logger.warn(`Invoice PDF generation failed for order ${data.orderId}: ${(err as Error).message}`);
+      // TEMPORARY: .error() instead of the usual best-effort .warn() -
+      // Module 57's CI e2e run is getting a silent null here with no
+      // diagnosable cause (.warn output isn't captured in this CI's job
+      // logs at all), so this is elevated for one run to see the real
+      // exception, then reverted back to .warn() once root-caused.
+      this.logger.error(
+        `Invoice PDF generation failed for order ${data.orderId}: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       return null;
     }
   }
