@@ -1,6 +1,6 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.36 (Build-phase amendment — v0.35 Business-Model Change Cancelled; Final Locked Revenue Model)
+**Version:** 0.37 (Build-phase amendment — Plan Pricing Lowered Now That Commission Is Confirmed Active)
 **Date:** 2026-08-09
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -2286,8 +2286,10 @@ debits, and a new seller funds it in the same payment as their first
 plan-fee charge.** At signup, a seller pays their chosen plan's
 first-cycle price (FR-7.20) **and** a minimum wallet top-up together, in
 **one combined transaction**, never two separate payment steps — e.g. a
-signup screen reading "Get started: Rs 2,498" with a visible breakdown
-"Rs 1,799 first month + Rs 699 wallet credit." This reuses the existing
+Starter signup screen reading "Get started — Rs 2,198" with a visible
+breakdown "Rs 1,499 first month + Rs 699 wallet credit" (Starter's
+`firstCyclePrice` per FR-7.20's v0.37 defaults + the Rs 699 minimum
+top-up). This reuses the existing
 top-up-and-verify mechanism (§5.6d/e's `WalletTopUpRequest` submit →
 `AdminWalletController` verify/reject flow) rather than inventing a
 second payment/claim system — the claim simply carries a plan-fee portion
@@ -2592,16 +2594,23 @@ fallback for any seller who connects no gateway at all.
   concept with a **per-tier** one: whichever tier a seller signs up for,
   their first cycle is billed at that tier's `firstCyclePrice`, and every
   subsequent cycle at `price` — never a forced transition to a different
-  tier. Launch defaults (monthly): Basic regular 4,499 / price 3,499 /
-  firstCycle 1,199; Starter regular 7,999 / price 6,499 / firstCycle
-  1,799; Growth regular 19,999 / price 16,499 / firstCycle 3,499; Pro
-  regular 39,999 / price 31,999 / firstCycle 5,999 — founder-set plan-
-  editor data, per FR-7.17's "never hard-coded" discipline, recorded in
-  `docs/database-schema.md`'s seed notes like every other launch default.
+  tier. **Launch defaults, revised v0.37 — lowered from the v0.35 figures
+  now that commission (FR-6.30) is confirmed active alongside subscription
+  fees rather than zeroed** (the v0.35 prices were raised on the
+  now-cancelled assumption that subscriptions would be UZEYN's only
+  revenue stream): Basic regular 3,999 / price 2,999 / firstCycle 999,
+  2% commission; Starter regular 6,499 / price 5,299 / firstCycle 1,499,
+  2% commission; Growth regular 16,999 / price 13,999 / firstCycle 2,999,
+  1.5% commission; Pro regular 32,999 / price 26,999 / firstCycle 4,999,
+  1% commission — founder-set plan-editor data, per FR-7.17's "never
+  hard-coded" discipline, recorded in `docs/database-schema.md`'s seed
+  notes like every other launch default.
   A new nullable `campaignPrice` (Decimal) plus `campaignActive` (Boolean,
   default false) lets a tier carry a **second**, separately-toggleable
   discounted price alongside its standing `price` — e.g. Basic's launch
-  data also seeds `campaignPrice: 3,899` — for a time-boxed campaign
+  data also seeds `campaignPrice: 2,499` (revised v0.37 alongside the
+  lowered base prices above, kept below the new `price` of 2,999 so the
+  campaign variant is still a genuine discount) — for a time-boxed campaign
   variant that doesn't require overwriting the standing `price` the way
   FR-7.19's original single-field campaign framing did (that framing is
   superseded for tiers that set `campaignPrice`; a tier that never sets it
