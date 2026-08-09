@@ -7595,11 +7595,21 @@ Module 52, v0.34)
   the codebase today. Extending Settings Registry to hold arbitrary email
   template bodies is deferred, not silently dropped.
 
-### 14.62 One-Click Full Export, Pro Gate (new, v0.34, not yet built)
-- [ ] A sub-Pro seller's export request returns a clear upgrade prompt,
+### 14.62 One-Click Full Export, Pro Gate (v0.34, BUILT as Module 56)
+- [x] A sub-Pro seller's export request returns a clear upgrade prompt,
       not a partial or degraded export; a Pro seller's request proceeds
       exactly as Module 24's existing export already works, subject to
-      the existing cooldown (FR-63.2).
+      the existing cooldown (FR-63.2). Implemented as a new
+      `data_export.on_demand_enabled` boolean Settings Registry key
+      (`allowedScopes: ["global", "plan"]`, same seed shape as
+      `staff.max_accounts`) - false by default, overridden true only on
+      the Pro plan (individual, tierOrder 3); checked in
+      `DataExportService.requestOnDemandExport()` before the pre-existing
+      cooldown check, so a sub-Pro seller always sees the upgrade prompt
+      rather than a cooldown message that would misleadingly imply
+      they'd succeed on retry. The subscription-renewal export trigger
+      (`triggerRenewalExport()`) is a different code path and is not
+      gated by this check.
 
 ### 14.63 Invoice/Receipt Customization, limited (new, v0.34, not yet
 built)

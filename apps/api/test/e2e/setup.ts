@@ -124,7 +124,6 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedCareersSettings(prisma);
   await seedStoreHealthSettings(prisma);
   await seedVerificationSettings(prisma);
-  await seedDataExportSettings(prisma);
   await seedInventorySettings(prisma);
   await seedWhatsAppMessagingSettings(prisma);
   // Themes aren't a Settings Registry concept, but every store-creation test
@@ -149,6 +148,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedCampaignsSettings(prisma);
   // Module 35 - depends on the same paid plan rows for its plan-tier quota key.
   await seedStaffSettings(prisma);
+  // Module 56 (SRS §5.63/FR-63.2) - same paid-plan-row dependency, for its Pro-tier gate.
+  await seedDataExportSettings(prisma);
   // Module 49 (SRS §5.56/FR-56.1) - same paid-plan-row dependency as staff above.
   await seedStoresSettings(prisma);
   await seedAdminEmailSettings(prisma);

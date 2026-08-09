@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { RedisService } from "../common/redis/redis.service";
@@ -8,6 +8,7 @@ import { DRIVE_CLIENT, IDriveClient } from "../media/google-drive/drive-client.i
 import { DriveConnectionsService } from "../media/google-drive/drive-connections.service";
 import { ObjectStorageService } from "../media/object-storage.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { toCsv } from "../data-portability/csv.util";
 import { renderExportSummaryHtml } from "./export-summary-template";
@@ -78,6 +79,7 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     private readonly driveConnections: DriveConnectionsService,
     private readonly redis: RedisService,
     private readonly config: ConfigService,
+    private readonly subscriptions: SubscriptionsService,
     @Inject(DRIVE_CLIENT) private readonly driveClient: IDriveClient,
   ) {}
 
@@ -107,8 +109,21 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** FR-36.1(b) - seller-triggered on demand, rate-limited against this same table's most recent row. */
+  /**
+   * FR-36.1(b) - seller-triggered on demand, rate-limited against this same
+   * table's most recent row. Module 56 (FR-63.2) - Pro-tier gated, checked
+   * before the cooldown below so a sub-Pro seller always gets the upgrade
+   * prompt rather than a cooldown message that implies they'd succeed on
+   * retry. The subscription-renewal export (triggerRenewalExport() above)
+   * is a different trigger entirely and is never gated by this.
+   */
   async requestOnDemandExport(sellerId: string) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const enabled = await this.settings.resolve<boolean>("data_export.on_demand_enabled", planContext);
+    if (!enabled) {
+      throw new ForbiddenException("On-demand full export is a Pro-plan feature - upgrade your plan to use it.");
+    }
+
     const minHours = await this.settings.resolve<number>("data_export.on_demand_min_interval_hours");
     const last = await this.prismaAdmin.sellerDataExport.findFirst({
       where: { sellerId },

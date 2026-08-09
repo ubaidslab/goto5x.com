@@ -3855,11 +3855,20 @@ reordered here purely on dependency grounds, confirmed safe by research
   "Notifications" card with an opt-out toggle on the seller Settings page,
   and the existing `/unsubscribe` page extended with a `?type=newsletter`
   branch rather than duplicated as a second page.
-- **Module 56 — One-Click Full Export, Pro Gate (§5.63, item 8).** Small
-  and fully independent (confirmed by research: Module 24's export engine
-  already does everything except the plan-tier check) — slotted here as a
-  fast, low-risk module between the two remaining larger, independent
-  items.
+- **Module 56 — One-Click Full Export, Pro Gate (§5.63, item 8). BUILT.**
+  Confirmed by research: Module 24's export engine already does everything
+  except the plan-tier check, so this was exposure/gating only (FR-63.1) -
+  no new export engine, no frontend change (the existing seller Settings
+  "Data export" card's generic error `Alert` already surfaces whatever
+  message the backend throws, which now includes the upgrade prompt).
+  `DataExportService.requestOnDemandExport()` now calls
+  `SubscriptionsService.getPlanContext(sellerId)` and resolves a new
+  `data_export.on_demand_enabled` boolean Settings Registry key before its
+  pre-existing cooldown check (FR-63.2); `DataExportModule` gained a
+  `PlansModule` import for that service. `seedDataExportSettings()` moved
+  to run after `seedPlansData()` in the test harness (same dependency
+  Module 34/35/49 already have on the paid plan rows), since seeding the
+  Pro-plan override requires the plan row to exist first.
 - **Module 57 — Invoice/Receipt Customization, limited (§5.64, item 9).**
   Independent; small (three new `Store` fields plus wiring one already-
   existing-but-unused `Seller.businessName` field into the template).

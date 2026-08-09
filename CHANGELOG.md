@@ -8,6 +8,19 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 56: One-Click Full Export, Pro Gate
+
+### Added
+- A Pro-tier plan gate on the seller's on-demand data export request
+  (`POST /sellers/me/data-export`) - no new export engine, Module 24's
+  existing products+orders+customers+inventory bundle is unchanged. New
+  `data_export.on_demand_enabled` boolean Settings Registry key
+  (`allowedScopes: ["global", "plan"]`), false by default and overridden
+  true only on the Pro plan; checked before the existing cooldown so a
+  sub-Pro seller gets a clear upgrade prompt rather than a cooldown
+  message implying they'd succeed on retry. The subscription-renewal
+  export trigger is a separate code path, unaffected by this gate.
+
 ## Module 55: Seller Notifications
 
 ### Added
