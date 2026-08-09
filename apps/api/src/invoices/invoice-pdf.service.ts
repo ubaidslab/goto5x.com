@@ -56,7 +56,13 @@ export class InvoicePdfService {
     try {
       browser = await chromium.launch({
         executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || "/opt/pw-browsers/chromium",
-        args: ["--no-sandbox"],
+        // --disable-dev-shm-usage - CI runners' /dev/shm is often small
+        // (commonly 64MB) and this renderer is launched fresh dozens of
+        // times per e2e run (once per invoice/export-summary PDF); without
+        // this flag Chromium can silently fail once shared memory runs low
+        // deep into a long run, which surfaces here only as a caught
+        // exception (this.logger.warn - never a crash the caller sees).
+        args: ["--no-sandbox", "--disable-dev-shm-usage"],
       });
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "load" });
