@@ -42,3 +42,69 @@ describe("Invoice template logo fallback (FR-32.5)", () => {
     expect(html).not.toContain("<script>alert(2)</script>");
   });
 });
+
+/** Module 57 (SRS §5.64/FR-64.1/64.2) - seller-controlled invoice customization fields, each present only when set. */
+describe("Invoice template customization fields (FR-64.1/64.2)", () => {
+  it("renders business name, tax/NTN number, footer text, and terms text when all are set", () => {
+    const html = renderInvoiceHtml({
+      ...baseData,
+      businessName: "Ayesha Textiles (Pvt) Ltd",
+      taxNumber: "1234567-8",
+      invoiceFooterText: "Thank you for shopping with us.",
+      invoiceTermsText: "All sales are final after 7 days.",
+    });
+    expect(html).toContain("Ayesha Textiles (Pvt) Ltd");
+    expect(html).toContain("Tax/NTN: 1234567-8");
+    expect(html).toContain("Thank you for shopping with us.");
+    expect(html).toContain("All sales are final after 7 days.");
+  });
+
+  it("renders none of the four fields - not even a blank placeholder - when all are unset", () => {
+    const html = renderInvoiceHtml({ ...baseData, businessName: null, taxNumber: null, invoiceFooterText: null, invoiceTermsText: null });
+    expect(html).not.toContain("Sold by");
+    expect(html).not.toContain("Tax/NTN");
+    expect(html).not.toContain('<div class="invoice-notes">');
+    expect(html).not.toContain("Terms:");
+  });
+
+  it("renders only the fields that are set, leaving the others absent", () => {
+    const html = renderInvoiceHtml({ ...baseData, businessName: "Solo Business Name", taxNumber: null, invoiceFooterText: null, invoiceTermsText: null });
+    expect(html).toContain("Sold by");
+    expect(html).toContain("Solo Business Name");
+    expect(html).not.toContain("Tax/NTN");
+    expect(html).not.toContain('<div class="invoice-notes">');
+  });
+
+  it("escapes business name, tax number, footer, and terms text to prevent HTML injection", () => {
+    const html = renderInvoiceHtml({
+      ...baseData,
+      businessName: "<script>alert(3)</script>",
+      taxNumber: '"><script>alert(4)</script>',
+      invoiceFooterText: "<script>alert(5)</script>",
+      invoiceTermsText: "<script>alert(6)</script>",
+    });
+    expect(html).not.toContain("<script>alert(3)</script>");
+    expect(html).not.toContain("<script>alert(4)</script>");
+    expect(html).not.toContain("<script>alert(5)</script>");
+    expect(html).not.toContain("<script>alert(6)</script>");
+  });
+});
+
+/** FR-64.4 - UZEYN's own invoice branding is mandatory and non-removable, regardless of which seller-controlled fields above are set. */
+describe("Invoice template mandatory platform branding (FR-64.4)", () => {
+  it("always includes the platform footer, with none of the optional fields set", () => {
+    const html = renderInvoiceHtml({ ...baseData, businessName: null, taxNumber: null, invoiceFooterText: null, invoiceTermsText: null });
+    expect(html).toContain('<div class="platform-footer">Generated on uzeyn.com</div>');
+  });
+
+  it("still includes the unmodified platform footer even when every seller-controlled field is set", () => {
+    const html = renderInvoiceHtml({
+      ...baseData,
+      businessName: "Ayesha Textiles (Pvt) Ltd",
+      taxNumber: "1234567-8",
+      invoiceFooterText: "Thank you for shopping with us.",
+      invoiceTermsText: "All sales are final after 7 days.",
+    });
+    expect(html).toContain('<div class="platform-footer">Generated on uzeyn.com</div>');
+  });
+});

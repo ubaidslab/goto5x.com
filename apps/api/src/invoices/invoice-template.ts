@@ -22,6 +22,16 @@ export interface InvoiceData {
   taxLabel: string;
   taxInclusive: boolean;
   totalAmount: number;
+  /**
+   * Module 57 (SRS §5.64/FR-64.1/64.2) - all optional, seller-controlled,
+   * each rendered only when set (never a blank placeholder when absent).
+   * `businessName` is `Seller.businessName`, distinct from `storeName`
+   * above (the store's own display name).
+   */
+  businessName?: string | null;
+  taxNumber?: string | null;
+  invoiceFooterText?: string | null;
+  invoiceTermsText?: string | null;
 }
 
 export function money(amount: number, currency: string): string {
@@ -56,6 +66,18 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     ? `<tr><td colspan="3">${escapeHtml(data.taxLabel)} (included in prices shown)</td><td class="num">${money(data.taxAmount, data.currency)}</td></tr>`
     : `<tr><td colspan="3">${escapeHtml(data.taxLabel)}</td><td class="num">${money(data.taxAmount, data.currency)}</td></tr>`;
 
+  // FR-64.1/64.2 - each line renders only when the seller has actually set
+  // it; nothing appears as a blank placeholder for an unset field.
+  const soldByLines = [
+    data.businessName ? escapeHtml(data.businessName) : null,
+    data.taxNumber ? `Tax/NTN: ${escapeHtml(data.taxNumber)}` : null,
+  ].filter((line): line is string => line !== null);
+
+  const noteBlocks = [
+    data.invoiceFooterText ? `<p class="invoice-note">${escapeHtml(data.invoiceFooterText)}</p>` : "",
+    data.invoiceTermsText ? `<p class="invoice-note invoice-terms"><strong>Terms:</strong> ${escapeHtml(data.invoiceTermsText)}</p>` : "",
+  ].join("");
+
   return `<!doctype html>
 <html>
 <head>
@@ -76,6 +98,9 @@ export function renderInvoiceHtml(data: InvoiceData): string {
   .num { text-align: right; }
   tfoot td { padding: 8px 4px; border: none; }
   .grand-total td { font-weight: bold; font-size: 16px; border-top: 2px solid #1a1a1a; }
+  .invoice-notes { margin-top: 32px; }
+  .invoice-note { font-size: 12px; color: #555; margin: 0 0 8px; }
+  .platform-footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #999; text-align: center; }
 </style>
 </head>
 <body>
@@ -97,6 +122,14 @@ export function renderInvoiceHtml(data: InvoiceData): string {
       ${escapeHtml(data.buyerName)}<br />
       ${escapeHtml(data.buyerEmail)}
     </div>
+    ${
+      soldByLines.length > 0
+        ? `<div>
+      <strong>Sold by</strong><br />
+      ${soldByLines.join("<br />")}
+    </div>`
+        : ""
+    }
   </div>
   <table>
     <thead>
@@ -111,6 +144,8 @@ export function renderInvoiceHtml(data: InvoiceData): string {
       <tr class="grand-total"><td colspan="3">Total</td><td class="num">${money(data.totalAmount, data.currency)}</td></tr>
     </tfoot>
   </table>
+  ${noteBlocks ? `<div class="invoice-notes">${noteBlocks}</div>` : ""}
+  <div class="platform-footer">Generated on uzeyn.com</div>
 </body>
 </html>`;
 }

@@ -25,6 +25,23 @@ export class UpdateStoreDto {
   @MaxLength(5000)
   policyText?: string;
 
+  // Module 57 (SRS §5.64, FR-64.1) - optional invoice-customization fields;
+  // each renders on generated invoices only when set (FR-64.2).
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  taxNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  invoiceFooterText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  invoiceTermsText?: string;
+
   @IsOptional()
   @IsEnum(["public", "coming_soon", "password_protected"])
   accessMode?: StoreAccessMode;

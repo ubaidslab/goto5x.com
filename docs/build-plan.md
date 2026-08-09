@@ -3869,9 +3869,24 @@ reordered here purely on dependency grounds, confirmed safe by research
   to run after `seedPlansData()` in the test harness (same dependency
   Module 34/35/49 already have on the paid plan rows), since seeding the
   Pro-plan override requires the plan row to exist first.
-- **Module 57 — Invoice/Receipt Customization, limited (§5.64, item 9).**
-  Independent; small (three new `Store` fields plus wiring one already-
+- **Module 57 — Invoice/Receipt Customization, limited (§5.64, item 9).
+  BUILT.** Independent; small (three new `Store` fields - `taxNumber`,
+  `invoiceFooterText`, `invoiceTermsText` - plus wiring the already-
   existing-but-unused `Seller.businessName` field into the template).
+  All four render on `invoice-template.ts`'s existing single v1.0 template
+  only when set, in a new "Sold by" block (businessName/taxNumber) and a
+  new notes section (footer/terms) below the totals table; each is
+  `undefined`/`null`-safe, never a blank placeholder when absent. The
+  three new `Store` fields reuse the existing `PATCH /stores/:storeId`
+  settings pattern (`UpdateStoreDto`), with a matching "Invoice
+  customization" card on the seller Settings page. One build-time gap
+  closed beyond the FR's literal text: research confirmed the invoice
+  template had **no platform branding element at all** before this
+  module (FR-64.4 assumed one existed to "stay mandatory" but none did) -
+  a fixed, unconditional `Generated on uzeyn.com` footer line was added,
+  outside every seller-controlled conditional and with no Settings
+  Registry gate, so it renders identically regardless of which
+  seller-controlled fields are set and at every plan tier.
 - **Module 58 — Advanced Store SEO Control (§5.65, item 10).** Built last
   — the largest remaining item and the only one requiring genuinely new
   infrastructure with no in-repo precedent (an HTML-sanitization

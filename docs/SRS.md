@@ -7611,14 +7611,26 @@ Module 52, v0.34)
       (`triggerRenewalExport()`) is a different code path and is not
       gated by this check.
 
-### 14.63 Invoice/Receipt Customization, limited (new, v0.34, not yet
-built)
-- [ ] A seller's tax/NTN number, invoice footer text, invoice terms text,
+### 14.63 Invoice/Receipt Customization, limited (v0.34, BUILT as Module 57)
+- [x] A seller's tax/NTN number, invoice footer text, invoice terms text,
       and business name each render on generated invoices when set, and
       are absent (not blank placeholders) when unset (FR-64.1/64.2).
-- [ ] UZEYN's own invoice branding is present and unmodified on every
+      Proven at the unit level (`invoice-template.spec.ts`, mirroring the
+      logo-fallback tests already there) and at the e2e level (the three
+      new `Store` fields round-trip through the existing
+      `PATCH /stores/:storeId` settings pattern, and a real checkout with
+      them set still produces a valid downloadable PDF).
+- [x] UZEYN's own invoice branding is present and unmodified on every
       generated invoice regardless of which of the above fields a seller
-      has set, at every plan tier (FR-64.4).
+      has set, at every plan tier (FR-64.4). No branding existed on
+      invoices before this module (confirmed by research reading
+      `invoice-template.ts` - a build-time gap this FR closes, not a
+      pre-existing mechanism this FR merely extends); a fixed
+      `<div class="platform-footer">Generated on uzeyn.com</div>` line was
+      added, rendered unconditionally outside any seller-controlled
+      branch and with no Settings Registry gate of any kind - never a
+      per-plan toggle, matching the FR's explicit "hard constraint on the
+      template renderer itself" text.
 
 ### 14.64 Advanced Store SEO Control (new, v0.34, not yet built)
 - [ ] Canonical URL, robots directives, OG override, structured-data

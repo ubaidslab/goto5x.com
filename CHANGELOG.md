@@ -8,6 +8,22 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 57: Invoice/Receipt Customization, limited
+
+### Added
+- Three new optional `Store` fields - tax/NTN number, invoice footer
+  text, invoice terms text - plus the already-existing-but-unused
+  `Seller.businessName` field, all now rendered on generated invoices
+  when set (never a blank placeholder when unset). New "Invoice
+  customization" card on the seller Settings page, reusing the existing
+  `PATCH /stores/:storeId` pattern.
+- A gap closed beyond the literal spec: the invoice template had no
+  platform branding element at all before this module. Added a fixed,
+  unconditional "Generated on uzeyn.com" footer line, outside every
+  seller-controlled conditional and with no plan-tier gate - present and
+  unmodified on every invoice regardless of which of the above fields a
+  seller has set.
+
 ## Module 56: One-Click Full Export, Pro Gate
 
 ### Added

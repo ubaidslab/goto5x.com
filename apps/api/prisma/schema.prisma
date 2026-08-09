@@ -503,6 +503,13 @@ model Store {
   reReviewFlaggedAt DateTime?           @map("re_review_flagged_at") @db.Timestamptz
   reReviewReason    String?             @map("re_review_reason")
 
+  // Module 57 (SRS §5.64, FR-64.1) - all optional, seller-editable via the
+  // existing store settings screen pattern; each renders on generated
+  // invoices only when set (FR-64.2), never as a blank placeholder.
+  taxNumber          String? @map("tax_number")
+  invoiceFooterText  String? @map("invoice_footer_text")
+  invoiceTermsText   String? @map("invoice_terms_text")
+
   seller                    Seller                     @relation(fields: [sellerId], references: [id])
   domains                   Domain[]
   themeSettings             StoreThemeSettings?

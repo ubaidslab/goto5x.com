@@ -210,7 +210,17 @@ export class CheckoutService {
         this.prismaAdmin.storePaymentInstructions.findUniqueOrThrow({ where: { storeId: params.storeId } }),
         this.prismaAdmin.store.findUniqueOrThrow({
           where: { id: params.storeId },
-          select: { sellerId: true, name: true, status: true, publishedAt: true, logoMedia: { select: { url: true } } },
+          select: {
+            sellerId: true,
+            name: true,
+            status: true,
+            publishedAt: true,
+            logoMedia: { select: { url: true } },
+            taxNumber: true,
+            invoiceFooterText: true,
+            invoiceTermsText: true,
+            seller: { select: { businessName: true } },
+          },
         }),
       ]);
 
@@ -398,6 +408,10 @@ export class CheckoutService {
         taxLabel: taxSettings.taxLabel,
         taxInclusive: taxSettings.taxInclusive,
         totalAmount,
+        businessName: store.seller.businessName,
+        taxNumber: store.taxNumber,
+        invoiceFooterText: store.invoiceFooterText,
+        invoiceTermsText: store.invoiceTermsText,
       });
       if (invoicePdfUrl) {
         await this.prismaAdmin.order.update({ where: { id: order.id }, data: { invoicePdfUrl } });

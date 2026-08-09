@@ -79,6 +79,11 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [accessMode, setAccessMode] = useState<AccessMode>("public");
   const [accessPassword, setAccessPassword] = useState("");
   const [policyText, setPolicyText] = useState("");
+  const [taxNumber, setTaxNumber] = useState("");
+  const [invoiceFooterText, setInvoiceFooterText] = useState("");
+  const [invoiceTermsText, setInvoiceTermsText] = useState("");
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [invoiceSaved, setInvoiceSaved] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policySaved, setPolicySaved] = useState(false);
   const [dataExports, setDataExports] = useState<DataExportRow[] | null>(null);
@@ -169,11 +174,21 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
 
   useEffect(() => {
     api
-      .get<{ accessMode: AccessMode; logoUrl: string | null; policyText: string | null }>(`/stores/${params.storeId}`)
+      .get<{
+        accessMode: AccessMode;
+        logoUrl: string | null;
+        policyText: string | null;
+        taxNumber: string | null;
+        invoiceFooterText: string | null;
+        invoiceTermsText: string | null;
+      }>(`/stores/${params.storeId}`)
       .then((s) => {
         setAccessMode(s.accessMode);
         setLogoUrl(s.logoUrl);
         setPolicyText(s.policyText ?? "");
+        setTaxNumber(s.taxNumber ?? "");
+        setInvoiceFooterText(s.invoiceFooterText ?? "");
+        setInvoiceTermsText(s.invoiceTermsText ?? "");
       })
       .finally(() => setLoaded(true));
     api
@@ -232,6 +247,22 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't save your store policy.");
     } finally {
       setSavingPolicy(false);
+    }
+  }
+
+  /** Module 57 (SRS §5.64, FR-64.1) - each field renders on generated invoices only when set; UZEYN's own invoice branding is separate and always present regardless. */
+  async function saveInvoiceCustomization(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setInvoiceSaved(false);
+    setSavingInvoice(true);
+    try {
+      await api.patch(`/stores/${params.storeId}`, { taxNumber, invoiceFooterText, invoiceTermsText });
+      setInvoiceSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save invoice customization.");
+    } finally {
+      setSavingInvoice(false);
     }
   }
 
@@ -455,6 +486,47 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 />
               </Field>
               <Button type="submit" loading={savingPolicy}>
+                Save
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Invoice customization"
+            description="Shown on your buyers' generated invoice PDFs when set. UZEYN's own invoice branding is separate and always included regardless."
+          />
+          <CardBody>
+            <form onSubmit={saveInvoiceCustomization} className="space-y-4">
+              {invoiceSaved && <Alert tone="success">Saved.</Alert>}
+              <Field label="Tax / NTN number" htmlFor="invoice-tax-number" hint="Shown next to your business name on invoices, if set.">
+                <Input
+                  id="invoice-tax-number"
+                  value={taxNumber}
+                  onChange={(e) => setTaxNumber(e.target.value)}
+                  placeholder="e.g. 1234567-8"
+                />
+              </Field>
+              <Field label="Invoice footer text" htmlFor="invoice-footer-text" hint="A short note shown at the bottom of every invoice.">
+                <Textarea
+                  id="invoice-footer-text"
+                  rows={2}
+                  value={invoiceFooterText}
+                  onChange={(e) => setInvoiceFooterText(e.target.value)}
+                  placeholder="e.g. Thank you for shopping with us."
+                />
+              </Field>
+              <Field label="Invoice terms text" htmlFor="invoice-terms-text" hint="Return/exchange terms or other fine print, shown below the footer.">
+                <Textarea
+                  id="invoice-terms-text"
+                  rows={3}
+                  value={invoiceTermsText}
+                  onChange={(e) => setInvoiceTermsText(e.target.value)}
+                  placeholder="e.g. All sales are final after 7 days."
+                />
+              </Field>
+              <Button type="submit" loading={savingInvoice}>
                 Save
               </Button>
             </form>
