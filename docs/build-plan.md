@@ -3854,69 +3854,63 @@ Belonging, Facebook/Instagram Shop Feed) remain pending, unaffected by this
 insertion — they stay queued after Module 58 unless the founder resequences
 them.
 
-## Business Model Change (Modules 59-62) — inserted ahead of Module 54
+## Business Model Change — CANCELLED, corrected, and resequenced after Module 58 (v0.36)
 
-**Founder directive, delivered the moment Module 53 was approved: UZEYN
-becomes subscription-only.** Commission is dedicated to 0% and hidden
-(engine stays dormant, same discipline as §5.6/§5.6c/§14.6), the wallet/
-top-up system is hidden (its sole purpose — funding commission debits —
-is gone), subscription payment moves to a direct admin-verified manual
-transfer, plans become four permanent tiers with three price points each
-across three billing cycles, and a new Seller Payment Gateway Connect
-feature lets a seller auto-confirm buyer payments against their own
-Easypaisa/JazzCash account. SRS v0.35 (§5.6f/5.6g/5.6h/FR-7.20/7.21,
-§14.65) covers the full spec; this is genuinely the largest single change
-since Module 20 introduced the wallet, so it is slotted as its own batch,
-**ahead of** Module 54 (which the founder explicitly asked to pause), not
-folded into the Professional Seller Readiness batch.
+**The subscription-only design below (former Modules 59-63, SRS v0.35) was
+CANCELLED by founder directive before it fully shipped and does not
+describe the platform going forward.** Module 59 (Commission Deactivation
+& Wallet/Top-Up UI Removal) was built and pushed (commits `cc22357`,
+`801b86b`) before the cancellation arrived, and has since been **fully
+reverted** (`git revert`, commits `94ab726`, `1a16b87` — confirmed
+byte-identical to the pre-Module-59 tree). Modules 60 and 61 (Subscription
+Payment via Manual Verification; Publish Gate / Grace Ladder
+Re-Verification dropping the wallet condition) were never built. The
+founder's corrected, final, locked model keeps commission and the wallet
+fully active — see SRS §5.6f/§5.6g (v0.36). This batch is also
+**resequenced to run after Module 58**, not ahead of Module 54: the
+founder asked for the paused Professional Seller Readiness batch
+(Modules 54-58) to resume and complete first, with the corrected
+business-model work following it.
 
-Research (this session) confirmed the wallet-funded plan-fee debit
-(`PlanFeeDebitService.debitDuePlanFees()`) and the shared
-`WalletGraceLadderService.pauseActiveStores()` primitive are the two load-
-bearing pieces that change; `WalletTopUpRequest`/`AdminWalletController`'s
-exact verify/reject shape is the direct template for the new subscription-
-payment-claim flow, and `drive-token-crypto.util.ts`/the
-`VerificationChannelAdapter` pattern are the direct templates for the new
-gateway-connect feature — this batch adds no new architectural primitive,
-it reuses four already-proven ones.
+- **Module 59 — Combined Entry-Flow Payment (§5.6g, FR-6.33).** New
+  Settings Registry key `billing.minimum_signup_wallet_topup` (default
+  Rs 699); extends the existing `WalletTopUpRequest`/
+  `AdminWalletController` verify/reject flow (no new claim model — this
+  reuses the exact mechanism Module 20 already built, not a copy of it)
+  with a `planFeePortion` field so a signup screen can present one
+  combined total (`firstCyclePrice + minimum_signup_wallet_topup`) and one
+  proof-of-payment submission; a single admin verify action credits the
+  wallet top-up and activates the subscription in the same transaction.
+  Lowest-risk item — pure extension of an already-proven flow, no new
+  architectural primitive.
+- **Module 60 — Wallet/Commission Re-Verification Against Four-Tier Plans
+  (§5.6g, FR-6.35a).** Depends on Module 61 below existing so there is a
+  four-tier plan structure to verify against (built/tested together in
+  practice). Confirms the existing grace ladder, `orders_paused`,
+  negative-float floor, running-balance column, and daily reconciliation
+  (Module 47) compute the correct debit amount off a plan's `price`/
+  `firstCyclePrice`/`campaignPrice` and the correct multi-cycle multiplier
+  — a test/audit module, not new production mechanics (the publish gate's
+  wallet-balance condition and `PlanFeeDebitService`'s debit action are
+  both unchanged from how Module 20/47 already built them).
+- **Module 61 — Four-Tier Plan Pricing Model + Pricing Page Rebuild
+  (§5.7 FR-7.20/7.21).** Schema: `Plan.firstCyclePrice`/`campaignPrice`/
+  `campaignActive`, `Subscription.billingInterval` (extends
+  `PlanBillingInterval` with `six_month`), two new global Settings
+  Registry multiplier keys. Retires FR-7.3's "First Month auto-transitions
+  to Starter" mechanism in favor of Basic being a permanent tier with its
+  own `firstCyclePrice`. Pricing page copy corrected per FR-7.21 v0.36 —
+  no "0% commission" claim; positions on direct-to-seller payment,
+  transparent low commission, and "your money never sits with us."
+- **Module 62 — Seller Payment Gateway Connect, Raast-first (§5.6h,
+  FR-6.36-6.39).** Same scope as the original design plus Raast as the
+  first-priority provider ahead of Easypaisa/JazzCash, and a generic bank
+  adapter. The only item requiring new external-adapter code with no live
+  sandbox to test against (same disclosed limitation as Safepay/COD), so
+  it carries the most schedule risk and is sequenced last in this batch.
 
-- **Module 59 — Commission Deactivation & Wallet/Top-Up UI Removal
-  (§5.6f/§5.6g, FR-6.30-6.32/FR-6.33's UI half).** Built first — pure data
-  (zero every commission-rate scope) plus UI-copy/component removal, no
-  schema change, the lowest-risk item and a prerequisite for Module 61's
-  gate re-verification having anything meaningful to re-verify.
-- **Module 60 — Subscription Payment via Manual Verification (§5.6g,
-  FR-6.33/6.34).** Depends on Module 59 (wallet UI must already be gone
-  before the replacement Billing page ships). New `SubscriptionPaymentClaim`
-  model + admin verify/reject queue (structural copy of
-  `AdminWalletController`) + `PlanFeeDebitService` rewritten from a debit
-  action to a pure expiry-check sweep.
-- **Module 61 — Publish Gate / Grace Ladder Re-Verification (§5.6g,
-  FR-6.35).** Depends on Module 60 (the gate's replacement condition —
-  "active, current subscription" — must exist before the wallet-balance
-  condition can be safely removed). Smallest module in the batch: one
-  gate-condition swap plus proof that no wallet-balance-driven pause/warn/
-  restore path fires anywhere in the live flow any longer.
-- **Module 62 — Four-Tier Plan Pricing Model + Pricing Page Rebuild
-  (§5.7 FR-7.20/7.21).** Independent of Modules 59-61 (pure plans/pricing
-  concern) but sequenced after them so the pricing page can truthfully
-  show "0% commission" the moment it ships. Schema: `Plan.firstCyclePrice`/
-  `campaignPrice`/`campaignActive`, `Subscription.billingInterval`
-  (extends `PlanBillingInterval` with `six_month`), two new global
-  Settings Registry multiplier keys. Retires FR-7.3's "First Month
-  auto-transitions to Starter" mechanism in favor of Basic being a
-  permanent tier with its own `firstCyclePrice`.
-- **Module 63 — Seller Payment Gateway Connect (§5.6h, FR-6.36-6.39).**
-  Independent of Modules 59-62 (a genuinely new feature, not a revision of
-  an existing one) but built last in this batch — it is the only item
-  requiring new external-adapter code with no live sandbox to test
-  against (same disclosed limitation as Safepay/COD), so it carries the
-  most schedule risk and is sequenced to not block the three lower-risk,
-  purely-internal changes ahead of it.
-
-After Module 63, the paused Professional Seller Readiness batch resumes at
-Module 54 (Analytics Depth) exactly where it left off — Modules 54-58 are
-otherwise unaffected by this insertion.
+This batch is slotted **after** Module 58, once the Professional Seller
+Readiness batch (Modules 54-58) is complete — not ahead of it.
 
 ---
 

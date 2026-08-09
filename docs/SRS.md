@@ -1,7 +1,7 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.35 (Build-phase amendment — Subscription-Only Business Model)
-**Date:** 2026-08-08
+**Version:** 0.36 (Build-phase amendment — v0.35 Business-Model Change Cancelled; Final Locked Revenue Model)
+**Date:** 2026-08-09
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -2231,155 +2231,158 @@ period/suspend cycle.
   already established) rather than silently auto-corrected, so a real
   bug is surfaced, not masked.
 
-### 5.6f Commission Deactivated — UZEYN is Subscription-Only (new v0.35)
-**Business-model change, founder-directed.** UZEYN earns from subscription
-plan fees only. Commission is not removed from the codebase — it is
-**dedicated to zero and hidden**, using the exact "dormant, re-activatable
-via Settings, never deleted" discipline §5.6/§14.6 already established for
-Platform-Collected Payments and Direct Seller Collection: the engine
-(`LedgerService.accrueCommission()`, `commission_accrued`/`commission_waived`/
-`refund_adjustment` entry types, `PnLService`'s commission subtraction,
-`InvoicesService`'s commission-invoice generation) stays fully intact and
-callable, unchanged in behavior at any nonzero rate — only the **data**
-changes.
-- FR-6.30: **Global and every plan-scoped `billing.commission_rate_percent`
-  default to 0%.** Not only the global Settings Registry default — every
-  per-plan override seeded for Basic/Starter/Growth/Pro (previously 1–2%
-  per FR-7.4) is also seeded at 0%, so the existing scope-precedence
-  resolution (seller > plan > global, FR-8.1) yields 0% for every seller
-  by construction, not merely by an unset default an override could still
-  beat. `LedgerService.accrueCommission()` still runs at the same point in
-  `OrdersService.markAsPaid()` it always has and still posts a
-  `commission_accrued` entry — it is simply an entry for Rs. 0, changing
-  nothing else about the Financial Truth Invariant's mechanics. Reactivating
-  real commission later (once a Pvt Ltd exists to receive it) is a Settings
-  Registry write at whichever scope, never a code change or a deploy.
-- FR-6.31: **Every seller-facing surface that displays a commission rate,
-  amount, or commission-related copy is removed.** This is a UI-only
-  change — the order detail page's P&L breakdown, the seller P&L page, the
-  wallet page's "cover commission" copy, the returns page's "commission
-  portion reverses" copy, the pricing page's "X% commission on sales"
-  bullets, and the marketing homepage FAQ's commission mention all drop
-  the commission line/sentence entirely (not replace it with "0%" — a 0%
-  line invites "why do you even have this?" in a way omitting it
-  entirely does not). **The one exception, phrased positively, not as a
-  rate:** the pricing/marketing page may state **"0% commission — keep
-  every rupee you earn"** as a headline selling point, never as a
-  numbered rate next to other numbered rates. Admin-only surfaces
-  (commission invoices, the admin analytics/settings screens, the
-  Settings Registry editor itself) are unaffected — an admin can still see
-  and, if ever needed, edit the dormant rate.
+### 5.6f Commission & Wallet — Confirmed Active, Dual Revenue Model (v0.35's deactivation CANCELLED and reverted, v0.36)
+**v0.35 (above, superseded) specified deactivating commission to 0% and
+hiding the wallet from every seller-facing surface.** That change was
+built end-to-end (Module 59: `billing.commission_rate_percent` and every
+per-plan override zeroed; commission copy stripped from the order detail
+P&L, seller P&L page, wallet page, returns page, pricing page, and
+homepage FAQ) and shipped in two commits — before reaching the founder's
+sign-off it was **cancelled by explicit founder directive** and **fully
+reverted** via `git revert` of both commits, restored byte-for-byte to
+the pre-Module-59 tree. FR-6.30/FR-6.31/FR-6.32 below replace the v0.35
+versions of the same FR numbers outright — the 0%/hidden-wallet design
+they described was never approved and must never be re-attempted.
+
+**The locked model going forward: UZEYN earns from two independent,
+simultaneously-active streams —** (a) subscription plan fees, and (b)
+commission per confirmed sale, debited from the seller's prepaid wallet
+balance. Both the commission engine (`LedgerService.accrueCommission()`,
+`commission_accrued`/`commission_waived`/`refund_adjustment` entry types,
+`PnLService`'s commission subtraction, `InvoicesService`'s
+commission-invoice generation) and the wallet engine (§5.6d/§5.6e,
+Module 20/47's top-up, running balance, grace ladder, and reconciliation)
+stay exactly as originally built, fully live and fully seller-visible —
+neither is dormant, neither is hidden.
+- FR-6.30 (revised v0.36 — supersedes v0.35's FR-6.30): **Global and
+  every plan-scoped `billing.commission_rate_percent` stay at their
+  original nonzero values — the commission ladder is Basic/Starter 2%,
+  Growth 1.5%, Pro 1%** (identical numerically to the pre-v0.35 First
+  Month/Starter/Growth/Pro values; Basic simply inherits the value First
+  Month already had, per FR-7.20's rename), subject to the existing 2%
+  hard cap (Module 45). `LedgerService.accrueCommission()` posts a real,
+  nonzero `commission_accrued` entry on every confirmed sale, exactly as
+  before v0.35 was ever drafted.
+- FR-6.31 (revised v0.36 — supersedes v0.35's FR-6.31): **Every
+  seller-facing surface that displays a commission rate, amount, or
+  commission-related copy stays visible** — the order detail page's P&L
+  breakdown, the seller P&L page, the wallet page, the returns page's
+  "commission portion reverses" copy, the pricing page's "X% commission
+  on sales" bullets, and the marketing homepage FAQ's commission mention
+  are unchanged from their pre-v0.35 state. **"0% commission" must not
+  appear anywhere in marketing or product copy** — see FR-7.21 for the
+  corrected positioning (direct-to-seller payment, transparent low
+  commission, "your money never sits with us").
 - FR-6.32: **`program_commission_credit` (Growth & Partner Programs
-  referral commission, §5.33) is a distinct concept and is unaffected** —
-  it is a payout the platform makes to an ambassador/referrer, not a
-  charge on a seller's sale, and was never displayed as a seller-facing
-  "commission" line to begin with.
+  referral commission, §5.33) is a distinct concept and remains
+  unaffected** — it is a payout the platform makes to an ambassador/
+  referrer, not a charge on a seller's sale, and was never displayed as a
+  seller-facing "commission" line to begin with. (Unchanged from v0.35;
+  restated here for completeness since FR-6.30/6.31 above it changed.)
 
-### 5.6g Wallet & Top-Up Hidden — Subscription Paid by Direct Manual Transfer (new v0.35 — supersedes the user-facing parts of FR-6.21/FR-6.23/FR-6.25/FR-6.27 and FR-7.2's wallet-debit billing mechanism)
-**The wallet existed to fund commission debits.** With commission at 0%
-(§5.6f) there is nothing left for a seller to fund — the wallet, top-up
-flow, balance display, and transaction history are removed from every
-seller-facing surface (the dashboard wallet page, the low-balance banner,
-the publish-blocker's "Top up wallet" button, the "Wallet" nav item). The
-underlying `WalletService`, `LedgerEntry` ledger, `WalletBalance` running
-total, `WalletTopUpRequest`, `TopUpAdapter`, and `WalletGraceLadderService`
-are **not deleted** — same dormant-engine discipline as §5.6f — but nothing
-in the live seller-facing flow calls the wallet-balance-driven methods
-(`checkImmediateFloorPause`, the low-balance sweep's warn/pause/restore
-transitions) any longer; only `pauseActiveStores()`, the shared pause
-primitive, stays live, now called exclusively by the new subscription-
-expiry mechanism below (FR-6.34) rather than by a wallet balance crossing a
-threshold.
-- FR-6.33: **Subscription payment becomes a direct, admin-verified manual
-  transfer — not a wallet debit.** A seller sends the plan fee (regular,
-  discounted, or first-cycle price per FR-7.20, at whichever billing
-  interval they chose) directly to UZEYN's own bank/Easypaisa account
-  (the same account details already surfaced for wallet top-up) and
-  submits a **`SubscriptionPaymentClaim`** (new model: `sellerId`,
-  `subscriptionId`, `amountClaimed`, `billingInterval`, `method`,
-  `status` pending/verified/rejected, `submittedAt`, `verifiedAt`,
-  `verifiedBy`) from a new seller-facing **Billing** page (replaces the
-  Wallet page in the nav: current plan, price, next-due date, days
-  remaining, payment instructions, "I've paid" claim form, and this
-  seller's own claim history). This is a **structural copy of
-  `AdminWalletController`'s existing verify/reject flow**
-  (`WalletTopUpRequest`'s exact shape and admin-queue pattern), not a new
-  trust model — a new `AdminSubscriptionPaymentsController` lists pending
-  claims; verifying one is a single audit-logged transaction that advances
-  `Subscription.currentPeriodEnd` by the chosen billing interval (FR-7.20)
-  and marks the claim `verified`; rejecting requires a reason, mirroring
-  `WalletTopUpRequest.rejectTopUp()`. **No ledger entry, no wallet balance
-  is created or touched by this flow at all** — deliberately decoupled
-  from the wallet engine rather than routed through it, since routing
-  would resurrect exactly the balance concept this whole change removes
-  from the seller's world. `WalletTopUpRequest`/`AdminWalletController`
-  stay in code, unused by this new path, dormant per §5.6g's opening
-  paragraph.
-- FR-6.34: **`PlanFeeDebitService` becomes a pure expiry-check sweep, not
-  a debit action.** There is nothing left to auto-debit (payment is
-  inbound-only, via FR-6.33's admin-verified claim) — the scheduled sweep
-  now only checks whether `Subscription.currentPeriodEnd` plus a grace
-  window (`billing.subscription_grace_days`, reusing the existing
-  `billing.wallet_grace_days` default of 3 — same setting, renamed to
-  match its new sole purpose) has passed with no newly-verified claim; if
-  so, it calls the same `WalletGraceLadderService.pauseActiveStores()`
-  primitive FR-6.25 already defined, transitioning the store to
-  `orders_paused` on identical terms (storefront stays browsable,
-  checkout shows a respectful "temporarily not accepting orders" notice,
-  never a blanket `suspended`-style takedown). A verified claim that
-  brings the subscription current lifts `orders_paused` instantly, the
-  same instant-recovery behavior FR-6.25 already specified for a
-  balance-driven pause. **Nothing else pauses, blocks, or shows the
-  seller anything tied to a commission or wallet balance — plan-fee
-  non-payment (via FR-6.33's claim mechanism) is the only trigger.** The
-  Team leader group-total and device-slot add-on charges (previously
-  wallet debits per FR-6.24) fold into the same `SubscriptionPaymentClaim`
-  amount-due calculation rather than a separate debit, so a leader still
-  submits one claim covering their full monthly total.
-- FR-6.35: **Publish gate drops the wallet-balance condition.** Of FR-6.21's
-  three publish conditions (payment method, verified CNIC, wallet balance
-  above a minimum), the third is removed outright — publishing now gates
-  on payment method + verified CNIC + an **active, current** subscription
-  (`Subscription.currentPeriodEnd` in the future, or within FR-6.34's
-  grace window) instead. A seller with a paid, current subscription can
-  publish with a zero-touch wallet, exactly as intended once there is no
-  wallet balance concept left to check.
+### 5.6g Combined Entry-Flow Payment — Plan Fee + Wallet Top-Up as One Transaction (new v0.36; supersedes v0.35's "Wallet & Top-Up Hidden" design below in full — that design was drafted and never built, since Module 59 only covered §5.6f's commission side before cancellation)
+**The wallet is not hidden — it funds both commission debits and plan-fee
+debits, and a new seller funds it in the same payment as their first
+plan-fee charge.** At signup, a seller pays their chosen plan's
+first-cycle price (FR-7.20) **and** a minimum wallet top-up together, in
+**one combined transaction**, never two separate payment steps — e.g. a
+signup screen reading "Get started: Rs 2,498" with a visible breakdown
+"Rs 1,799 first month + Rs 699 wallet credit." This reuses the existing
+top-up-and-verify mechanism (§5.6d/e's `WalletTopUpRequest` submit →
+`AdminWalletController` verify/reject flow) rather than inventing a
+second payment/claim system — the claim simply carries a plan-fee portion
+alongside its top-up portion, and one admin verification credits both in
+the same transaction.
+- FR-6.33 (redefined v0.36 — supersedes v0.35's FR-6.33 `SubscriptionPaymentClaim`
+  design, which was never built): **New Settings Registry key
+  `billing.minimum_signup_wallet_topup`** (Decimal, default **699**,
+  global scope, admin-editable like every other Settings value). The
+  signup/first-payment screen computes and displays
+  `firstCyclePrice + minimum_signup_wallet_topup` as one combined total
+  and one combined breakdown line; the seller submits one proof-of-payment
+  for that combined amount via the existing top-up submission form
+  (`WalletTopUpRequest`, extended with a `planFeePortion` field alongside
+  its existing top-up amount). Verifying it is a single audit-logged
+  transaction, structurally the same `AdminWalletController` verify action
+  already defined, that in one commit: (a) posts a `wallet_topup` ledger
+  entry for the top-up portion exactly as an ordinary top-up already does,
+  and (b) activates/advances `Subscription.currentPeriodEnd` for the
+  plan-fee portion exactly as the plan-fee-payment path already does.
+  Rejecting requires a reason, mirroring the existing top-up rejection
+  flow; nothing is activated or credited on a rejected claim.
+- FR-6.34 (reaffirmed v0.36 — v0.35's FR-6.34 "PlanFeeDebitService becomes
+  a pure sweep" redesign is retracted): **Subsequent billing-cycle plan
+  fees continue to be debited from wallet balance**, exactly as
+  `PlanFeeDebitService` already does per FR-7.2/§5.6e — commission
+  accrual and plan-fee debits continue to share the same wallet, the same
+  grace ladder (FR-6.25), and the same `orders_paused`/restore mechanics.
+  Only the very first cycle is paid via the combined signup transaction
+  (FR-6.33); every renewal after that draws from the running wallet
+  balance as it always has.
+- FR-6.35 (reaffirmed v0.36 — v0.35's FR-6.35 "drop the wallet-balance
+  publish condition" is retracted): **Publish gate keeps all three
+  original conditions unchanged** — payment method, verified CNIC, and
+  wallet balance above the configured minimum (FR-6.21, unmodified).
+- FR-6.35a (new v0.36): **Full re-verification of existing wallet
+  mechanics against the four-tier plan structure (FR-7.20).** The grace
+  ladder, `orders_paused`-on-insufficient-balance, the negative-float
+  floor, the running-balance column, and the daily reconciliation job
+  (§5.6e, Module 47) are unchanged in mechanism, but every plan-fee debit
+  amount they act on must be re-confirmed correct now that a plan carries
+  three price fields (`regularPrice`/`price`/`firstCyclePrice`) and three
+  billing-cycle multipliers (FR-7.20) instead of the single price a plan
+  had when these mechanics were first built — tracked as a Module 63
+  build/test task (§14.65), not a mechanism change.
 
-### 5.6h Seller Payment Gateway Connect (new v0.35)
+### 5.6h Seller Payment Gateway Connect (new v0.35; Raast priority + bank adapter added v0.36)
 **How a buyer's payment auto-confirms an order without UZEYN ever touching
-the money.** A seller may connect **their own** Easypaisa or JazzCash
-merchant account; when a buyer pays through it, UZEYN verifies the payment
-against the seller's own gateway account and auto-confirms the order —
-funds settle directly with the seller, never passing through or being held
-by UZEYN, the same "platform never touches buyer money" principle §5.6c's
+the money.** A seller may connect **their own** Raast, Easypaisa, JazzCash,
+or bank account; when a buyer pays through it, UZEYN verifies the payment
+against the seller's own account and auto-confirms the order — funds
+settle directly with the seller, never passing through or being held by
+UZEYN, the same "platform never touches buyer money" principle §5.6c's
 opening line already established for Direct Seller Collection, now
 extended to an automated (rather than manual mark-as-paid) confirmation
-path.
+path. **Raast is the first-priority provider** (State Bank of Pakistan's
+free instant-payment rail — zero merchant fee, unlike card/wallet
+processors), offered first in the connect flow and in the checkout
+provider list when a seller has multiple connections active; Easypaisa,
+JazzCash, and a generic bank-transfer adapter follow as additional,
+equally-supported options. The manual mark-as-paid flow remains the
+fallback for any seller who connects no gateway at all.
 - FR-6.36: **`StorePaymentGatewayConnection` (new model, RLS-protected,
-  store-scoped).** `storeId`, `provider` (enum, extensible: `easypaisa`,
-  `jazzcash`), `merchantId`, `apiKeyEncrypted`/`apiSecretEncrypted`
-  (AES-256-GCM at rest, reusing the exact `drive-token-crypto.util.ts`
-  primitive already shared by Google Drive tokens, CNIC, and SMTP
-  credentials — a new dedicated encryption-key env var, not a new
-  algorithm), `isActive`, `connectedAt`. Credentials are **never returned
-  by any API response** — enforced the same way `SellerVerificationEmail`'s
-  SMTP password already is, an explicit `SAFE_SELECT` field allowlist on
-  every query rather than a decorator, with decryption happening only
-  inside the gateway adapter's own internal call, never on a response
-  path.
+  store-scoped).** `storeId`, `provider` (enum, extensible:
+  **`raast`**, `easypaisa`, `jazzcash`, `bank`), `merchantId`,
+  `apiKeyEncrypted`/`apiSecretEncrypted` (AES-256-GCM at rest, reusing the
+  exact `drive-token-crypto.util.ts` primitive already shared by Google
+  Drive tokens, CNIC, and SMTP credentials — a new dedicated
+  encryption-key env var, not a new algorithm), `isActive`, `connectedAt`,
+  a new `priorityOrder` (Int, default derived from provider — Raast
+  lowest/first) so the checkout provider list has a stable, seller-
+  visible ordering. Credentials are **never returned by any API
+  response** — enforced the same way `SellerVerificationEmail`'s SMTP
+  password already is, an explicit `SAFE_SELECT` field allowlist on every
+  query rather than a decorator, with decryption happening only inside
+  the gateway adapter's own internal call, never on a response path.
 - FR-6.37: **`SellerPaymentGatewayAdapter` interface + a registry, mirroring
   `VerificationChannelAdapter`'s exact shape (§14.37).** One interface
   (`provider` + `verifyPayment(context): Promise<GatewayVerifyResult>`),
-  one implementation per provider (`EasypaisaGatewayAdapter`,
-  `JazzCashGatewayAdapter`), registered into a `Map<provider, adapter>`
+  one implementation per provider (**`RaastGatewayAdapter`** first,
+  `EasypaisaGatewayAdapter`, `JazzCashGatewayAdapter`,
+  `BankTransferGatewayAdapter`), registered into a `Map<provider, adapter>`
   inside a new orchestrator service that never branches on provider type
   beyond the map lookup — identical structure to the three
   `VerificationChannelAdapter` implementations already shipped in Module
-  26. Real, structurally complete implementations calling each provider's
-  documented server-to-server merchant-verification API — **not
-  live-tested against a real Easypaisa/JazzCash sandbox**, since no such
+  26, and extensible to any future provider by adding one more map entry,
+  never a code branch. Real, structurally complete implementations calling
+  each provider's documented server-to-server merchant-verification API
+  (Raast via SBP's participant-bank API surface) — **not live-tested
+  against a real Raast/Easypaisa/JazzCash sandbox**, since no such
   credentials exist in the build environment, the same disclosed
-  limitation already noted for the Safepay/COD adapters.
+  limitation already noted for the Safepay/COD adapters. Every provider
+  also supports the existing manual mark-as-paid fallback so a seller is
+  never blocked from confirming an order while a gateway connection is
+  pending or unavailable.
 - FR-6.38: **Checkout wiring reuses the one shared confirmation core, not
   a second one.** A gateway is offered as a checkout payment option only
   when the seller has an active connection for it. On return from the
@@ -2630,14 +2633,20 @@ path.
   `SubscriptionPaymentClaim`'s amount-due reflects the correct multiplied
   price.
 - FR-7.21: **Pricing page psychology (new v0.35, extends FR-7.19's
-  rendering rules).** The public pricing page must render: the
-  struck-through `regularPrice` beside the active selling price (FR-7.19,
-  unchanged); a "Most Popular" badge on Growth (the existing
-  `plans.most_popular_tier_id`-style Settings pointer, FR-7.19, simply
-  re-pointed at Growth as launch data — still admin-editable, never
-  hard-coded to "Growth" in the frontend); **"0% commission — keep every
-  rupee you earn"** as a headline benefit on every tier (§5.6f); a long,
-  value-stacked per-tier feature list (already required by FR-7.19,
+  rendering rules; headline-benefit clause corrected v0.36).** The public
+  pricing page must render: the struck-through `regularPrice` beside the
+  active selling price (FR-7.19, unchanged); a "Most Popular" badge on
+  Growth (the existing `plans.most_popular_tier_id`-style Settings
+  pointer, FR-7.19, simply re-pointed at Growth as launch data — still
+  admin-editable, never hard-coded to "Growth" in the frontend); **a
+  headline benefit block corrected v0.36 to drop the retracted "0%
+  commission" claim (§5.6f) in favor of three positioning points, all
+  Settings Registry strings, none hard-coded: "buyer payments go straight
+  to your own account," "transparent low commission, only [ladder]% —
+  never a payment-processor markup on top," and "your money never sits
+  with us"** — this replaces the v0.35 single-line "0% commission — keep
+  every rupee you earn" claim outright, never displayed alongside it; a
+  long, value-stacked per-tier feature list (already required by FR-7.19,
   reaffirmed); a savings callout on the six-month/yearly toggle stating
   the effective monthly rate and rupee amount saved versus paying monthly
   twelve times; and a one-line comparison against Shopify's nearest
@@ -7582,34 +7591,44 @@ built)
       clear upgrade prompt, while the pre-existing basic meta title/
       description remain available to every tier (FR-65.5).
 
-### 14.65 Subscription-Only Business Model (new, v0.35, not yet built)
-- [ ] Global and every plan-scoped `billing.commission_rate_percent` is
-      seeded at 0%; `LedgerService.accrueCommission()` still runs and
-      still posts a `commission_accrued` entry, now for Rs. 0, proving the
-      engine is dormant-by-data, not dormant-by-code-path (FR-6.30).
-- [ ] No seller-facing surface (order detail, P&L page, wallet/billing
-      page, returns page, pricing page, homepage FAQ) shows a commission
-      rate or amount; the pricing page shows "0% commission — keep every
-      rupee you earn" as a headline benefit, never a numbered rate
-      (FR-6.31).
-- [ ] The Wallet page, low-balance banner, and "Top up wallet" publish-
-      blocker button are gone from every seller-facing surface; a new
-      Billing page (current plan, price, next-due date, days remaining,
-      payment instructions, claim form, claim history) replaces the
-      Wallet nav item (FR-6.33).
-- [ ] `SubscriptionPaymentClaim` submit → admin verify/reject flow works
-      end-to-end, advances `Subscription.currentPeriodEnd` by the correct
-      span for the subscription's `billingInterval` on verify, and posts
-      **no** ledger entry and touches **no** wallet balance (FR-6.33).
-- [ ] `PlanFeeDebitService`'s sweep pauses a store via
-      `WalletGraceLadderService.pauseActiveStores()` only when
-      `currentPeriodEnd` + grace has passed with no verified claim, and a
-      verified claim lifts `orders_paused` instantly; no wallet-balance-
-      driven pause/warn/restore path fires anywhere in the live flow
-      (FR-6.34).
-- [ ] Publishing a store gates on payment method + verified CNIC + an
-      active/current subscription — no wallet-balance condition remains
-      in the publish gate (FR-6.35).
+### 14.65 Final Locked Revenue Model — Commission + Wallet Active, Combined Entry-Flow Payment, Gateway Connect (v0.35's Subscription-Only design CANCELLED by founder directive and fully reverted; corrected v0.36)
+- [x] Confirmed: the v0.35 "0% commission, hidden wallet" design (former
+      checklist below) was built (Module 59, commits `cc22357`/`801b86b`)
+      then fully reverted (`git revert`, commits `94ab726`/`1a16b87`),
+      verified byte-identical to the pre-Module-59 tree via
+      `git diff --stat` (empty output). Commission and wallet were never
+      live in production at 0%/hidden.
+- [ ] Global and every plan-scoped `billing.commission_rate_percent` stay
+      at their original nonzero values (Basic/Starter 2%, Growth 1.5%,
+      Pro 1%, 2% hard cap unchanged); `LedgerService.accrueCommission()`
+      posts a real nonzero `commission_accrued` entry on every confirmed
+      sale (FR-6.30).
+- [ ] Every seller-facing surface (order detail, P&L page, wallet page,
+      returns page, pricing page, homepage FAQ) continues to show its
+      commission rate/amount; no page anywhere claims "0% commission"
+      (FR-6.31, FR-7.21).
+- [ ] At signup, the combined total (`firstCyclePrice +
+      billing.minimum_signup_wallet_topup`, default top-up Rs 699) is
+      displayed as **one** amount with a breakdown line, and the seller
+      submits **one** proof-of-payment for it — never two separate
+      payment steps (FR-6.33).
+- [ ] Verifying a combined signup claim, in one transaction, both posts a
+      `wallet_topup` ledger entry for the top-up portion and
+      activates/advances `Subscription.currentPeriodEnd` for the plan-fee
+      portion; rejecting credits neither (FR-6.33).
+- [ ] Subsequent billing-cycle plan fees continue to debit from wallet
+      balance via `PlanFeeDebitService`, sharing the existing grace
+      ladder and `orders_paused`/restore mechanics with commission debits
+      — no separate claim-based renewal path was introduced (FR-6.34).
+- [ ] Publishing a store still gates on all three original conditions —
+      payment method, verified CNIC, **and** wallet balance above the
+      configured minimum; the wallet-balance condition was never dropped
+      (FR-6.35).
+- [ ] Grace ladder, orders-paused-on-insufficient-balance, negative-float
+      floor, running-balance column, and daily reconciliation (Module 47)
+      re-verified correct against the four-tier plan structure's three
+      price fields and three billing-cycle multipliers (FR-6.35a,
+      FR-7.20).
 - [ ] Four permanent tiers (Basic/Starter/Growth/Pro) each carry
       `regularPrice`/`price`/`firstCyclePrice`, with Basic's
       `campaignPrice`/`campaignActive` toggle proven to switch the
@@ -7625,12 +7644,16 @@ built)
 - [ ] `StorePaymentGatewayConnection` credentials are AES-256-GCM
       encrypted at rest and never appear in any API response — proven by
       a test asserting a connection-fetch/list response never contains
-      the raw or encrypted secret field (FR-6.36).
-- [ ] A buyer paying through a seller's connected Easypaisa/JazzCash
-      gateway results in `verifyPayment()` being called before
-      confirmation, and a successful verification confirms the order
-      through the **same** `markAsPaid()` core the OTP/manual paths use —
-      not a second confirmation path (FR-6.37/6.38).
+      the raw or encrypted secret field, across all four providers
+      (FR-6.36).
+- [ ] Raast is offered first in both the seller connect flow and the
+      checkout provider list when multiple gateways are connected
+      (FR-6.36/6.37).
+- [ ] A buyer paying through a seller's connected Raast/Easypaisa/
+      JazzCash/bank gateway results in `verifyPayment()` being called
+      before confirmation, and a successful verification confirms the
+      order through the **same** `markAsPaid()` core the OTP/manual paths
+      use — not a second confirmation path (FR-6.37/6.38).
 - [ ] Manual mark-as-paid still works unchanged for a seller with no
       gateway connected (FR-6.38).
 
