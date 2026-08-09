@@ -8,6 +8,42 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 58: Advanced Store SEO Control
+
+### Added
+- Per-item SEO overrides on `Product`/`Collection` - canonical URL,
+  robots index/follow directives, OG image/title/description override,
+  sitemap-inclusion toggle, plus a structured-data (JSON-LD) on/off
+  toggle on `Product` only. Each field independently falls back to a new
+  store-level default (`Store.seoRobotsIndexDefault`/
+  `seoRobotsFollowDefault`/`seoStructuredDataDefault`/
+  `seoSitemapIncludedDefault`) when unset - extends the existing
+  `resolveSeoFallback()` cascade via a new `resolveAdvancedSeo()`
+  function rather than a second, competing resolver; OG title/
+  description fall back to the already-resolved basic seoTitle/
+  seoDescription, never a third independent value.
+- `Product.slug`, unique per store (`uniq_product_store_slug`), an
+  additive canonical-URL enhancement only - the existing UUID-based
+  storefront route is unchanged.
+- A store-scoped custom head-tag field (`Store.customHeadTags`),
+  sanitized to a strict `meta`/`link`/`script[type="application/
+  ld+json"]` allowlist at write time via a new `sanitizeHeadTags()`
+  utility - the first HTML-sanitization dependency in this codebase.
+  Rendered on the storefront via individual parsed JSX elements (React
+  19's literal-element `<head>` hoisting), not `dangerouslySetInnerHTML`.
+- New `seo.advanced_fields_enabled` Settings Registry key gates every
+  field above to Growth+ plan tiers (false globally, true on a
+  plan-scoped override for Growth/Pro individual plans); the
+  pre-existing basic seoTitle/seoDescription fields stay available on
+  every tier, ungated.
+- New seller-facing "Advanced SEO" cards on the product edit, collection
+  edit, and store Settings pages. Closed a genuine pre-existing gap on
+  the collection edit page in the process: no seller-facing
+  seoTitle/seoDescription editor existed for collections at all before
+  this module.
+- `sitemap.ts` now excludes any product/collection with
+  `sitemapIncluded: false`.
+
 ## Module 57: Invoice/Receipt Customization, limited
 
 ### Added

@@ -110,6 +110,20 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
             media: [],
             seoTitle: p.seoTitle ?? p.title,
             seoDescription: p.seoDescription ?? null,
+            // Module 58 (SRS §5.65) - this preview pulls from the seller-
+            // side products API (unresolved raw fields), not the storefront
+            // read path that actually resolves the advanced-SEO cascade;
+            // sensible unresolved defaults here since this panel doesn't
+            // render SEO/robots/OG data at all.
+            canonicalUrl: null,
+            robotsIndex: true,
+            robotsFollow: true,
+            ogImageUrl: null,
+            ogTitle: p.seoTitle ?? p.title,
+            ogDescription: p.seoDescription ?? null,
+            structuredDataEnabled: true,
+            sitemapIncluded: true,
+            slug: null,
             // This preview pulls from the seller-side products API, not the
             // storefront read path that actually computes supplier
             // transparency (Module 8/29) - null is the correct "no data
@@ -198,6 +212,13 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     verified: false,
     poweredByVisible: branding?.visible ?? true,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
+    // Module 58 (SRS §5.65) - this preview panel doesn't render SEO/robots/
+    // custom head-tag data, so the platform defaults are correct here.
+    seoRobotsIndexDefault: true,
+    seoRobotsFollowDefault: true,
+    seoStructuredDataDefault: true,
+    seoSitemapIncludedDefault: true,
+    customHeadTags: null,
   };
 
   return (

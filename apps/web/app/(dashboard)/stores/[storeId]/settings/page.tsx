@@ -84,6 +84,17 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [invoiceTermsText, setInvoiceTermsText] = useState("");
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [invoiceSaved, setInvoiceSaved] = useState(false);
+  // Module 58 (SRS §5.65, FR-65.1/65.5) - store-level defaults + the
+  // sanitized custom head-tag field; Growth+ gated (a sub-Growth save
+  // surfaces the backend's upgrade-prompt message via the existing error
+  // Alert, same pattern as every other plan-gated form in this repo).
+  const [seoRobotsIndexDefault, setSeoRobotsIndexDefault] = useState(true);
+  const [seoRobotsFollowDefault, setSeoRobotsFollowDefault] = useState(true);
+  const [seoStructuredDataDefault, setSeoStructuredDataDefault] = useState(true);
+  const [seoSitemapIncludedDefault, setSeoSitemapIncludedDefault] = useState(true);
+  const [customHeadTags, setCustomHeadTags] = useState("");
+  const [savingSeo, setSavingSeo] = useState(false);
+  const [seoSaved, setSeoSaved] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policySaved, setPolicySaved] = useState(false);
   const [dataExports, setDataExports] = useState<DataExportRow[] | null>(null);
@@ -181,6 +192,11 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         taxNumber: string | null;
         invoiceFooterText: string | null;
         invoiceTermsText: string | null;
+        seoRobotsIndexDefault: boolean;
+        seoRobotsFollowDefault: boolean;
+        seoStructuredDataDefault: boolean;
+        seoSitemapIncludedDefault: boolean;
+        customHeadTags: string | null;
       }>(`/stores/${params.storeId}`)
       .then((s) => {
         setAccessMode(s.accessMode);
@@ -189,6 +205,11 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         setTaxNumber(s.taxNumber ?? "");
         setInvoiceFooterText(s.invoiceFooterText ?? "");
         setInvoiceTermsText(s.invoiceTermsText ?? "");
+        setSeoRobotsIndexDefault(s.seoRobotsIndexDefault);
+        setSeoRobotsFollowDefault(s.seoRobotsFollowDefault);
+        setSeoStructuredDataDefault(s.seoStructuredDataDefault);
+        setSeoSitemapIncludedDefault(s.seoSitemapIncludedDefault);
+        setCustomHeadTags(s.customHeadTags ?? "");
       })
       .finally(() => setLoaded(true));
     api
@@ -263,6 +284,27 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError(err instanceof ApiError ? err.message : "Couldn't save invoice customization.");
     } finally {
       setSavingInvoice(false);
+    }
+  }
+
+  async function saveAdvancedSeo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setSeoSaved(false);
+    setSavingSeo(true);
+    try {
+      await api.patch(`/stores/${params.storeId}`, {
+        seoRobotsIndexDefault,
+        seoRobotsFollowDefault,
+        seoStructuredDataDefault,
+        seoSitemapIncludedDefault,
+        customHeadTags,
+      });
+      setSeoSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save advanced SEO settings.");
+    } finally {
+      setSavingSeo(false);
     }
   }
 
@@ -527,6 +569,66 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 />
               </Field>
               <Button type="submit" loading={savingInvoice}>
+                Save
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Advanced SEO"
+            description="Store-wide defaults for search-engine indexing, structured data, and sitemap inclusion - a Growth-plan feature. Per-product and per-collection overrides are set on each product/collection's own edit page. The basic page title/description above stay available on every plan."
+          />
+          <CardBody>
+            <form onSubmit={saveAdvancedSeo} className="space-y-4">
+              {seoSaved && <Alert tone="success">Saved.</Alert>}
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={seoRobotsIndexDefault}
+                  onChange={(e) => setSeoRobotsIndexDefault(e.target.checked)}
+                />
+                Allow search engines to index products/collections by default
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={seoRobotsFollowDefault}
+                  onChange={(e) => setSeoRobotsFollowDefault(e.target.checked)}
+                />
+                Allow search engines to follow links by default
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={seoStructuredDataDefault}
+                  onChange={(e) => setSeoStructuredDataDefault(e.target.checked)}
+                />
+                Include structured data (rich snippets) on products by default
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={seoSitemapIncludedDefault}
+                  onChange={(e) => setSeoSitemapIncludedDefault(e.target.checked)}
+                />
+                Include products/collections in sitemap.xml by default
+              </label>
+              <Field
+                label="Custom head tags"
+                htmlFor="custom-head-tags"
+                hint="Advanced: raw meta/link tags or a JSON-LD script (e.g. a search-console verification tag). Everything else is stripped for security."
+              >
+                <Textarea
+                  id="custom-head-tags"
+                  rows={4}
+                  value={customHeadTags}
+                  onChange={(e) => setCustomHeadTags(e.target.value)}
+                  placeholder='<meta name="google-site-verification" content="..." />'
+                />
+              </Field>
+              <Button type="submit" loading={savingSeo}>
                 Save
               </Button>
             </form>

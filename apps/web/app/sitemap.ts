@@ -26,15 +26,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     { url: base, changeFrequency: "daily", priority: 1 },
-    ...(products ?? []).map((product) => ({
-      url: `${base}/products/${product.id}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.7,
-    })),
-    ...collections.map((collection) => ({
-      url: `${base}/collections/${collection.id}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.6,
-    })),
+    // Module 58 (SRS §5.65, FR-65.2) - a seller-set sitemapIncluded=false
+    // excludes an item; the URL is always the existing id-based route
+    // (a set Product.slug is a canonical-URL/SEO enhancement, not a
+    // routing change - FR-65.3 is deliberately additive-only).
+    ...(products ?? [])
+      .filter((product) => product.sitemapIncluded)
+      .map((product) => ({
+        url: `${base}/products/${product.id}`,
+        changeFrequency: "weekly" as const,
+        priority: 0.7,
+      })),
+    ...collections
+      .filter((collection) => collection.sitemapIncluded)
+      .map((collection) => ({
+        url: `${base}/collections/${collection.id}`,
+        changeFrequency: "weekly" as const,
+        priority: 0.6,
+      })),
   ];
 }

@@ -1,4 +1,4 @@
-import { resolveSeoFallback } from "./seo-fallback.util";
+import { resolveAdvancedSeo, resolveSeoFallback } from "./seo-fallback.util";
 
 /**
  * SRS FR-1.5 (v0.9, §14.1's "SEO fallback chain renders correctly when
@@ -75,5 +75,91 @@ describe("resolveSeoFallback", () => {
       fallbackDescription: "Real description.",
     });
     expect(result).toEqual({ title: "Widget", description: "Real description." });
+  });
+});
+
+/**
+ * Module 58 (SRS §5.65, FR-65.1/65.2) - the advanced-SEO cascade extension:
+ * an unset per-item boolean toggle inherits the store default; OG title/
+ * description fall back to the already-resolved basic seo.title/
+ * seo.description (never a third, independent fallback path).
+ */
+describe("resolveAdvancedSeo", () => {
+  const storeDefault = { robotsIndex: true, robotsFollow: true, structuredDataEnabled: true, sitemapIncluded: true };
+  const resolvedSeo = { title: "Resolved Title", description: "Resolved description." };
+
+  it("uses the item's own values when all are explicitly set", () => {
+    const result = resolveAdvancedSeo({
+      canonicalUrl: "https://example.com/canonical",
+      robotsIndex: false,
+      robotsFollow: false,
+      ogImageUrl: "https://example.com/og.jpg",
+      ogTitle: "Custom OG Title",
+      ogDescription: "Custom OG description.",
+      structuredDataEnabled: false,
+      sitemapIncluded: false,
+      storeDefault,
+      resolvedSeo,
+    });
+    expect(result).toEqual({
+      canonicalUrl: "https://example.com/canonical",
+      robotsIndex: false,
+      robotsFollow: false,
+      ogImageUrl: "https://example.com/og.jpg",
+      ogTitle: "Custom OG Title",
+      ogDescription: "Custom OG description.",
+      structuredDataEnabled: false,
+      sitemapIncluded: false,
+    });
+  });
+
+  it("falls back every boolean toggle to the store default when unset (null)", () => {
+    const result = resolveAdvancedSeo({
+      robotsIndex: null,
+      robotsFollow: null,
+      structuredDataEnabled: null,
+      sitemapIncluded: null,
+      storeDefault: { robotsIndex: false, robotsFollow: false, structuredDataEnabled: false, sitemapIncluded: false },
+      resolvedSeo,
+    });
+    expect(result.robotsIndex).toBe(false);
+    expect(result.robotsFollow).toBe(false);
+    expect(result.structuredDataEnabled).toBe(false);
+    expect(result.sitemapIncluded).toBe(false);
+  });
+
+  it("falls back ogTitle/ogDescription to the already-resolved basic seo title/description when unset", () => {
+    const result = resolveAdvancedSeo({
+      ogTitle: null,
+      ogDescription: null,
+      storeDefault,
+      resolvedSeo,
+    });
+    expect(result.ogTitle).toBe("Resolved Title");
+    expect(result.ogDescription).toBe("Resolved description.");
+  });
+
+  it("renders null canonicalUrl/ogImageUrl when unset - no fallback concept for either", () => {
+    const result = resolveAdvancedSeo({
+      canonicalUrl: null,
+      ogImageUrl: null,
+      storeDefault,
+      resolvedSeo,
+    });
+    expect(result.canonicalUrl).toBeNull();
+    expect(result.ogImageUrl).toBeNull();
+  });
+
+  it("treats a whitespace-only canonicalUrl/ogTitle/ogDescription the same as unset", () => {
+    const result = resolveAdvancedSeo({
+      canonicalUrl: "   ",
+      ogTitle: "   ",
+      ogDescription: "   ",
+      storeDefault,
+      resolvedSeo,
+    });
+    expect(result.canonicalUrl).toBeNull();
+    expect(result.ogTitle).toBe("Resolved Title");
+    expect(result.ogDescription).toBe("Resolved description.");
   });
 });

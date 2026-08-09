@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { ModerationStatus, Prisma } from "@prisma/client";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
@@ -11,6 +11,21 @@ import { ProductListQueryDto } from "./dto/product-list-query.dto";
 
 const DEFAULT_PRODUCT_PAGE_LIMIT = 20;
 const MAX_PRODUCT_PAGE_LIMIT = 100;
+
+// Module 58 (SRS §5.65, FR-65.1-65.3/65.5) - present-in-dto triggers the
+// Growth+ gate check in update() below. Deliberately excludes seoTitle/
+// seoDescription (already existing, never gated).
+const ADVANCED_SEO_PRODUCT_FIELDS = [
+  "canonicalUrl",
+  "robotsIndex",
+  "robotsFollow",
+  "ogImageMediaId",
+  "ogTitle",
+  "ogDescription",
+  "structuredDataEnabled",
+  "sitemapIncluded",
+  "slug",
+] as const;
 
 export interface ProductListPage {
   items: unknown[];
@@ -208,29 +223,47 @@ export class ProductsService {
    * queue a listing, but never silently un-flags one.
    */
   async update(sellerId: string, storeId: string, productId: string, dto: UpdateProductDto) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
-      const existing = await tx.product.findUnique({ where: { id: productId } });
-      if (!existing || existing.storeId !== storeId) throw new NotFoundException("Product not found.");
-      if (dto.categoryId) {
-        const category = await tx.category.findUnique({ where: { id: dto.categoryId } });
-        if (!category) throw new NotFoundException("Category not found.");
+    if (ADVANCED_SEO_PRODUCT_FIELDS.some((field) => dto[field] !== undefined)) {
+      const planContext = await this.subscriptions.getPlanContext(sellerId);
+      const enabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
+      if (!enabled) {
+        throw new ForbiddenException("Advanced SEO controls are a Growth-plan feature - upgrade your plan to use them.");
       }
+    }
 
-      const nextStatus = dto.status ?? existing.status;
-      const data = { ...dto } as UpdateProductDto & { moderationStatus?: "pending" };
-      if (nextStatus === "active" && existing.sourceType === "self") {
-        const decision = await this.moderation.evaluateProductEdit(tx, sellerId, {
-          title: dto.title ?? existing.title,
-          description: dto.description ?? existing.description,
-          categoryId: dto.categoryId ?? existing.categoryId,
-        });
-        if (decision.status === "pending") {
-          data.moderationStatus = "pending";
+    try {
+      return await this.tenantPrisma.run(sellerId, async (tx) => {
+        const existing = await tx.product.findUnique({ where: { id: productId } });
+        if (!existing || existing.storeId !== storeId) throw new NotFoundException("Product not found.");
+        if (dto.categoryId) {
+          const category = await tx.category.findUnique({ where: { id: dto.categoryId } });
+          if (!category) throw new NotFoundException("Category not found.");
         }
-      }
 
-      return tx.product.update({ where: { id: productId }, data });
-    });
+        const nextStatus = dto.status ?? existing.status;
+        const data = { ...dto } as UpdateProductDto & { moderationStatus?: "pending" };
+        if (nextStatus === "active" && existing.sourceType === "self") {
+          const decision = await this.moderation.evaluateProductEdit(tx, sellerId, {
+            title: dto.title ?? existing.title,
+            description: dto.description ?? existing.description,
+            categoryId: dto.categoryId ?? existing.categoryId,
+          });
+          if (decision.status === "pending") {
+            data.moderationStatus = "pending";
+          }
+        }
+
+        return tx.product.update({ where: { id: productId }, data });
+      });
+    } catch (err) {
+      // FR-65.3 - unique per store, not globally (uniq_product_store_slug).
+      // Same "the DB constraint is the source of truth, not a pre-check"
+      // reasoning as CollectionsService.create()'s own slug conflict.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException(`Slug "${dto.slug}" is already used by another product in this store.`);
+      }
+      throw err;
+    }
   }
 
   async remove(sellerId: string, storeId: string, productId: string) {

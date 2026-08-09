@@ -25,6 +25,7 @@ import { seedOrderVerificationSettings } from "../../src/orders/order-verificati
 import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
 import { seedReviewsSettings } from "../../src/reviews/reviews.seed";
 import { seedReturnsSettings } from "../../src/returns/returns.seed";
+import { seedSeoAdvancedSettings } from "../../src/storefront/seo-advanced.seed";
 import { seedSellerNotificationsSettings } from "../../src/seller-notifications/seller-notifications.seed";
 import {
   seedModule1Settings,
@@ -150,6 +151,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedStaffSettings(prisma);
   // Module 56 (SRS §5.63/FR-63.2) - same paid-plan-row dependency, for its Pro-tier gate.
   await seedDataExportSettings(prisma);
+  // Module 58 (SRS §5.65/FR-65.5) - same paid-plan-row dependency, for its Growth+ gate.
+  await seedSeoAdvancedSettings(prisma);
   // Module 49 (SRS §5.56/FR-56.1) - same paid-plan-row dependency as staff above.
   await seedStoresSettings(prisma);
   await seedAdminEmailSettings(prisma);

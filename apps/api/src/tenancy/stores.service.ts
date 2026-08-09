@@ -1,12 +1,25 @@
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { MediaAssetsService, UploadableFile } from "../media/media-assets.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
+import { sanitizeHeadTags } from "../storefront/head-tag-sanitizer.util";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
+
+// Module 58 (SRS §5.65, FR-65.5) - the store-level advanced-SEO fields;
+// present-in-dto is the trigger for the Growth+ gate check below, same
+// "only enforced when actually touched" shape as every other optional-DTO
+// gate in this codebase.
+const ADVANCED_SEO_STORE_FIELDS = [
+  "seoRobotsIndexDefault",
+  "seoRobotsFollowDefault",
+  "seoStructuredDataDefault",
+  "seoSitemapIncludedDefault",
+  "customHeadTags",
+] as const;
 
 const BCRYPT_ROUNDS = 12; // matches AuthService's own password hashing cost
 
@@ -119,6 +132,14 @@ export class StoresService {
   }
 
   async updateOwn(sellerId: string, storeId: string, dto: UpdateStoreDto) {
+    if (ADVANCED_SEO_STORE_FIELDS.some((field) => dto[field] !== undefined)) {
+      const planContext = await this.subscriptions.getPlanContext(sellerId);
+      const enabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
+      if (!enabled) {
+        throw new ForbiddenException("Advanced SEO controls are a Growth-plan feature - upgrade your plan to use them.");
+      }
+    }
+
     const store = await this.tenantPrisma.run(sellerId, async (tx) => {
       // Selected WITH the hash here - this is the one internal read that
       // needs to know whether a password already exists, to decide whether
@@ -128,6 +149,12 @@ export class StoresService {
 
       const { accessPassword, ...rest } = dto;
       const data: typeof rest & { accessPasswordHash?: string } = { ...rest };
+      // FR-65.4 - sanitized to the meta/link/script[type=application/ld+json]
+      // allowlist here, right before it ever touches the database - never
+      // stored raw, regardless of what the seller pasted in.
+      if (data.customHeadTags !== undefined) {
+        data.customHeadTags = sanitizeHeadTags(data.customHeadTags);
+      }
 
       if (accessPassword) {
         data.accessPasswordHash = await bcrypt.hash(accessPassword, BCRYPT_ROUNDS);

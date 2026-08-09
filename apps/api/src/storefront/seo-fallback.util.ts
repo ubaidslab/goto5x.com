@@ -39,3 +39,57 @@ function truncate(text: string, maxLength: number): string {
   if (trimmed.length <= maxLength) return trimmed;
   return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
 }
+
+/**
+ * Module 58 (SRS §5.65, FR-65.1/65.2) - extends the same cascade above to
+ * the advanced per-item fields: an unset boolean toggle inherits the
+ * store-level default (Store.seoRobotsIndexDefault etc.), never a
+ * hardcoded true/false; OG title/description fall back to the already-
+ * resolved basic seo.title/seo.description (never to the raw fallbackName/
+ * fallbackDescription a second time - one resolved value, reused). Never a
+ * second, parallel SEO data path - canonicalUrl/ogImageUrl/slug have no
+ * fallback concept and pass through as-is (null when unset).
+ */
+export interface AdvancedSeoInput {
+  canonicalUrl?: string | null;
+  robotsIndex?: boolean | null;
+  robotsFollow?: boolean | null;
+  ogImageUrl?: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  /** Absent entirely for Collection - see Product.structuredDataEnabled's schema comment on why. */
+  structuredDataEnabled?: boolean | null;
+  sitemapIncluded?: boolean | null;
+  storeDefault: {
+    robotsIndex: boolean;
+    robotsFollow: boolean;
+    structuredDataEnabled: boolean;
+    sitemapIncluded: boolean;
+  };
+  /** The already-resolved basic seo.title/seo.description this item's OG tags fall back to when unset. */
+  resolvedSeo: SeoFallbackResult;
+}
+
+export interface AdvancedSeoResult {
+  canonicalUrl: string | null;
+  robotsIndex: boolean;
+  robotsFollow: boolean;
+  ogImageUrl: string | null;
+  ogTitle: string;
+  ogDescription: string | null;
+  structuredDataEnabled: boolean;
+  sitemapIncluded: boolean;
+}
+
+export function resolveAdvancedSeo(input: AdvancedSeoInput): AdvancedSeoResult {
+  return {
+    canonicalUrl: input.canonicalUrl?.trim() || null,
+    robotsIndex: input.robotsIndex ?? input.storeDefault.robotsIndex,
+    robotsFollow: input.robotsFollow ?? input.storeDefault.robotsFollow,
+    ogImageUrl: input.ogImageUrl ?? null,
+    ogTitle: input.ogTitle?.trim() || input.resolvedSeo.title,
+    ogDescription: input.ogDescription?.trim() || input.resolvedSeo.description,
+    structuredDataEnabled: input.structuredDataEnabled ?? input.storeDefault.structuredDataEnabled,
+    sitemapIncluded: input.sitemapIncluded ?? input.storeDefault.sitemapIncluded,
+  };
+}

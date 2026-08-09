@@ -1,9 +1,24 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { AddCollectionProductDto } from "./dto/add-collection-product.dto";
 import { CreateCollectionDto } from "./dto/create-collection.dto";
 import { UpdateCollectionDto } from "./dto/update-collection.dto";
+
+// Module 58 (SRS §5.65, FR-65.1/65.2/65.5) - present-in-dto triggers the
+// Growth+ gate check in update() below. No structuredDataEnabled - see
+// UpdateCollectionDto's comment on why.
+const ADVANCED_SEO_COLLECTION_FIELDS = [
+  "canonicalUrl",
+  "robotsIndex",
+  "robotsFollow",
+  "ogImageMediaId",
+  "ogTitle",
+  "ogDescription",
+  "sitemapIncluded",
+] as const;
 
 /**
  * Every method verifies `storeId` belongs to the calling seller before
@@ -13,7 +28,11 @@ import { UpdateCollectionDto } from "./dto/update-collection.dto";
  */
 @Injectable()
 export class CollectionsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly subscriptions: SubscriptionsService,
+    private readonly settings: SettingsService,
+  ) {}
 
   async create(sellerId: string, storeId: string, dto: CreateCollectionDto) {
     try {
@@ -66,6 +85,13 @@ export class CollectionsService {
   }
 
   async update(sellerId: string, storeId: string, collectionId: string, dto: UpdateCollectionDto) {
+    if (ADVANCED_SEO_COLLECTION_FIELDS.some((field) => dto[field] !== undefined)) {
+      const planContext = await this.subscriptions.getPlanContext(sellerId);
+      const enabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
+      if (!enabled) {
+        throw new ForbiddenException("Advanced SEO controls are a Growth-plan feature - upgrade your plan to use them.");
+      }
+    }
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const existing = await tx.collection.findUnique({ where: { id: collectionId } });
       if (!existing || existing.storeId !== storeId) throw new NotFoundException("Collection not found.");

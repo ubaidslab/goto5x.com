@@ -3898,13 +3898,48 @@ reordered here purely on dependency grounds, confirmed safe by research
   Fixed by adding the same `startTestS3Server()`/`afterAll close()`
   pattern module15/24/28's own S3-touching e2e files already use; not a
   `/dev/shm` or Chromium issue as first suspected.
-- **Module 58 — Advanced Store SEO Control (§5.65, item 10).** Built last
-  — the largest remaining item and the only one requiring genuinely new
-  infrastructure with no in-repo precedent (an HTML-sanitization
-  allowlist utility; research confirmed none exists anywhere in this
-  codebase today). Independent of every other module in this batch, so
-  its position is pure sizing/risk sequencing, not a dependency
-  requirement.
+- **Module 58 — Advanced Store SEO Control (§5.65, item 10). BUILT —
+  closes out the Professional Seller Readiness batch (Modules 49-58).**
+  Extended `resolveSeoFallback()` (`seo-fallback.util.ts`) with a second
+  pure function, `resolveAdvancedSeo()`, rather than a competing
+  resolver - one cascade, not two. New nullable fields on `Store`
+  (`seoRobotsIndexDefault`/`seoRobotsFollowDefault`/
+  `seoStructuredDataDefault`/`seoSitemapIncludedDefault`/
+  `customHeadTags`), `Product`, and `Collection`
+  (`canonicalUrl`/`robotsIndex`/`robotsFollow`/`ogImageMediaId`/
+  `ogTitle`/`ogDescription`/`sitemapIncluded`, plus
+  `structuredDataEnabled` and a unique-per-store `slug` on `Product`
+  only - collections have no existing JSON-LD to make optional).
+  New `sanitizeHeadTags()` utility (`head-tag-sanitizer.util.ts`, the
+  HTML-sanitization allowlist with no prior in-repo precedent, confirmed
+  by research) restricts the store-scoped custom head-tag field to
+  `meta`/`link`/`script[type="application/ld+json"]`, applied inside
+  `StoresService.updateOwn()` before persistence - never stored raw. All
+  three services' `.update()` methods gate the new fields behind a new
+  `seo.advanced_fields_enabled` Settings Registry key (`false` globally,
+  `true` on a plan-scoped override for Growth+Pro individual-plan tiers,
+  same "entry tiers get false, higher tiers get true" mechanism as
+  Module 56's Pro-tier export gate), checked only when the request DTO
+  actually touches a gated field - the pre-existing `seoTitle`/
+  `seoDescription` stay ungated at every tier. Frontend: a new "Advanced
+  SEO" card on the product edit page, the collection edit page (which
+  also closed a genuine pre-existing gap - no seller-facing
+  `seoTitle`/`seoDescription` editor existed for collections at all
+  before this module), and the store Settings page, each with its own
+  save action. `apps/web` wiring: `StorefrontLayout` became an async
+  Server Component that parses the already-sanitized `customHeadTags`
+  string back into individual `<meta>`/`<link>`/`<script>` JSX elements
+  (React 19 hoists literal elements into `<head>` even from a non-root
+  layout; `dangerouslySetInnerHTML` content is not hoisted, and non-root
+  layouts cannot render a literal `<head>` tag at all); the product
+  page's structured-data `<script>` render became conditional on
+  `structuredDataEnabled`; `sitemap.ts` now filters out
+  `sitemapIncluded: false` products/collections. Required pinning
+  `sanitize-html` to the exact version `2.17.0` in `apps/api/package.json`
+  (no caret) - `2.17.1+` depends on `htmlparser2@^12`, which ships
+  ESM-only with no CJS build and breaks this project's CommonJS Jest
+  config; `2.17.0` depends on `htmlparser2@^8`, the last version with a
+  proper dual CJS/ESM build.
 
 **Confirmed by research, stated once here rather than repeated in every
 module below:** none of the ten items require a UI/design-system change —

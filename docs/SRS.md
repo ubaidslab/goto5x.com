@@ -7632,22 +7632,49 @@ Module 52, v0.34)
       per-plan toggle, matching the FR's explicit "hard constraint on the
       template renderer itself" text.
 
-### 14.64 Advanced Store SEO Control (new, v0.34, not yet built)
-- [ ] Canonical URL, robots directives, OG override, structured-data
+### 14.64 Advanced Store SEO Control (Module 58, v0.34, built)
+- [x] Canonical URL, robots directives, OG override, structured-data
       toggle, and sitemap-inclusion each correctly override the existing
       fallback chain's default when set on a product or collection, and
       correctly fall through to the existing default when unset
-      (FR-65.1/65.2).
-- [ ] A seller-set `Product.slug` is unique per store and does not break
-      or replace the existing UUID-based storefront route (FR-65.3).
-- [ ] The custom head-tag field strips any tag or attribute outside the
+      (FR-65.1/65.2). `resolveAdvancedSeo()` (`seo-fallback.util.ts`)
+      resolves each field independently against the store-level default
+      row (`Store.seoRobotsIndexDefault`/`seoRobotsFollowDefault`/
+      `seoStructuredDataDefault`/`seoSitemapIncludedDefault`); `ogTitle`/
+      `ogDescription` fall back to the already-resolved basic
+      `seoTitle`/`seoDescription`, never a third independent value.
+      Proven per-field (not all-or-nothing) by
+      `module58-advanced-seo-control.e2e-spec.ts`'s cascade tests, which
+      override a single field and assert every other field still
+      inherits the store default.
+- [x] A seller-set `Product.slug` is unique per store and does not break
+      or replace the existing UUID-based storefront route (FR-65.3). A DB
+      unique constraint (`uniq_product_store_slug` on
+      `(store_id, slug)`) is the source of truth, not a pre-check race;
+      `ProductsService.update()` catches Prisma's `P2002` and rethrows a
+      `ConflictException`. `slug` is additive-only on the public product
+      response — the existing UUID-based `GET /storefront/products/:id`
+      route is unchanged.
+- [x] The custom head-tag field strips any tag or attribute outside the
       `meta`/`link`/`script[type="application/ld+json"]` allowlist —
       proven by an e2e/unit test asserting a `<script src=...>` or
       `onerror=` injection attempt is stripped, not merely escaped
-      (FR-65.4).
-- [ ] The advanced SEO fields are inaccessible below Growth tier, with a
+      (FR-65.4). `sanitizeHeadTags()` (`head-tag-sanitizer.util.ts`, 10
+      unit tests) is the pure allowlist function; a dedicated e2e test
+      proves the real wiring — a script-src/`onerror` payload PATCHed to
+      `Store.customHeadTags` is sanitized before it ever reaches the
+      database row (not stored-then-filtered-on-read) and stays
+      sanitized through the public `GET /storefront/store` read.
+- [x] The advanced SEO fields are inaccessible below Growth tier, with a
       clear upgrade prompt, while the pre-existing basic meta title/
-      description remain available to every tier (FR-65.5).
+      description remain available to every tier (FR-65.5). A
+      `seo.advanced_fields_enabled` Settings Registry key (`false`
+      globally, `true` plan-scoped override on Growth+individual tiers,
+      `growthAndProPlans` in `seo-advanced.seed.ts`) is checked in
+      `StoresService`/`ProductsService`/`CollectionsService.update()`
+      only when the request DTO actually touches a gated field —
+      `seoTitle`/`seoDescription` are excluded from every gate array and
+      remain settable on any tier.
 
 ### 14.65 Final Locked Revenue Model — Commission + Wallet Active, Combined Entry-Flow Payment, Gateway Connect (v0.35's Subscription-Only design CANCELLED by founder directive and fully reverted; corrected v0.36)
 - [x] Confirmed: the v0.35 "0% commission, hidden wallet" design (former

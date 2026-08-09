@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength } from "class-validator";
 import { ProductStatus } from "@prisma/client";
 
 export class UpdateProductDto {
@@ -36,4 +36,49 @@ export class UpdateProductDto {
   @IsString({ each: true })
   @MaxLength(60, { each: true })
   tags?: string[];
+
+  // Module 58 (SRS §5.65, FR-65.1-65.3) - advanced SEO fields, Growth+
+  // gated (ProductsService.update() checks seo.advanced_fields_enabled
+  // before allowing any field below to be set).
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  canonicalUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  robotsIndex?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  robotsFollow?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  ogImageMediaId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(70)
+  ogTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  ogDescription?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  structuredDataEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  sitemapIncluded?: boolean;
+
+  // FR-65.3 - same pattern as the existing Collection.slug convention
+  // (CreateCollectionDto).
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9-]{1,63}$/, { message: "slug must be 1-63 lowercase letters, numbers, or hyphens" })
+  slug?: string;
 }

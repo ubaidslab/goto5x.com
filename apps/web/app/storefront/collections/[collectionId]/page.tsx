@@ -11,9 +11,26 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: { collectionId: string } }) {
   const host = headers().get("host") ?? "";
+  const store = await fetchStorefrontStore(host);
   const collection = await fetchStorefrontCollection(host, params.collectionId);
   if (!collection) return {};
-  return { title: collection.seoTitle, description: collection.seoDescription ?? undefined };
+  const url = store ? `https://${store.canonicalHostname}/collections/${collection.id}` : undefined;
+  return {
+    title: collection.seoTitle,
+    description: collection.seoDescription ?? undefined,
+    // Module 58 (SRS §5.65, FR-65.2) - same already-resolved-server-side
+    // fields as the product page; see its generateMetadata() for the
+    // fallback reasoning.
+    openGraph: {
+      title: collection.ogTitle,
+      description: collection.ogDescription ?? undefined,
+      url,
+      images: collection.ogImageUrl ? [collection.ogImageUrl] : undefined,
+      type: "website",
+    },
+    robots: { index: collection.robotsIndex, follow: collection.robotsFollow },
+    alternates: collection.canonicalUrl ? { canonical: collection.canonicalUrl } : undefined,
+  };
 }
 
 // FR-16.1 - a collection renders its assigned products, in the seller-

@@ -7,10 +7,28 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { BrandingService } from "../branding/branding.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
-import { resolveSeoFallback } from "./seo-fallback.util";
+import { resolveAdvancedSeo, resolveSeoFallback } from "./seo-fallback.util";
 
 const UNLOCK_TOKEN_TYPE = "storefront_unlock";
 const UNLOCK_TOKEN_TTL = "24h";
+
+/** Module 58 (SRS §5.65) - the subset of Store fields toPublicProduct()/toPublicCollection() need for their fallback cascade. */
+interface SeoStoreDefaults {
+  seoDescription: string | null;
+  seoRobotsIndexDefault: boolean;
+  seoRobotsFollowDefault: boolean;
+  seoStructuredDataDefault: boolean;
+  seoSitemapIncludedDefault: boolean;
+}
+
+function storeSeoDefaults(store: SeoStoreDefaults) {
+  return {
+    robotsIndex: store.seoRobotsIndexDefault,
+    robotsFollow: store.seoRobotsFollowDefault,
+    structuredDataEnabled: store.seoStructuredDataDefault,
+    sitemapIncluded: store.seoSitemapIncludedDefault,
+  };
+}
 
 /**
  * Module 6 (SRS §5.27/FR-27.5) - "not_required" (trusted seller, or no rule
@@ -206,6 +224,15 @@ export class StorefrontService {
             settings: store.themeSettings.settings,
           }
         : null,
+      // Module 58 (SRS §5.65, FR-65.1/65.5) - the store-level defaults
+      // robots.ts/sitemap.ts and product/collection pages fall back to;
+      // customHeadTags is already sanitized at write time
+      // (StoresService.updateOwn()) so it's safe to inject raw here.
+      seoRobotsIndexDefault: store.seoRobotsIndexDefault,
+      seoRobotsFollowDefault: store.seoRobotsFollowDefault,
+      seoStructuredDataDefault: store.seoStructuredDataDefault,
+      seoSitemapIncludedDefault: store.seoSitemapIncludedDefault,
+      customHeadTags: store.customHeadTags,
     };
   }
 
@@ -214,7 +241,7 @@ export class StorefrontService {
     this.assertAccessGranted(store, unlockToken);
     const products = await this.prismaAdmin.product.findMany({
       where: { storeId: store.id, status: "active", moderationStatus: { in: [...PUBLIC_MODERATION_STATUSES] } },
-      include: { variants: true, media: true },
+      include: { variants: true, media: true, ogImage: { select: { url: true } } },
       orderBy: { createdAt: "desc" },
     });
     const transparencyByProductId = await this.batchSupplierTransparency(products.map((p) => p.id));
@@ -226,7 +253,7 @@ export class StorefrontService {
     this.assertAccessGranted(store, unlockToken);
     const product = await this.prismaAdmin.product.findUnique({
       where: { id: productId },
-      include: { variants: true, media: true },
+      include: { variants: true, media: true, ogImage: { select: { url: true } } },
     });
     if (
       !product ||
@@ -321,7 +348,7 @@ export class StorefrontService {
 
     const products = await this.prismaAdmin.product.findMany({
       where: { id: { in: rankedIds.map((r) => r.id) } },
-      include: { variants: true, media: true },
+      include: { variants: true, media: true, ogImage: { select: { url: true } } },
     });
     const byId = new Map(products.map((p) => [p.id, p]));
     const transparencyByProductId = await this.batchSupplierTransparency(products.map((p) => p.id));
@@ -338,6 +365,7 @@ export class StorefrontService {
     this.assertAccessGranted(store, unlockToken);
     const collections = await this.prismaAdmin.collection.findMany({
       where: { storeId: store.id, isActive: true },
+      include: { ogImage: { select: { url: true } } },
       orderBy: { createdAt: "asc" },
     });
     return collections.map((collection) => this.toPublicCollection(collection, store));
@@ -349,9 +377,10 @@ export class StorefrontService {
     const collection = await this.prismaAdmin.collection.findUnique({
       where: { id: collectionId },
       include: {
+        ogImage: { select: { url: true } },
         products: {
           orderBy: { sortOrder: "asc" },
-          include: { product: { include: { variants: true, media: true } } },
+          include: { product: { include: { variants: true, media: true, ogImage: { select: { url: true } } } } },
         },
       },
     });
@@ -409,8 +438,15 @@ export class StorefrontService {
       description: string | null;
       seoTitle: string | null;
       seoDescription: string | null;
+      canonicalUrl: string | null;
+      robotsIndex: boolean | null;
+      robotsFollow: boolean | null;
+      ogImage: { url: string } | null;
+      ogTitle: string | null;
+      ogDescription: string | null;
+      sitemapIncluded: boolean | null;
     },
-    store: { seoTitle: string | null; seoDescription: string | null },
+    store: SeoStoreDefaults,
   ) {
     const seo = resolveSeoFallback({
       seoTitle: collection.seoTitle,
@@ -419,6 +455,19 @@ export class StorefrontService {
       fallbackDescription: collection.description,
       storeDefault: { seoDescription: store.seoDescription },
     });
+    // Module 58 (SRS §5.65, FR-65.1/65.2) - no structuredDataEnabled here;
+    // collections have no existing JSON-LD to make optional.
+    const advancedSeo = resolveAdvancedSeo({
+      canonicalUrl: collection.canonicalUrl,
+      robotsIndex: collection.robotsIndex,
+      robotsFollow: collection.robotsFollow,
+      ogImageUrl: collection.ogImage?.url ?? null,
+      ogTitle: collection.ogTitle,
+      ogDescription: collection.ogDescription,
+      sitemapIncluded: collection.sitemapIncluded,
+      storeDefault: storeSeoDefaults(store),
+      resolvedSeo: seo,
+    });
     return {
       id: collection.id,
       title: collection.title,
@@ -426,6 +475,13 @@ export class StorefrontService {
       description: collection.description,
       seoTitle: seo.title,
       seoDescription: seo.description,
+      canonicalUrl: advancedSeo.canonicalUrl,
+      robotsIndex: advancedSeo.robotsIndex,
+      robotsFollow: advancedSeo.robotsFollow,
+      ogImageUrl: advancedSeo.ogImageUrl,
+      ogTitle: advancedSeo.ogTitle,
+      ogDescription: advancedSeo.ogDescription,
+      sitemapIncluded: advancedSeo.sitemapIncluded,
     };
   }
 
@@ -440,8 +496,17 @@ export class StorefrontService {
       reviewCount: number;
       variants: unknown[];
       media: unknown[];
+      canonicalUrl: string | null;
+      robotsIndex: boolean | null;
+      robotsFollow: boolean | null;
+      ogImage: { url: string } | null;
+      ogTitle: string | null;
+      ogDescription: string | null;
+      structuredDataEnabled: boolean | null;
+      sitemapIncluded: boolean | null;
+      slug: string | null;
     },
-    store: { seoTitle: string | null; seoDescription: string | null },
+    store: SeoStoreDefaults,
     supplierTransparency?: {
       shippingCost: unknown;
       estimatedDeliveryMinDays: number;
@@ -456,6 +521,18 @@ export class StorefrontService {
       fallbackDescription: product.description,
       storeDefault: { seoDescription: store.seoDescription },
     });
+    const advancedSeo = resolveAdvancedSeo({
+      canonicalUrl: product.canonicalUrl,
+      robotsIndex: product.robotsIndex,
+      robotsFollow: product.robotsFollow,
+      ogImageUrl: product.ogImage?.url ?? null,
+      ogTitle: product.ogTitle,
+      ogDescription: product.ogDescription,
+      structuredDataEnabled: product.structuredDataEnabled,
+      sitemapIncluded: product.sitemapIncluded,
+      storeDefault: storeSeoDefaults(store),
+      resolvedSeo: seo,
+    });
     return {
       id: product.id,
       title: product.title,
@@ -466,6 +543,18 @@ export class StorefrontService {
       media: product.media,
       seoTitle: seo.title,
       seoDescription: seo.description,
+      canonicalUrl: advancedSeo.canonicalUrl,
+      robotsIndex: advancedSeo.robotsIndex,
+      robotsFollow: advancedSeo.robotsFollow,
+      ogImageUrl: advancedSeo.ogImageUrl,
+      ogTitle: advancedSeo.ogTitle,
+      ogDescription: advancedSeo.ogDescription,
+      // FR-65.2 - a boolean, unlike ogImageUrl which is a fetched image
+      // URL: whether to emit the existing FR-16.6 Product JSON-LD at all.
+      structuredDataEnabled: advancedSeo.structuredDataEnabled,
+      sitemapIncluded: advancedSeo.sitemapIncluded,
+      // FR-65.3 - additive only; the existing UUID-based route is untouched.
+      slug: product.slug,
       // FR-4.6 (Module 8) - null for self-fulfilled products.
       supplierShipping: supplierTransparency ?? null,
     };

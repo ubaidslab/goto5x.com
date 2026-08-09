@@ -23,12 +23,22 @@ export async function generateMetadata({ params }: { params: { productId: string
     // FR-16.6 - OpenGraph tags read from the same SEO fallback data as
     // everything else, never a second/parallel set of SEO fields.
     openGraph: {
-      title: product.seoTitle,
-      description: product.seoDescription ?? undefined,
+      // Module 58 (SRS §5.65, FR-65.2) - ogTitle/ogDescription/ogImageUrl
+      // are already resolved server-side (fall back to seo.title/
+      // seo.description/the first media image when unset).
+      title: product.ogTitle,
+      description: product.ogDescription ?? undefined,
       url,
-      images: product.media[0] ? [product.media[0].url] : undefined,
+      images: product.ogImageUrl ? [product.ogImageUrl] : product.media[0] ? [product.media[0].url] : undefined,
       type: "website",
     },
+    // FR-65.2 - per-product robots directive, independent of the store-
+    // wide robots.ts default.
+    robots: { index: product.robotsIndex, follow: product.robotsFollow },
+    // FR-65.2/65.3 - both null-safe: an unset canonicalUrl omits the tag
+    // entirely (Next.js's own default - the page's own URL - already
+    // applies); a set Product.slug never replaces the id-based `url` above.
+    alternates: product.canonicalUrl ? { canonical: product.canonicalUrl } : undefined,
   };
 }
 
@@ -79,8 +89,13 @@ export default async function StorefrontProductPage({ params }: { params: { prod
 
   return (
     <>
-      {/* eslint-disable-next-line react/no-danger */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
+      {/* Module 58 (SRS §5.65, FR-65.2) - structuredDataEnabled toggle; the
+          JSON-LD block itself is unchanged (FR-16.6), just conditionally
+          rendered now instead of unconditionally. */}
+      {product.structuredDataEnabled && (
+        // eslint-disable-next-line react/no-danger
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
+      )}
       <AnnouncementBar theme={theme} />
       <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24 }}>

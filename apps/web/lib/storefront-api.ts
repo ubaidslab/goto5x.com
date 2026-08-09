@@ -14,6 +14,14 @@ export interface PublicStore {
   /** Templates module (v0.31 design phase) - server-resolved; mandatory on Free, removable only on a paid plan (branding.powered_by_removable/hidden). */
   poweredByVisible: boolean;
   theme: { name: string; settings: Record<string, unknown> } | null;
+  // Module 58 (SRS §5.65, FR-65.1/65.5) - store-level defaults product/
+  // collection pages fall back to when their own toggle is unset.
+  seoRobotsIndexDefault: boolean;
+  seoRobotsFollowDefault: boolean;
+  seoStructuredDataDefault: boolean;
+  seoSitemapIncludedDefault: boolean;
+  /** FR-65.4 - already sanitized server-side; safe to inject into <head> as-is. */
+  customHeadTags: string | null;
 }
 
 export interface PublicProduct {
@@ -33,6 +41,18 @@ export interface PublicProduct {
     estimatedDeliveryMaxDays: number;
     supportedCountries: string[];
   } | null;
+  // Module 58 (SRS §5.65, FR-65.1-65.3) - already resolved server-side
+  // against the store defaults above (StorefrontService.toPublicProduct()).
+  canonicalUrl: string | null;
+  robotsIndex: boolean;
+  robotsFollow: boolean;
+  ogImageUrl: string | null;
+  ogTitle: string;
+  ogDescription: string | null;
+  structuredDataEnabled: boolean;
+  sitemapIncluded: boolean;
+  /** FR-65.3 - additive only; the `id`-based route above is never replaced. */
+  slug: string | null;
 }
 
 export interface PublicCollection {
@@ -42,6 +62,15 @@ export interface PublicCollection {
   description: string | null;
   seoTitle: string;
   seoDescription: string | null;
+  // Module 58 (SRS §5.65, FR-65.1/65.2) - see PublicProduct's comment; no
+  // structuredDataEnabled here (collections have no existing JSON-LD).
+  canonicalUrl: string | null;
+  robotsIndex: boolean;
+  robotsFollow: boolean;
+  ogImageUrl: string | null;
+  ogTitle: string;
+  ogDescription: string | null;
+  sitemapIncluded: boolean;
 }
 
 export interface PublicCategory {
