@@ -3886,7 +3886,18 @@ reordered here purely on dependency grounds, confirmed safe by research
   a fixed, unconditional `Generated on uzeyn.com` footer line was added,
   outside every seller-controlled conditional and with no Settings
   Registry gate, so it renders identically regardless of which
-  seller-controlled fields are set and at every plan tier.
+  seller-controlled fields are set and at every plan tier. **CI note:**
+  the two new checkout+PDF e2e tests initially failed in CI with a
+  silent `null` `invoicePdfUrl`; root cause (found by briefly elevating
+  `InvoicePdfService`'s best-effort catch to `.error()` for one
+  diagnostic run, since its usual `.warn()` isn't captured anywhere in
+  this CI's job logs) was that this spec file never started the
+  in-process fake S3 server (`startTestS3Server()`) that
+  `ObjectStorageService.putObject()` needs - every put was hitting
+  connection-refused, silently swallowed by the best-effort catch.
+  Fixed by adding the same `startTestS3Server()`/`afterAll close()`
+  pattern module15/24/28's own S3-touching e2e files already use; not a
+  `/dev/shm` or Chromium issue as first suspected.
 - **Module 58 — Advanced Store SEO Control (§5.65, item 10).** Built last
   — the largest remaining item and the only one requiring genuinely new
   infrastructure with no in-repo precedent (an HTML-sanitization
