@@ -8,6 +8,46 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 54: Analytics Depth
+
+### Added
+- `AnalyticsService`/`AnalyticsController` (new `apps/api/src/analytics`
+  module, `stores/:storeId/analytics`) - top products by revenue/units,
+  sales over time (day/week/month), repeat-customer rate, return rate
+  (overall and per-product), average order value, and best sales
+  days/times. No schema change - every figure computed from existing
+  tables, gated by the same Financial Truth Invariant status filter
+  PnLService already uses.
+- New `/analytics` seller dashboard page - the first use of `recharts`
+  (new dependency) in `apps/web`, rendering a sales-over-time line chart
+  and a top-products bar chart alongside stat tiles, per the Simplicity
+  Invariant's "charts, not spreadsheets" requirement.
+
+## v0.36/v0.37 — Business-Model Correction: v0.35's Subscription-Only Design Cancelled
+
+### Changed
+- Reverted Module 59 (Commission Deactivation & Wallet/Top-Up UI Removal,
+  built and pushed under v0.35's now-cancelled "subscription-only" model)
+  via `git revert` of both its commits, confirmed byte-identical to the
+  pre-Module-59 tree. Commission and the wallet remain fully active,
+  seller-visible revenue mechanisms.
+- SRS §5.6f/§5.6g rewritten: commission ladder (Basic/Starter 2%, Growth
+  1.5%, Pro 1%) and wallet confirmed permanently active; new Combined
+  Entry-Flow Payment design (plan fee + minimum wallet top-up as one
+  signup transaction, reusing the existing top-up/verify mechanism rather
+  than a new claim model); publish gate keeps its wallet-balance
+  condition; §5.6h adds Raast as the first-priority Seller Payment
+  Gateway Connect provider plus a generic bank adapter.
+- Marketing copy corrected: the "0% commission" claim is retracted in
+  favor of "your money never sits with us" / transparent-low-commission /
+  direct-to-seller-payment positioning (FR-7.21).
+- Four-tier plan pricing defaults lowered (v0.37) now that commission is
+  confirmed active alongside subscription fees, rather than the v0.35
+  figures which assumed subscriptions would be the only revenue stream.
+- `docs/build-plan.md`'s corrected business-model batch (Modules 59-62)
+  resequenced to run after Modules 54-58 (Professional Seller Readiness),
+  not ahead of them.
+
 ## Module 53: Returns & Refunds Workflow
 
 ### Added

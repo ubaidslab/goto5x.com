@@ -3806,14 +3806,25 @@ reordered here purely on dependency grounds, confirmed safe by research
   both run; see the founder report for the exact confirmed counts and the
   real CI job log line — never asserted here without independent
   verification.
-- **Module 54 — Analytics Depth (§5.61, item 5, reordered after item 4).**
-  Depends on Module 53: return rate (overall and per-product) is one of
-  the founder's explicitly requested metrics, and there is no return data
-  to rate until Module 53 exists. Building analytics before returns would
-  mean either shipping an incomplete metric or redoing this module later —
-  research confirmed no other item in the batch has this kind of hard
-  data dependency, so this is the one deliberate reordering beyond the
-  page-sharing logic above.
+- **Module 54 — Analytics Depth (§5.61, item 5, reordered after item 4).
+  BUILT.** Depended on Module 53 (built): return rate needs return data to
+  exist. New `apps/api/src/analytics` module (`AnalyticsService`/
+  `AnalyticsController` at `stores/:storeId/analytics`, no schema change —
+  every FR-61.x figure is computed from existing tables) plus
+  `analytics.util.ts`'s pure, unit-tested functions (time-bucketing,
+  top-products ranking, repeat-customer/return-rate/AOV/best-times, all
+  with divide-by-zero guards). One build-time refinement beyond the FR
+  text: return rate's denominator is a distinct `RETURN_ELIGIBLE_STATUSES`
+  set (confirmed+ orders **plus** refunded/partially_refunded ones), not
+  the same `CONFIRMED_OR_BEYOND` gate the rest of this module uses — a
+  completed return moves an order's status OUT of `CONFIRMED_OR_BEYOND`,
+  so using that set for the denominator would let every return shrink its
+  own base and inflate the rate. Frontend: `recharts` (new dependency, the
+  first charting library in `apps/web`) powers the new `/analytics` page's
+  line chart (sales over time) and bar chart (top products), alongside
+  stat tiles for the FR-61.3/61.4/61.5 figures — Simplicity Invariant
+  (§3.13, FR-61.6) satisfied by charts, not raw tables. New nav item
+  between Reviews and Profit & Loss.
 - **Module 55 — Seller Notifications (§5.62, item 7, reordered after item
   5).** The daily sales summary email is explicitly meant to reuse
   Module 54's new time-bucketed queries rather than duplicate them —

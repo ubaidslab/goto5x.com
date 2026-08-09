@@ -38,6 +38,7 @@ export const navItems: NavItem[] = [
   { label: "Domains", href: (id) => `/stores/${id}/domains`, builtInModule10: true },
   { label: "Import & export", href: (id) => `/stores/${id}/data`, builtInModule10: true },
   { label: "WhatsApp recovery", href: (id) => `/stores/${id}/whatsapp`, builtInModule10: false },
+  { label: "Analytics", href: (id) => `/stores/${id}/analytics`, builtInModule10: false },
   { label: "Profit & Loss", href: (id) => `/stores/${id}/pnl`, builtInModule10: false },
   { label: "Wallet", href: (id) => `/stores/${id}/wallet`, builtInModule10: true },
   { label: "Store Health", href: (id) => `/stores/${id}/health`, builtInModule10: true },

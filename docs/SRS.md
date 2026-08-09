@@ -7544,18 +7544,25 @@ Module 52, v0.34)
       request's own status (or the submission form) via the new
       `canRequestReturn`/`returnRequests` fields (FR-60.6).
 
-### 14.60 Analytics Depth, seller-facing (new, v0.34, not yet built)
-- [ ] Top products by revenue and by units, sales-over-time (day/week/
+### 14.60 Analytics Depth, seller-facing (v0.34, BUILT as Module 54)
+- [x] Top products by revenue and by units, sales-over-time (day/week/
       month), average order value, and best sales days/times all compute
       correctly against a known seeded order set (FR-61.1/61.2/61.5).
-- [ ] Repeat-customer rate and return rate (overall and per product)
+- [x] Repeat-customer rate and return rate (overall and per product)
       compute correctly, including a store with zero returns (0%, not a
-      divide-by-zero error) (FR-61.3/61.4).
-- [ ] Every analytics figure excludes pending/unconfirmed orders — proven
+      divide-by-zero error) (FR-61.3/61.4). Return rate's denominator
+      deliberately includes orders later refunded (not just still-
+      confirmed ones) — a completed return moves `Order.status` out of
+      `CONFIRMED_OR_BEYOND`, and a return can't be allowed to shrink its
+      own denominator (see `analytics.service.ts`'s
+      `RETURN_ELIGIBLE_STATUSES`, a build-time refinement beyond the FR's
+      literal `count(Order)` text).
+- [x] Every analytics figure excludes pending/unconfirmed orders — proven
       by an e2e test seeding a pending order and asserting it does not
       appear in any metric (FR-61.7).
-- [ ] The seller-facing analytics page renders charts, not raw tables, for
-      the time-series and top-products metrics (FR-61.6).
+- [x] The seller-facing analytics page renders charts, not raw tables, for
+      the time-series and top-products metrics (FR-61.6) — recharts, the
+      first charting library added to `apps/web`.
 
 ### 14.61 Seller Notifications (new, v0.34, not yet built)
 - [ ] A new order triggers an immediate seller email; a daily sales
