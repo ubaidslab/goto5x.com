@@ -140,7 +140,7 @@ describe("Seller Notifications (e2e) - SRS §5.62, §14.62", () => {
     const alertSpy = jest.spyOn(app.get(EmailService), "sendNewOrderAlertEmail");
 
     const manual = await request(app.getHttpServer())
-      .post(`/stores/${storeId}/orders/manual`)
+      .post(`/stores/${storeId}/orders`)
       .set("Authorization", `Bearer ${token}`)
       .send({
         buyerEmail: "walkin@example.com",
