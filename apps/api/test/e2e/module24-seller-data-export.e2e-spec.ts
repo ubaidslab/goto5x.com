@@ -106,6 +106,12 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     await request(app.getHttpServer()).post(`/admin/wallet-topups/${req.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
   }
 
+  /** Module 56 (SRS §5.63/FR-63.2) - the on-demand export path is now Pro-gated; every pre-existing test below exercises the export mechanics, not the gate itself, so it upgrades its seller to Pro first. */
+  async function upgradeToPro(sellerId: string) {
+    const proPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 3 } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: proPlan.id } });
+  }
+
   /** Forces a seller onto a paid plan due for renewal right now, with enough wallet balance to cover the fee. */
   async function makeDueForRenewal(email: string, token: string, sellerId: string, adminEmailSuffix: string) {
     const paidPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: { gt: 0 } } });
@@ -186,6 +192,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
 
   it("v0.28 security fix: the export list/history response never leaks a raw storage key or URL, only per-file availability flags (FR-36.3)", async () => {
     const { token, storeId, sellerId } = await createStore("export-no-leak@example.com", "export-no-leak");
+    await upgradeToPro(sellerId);
     await seedOneOfEach(storeId);
     const dataExport = app.get(DataExportService);
     const run = await dataExport.requestOnDemandExport(sellerId);
@@ -209,6 +216,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
 
   it("v0.28 security fix: the download endpoint requires authentication and rejects a seller that doesn't own the export (FR-36.3)", async () => {
     const { token, storeId, sellerId } = await createStore("export-owner@example.com", "export-owner");
+    await upgradeToPro(sellerId);
     await seedOneOfEach(storeId);
     const dataExport = app.get(DataExportService);
     const run = await dataExport.requestOnDemandExport(sellerId);
@@ -230,7 +238,8 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
   });
 
   it("an on-demand export request beyond the configured rate limit is rejected, not silently queued or double-generated (FR-36.1)", async () => {
-    const { token } = await createStore("export-ratelimit@example.com", "export-ratelimit");
+    const { token, sellerId } = await createStore("export-ratelimit@example.com", "export-ratelimit");
+    await upgradeToPro(sellerId);
 
     const first = await request(app.getHttpServer()).post("/sellers/me/data-export").set("Authorization", `Bearer ${token}`);
     expect(first.status).toBe(201);
@@ -244,6 +253,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
 
   it("with Drive connected (and upload-scoped), the export uploads to Drive; without it, the seller gets an email fallback (FR-36.3)", async () => {
     const withDrive = await createStore("export-drive@example.com", "export-drive");
+    await upgradeToPro(withDrive.sellerId);
     await connectDrive(withDrive.sellerId, { fileScope: true });
     const dataExport = app.get(DataExportService);
 
@@ -255,6 +265,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     expect(fakeDriveClient.uploadFile).toHaveBeenCalled();
 
     const withoutDrive = await createStore("export-no-drive@example.com", "export-no-drive");
+    await upgradeToPro(withoutDrive.sellerId);
     const sendSpy = jest.spyOn(app.get(EmailService), "sendDataExportReadyEmail");
     const emailRun = await dataExport.requestOnDemandExport(withoutDrive.sellerId);
     await dataExport.processExport(emailRun.id);
@@ -270,6 +281,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
 
   it("a connection made before the upload scope existed (drive.readonly only) correctly falls back to email rather than attempting an upload it can't perform", async () => {
     const { sellerId } = await createStore("export-old-scope@example.com", "export-old-scope");
+    await upgradeToPro(sellerId);
     await connectDrive(sellerId, { fileScope: false });
     const dataExport = app.get(DataExportService);
 
