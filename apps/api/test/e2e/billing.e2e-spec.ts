@@ -2,7 +2,6 @@ import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { InvoicesService } from "../../src/billing/invoices.service";
-import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 /**
@@ -61,16 +60,6 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     // than every test going through the real publish flow (top-up + verify).
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
-    // v0.35/FR-6.30 - every plan's commissionPercent override is now
-    // seeded at 0% (UZEYN is subscription-only); this module tests the
-    // commission ENGINE itself (accrual, invoicing), which still needs a
-    // nonzero rate to exercise, so a seller-scoped override (highest
-    // precedence, beats First Month's own now-zeroed plan-scoped
-    // override) is set here rather than relying on the dormant launch
-    // defaults.
-    await app
-      .get(SettingsService)
-      .setValue("billing.commission_rate_percent", "seller", seller.id, 2, "00000000-0000-0000-0000-000000000000");
     return { token, storeId: store.body.id as string, sellerId: seller.id as string };
   }
 

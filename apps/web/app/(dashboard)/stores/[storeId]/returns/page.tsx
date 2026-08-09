@@ -89,7 +89,7 @@ export default function ReturnsPage({ params }: { params: { storeId: string } })
     <div>
       <PageHeader
         title="Returns & Refunds"
-        description="Approve or reject buyer-initiated return requests, then issue the refund."
+        description="Approve or reject buyer-initiated return requests, then issue the refund - the commission portion reverses in your wallet automatically."
       />
 
       {error && <p className="mb-4 text-sm text-danger">{error}</p>}

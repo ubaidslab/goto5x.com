@@ -14,19 +14,18 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       key: "billing.commission_rate_percent",
       valueType: "number",
       allowedScopes: ["global", "plan", "seller"],
-      defaultValue: 0,
+      defaultValue: 1,
       validation: { min: 0, max: 2 },
-      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Dormant at 0% platform-wide (v0.35, FR-6.30) - UZEYN is subscription-only until reactivated via this setting once a Pvt Ltd exists to receive it. Hard-capped at 2% (v0.33, FR-7.4) even when reactivated - no scope, including a seller-specific override, can exceed it.",
+      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
     },
     // Unlike every other definition in these seed files, this one refreshes
-    // `defaultValue`/`validation` on every boot (not just `update: {}`) -
-    // both the 2% cap (v0.33, FR-7.4) and the dormant-0% default (v0.35,
-    // FR-6.30) are launch-blocker guarantees that must retroactively apply
-    // to an already-seeded environment's old value, not just fresh DBs.
+    // `validation` on every boot (not just `update: {}`) - the 2% cap is a
+    // launch-blocker guarantee (v0.33, FR-7.4) that must retroactively
+    // tighten an already-seeded environment's old max:100, not just apply
+    // to fresh DBs.
     update: {
-      defaultValue: 0,
       validation: { min: 0, max: 2 },
-      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Dormant at 0% platform-wide (v0.35, FR-6.30) - UZEYN is subscription-only until reactivated via this setting once a Pvt Ltd exists to receive it. Hard-capped at 2% (v0.33, FR-7.4) even when reactivated - no scope, including a seller-specific override, can exceed it.",
+      description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
     },
   });
 

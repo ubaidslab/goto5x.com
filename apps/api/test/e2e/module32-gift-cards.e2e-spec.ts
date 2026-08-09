@@ -1,7 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -60,15 +59,6 @@ describe("Gift Cards (e2e) - SRS §5.49, §14.49", () => {
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
-    // v0.35/FR-6.30 - every plan's commissionPercent override is now
-    // seeded at 0% (UZEYN is subscription-only); this file's FR-49.5 test
-    // proves commission accrues on the full totalAmount unaffected by a
-    // gift-card redemption, which needs a nonzero rate to be meaningful -
-    // a seller-scoped override (highest precedence, beats the plan's own
-    // now-zeroed override) is set for every seller this helper creates.
-    await app
-      .get(SettingsService)
-      .setValue("billing.commission_rate_percent", "seller", storeRow.sellerId, 2, "00000000-0000-0000-0000-000000000000");
     return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.uzeyn.com` };
   }
 

@@ -92,7 +92,7 @@ const FAQS = [
   },
   {
     question: "How does pricing actually work?",
-    answer: "One flat plan fee, 0% commission - no setup fees, no surprise line items, you keep every rupee you earn. See the pricing section above for exact numbers.",
+    answer: "One flat plan fee plus a small commission on what you sell - no setup fees, no surprise line items. See the pricing section above for exact numbers.",
   },
   {
     question: "Can I sell without holding any inventory?",
