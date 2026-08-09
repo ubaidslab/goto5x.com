@@ -2,8 +2,11 @@ import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const PASSWORD = "correct-horse-battery";
+const S3_TEST_PORT = 4569;
+const BUCKET = "uzeyn-media-test";
 
 /**
  * Module 57 (SRS §5.64, §14.63) - Invoice/Receipt Customization, limited.
@@ -18,8 +21,15 @@ const PASSWORD = "correct-horse-battery";
 describe("Invoice/Receipt Customization, limited (e2e) - SRS §5.64, §14.63", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
+  let s3: TestS3Server;
 
   beforeAll(async () => {
+    // Two of this file's tests drive a real checkout, which triggers
+    // InvoicePdfService.generate() -> ObjectStorageService.putObject() -
+    // without a fake S3 server listening on MINIO_ENDPOINT, that put fails
+    // (best-effort, caught) and invoicePdfUrl silently stays null, same
+    // pattern module15/24/28's own S3-touching e2e files already follow.
+    s3 = await startTestS3Server(S3_TEST_PORT, BUCKET);
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
@@ -30,6 +40,7 @@ describe("Invoice/Receipt Customization, limited (e2e) - SRS §5.64, §14.63", (
   afterAll(async () => {
     await app.close();
     await superuser.$disconnect();
+    await s3.close();
   });
 
   afterEach(async () => {
