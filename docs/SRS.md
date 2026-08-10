@@ -1,6 +1,6 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.37 (Build-phase amendment — Plan Pricing Lowered Now That Commission Is Confirmed Active)
+**Version:** 0.38 (Build-phase amendment — Subscription Business Readiness batch, new §5.6i)
 **Date:** 2026-08-09
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -2402,6 +2402,146 @@ fallback for any seller who connects no gateway at all.
   provider, enter credentials (write-only, never re-displayed, matching
   FR-30.1's CNIC pattern), test the connection, and toggle it
   active/inactive.
+
+### 5.6i Subscription Business Readiness (new v0.38)
+**Ten operational-readiness items for the wallet+commission model, founder-
+validated against real Shopify sellers' top complaint (payment failure at
+checkout) and the business mechanics around it.** Every item below reuses
+an existing mechanism (Settings Registry, wallet ledger, email
+infrastructure, invoice/PDF pipeline, admin analytics) rather than
+inventing a parallel one — consistent with this SRS's standing discipline
+of extension over duplication. Slotted as Modules 63-72, one FR per
+module, after Module 62 (Payment Gateway Connect) and Modules 59-61
+(Combined Entry-Flow Payment; Wallet/Commission Re-Verification; Four-Tier
+Plan Pricing) and Module 48 (Facebook/Instagram Shop Feed + WhatsApp
+catalog links) — see `docs/build-plan.md` for the founder-directed
+resequencing.
+
+- FR-6.40 (Module 63): **MRR analytics.** Extends FR-8.10's real-time
+  platform analytics (GMV, revenue, commission, active stores, top
+  sellers) with subscription-specific figures — MRR, new MRR, churned MRR
+  (a seller whose subscription entered terminal `orders_paused`, FR-6.25),
+  and expansion/contraction MRR (a seller's plan-fee change on upgrade/
+  downgrade, FR-7.5) — computed live against `Subscription`/`Plan`/wallet
+  ledger tables, same "computed live at launch volume, not a precomputed
+  rollup" discipline FR-8.10 already commits to. Admin-only, on the
+  existing admin analytics surface, not a new page.
+- FR-6.41 (Module 64): **14-day data-retention window when a subscription
+  reaches terminal non-payment.** Deliberately conservative scope,
+  flagged for review: this is a *visibility/access* window, never a
+  deletion mechanism — no destructive data-purge exists anywhere else in
+  this SRS, and inventing one here would be a much bigger decision than
+  "business readiness" implies. When a store's grace ladder (FR-6.25)
+  reaches its terminal `orders_paused` state and stays unpaid, the
+  seller's dashboard, data, and the ability to top up and republish stay
+  fully intact for a new 14-day window (`Store.terminalPausedAt` + a
+  Settings Registry `billing.data_retention_days`, default 14); the
+  *storefront itself* (already unreachable to buyers under
+  `orders_paused`, FR-6.25 unchanged) gains no new buyer-facing state.
+  After the window elapses with no top-up, nothing is deleted — the store
+  simply stays paused indefinitely, exactly as it already would; the only
+  new behavior is a countdown surfaced to the seller (dashboard banner,
+  reusing FR-8.15's in-app messaging pattern) and a matching win-back
+  email (FR-6.42) timed to fire before the window closes. Actual data
+  deletion, if ever wanted, is out of scope here and would need its own
+  founder-approved SRS amendment.
+- FR-6.42 (Module 65): **Renewal reminders + win-back, triggered
+  transactional emails.** Reuses Module 55's per-seller transactional
+  email-hook infrastructure (not Module 55's separate admin-broadcast
+  `PlatformNewsletter` mechanism — these are individually triggered, not
+  a composed campaign): (a) a low-balance reminder when the wallet balance
+  falls below the next scheduled plan-fee debit amount (computed off the
+  same `PlanFeeDebitService` figures FR-7.2/FR-6.35a already use) with a
+  new Settings Registry lead-time key
+  (`billing.renewal_reminder_lead_days`, default 3); (b) one win-back
+  email fired partway through FR-6.41's 14-day retention window (a new
+  `billing.winback_email_lead_days` key, default 7, i.e. roughly the
+  window's midpoint) for a seller in terminal `orders_paused`. Both reuse
+  the seller-opt-out toggle Module 55 already built — a seller who has
+  disabled notifications gets neither, same as every other transactional
+  hook.
+- FR-6.43 (Module 66): **Multi-store downgrade rule, 30-day pause
+  window.** Extends FR-7.5's plan-change mechanism for the specific case
+  where a downgrade's new tier's `stores.max_per_seller` (Module 49) is
+  less than the seller's current store count. The plan change still takes
+  effect at the next billing cycle exactly as FR-7.5 already specifies;
+  additionally, at that same moment, every store beyond the new limit
+  (seller chooses which ones to keep, via a new confirmation step on the
+  downgrade flow — never an automatic least-recently-active pick, since
+  that's a business decision belonging to the seller) enters a 30-day
+  pause window (a new `Store.overLimitPausedAt` marker, reusing the
+  existing `orders_paused` status verbatim — this is not a fourth store
+  status) during which the seller may upgrade back to reclaim it. After
+  30 days with no upgrade, the store stays `orders_paused` indefinitely,
+  the same "no forced deletion" discipline FR-6.41 establishes.
+- FR-6.44 (Module 67): **Payment gateway health monitoring, admin-facing
+  and aggregate.** Distinct from Module 62's own per-checkout fallback
+  (FR-6.37/6.38, which already keeps a single buyer's checkout from
+  blocking on one gateway's outage) — this is the founder-facing rollup:
+  each `StorePaymentGatewayConnection` (FR-6.36) accumulates a rolling
+  success/failure count and a `lastVerifiedAt` timestamp from every
+  `verifyPayment()` call (FR-6.37), surfaced on the existing admin System
+  Status page (FR-8.11) as a per-provider health rollup (e.g. "Raast:
+  97% verified, last outage 2h ago" aggregated across every seller's
+  connection to that provider) — so a platform-wide provider degradation
+  is visible before individual sellers start reporting it, not a new
+  monitoring page.
+- FR-6.45 (Module 68): **Support SLA by plan.** New Settings Registry
+  keys (`support.sla_hours`, plan-scoped, launch defaults Basic 48 /
+  Starter 24 / Growth 12 / Pro 4) define a response-time commitment per
+  tier, surfaced to the seller (dashboard + pricing page, FR-7.21) as a
+  stated commitment. Deliberately scoped to *displaying and configuring*
+  the commitment, not a full support-ticket SLA-tracking/escalation
+  engine — no ticketing system exists anywhere in this codebase today
+  (FR-8.15's in-app messaging is the closest existing support-adjacent
+  mechanism, and remains the actual support channel); building ticket
+  SLA enforcement is a materially larger, distinct project flagged here
+  for a future amendment, not silently expanded into this one.
+- FR-6.46 (Module 69): **Seller health funnel, admin analytics.** Extends
+  FR-23.4/FR-8.10's computed-live discipline with a funnel view — seller
+  counts at each lifecycle stage (signed up → first product listed →
+  first sale → active/repeat-selling in the trailing 30 days → paused/
+  churned) — computed from existing `Seller`/`Product`/`Order`/
+  `Subscription` state, no new tracking table or event beyond what
+  `platform_events` (§3.11) already captures.
+- FR-6.47 (Module 70): **Monthly seller report + UZEYN subscription
+  invoice.** Two related but distinct deliverables, both automated and
+  both reusing existing pipelines: (a) a monthly summary email per seller
+  (orders, revenue, commission paid, wallet activity for the trailing
+  month) built on Module 55's email-hook infrastructure and Module 31's
+  P&L engine data, opt-out via the same notification toggle FR-6.42
+  reuses; (b) a downloadable **UZEYN subscription invoice** PDF — the
+  seller's own record of what they paid *to the platform* (plan fee +
+  commission for the period), a distinct document from Module 57's
+  buyer-facing order invoices, built on the same PDF-generation pipeline
+  (Module 11/57's `invoice-template.ts` rendering approach) but scoped to
+  the seller's own wallet-ledger entries for that period rather than an
+  order.
+- FR-6.48 (Module 71): **First-cycle discount abuse prevention.** Guards
+  FR-7.20's `firstCyclePrice` discount against a seller creating repeat
+  accounts solely to reclaim it. Reuses `Seller.cnicHash` (FR-30.1) as
+  the durable per-person key: FR-6.33's combined signup flow checks
+  whether any other seller account sharing the same `cnicHash` has ever
+  completed a `firstCyclePrice`-priced first cycle on any plan, and if
+  so, silently substitutes that tier's standing `price` for
+  `firstCyclePrice` in the combined total shown at signup — no accusatory
+  messaging, the same quiet-substitution UX principle FR-25.5's regional
+  gating already uses. Since CNIC is collected at seller *activation*,
+  not at signup (FR-30.1), a new seller with no CNIC on file yet is
+  provisionally granted the discount; the check re-runs the moment
+  `cnicHash` is set, and a retroactive match adds the price difference as
+  a one-time wallet debit rather than silently absorbing the loss.
+- FR-6.49 (Module 72): **Subscription refund policy, 50%.** New Settings
+  Registry keys (`billing.subscription_refund_window_days`, default 7;
+  `billing.subscription_refund_percent`, default 50) define an
+  admin-editable cancellation-refund policy for a seller's very first
+  billing cycle. A qualifying cancellation posts a `refund_adjustment`
+  wallet-ledger entry (FR-8.8's existing entry type, unchanged — not a
+  new one) crediting the configured percentage of the cycle's
+  `firstCyclePrice` back to the seller's wallet; this is a wallet credit,
+  never an external gateway reversal, consistent with the wallet being
+  the one place platform-owed money is settled (distinct from FR-6.36-39's
+  buyer-to-seller payment rails, which UZEYN never touches).
 
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans — **First Month, Starter, Growth, Pro** (v0.33: these
@@ -7741,6 +7881,47 @@ Module 52, v0.34)
       use — not a second confirmation path (FR-6.37/6.38).
 - [ ] Manual mark-as-paid still works unchanged for a seller with no
       gateway connected (FR-6.38).
+
+### 14.66 Subscription Business Readiness (new, v0.38, not yet built)
+- [ ] MRR, new MRR, churned MRR, and expansion/contraction MRR render
+      correctly on the admin analytics surface, computed live against
+      `Subscription`/`Plan`/wallet-ledger data (FR-6.40, Module 63).
+- [ ] A store reaching terminal `orders_paused` starts a visible 14-day
+      countdown (dashboard banner); no data is deleted or hidden from the
+      seller when the window elapses — the store simply remains paused
+      (FR-6.41, Module 64).
+- [ ] A low-balance reminder fires before a scheduled plan-fee debit when
+      the wallet balance would be insufficient, and a win-back email fires
+      partway through the 14-day retention window for a terminally paused
+      seller; both honor the seller's existing notification opt-out
+      (FR-6.42, Module 65).
+- [ ] Downgrading below the new tier's `stores.max_per_seller` requires
+      the seller to choose which stores to keep; every unchosen store
+      enters a 30-day pause window, then remains `orders_paused`
+      indefinitely with no forced deletion (FR-6.43, Module 66).
+- [ ] The admin System Status page shows a per-provider payment-gateway
+      health rollup (success rate, last-verified timestamp) aggregated
+      across every seller's connection to that provider (FR-6.44,
+      Module 67).
+- [ ] Per-plan support SLA hours are configurable via the Settings
+      Registry and visibly stated on the seller dashboard and pricing
+      page (FR-6.45, Module 68).
+- [ ] The seller health funnel (signed up → first product → first sale →
+      active → paused/churned) renders correct counts at each stage from
+      existing data, with no new tracking table (FR-6.46, Module 69).
+- [ ] A monthly summary email sends to each opted-in seller, and a
+      downloadable UZEYN subscription invoice PDF (distinct from a
+      buyer-facing order invoice) renders the seller's own plan-fee and
+      commission ledger entries for the period (FR-6.47, Module 70).
+- [ ] A second seller account sharing a CNIC hash with one that already
+      claimed a tier's `firstCyclePrice` is billed that tier's standing
+      `price` instead, silently substituted before the signup total is
+      shown; a retroactive match (CNIC set after signup) posts a one-time
+      wallet debit for the difference (FR-6.48, Module 71).
+- [ ] A qualifying first-cycle cancellation within the configured window
+      posts a `refund_adjustment` wallet-ledger entry for the configured
+      percentage of `firstCyclePrice` — a wallet credit, never an
+      external gateway reversal (FR-6.49, Module 72).
 
 ---
 

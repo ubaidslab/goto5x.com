@@ -4013,7 +4013,52 @@ business-model work following it.
   first-priority provider ahead of Easypaisa/JazzCash, and a generic bank
   adapter. The only item requiring new external-adapter code with no live
   sandbox to test against (same disclosed limitation as Safepay/COD), so
-  it carries the most schedule risk and is sequenced last in this batch.
+  it carries the most schedule risk.
+
+**Sequencing within this batch, corrected by founder directive (SRS
+v0.38):** the paragraph above listed Modules 59-62 in ascending number
+order; the founder has since resequenced the *build* order so **Module
+62 goes first**, ahead of 59-61 — real Shopify sellers surveyed by the
+founder name payment-gateway failure as Shopify's #1 pain point in
+Pakistan, making Payment Gateway Connect the platform's strongest
+differentiator and worth de-risking first rather than last. Numbering is
+unchanged (Module 62 is still "Module 62" in every FR/§14 cross-
+reference); only the order they are *built* in moves. Actual build
+order: **62, then 59, then 60, then 61.**
+
+## Founder-directed re-sequencing after Module 58 (SRS v0.38)
+
+With the Professional Seller Readiness batch (Modules 49-58) complete and
+approved, the founder set the following build order, superseding every
+prior "next" note in this document:
+
+1. **Module 62 — Seller Payment Gateway Connect** (moved first, see above).
+2. **Modules 59, 60, 61** — Combined Entry-Flow Payment; Wallet/Commission
+   Re-Verification; Four-Tier Plan Pricing (original relative order,
+   unchanged).
+3. **Module 48 — Facebook/Instagram Shop Feed + WhatsApp catalog links**
+   (§5.55, FR-55.1-55.x, Growth+; previously queued in Phase C below,
+   pulled forward to run immediately after the payment batch).
+4. **Modules 63-72 — Subscription Business Readiness** (new SRS §5.6i,
+   FR-6.40-6.49, v0.38): MRR analytics; 14-day data-retention window on
+   terminal non-payment; renewal reminders + win-back; multi-store
+   downgrade rule with a 30-day pause window; admin-facing payment-gateway
+   health monitoring; support SLA by plan; seller health funnel; monthly
+   seller report + UZEYN subscription invoice; first-cycle discount abuse
+   prevention; 50% subscription refund policy. Each item is its own module
+   (one FR each, see SRS §5.6i for the full spec) — ten single-FR modules
+   rather than one large one, matching the Professional Seller Readiness
+   batch's own per-item module numbering discipline. All ten are scoped
+   as extensions of existing mechanisms (Settings Registry, wallet ledger,
+   Module 55's email hooks, Module 11/57's invoice/PDF pipeline, Module
+   25's admin analytics/system-status pages) — no new architectural
+   primitive introduced by this batch.
+
+Modules 38-43 (Phase C, below) remain queued **after** this entire chain,
+unaffected by the reordering. **The founder has directed that all
+autonomous module work stop once Modules 62, 59-61, 48, and 63-72 are
+complete** — the UI/UX design phase is the next topic, and the founder
+wants to discuss its direction before any of that work begins.
 
 This batch is slotted **after** Module 58, once the Professional Seller
 Readiness batch (Modules 54-58) is complete — not ahead of it.
