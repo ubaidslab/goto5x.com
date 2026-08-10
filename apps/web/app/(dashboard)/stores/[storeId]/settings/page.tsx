@@ -5,7 +5,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Field, Input, Textarea } from "@/components/ui/Field";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
@@ -24,6 +24,26 @@ interface PaymentInstructions {
   nameConsistencyStatus: "not_required" | "pending" | "approved" | "rejected";
   codEnabled: boolean;
 }
+
+type PaymentGatewayProvider = "raast" | "easypaisa" | "jazzcash" | "bank";
+
+// Module 62 (SRS §5.6h, FR-6.36) - never includes the encrypted credential
+// fields (backend SAFE_SELECT allowlist); write-only credentials, same
+// pattern FR-30.1's CNIC entry already uses.
+interface PaymentGatewayConnection {
+  provider: PaymentGatewayProvider;
+  merchantId: string | null;
+  isActive: boolean;
+  priorityOrder: number;
+  connectedAt: string;
+}
+
+const GATEWAY_PROVIDER_LABELS: Record<PaymentGatewayProvider, string> = {
+  raast: "Raast",
+  easypaisa: "Easypaisa",
+  jazzcash: "JazzCash",
+  bank: "Bank transfer",
+};
 
 interface SellerProfile {
   dashboardTheme: string;
@@ -115,6 +135,83 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [payment, setPayment] = useState<PaymentInstructions | null>(null);
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentSaved, setPaymentSaved] = useState(false);
+
+  // Module 62 (SRS §5.6h, FR-6.36/6.39) - a seller's own connected Raast/
+  // Easypaisa/JazzCash/bank gateway; a buyer paying through it auto-
+  // confirms the order instead of relying on the manual mark-as-paid
+  // fallback above. Available on every plan, unlike Module 58's Growth+
+  // gated fields.
+  const [gatewayConnections, setGatewayConnections] = useState<PaymentGatewayConnection[] | null>(null);
+  const [gatewayProvider, setGatewayProvider] = useState<PaymentGatewayProvider>("raast");
+  const [gatewayMerchantId, setGatewayMerchantId] = useState("");
+  const [gatewayApiKey, setGatewayApiKey] = useState("");
+  const [gatewayApiSecret, setGatewayApiSecret] = useState("");
+  const [connectingGateway, setConnectingGateway] = useState(false);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const [gatewayTestResults, setGatewayTestResults] = useState<Record<string, boolean>>({});
+  const [testingGateway, setTestingGateway] = useState<string | null>(null);
+
+  function loadGatewayConnections() {
+    api
+      .get<PaymentGatewayConnection[]>(`/stores/${params.storeId}/payment-gateway`)
+      .then(setGatewayConnections)
+      .catch(() => setGatewayConnections([]));
+  }
+
+  async function connectGateway(e: React.FormEvent) {
+    e.preventDefault();
+    setGatewayError(null);
+    setConnectingGateway(true);
+    try {
+      await api.post(`/stores/${params.storeId}/payment-gateway`, {
+        provider: gatewayProvider,
+        merchantId: gatewayMerchantId || undefined,
+        apiKey: gatewayApiKey,
+        apiSecret: gatewayApiSecret || undefined,
+      });
+      setGatewayMerchantId("");
+      setGatewayApiKey("");
+      setGatewayApiSecret("");
+      loadGatewayConnections();
+    } catch (err) {
+      setGatewayError(err instanceof ApiError ? err.message : "Couldn't connect that gateway.");
+    } finally {
+      setConnectingGateway(false);
+    }
+  }
+
+  async function setGatewayActive(provider: PaymentGatewayProvider, isActive: boolean) {
+    setGatewayError(null);
+    try {
+      await api.patch(`/stores/${params.storeId}/payment-gateway/${provider}/active`, { isActive });
+      loadGatewayConnections();
+    } catch (err) {
+      setGatewayError(err instanceof ApiError ? err.message : "Couldn't update that connection.");
+    }
+  }
+
+  async function testGatewayConnection(provider: PaymentGatewayProvider) {
+    setGatewayError(null);
+    setTestingGateway(provider);
+    try {
+      const result = await api.post<{ success: boolean }>(`/stores/${params.storeId}/payment-gateway/${provider}/test`);
+      setGatewayTestResults((prev) => ({ ...prev, [provider]: result.success }));
+    } catch (err) {
+      setGatewayError(err instanceof ApiError ? err.message : "Couldn't test that connection.");
+    } finally {
+      setTestingGateway(null);
+    }
+  }
+
+  async function removeGatewayConnection(provider: PaymentGatewayProvider) {
+    setGatewayError(null);
+    try {
+      await api.delete(`/stores/${params.storeId}/payment-gateway/${provider}`);
+      loadGatewayConnections();
+    } catch (err) {
+      setGatewayError(err instanceof ApiError ? err.message : "Couldn't remove that connection.");
+    }
+  }
 
   const [cnicMasked, setCnicMasked] = useState<string | null>(null);
   const [activationStatus, setActivationStatus] = useState<SellerProfile["activationStatus"]>("auto_approved");
@@ -226,6 +323,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
       .then(setPayment)
       .catch(() => {});
+    loadGatewayConnections();
     loadDataExports();
     api
       .get<SupportAccessEntry[]>("/sellers/me/support-access-history")
@@ -734,6 +832,86 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             </CardBody>
           </Card>
         )}
+
+        <Card>
+          <CardHeader
+            title="Payment gateway"
+            description="Connect your own Raast, Easypaisa, JazzCash, or bank account so a buyer's payment auto-confirms the order - your money never passes through UZEYN. Raast is free and offered first at checkout. Sellers without a connection keep using the manual payment instructions above."
+          />
+          <CardBody>
+            {gatewayError && <Alert>{gatewayError}</Alert>}
+            {gatewayConnections && gatewayConnections.length > 0 && (
+              <div className="mb-4 divide-y divide-border overflow-hidden rounded-lg border border-border">
+                {gatewayConnections.map((c) => (
+                  <div key={c.provider} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-ink">{GATEWAY_PROVIDER_LABELS[c.provider]}</p>
+                      <p className="text-xs text-ink-muted">
+                        {c.merchantId ? `Merchant ID: ${c.merchantId}` : "No merchant ID set"}
+                        {gatewayTestResults[c.provider] !== undefined &&
+                          (gatewayTestResults[c.provider] ? " · Test: OK" : " · Test: failed")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1 text-xs text-ink">
+                        <input
+                          type="checkbox"
+                          checked={c.isActive}
+                          onChange={(e) => setGatewayActive(c.provider, e.target.checked)}
+                        />
+                        Active
+                      </label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        loading={testingGateway === c.provider}
+                        onClick={() => testGatewayConnection(c.provider)}
+                      >
+                        Test
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeGatewayConnection(c.provider)}>
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form onSubmit={connectGateway} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Provider">
+                  <Select
+                    value={gatewayProvider}
+                    onChange={(e) => setGatewayProvider(e.target.value as PaymentGatewayProvider)}
+                  >
+                    <option value="raast">Raast</option>
+                    <option value="easypaisa">Easypaisa</option>
+                    <option value="jazzcash">JazzCash</option>
+                    <option value="bank">Bank transfer</option>
+                  </Select>
+                </Field>
+                <Field label="Merchant ID" hint="Optional - as issued by the provider.">
+                  <Input value={gatewayMerchantId} onChange={(e) => setGatewayMerchantId(e.target.value)} />
+                </Field>
+              </div>
+              <Field label="API key" hint="Write-only - never shown again once saved.">
+                <Input
+                  type="password"
+                  value={gatewayApiKey}
+                  onChange={(e) => setGatewayApiKey(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="API secret" hint="Optional, provider-dependent.">
+                <Input type="password" value={gatewayApiSecret} onChange={(e) => setGatewayApiSecret(e.target.value)} />
+              </Field>
+              <Button type="submit" loading={connectingGateway}>
+                Connect
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
 
         <Card>
           <CardHeader

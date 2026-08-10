@@ -158,6 +158,7 @@ jobs:
           EXTERNAL_API_SECRET_ENCRYPTION_KEY=UBSQp73iyfU/LUU+gFQ69pB9C2Gw1Tg1RVqSmuM/FdE=
           SMTP_CREDENTIAL_ENCRYPTION_KEY=4NqGx0iUuAW/T+K88NSUB7b8pFHLXhUqVsVvzuyi6Qk=
           ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY=52ndSUecSgtM/FnxNWrvun1iPK21rzJhKgZV0I/fBPg=
+          PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY=p6bqHrEqJhlod/7+aS0aCDwGrcSGeGx6s5a+EBTH+jg=
           EOF
 
       - name: E2E tests (real Postgres + Redis - the cross-tenant/RLS release gate)

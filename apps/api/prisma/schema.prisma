@@ -522,7 +522,7 @@ model Store {
   seoSitemapIncludedDefault Boolean @default(true) @map("seo_sitemap_included_default")
   customHeadTags            String? @map("custom_head_tags")
 
-  seller                    Seller                     @relation(fields: [sellerId], references: [id])
+  seller                    Seller                          @relation(fields: [sellerId], references: [id])
   domains                   Domain[]
   themeSettings             StoreThemeSettings?
   collections               Collection[]
@@ -530,6 +530,7 @@ model Store {
   shippingSettings          StoreShippingSettings?
   taxSettings               StoreTaxSettings?
   paymentInstructions       StorePaymentInstructions?
+  paymentGatewayConnections StorePaymentGatewayConnection[]
   discountCodes             DiscountCode[]
   supplierLinks             StoreSupplierLink[]
   listingReviews            ListingReview[]
@@ -537,7 +538,7 @@ model Store {
   orders                    Order[]
   customers                 Customer[]
   importJobs                ImportJob[]
-  logoMedia                 MediaAsset?                @relation("StoreLogo", fields: [logoMediaId], references: [id])
+  logoMedia                 MediaAsset?                     @relation("StoreLogo", fields: [logoMediaId], references: [id])
   healthScoreHistory        StoreHealthScoreHistory[]
   verifiedStoreApplications VerifiedStoreApplication[]
   stockAdjustments          StockAdjustment[]
@@ -800,6 +801,44 @@ model StorePaymentInstructions {
   store Store @relation(fields: [storeId], references: [id])
 
   @@map("store_payment_instructions")
+}
+
+// Module 62 (SRS §5.6h, FR-6.36) - a seller's own connected payment
+// gateway; a buyer paying through it auto-confirms the order (FR-6.38)
+// instead of relying on the manual mark-as-paid fallback. Credentials are
+// AES-256-GCM encrypted at rest (payment-gateway-credential-crypto.util.ts,
+// its own PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY) and never returned by
+// any API response (SAFE_SELECT allowlist, same discipline as
+// SellerVerificationEmail's SMTP password).
+enum PaymentGatewayProvider {
+  raast
+  easypaisa
+  jazzcash
+  bank
+}
+
+model StorePaymentGatewayConnection {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  storeId            String                 @map("store_id") @db.Uuid
+  provider           PaymentGatewayProvider
+  merchantId         String?                @map("merchant_id")
+  apiKeyEncrypted    String?                @map("api_key_encrypted")
+  apiSecretEncrypted String?                @map("api_secret_encrypted")
+  isActive           Boolean                @default(true) @map("is_active")
+  // FR-6.36 - stable, seller-visible checkout ordering; Raast defaults to
+  // the lowest (first) value, set by the service layer at connect time,
+  // never a DB-level default (Raast's priority is business logic, not a
+  // schema constant).
+  priorityOrder      Int                    @default(0) @map("priority_order")
+  connectedAt        DateTime               @default(now()) @map("connected_at") @db.Timestamptz
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  // One connection per provider per store - reconnecting the same provider
+  // updates the existing row rather than creating a duplicate.
+  @@unique([storeId, provider], name: "uniq_store_gateway_provider")
+  @@map("store_payment_gateway_connections")
 }
 
 enum NameConsistencyStatus {

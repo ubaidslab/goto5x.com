@@ -7866,21 +7866,60 @@ Module 52, v0.34)
       monthly price via the Settings-Registry-held multipliers, not
       stored as separate per-cycle rows, and both are selectable on the
       pricing page and the admin plan editor (FR-7.20).
-- [ ] `StorePaymentGatewayConnection` credentials are AES-256-GCM
+- [x] `StorePaymentGatewayConnection` credentials are AES-256-GCM
       encrypted at rest and never appear in any API response — proven by
       a test asserting a connection-fetch/list response never contains
       the raw or encrypted secret field, across all four providers
-      (FR-6.36).
-- [ ] Raast is offered first in both the seller connect flow and the
+      (FR-6.36, Module 62). `payment-gateway-credential-crypto.util.ts`
+      (its own `PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY`, rotates
+      independently of every other `*_ENCRYPTION_KEY`); `SAFE_SELECT`
+      explicitly excludes `apiKeyEncrypted`/`apiSecretEncrypted` on every
+      query, the same allowlist discipline `SellerVerificationEmail`'s
+      SMTP password already uses.
+- [x] Raast is offered first in both the seller connect flow and the
       checkout provider list when multiple gateways are connected
-      (FR-6.36/6.37).
-- [ ] A buyer paying through a seller's connected Raast/Easypaisa/
+      (FR-6.36/6.37, Module 62). `priorityOrder` is derived from the
+      provider at connect time (`raast: 0, easypaisa: 1, jazzcash: 2,
+      bank: 3`), never a seller-facing reorder control; both the
+      seller-facing connections list and the buyer-facing checkout
+      provider list sort by it — proven by an e2e test that connects all
+      four out of order and asserts the returned order is
+      `[raast, easypaisa, jazzcash, bank]` regardless.
+- [x] A buyer paying through a seller's connected Raast/Easypaisa/
       JazzCash/bank gateway results in `verifyPayment()` being called
       before confirmation, and a successful verification confirms the
       order through the **same** `markAsPaid()` core the OTP/manual paths
-      use — not a second confirmation path (FR-6.37/6.38).
-- [ ] Manual mark-as-paid still works unchanged for a seller with no
-      gateway connected (FR-6.38).
+      use — not a second confirmation path (FR-6.37/6.38, Module 62).
+      `PaymentGatewayService.verifyAndConfirm()` is the buyer-facing
+      entry point (`POST /storefront/gateway-payment/:token/verify`,
+      the same unguessable `statusLookupToken` every other buyer-facing
+      order action resolves first); on a verified match it calls
+      `OrdersService.markAsPaid(store.sellerId, storeId, orderId)`
+      directly — proven by an e2e test asserting the resulting order row
+      and its `commission_accrued` ledger entry are identical to what the
+      manual/OTP paths already produce. A `SellerPaymentGatewayAdapter`
+      interface (`provider` + `verifyPayment()`) mirrors
+      `VerificationChannelAdapter`'s exact shape; one implementation per
+      provider, registered into a `Map`, never branched on by type. All
+      four adapters are real, structurally complete implementations
+      calling each provider's documented server-to-server API — **not
+      live-tested against a real Raast/Easypaisa/JazzCash/bank sandbox**,
+      the same disclosed limitation already carried by the Printify/
+      Safepay/COD adapters; e2e tests inject fakes via `overrideProvider`
+      (the same technique `google-drive.e2e-spec.ts` already established
+      for `DRIVE_CLIENT`) rather than exercising the real classes.
+- [x] Manual mark-as-paid still works unchanged for a seller with no
+      gateway connected (FR-6.38, Module 62) — proven by an e2e test
+      placing an order for a seller with zero gateway connections and
+      confirming it through the pre-existing
+      `POST /stores/:storeId/orders/:orderId/mark-as-paid` endpoint.
+- [x] A seller-facing "Payment gateway" screen lets a seller pick a
+      provider, enter write-only credentials, test the connection, and
+      toggle it active/inactive (FR-6.39, Module 62) — a new card on the
+      existing store Settings page, alongside the existing Payment
+      Instructions card; owner-only always, blocked outright during
+      impersonation, the same money-adjacent discipline as the Payment
+      Instructions screen it sits beside.
 
 ### 14.66 Subscription Business Readiness (new, v0.38, not yet built)
 - [ ] MRR, new MRR, churned MRR, and expansion/contraction MRR render

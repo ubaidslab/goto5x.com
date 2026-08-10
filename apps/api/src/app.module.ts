@@ -38,6 +38,7 @@ import { ModerationModule } from "./moderation/moderation.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { OrderVerificationModule } from "./order-verification/order-verification.module";
 import { OrdersModule } from "./orders/orders.module";
+import { PaymentGatewayModule } from "./payment-gateway/payment-gateway.module";
 import { PlansModule } from "./plans/plans.module";
 import { PnLModule } from "./pnl/pnl.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -88,6 +89,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     StorefrontModule,
     OrdersModule,
     OrderVerificationModule,
+    PaymentGatewayModule,
     CustomersModule,
     ReviewsModule,
     DataPortabilityModule,

@@ -121,6 +121,13 @@ class EnvironmentVariables {
   // secrets rotate independently.
   @IsString()
   ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY!: string;
+
+  // Module 62 (SRS §5.6h/FR-6.36) - encrypts a seller's connected payment-
+  // gateway API key/secret at rest, same AES-256-GCM mechanism/key-
+  // management discipline as every other *_ENCRYPTION_KEY above, kept as
+  // its own key so this secret rotates independently.
+  @IsString()
+  PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY!: string;
 }
 
 /**
@@ -165,6 +172,11 @@ export function validateEnv(config: Record<string, unknown>) {
   if (Buffer.from(validated.ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
     throw new Error(
       "Invalid environment configuration:\nADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
+    );
+  }
+  if (Buffer.from(validated.PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nPAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

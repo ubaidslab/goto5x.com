@@ -4009,11 +4009,36 @@ business-model work following it.
   no "0% commission" claim; positions on direct-to-seller payment,
   transparent low commission, and "your money never sits with us."
 - **Module 62 — Seller Payment Gateway Connect, Raast-first (§5.6h,
-  FR-6.36-6.39).** Same scope as the original design plus Raast as the
+  FR-6.36-6.39). BUILT — first in the resequenced order, per the founder
+  directive below.** Same scope as the original design plus Raast as the
   first-priority provider ahead of Easypaisa/JazzCash, and a generic bank
   adapter. The only item requiring new external-adapter code with no live
   sandbox to test against (same disclosed limitation as Safepay/COD), so
-  it carries the most schedule risk.
+  it carried the most schedule risk. New `StorePaymentGatewayConnection`
+  model (RLS-protected, store-scoped, `uniq_store_gateway_provider`
+  unique constraint) with AES-256-GCM encrypted credentials
+  (`payment-gateway-credential-crypto.util.ts`, its own
+  `PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY`) and a `SAFE_SELECT`
+  allowlist that never returns them. A `SellerPaymentGatewayAdapter`
+  interface mirrors `VerificationChannelAdapter`'s exact shape - one
+  method (`verifyPayment()`), one implementation per provider
+  (`RaastGatewayAdapter`/`EasypaisaGatewayAdapter`/
+  `JazzCashGatewayAdapter`/`BankTransferGatewayAdapter`), registered into
+  a `Map` `PaymentGatewayService` never branches on beyond the lookup.
+  `priorityOrder` is derived from the provider at connect time (Raast
+  lowest/first), driving both the seller-facing connections list and the
+  buyer-facing checkout provider list. Buyer-facing wiring: a new
+  `GET/POST /storefront/gateway-payment/:token` pair (the same
+  unguessable `statusLookupToken` every other buyer-facing order action
+  already resolves first) calls `verifyPayment()` on submission and, on a
+  verified match, `OrdersService.markAsPaid()` directly - the exact same
+  confirmation core the manual/OTP paths already use, never a second
+  path. New "Payment gateway" card on the seller Settings page (connect/
+  test/toggle/remove), alongside the existing Payment Instructions card;
+  owner-only, blocked during impersonation. All four adapters call real,
+  documented provider APIs but are unverified against any live sandbox -
+  e2e tests inject fakes via `overrideProvider`, the same technique
+  `google-drive.e2e-spec.ts` already established for `DRIVE_CLIENT`.
 
 **Sequencing within this batch, corrected by founder directive (SRS
 v0.38):** the paragraph above listed Modules 59-62 in ascending number

@@ -8,6 +8,35 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 62: Seller Payment Gateway Connect, Raast-first
+
+Built first in the founder-directed resequencing after the Professional
+Seller Readiness batch - real Shopify sellers name payment-gateway
+failure as Shopify's #1 pain point in Pakistan.
+
+### Added
+- A seller may connect their own Raast, Easypaisa, JazzCash, or bank
+  account. A buyer paying through it auto-confirms the order - funds
+  settle directly with the seller, UZEYN never touches the money. New
+  `StorePaymentGatewayConnection` model (RLS-protected, store-scoped),
+  credentials AES-256-GCM encrypted at rest and never returned by any API
+  response.
+- `SellerPaymentGatewayAdapter` interface (mirrors the existing
+  `VerificationChannelAdapter` shape) with one real implementation per
+  provider, registered into a lookup map the orchestrating service never
+  branches on. Raast is offered first everywhere - the connect flow and
+  the checkout provider list - reflecting its zero merchant fee.
+- Buyer-facing verify endpoint confirms a gateway-verified payment
+  through the exact same `markAsPaid()` core the manual/OTP paths
+  already use - never a second confirmation path. Manual mark-as-paid
+  remains the fallback for a seller with no gateway connected.
+- New "Payment gateway" card on the seller Settings page - connect, test
+  the connection, toggle active/inactive, remove.
+- Disclosed limitation: all four adapters call real, documented
+  provider APIs but are unverified against any live sandbox (no test
+  credentials exist in this build environment) - the same disclosure
+  already carried by the Printify/Safepay/COD adapters.
+
 ## Module 58: Advanced Store SEO Control
 
 ### Added
