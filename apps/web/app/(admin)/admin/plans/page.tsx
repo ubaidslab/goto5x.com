@@ -11,11 +11,17 @@ interface Plan {
   tierOrder: number;
   price: string;
   regularPrice: string | null;
+  firstCyclePrice: string | null;
+  campaignPrice: string | null;
+  campaignActive: boolean;
   seatPrice: string | null;
   currency: string;
-  billingInterval: "monthly" | "yearly" | "none";
+  billingInterval: "monthly" | "yearly" | "none" | "six_month";
   isActive: boolean;
   mostPopular?: boolean;
+  activePrice?: number;
+  sixMonthPrice?: number | null;
+  yearlyPrice?: number | null;
 }
 
 const GROUPS: PlanGroup[] = ["individual", "team", "supplier"];
@@ -33,8 +39,10 @@ export default function AdminPlansPage() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("0");
   const [regularPrice, setRegularPrice] = useState("");
+  const [firstCyclePrice, setFirstCyclePrice] = useState("");
+  const [campaignPrice, setCampaignPrice] = useState("");
   const [seatPrice, setSeatPrice] = useState("");
-  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly" | "none">("monthly");
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly" | "none" | "six_month">("monthly");
   const [grantSellerId, setGrantSellerId] = useState("");
   const [grantPlanId, setGrantPlanId] = useState("");
   const [promoCode, setPromoCode] = useState("");
@@ -65,6 +73,8 @@ export default function AdminPlansPage() {
         planGroup,
         price: Number(price),
         regularPrice: regularPrice ? Number(regularPrice) : undefined,
+        firstCyclePrice: firstCyclePrice ? Number(firstCyclePrice) : undefined,
+        campaignPrice: campaignPrice ? Number(campaignPrice) : undefined,
         seatPrice: planGroup === "team" && seatPrice ? Number(seatPrice) : undefined,
         billingInterval,
       }),
@@ -72,7 +82,18 @@ export default function AdminPlansPage() {
     setName("");
     setPrice("0");
     setRegularPrice("");
+    setFirstCyclePrice("");
+    setCampaignPrice("");
     setSeatPrice("");
+    load();
+  }
+
+  async function toggleCampaign(plan: Plan) {
+    await fetch(`${apiBase}/admin/plans/${plan.id}`, {
+      method: "PATCH",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ campaignActive: !plan.campaignActive }),
+    });
     load();
   }
 
@@ -134,6 +155,10 @@ export default function AdminPlansPage() {
                 <th>Name</th>
                 <th>Price</th>
                 <th>Regular price</th>
+                <th>First-cycle price</th>
+                <th>Campaign price</th>
+                <th>Six-month</th>
+                <th>Yearly</th>
                 <th>Seat price</th>
                 <th>Billing interval</th>
                 <th>Most popular</th>
@@ -150,6 +175,18 @@ export default function AdminPlansPage() {
                     {plan.currency} {plan.price}
                   </td>
                   <td>{plan.regularPrice ? `${plan.currency} ${plan.regularPrice}` : "-"}</td>
+                  <td>{plan.firstCyclePrice ? `${plan.currency} ${plan.firstCyclePrice}` : "-"}</td>
+                  <td>
+                    {plan.campaignPrice ? `${plan.currency} ${plan.campaignPrice}` : "-"}
+                    {plan.campaignPrice && (
+                      <>
+                        {" "}
+                        (<button onClick={() => toggleCampaign(plan)}>{plan.campaignActive ? "active - deactivate" : "inactive - activate"}</button>)
+                      </>
+                    )}
+                  </td>
+                  <td>{plan.sixMonthPrice != null ? `${plan.currency} ${plan.sixMonthPrice}` : "-"}</td>
+                  <td>{plan.yearlyPrice != null ? `${plan.currency} ${plan.yearlyPrice}` : "-"}</td>
                   <td>{plan.seatPrice ? `${plan.currency} ${plan.seatPrice}/seat` : "-"}</td>
                   <td>{plan.billingInterval}</td>
                   <td>{plan.mostPopular ? "yes" : ""}</td>
@@ -195,6 +232,18 @@ export default function AdminPlansPage() {
             <input type="number" min={0} value={regularPrice} onChange={(e) => setRegularPrice(e.target.value)} />
           </label>
         </p>
+        <p>
+          <label>
+            First-cycle price (one-time discount for the subscription's very first billing cycle, optional):{" "}
+            <input type="number" min={0} value={firstCyclePrice} onChange={(e) => setFirstCyclePrice(e.target.value)} />
+          </label>
+        </p>
+        <p>
+          <label>
+            Campaign price (a second, toggleable discount - activate/deactivate from the table above, optional):{" "}
+            <input type="number" min={0} value={campaignPrice} onChange={(e) => setCampaignPrice(e.target.value)} />
+          </label>
+        </p>
         {planGroup === "team" && (
           <p>
             <label>
@@ -209,6 +258,7 @@ export default function AdminPlansPage() {
             <select value={billingInterval} onChange={(e) => setBillingInterval(e.target.value as typeof billingInterval)}>
               <option value="none">none (no recurring charge)</option>
               <option value="monthly">monthly</option>
+              <option value="six_month">six-month</option>
               <option value="yearly">yearly</option>
             </select>
           </label>

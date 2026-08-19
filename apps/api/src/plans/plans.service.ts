@@ -4,7 +4,7 @@ import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { CreatePlanDto } from "./dto/create-plan.dto";
-import { computeYearlyPrice } from "./plan-pricing.util";
+import { computeCyclePrice, resolveActivePlanPrice } from "./plan-pricing.util";
 import { UpdatePlanDto } from "./dto/update-plan.dto";
 
 /**
@@ -35,12 +35,14 @@ export class PlansService {
       orderBy: [{ sortOrder: "asc" }, { tierOrder: "asc" }],
     });
     const mostPopularTierOrder = await this.settings.resolve<number>("marketing.most_popular_individual_tier_order");
-    const withYearly = plans.map((plan) => ({
-      ...this.withYearlyPrice(plan),
-      mostPopular: plan.planGroup === "individual" && plan.tierOrder === mostPopularTierOrder,
-    }));
-    const groups: Record<string, typeof withYearly> = { individual: [], team: [], supplier: [] };
-    for (const plan of withYearly) {
+    const withCycles = await Promise.all(
+      plans.map(async (plan) => ({
+        ...(await this.withCyclePrices(plan)),
+        mostPopular: plan.planGroup === "individual" && plan.tierOrder === mostPopularTierOrder,
+      })),
+    );
+    const groups: Record<string, typeof withCycles> = { individual: [], team: [], supplier: [] };
+    for (const plan of withCycles) {
       groups[plan.planGroup].push(plan);
     }
     return groups;
@@ -49,15 +51,46 @@ export class PlansService {
   async findById(planId: string) {
     const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
     if (!plan) throw new NotFoundException("Plan not found.");
-    return this.withYearlyPrice(plan);
+    return this.withCyclePrices(plan);
   }
 
-  /** FR-7.6 - a monthly-priced tier's discounted annual price, derived data (never a second stored price). */
-  private withYearlyPrice<T extends { price: unknown; yearlyDiscountPercent: unknown; billingInterval: string }>(
+  /** Module 61 (FR-7.21) - the pricing page's headline benefit block and Shopify comparison, entirely Settings Registry strings, never hard-coded in the frontend. */
+  async getPricingCopy() {
+    const [benefit1, benefit2, benefit3, shopifyComparison, sixMonthMultiplier, yearlyMultiplier] = await Promise.all([
+      this.settings.resolve<string>("marketing.pricing_benefit_1"),
+      this.settings.resolve<string>("marketing.pricing_benefit_2"),
+      this.settings.resolve<string>("marketing.pricing_benefit_3"),
+      this.settings.resolve<string>("marketing.pricing_shopify_comparison"),
+      this.settings.resolve<number>("billing.six_month_price_multiplier"),
+      this.settings.resolve<number>("billing.yearly_price_multiplier"),
+    ]);
+    return { benefits: [benefit1, benefit2, benefit3], shopifyComparison, sixMonthMultiplier, yearlyMultiplier };
+  }
+
+  /**
+   * Module 61 (SRS §5.7, FR-7.20) - `activePrice` is the price actually
+   * charged/shown right now (campaign-aware); `sixMonthPrice`/`yearlyPrice`
+   * are that active price times the founder's fixed multipliers - all
+   * derived data, never a second stored price. Supersedes the old
+   * `yearlyDiscountPercent`-based computeYearlyPrice() for this purpose
+   * (FR-7.6's admin-configurable-percent framing is retired here; the
+   * column itself is left in the schema/plan-editor DTOs, unread by this
+   * computation - a disclosed scope decision, see docs/build-plan.md).
+   */
+  private async withCyclePrices<T extends { price: unknown; campaignPrice: unknown; campaignActive: boolean; billingInterval: string }>(
     plan: T,
-  ): T & { yearlyPrice: number | null } {
-    if (plan.billingInterval !== "monthly") return { ...plan, yearlyPrice: null };
-    return { ...plan, yearlyPrice: computeYearlyPrice(Number(plan.price), plan.yearlyDiscountPercent as number | null) };
+  ): Promise<T & { activePrice: number; sixMonthPrice: number | null; yearlyPrice: number | null }> {
+    const activePrice = resolveActivePlanPrice(plan);
+    if (plan.billingInterval !== "monthly") return { ...plan, activePrice, sixMonthPrice: null, yearlyPrice: null };
+
+    const sixMonth = await this.settings.resolve<number>("billing.six_month_price_multiplier");
+    const yearly = await this.settings.resolve<number>("billing.yearly_price_multiplier");
+    return {
+      ...plan,
+      activePrice,
+      sixMonthPrice: computeCyclePrice(activePrice, "six_month", { sixMonth, yearly }),
+      yearlyPrice: computeCyclePrice(activePrice, "yearly", { sixMonth, yearly }),
+    };
   }
 
   /** FR-7.17 - creates a new tier within a group at the given (or next-available) tierOrder. */
@@ -74,6 +107,9 @@ export class PlansService {
         seatPrice: dto.seatPrice,
         price: dto.price,
         regularPrice: dto.regularPrice,
+        firstCyclePrice: dto.firstCyclePrice,
+        campaignPrice: dto.campaignPrice,
+        campaignActive: dto.campaignActive,
         currency: dto.currency ?? "PKR",
         billingInterval: dto.billingInterval,
         yearlyDiscountPercent: dto.yearlyDiscountPercent,
@@ -101,6 +137,9 @@ export class PlansService {
         seatPrice: dto.seatPrice,
         price: dto.price,
         regularPrice: dto.regularPrice,
+        firstCyclePrice: dto.firstCyclePrice,
+        campaignPrice: dto.campaignPrice,
+        campaignActive: dto.campaignActive,
         currency: dto.currency,
         billingInterval: dto.billingInterval,
         yearlyDiscountPercent: dto.yearlyDiscountPercent,

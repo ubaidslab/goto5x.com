@@ -4,6 +4,8 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { EventsService } from "../events/events.service";
 import { round2 } from "../orders/money.util";
+import { SettingsService } from "../settings-registry/settings.service";
+import { addInterval } from "../plans/subscriptions.service";
 import { ManualBankTransferTopUpAdapter } from "./top-up-adapter.interface";
 
 /**
@@ -78,6 +80,7 @@ export class WalletService {
     private readonly auditLog: AuditLogService,
     private readonly events: EventsService,
     private readonly topUpAdapter: ManualBankTransferTopUpAdapter,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -229,6 +232,63 @@ export class WalletService {
     });
   }
 
+  /**
+   * Module 59 (SRS §5.6g, FR-6.33) - the combined signup total, computed
+   * server-side (never client-supplied - a seller cannot choose their own
+   * plan-fee portion). `planFeePortion` is the plan's `firstCyclePrice`
+   * (Module 61, FR-7.20) - a one-time discount for the subscription's very
+   * first billing cycle - falling back to `price` for a tier with no
+   * firstCyclePrice set (e.g. one created outside the launch seed).
+   */
+  async getSignupPaymentPreview(sellerId: string, currency: string) {
+    const subscription = await this.prismaAdmin.subscription.findUnique({
+      where: { sellerId },
+      include: { plan: true },
+    });
+    if (!subscription) throw new NotFoundException("No subscription found for this seller.");
+
+    const topUpPortion = round2(await this.settings.resolve<number>("billing.minimum_signup_wallet_topup"));
+    const planFeePortion = round2(Number(subscription.plan.firstCyclePrice ?? subscription.plan.price));
+    return {
+      planName: subscription.plan.name,
+      planFeePortion,
+      topUpPortion,
+      total: round2(planFeePortion + topUpPortion),
+      currency,
+      instructions: this.topUpAdapter.instructionsFor(planFeePortion + topUpPortion, currency),
+    };
+  }
+
+  /**
+   * FR-6.33 - one proof-of-payment for the combined total, submitted
+   * through the exact same WalletTopUpRequest row an ordinary top-up uses
+   * (`amount` keeps meaning "the wallet-credit portion"; `planFeePortion`
+   * carries the rest). One-time by design: a second combined request is
+   * rejected while an earlier one is still pending or already verified,
+   * but a REJECTED one may be resubmitted, same as any ordinary top-up.
+   */
+  async requestCombinedSignupPayment(sellerId: string, currency: string) {
+    const existing = await this.prismaAdmin.walletTopUpRequest.findFirst({
+      where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: { in: ["pending", "verified"] } },
+    });
+    if (existing) {
+      throw new BadRequestException("A combined signup payment has already been submitted for this account.");
+    }
+
+    const preview = await this.getSignupPaymentPreview(sellerId, currency);
+    const request = await this.prismaAdmin.walletTopUpRequest.create({
+      data: {
+        ownerType: "seller",
+        ownerId: sellerId,
+        amount: preview.topUpPortion,
+        planFeePortion: preview.planFeePortion,
+        currency,
+        method: this.topUpAdapter.method,
+      },
+    });
+    return { request, ...preview };
+  }
+
   async listOwnTopUpRequests(sellerId: string) {
     return this.prismaAdmin.walletTopUpRequest.findMany({
       where: { ownerType: "seller", ownerId: sellerId },
@@ -250,12 +310,24 @@ export class WalletService {
    * WalletGraceLadderService's instant-restore check (FR-6.25) - kept as a
    * separate call rather than a callback so the two services don't need to
    * know about each other.
+   *
+   * FR-6.33 (Module 59) - when `planFeePortion` is set, this is a combined
+   * signup payment: in the SAME transaction as the wallet-credit ledger
+   * post, the seller's Subscription.currentPeriodEnd is activated for one
+   * full billing interval measured from THIS verification (not stacked on
+   * top of the free placeholder period SubscriptionsService.
+   * assignBasicPlanAtSignup() already granted at signup) - this is what
+   * "activates" (rather than "advances") means here: the real, paid clock
+   * starts the moment payment is actually confirmed, so an admin-processing
+   * delay after signup never costs the seller part of a paid cycle.
    */
   async verifyTopUp(topUpId: string, adminUserId: string) {
     const request = await this.prismaAdmin.walletTopUpRequest.findUnique({ where: { id: topUpId } });
     if (!request) throw new NotFoundException("Top-up request not found.");
     if (request.status !== "pending") throw new BadRequestException("This top-up request has already been resolved.");
     if (request.ownerType !== "seller") throw new BadRequestException("This is not a seller top-up request.");
+
+    const planFeePortion = request.planFeePortion !== null ? Number(request.planFeePortion) : null;
 
     await this.prismaAdmin.$transaction(async (tx) => {
       await tx.walletTopUpRequest.update({
@@ -268,6 +340,16 @@ export class WalletService {
         amount: Number(request.amount),
         currency: request.currency,
       });
+      if (planFeePortion !== null && planFeePortion > 0) {
+        const subscription = await tx.subscription.findUniqueOrThrow({
+          where: { sellerId: request.ownerId },
+          include: { plan: true },
+        });
+        await tx.subscription.update({
+          where: { sellerId: request.ownerId },
+          data: { currentPeriodEnd: addInterval(new Date(), subscription.plan.billingInterval as "monthly" | "yearly") },
+        });
+      }
     });
 
     await this.auditLog.record({

@@ -8,6 +8,83 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 61: Four-Tier Plan Pricing Model + Pricing Page Rebuild
+
+Corrected business-model batch, built after Module 62 per the founder's
+sequencing (62 → 59 → 60 → 61 in practice, since 60 needed 61's schema).
+
+### Added
+- `Plan.firstCyclePrice`/`campaignPrice`/`campaignActive` fields.
+  `firstCyclePrice` is a one-time discount for a subscription's very
+  first monthly billing cycle only; `campaignPrice`/`campaignActive` let
+  an admin toggle a promotional price for a tier without touching its
+  standing `price`.
+- New `PlanBillingInterval.six_month` value and `Subscription
+  .billingInterval` field. Six-month and yearly cycle prices are computed
+  as fixed 5.5x/10x multipliers of the active monthly price (new global
+  Settings Registry keys `billing.six_month_price_multiplier`/
+  `billing.yearly_price_multiplier`), replacing the old admin-configurable
+  `yearlyDiscountPercent` field for actual computation (left unread in
+  schema/DTOs rather than removed - a disclosed scope decision).
+  `resolveActivePlanPrice()`/`computeCyclePrice()` are read identically
+  by both the pricing page and the actual billing sweep, so a displayed
+  campaign price is always exactly what gets billed.
+- `GET /plans/pricing-copy` - drives the pricing page's headline benefit
+  bullets and Shopify comparison line from Settings Registry keys, never
+  hard-coded in the frontend.
+
+### Changed
+- "First Month" is retired as an auto-transitioning tier. Renamed to
+  **Basic**, a permanent tier with its own `firstCyclePrice` - a seller
+  never gets force-moved to Starter at cycle end.
+  `assignFirstMonthAtSignup` renamed `assignBasicPlanAtSignup`.
+- Pricing page rebuilt around a monthly/six-month/yearly cycle toggle,
+  live per-tier copy, and savings labels computed from the real
+  multipliers.
+
+## Module 60: Wallet/Commission Re-Verification Against Four-Tier Plans
+
+Audit/test module - no new production mechanics. Confirms the existing
+grace ladder, `orders_paused`, negative-float floor, running-balance
+column, and daily reconciliation (Module 47) compute correctly against
+Module 61's three price fields and three billing-cycle multipliers.
+
+### Verified
+- Monthly/six-month/yearly renewals debit the correct multiplied amount
+  and advance `currentPeriodEnd` by the correct span.
+- A renewal during an active campaign debits `campaignPrice`, not the
+  standing `price`.
+- The grace ladder still pauses stores correctly under a large six-month
+  or yearly fee against an insufficient balance; the running-balance
+  cache still matches `computeLedgerBalance()` after a six-month debit.
+- A seller can self-select a `six_month` billing interval, written
+  immediately (unlike the tier itself, which still defers via
+  `pendingPlanId` per the mid-cycle rule).
+
+## Module 59: Combined Entry-Flow Payment
+
+Corrected business-model batch (v0.36) - commission and the wallet stay
+fully active; this is the first of the three items in that corrected
+model. Reuses the exact `WalletTopUpRequest`/`AdminWalletController`
+verify/reject mechanism Module 20 already built.
+
+### Added
+- New Settings Registry key `billing.minimum_signup_wallet_topup`
+  (default Rs 699).
+- A new seller sees one combined total (their plan's `firstCyclePrice` +
+  the minimum wallet top-up) and submits one proof-of-payment for it -
+  never two separate payment steps. New `WalletTopUpRequest
+  .planFeePortion` field carries the plan-fee portion; `amount` keeps its
+  pre-existing meaning (top-up portion only).
+- A single admin verify action, in one transaction, credits the wallet
+  top-up portion and activates `Subscription.currentPeriodEnd` for the
+  plan-fee portion - computed fresh from verification time, never
+  stacked on the free placeholder period already granted at signup.
+  Rejecting credits/activates neither; a rejected request may be
+  resubmitted.
+- Referral commission (FR-33.4) now also accrues on a verified combined
+  signup payment, alongside the pre-existing renewal-sweep accrual site.
+
 ## Module 62: Seller Payment Gateway Connect, Raast-first
 
 Built first in the founder-directed resequencing after the Professional

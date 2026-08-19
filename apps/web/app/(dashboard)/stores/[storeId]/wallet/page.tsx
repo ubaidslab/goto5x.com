@@ -32,6 +32,16 @@ interface TopUpRequest {
   currency: string;
   status: "pending" | "verified" | "rejected";
   requestedAt: string;
+  planFeePortion: number | null;
+}
+
+interface SignupPaymentPreview {
+  planName: string;
+  planFeePortion: number;
+  topUpPortion: number;
+  total: number;
+  currency: string;
+  instructions: string;
 }
 
 const PRESETS = [500, 1000, 2500, 5000];
@@ -50,10 +60,15 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
   const [instructions, setInstructions] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [signupPayment, setSignupPayment] = useState<SignupPaymentPreview | null>(null);
+  const [signupPaymentError, setSignupPaymentError] = useState<string | null>(null);
+  const [signupPaymentInstructions, setSignupPaymentInstructions] = useState<string | null>(null);
+  const [submittingSignupPayment, setSubmittingSignupPayment] = useState(false);
 
   function loadBalanceAndTopUps() {
     api.get<{ balance: number }>("/sellers/me/wallet").then((r) => setBalance(r.balance)).catch(() => {});
     api.get<TopUpRequest[]>("/sellers/me/wallet/topup-requests").then(setTopUps).catch(() => setTopUps([]));
+    api.get<SignupPaymentPreview>("/sellers/me/wallet/signup-payment").then(setSignupPayment).catch(() => setSignupPayment(null));
   }
 
   useEffect(loadBalanceAndTopUps, []);
@@ -90,12 +105,60 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
 
   if (balance === null || transactionPage === null || topUps === null) return <PageSpinner />;
 
+  const combinedRequest = topUps.find((t) => t.planFeePortion !== null) ?? null;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Wallet"
         description="Top up your wallet to publish your store and cover commission - no online gateway, just a simple bank transfer an admin verifies."
       />
+
+      {signupPayment && (!combinedRequest || combinedRequest.status === "rejected") && (
+        <Card>
+          <CardHeader
+            title="Get started"
+            description={`${signupPayment.planName} first month + wallet credit, in one payment.`}
+          />
+          <CardBody className="space-y-4">
+            {signupPaymentError && <Alert>{signupPaymentError}</Alert>}
+            {signupPaymentInstructions && <Alert tone="info">{signupPaymentInstructions}</Alert>}
+            {combinedRequest?.status === "rejected" && (
+              <Alert>Your last signup payment was rejected - please submit again.</Alert>
+            )}
+            <div className="rounded-lg border border-border p-4">
+              <p className="text-3xl font-semibold text-ink">Rs. {signupPayment.total.toFixed(2)}</p>
+              <div className="mt-2 space-y-1 text-sm text-ink-muted">
+                <p>Rs. {signupPayment.planFeePortion.toFixed(2)} first month ({signupPayment.planName})</p>
+                <p>Rs. {signupPayment.topUpPortion.toFixed(2)} wallet credit</p>
+              </div>
+            </div>
+            <Button
+              loading={submittingSignupPayment}
+              onClick={async () => {
+                setSignupPaymentError(null);
+                setSignupPaymentInstructions(null);
+                setSubmittingSignupPayment(true);
+                try {
+                  const result = await api.post<{ instructions: string }>("/sellers/me/wallet/signup-payment", {});
+                  setSignupPaymentInstructions(result.instructions);
+                  loadBalanceAndTopUps();
+                } catch (err) {
+                  setSignupPaymentError(err instanceof ApiError ? err.message : "Could not submit the signup payment.");
+                } finally {
+                  setSubmittingSignupPayment(false);
+                }
+              }}
+            >
+              Get started - Rs. {signupPayment.total.toFixed(2)}
+            </Button>
+          </CardBody>
+        </Card>
+      )}
+
+      {combinedRequest && combinedRequest.status === "pending" && (
+        <Alert tone="info">Your signup payment is pending admin verification.</Alert>
+      )}
 
       <Card>
         <CardBody>
@@ -147,7 +210,10 @@ export default function WalletPage({ params }: { params: { storeId: string } }) 
             {topUps.map((t) => (
               <div key={t.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                 <div>
-                  <p className="text-sm font-medium text-ink">Rs. {Number(t.amount).toFixed(2)}</p>
+                  <p className="text-sm font-medium text-ink">
+                    Rs. {(Number(t.amount) + Number(t.planFeePortion ?? 0)).toFixed(2)}
+                    {t.planFeePortion !== null && " (signup payment)"}
+                  </p>
                   <p className="text-xs text-ink-muted">{new Date(t.requestedAt).toLocaleString()}</p>
                 </div>
                 <Badge tone={t.status === "verified" ? "success" : t.status === "rejected" ? "danger" : "warning"}>

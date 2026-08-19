@@ -45,6 +45,9 @@ enum PlanBillingInterval {
   monthly
   yearly
   none
+  // Module 61 (SRS §5.7, FR-7.20) - a subscription billed 5.5x the active
+  // monthly price per cycle, covering 6 months of service.
+  six_month
 }
 
 // Module 14 (SRS v0.19, FR-7.17) - a plan's addressable group. `individual`
@@ -1302,6 +1305,19 @@ model Plan {
   // single field actually billed - a further "campaign" price is simply
   // lowering `price` again, never a third field.
   regularPrice          Decimal?            @map("regular_price") @db.Decimal(12, 2)
+  // Module 61 (SRS §5.7, FR-7.20) - a one-time discount applied only to a
+  // subscription's very first monthly billing cycle; every cycle after
+  // that bills at `price` (or `campaignPrice` below, while active) - never
+  // a forced transition to a different tier the way the retired "First
+  // Month" tier-level mechanism worked.
+  firstCyclePrice       Decimal?            @map("first_cycle_price") @db.Decimal(12, 2)
+  // Module 61 (FR-7.20) - a second, separately-toggleable discounted price
+  // for a time-boxed campaign, without overwriting the standing `price`
+  // (which stays intact for when the campaign ends). Resolved alongside
+  // `campaignActive` by plan-pricing.util.ts's resolveActivePlanPrice() -
+  // never read directly for billing/display.
+  campaignPrice         Decimal?            @map("campaign_price") @db.Decimal(12, 2)
+  campaignActive        Boolean             @default(false) @map("campaign_active")
   currency              String              @default("PKR")
   billingInterval       PlanBillingInterval @map("billing_interval")
   yearlyDiscountPercent Decimal?            @map("yearly_discount_percent") @db.Decimal(5, 2)
@@ -1332,32 +1348,38 @@ model Plan {
 // support for it), the same "Prisma manages columns, migration.sql
 // hand-adds what it can't express" pattern RLS policies already use.
 model Subscription {
-  id                String             @id @default(uuid()) @db.Uuid
-  sellerId          String?            @unique @map("seller_id") @db.Uuid
-  supplierId        String?            @unique @map("supplier_id") @db.Uuid
-  planId            String             @map("plan_id") @db.Uuid
-  status            SubscriptionStatus @default(active)
+  id                String              @id @default(uuid()) @db.Uuid
+  sellerId          String?             @unique @map("seller_id") @db.Uuid
+  supplierId        String?             @unique @map("supplier_id") @db.Uuid
+  planId            String              @map("plan_id") @db.Uuid
+  status            SubscriptionStatus  @default(active)
   // Null when there is no active billing cycle to wait for (e.g. a
   // sponsored team member, FR-7.18) - every seller's OWN subscription gets
   // a real value here from signup onward (v0.33: First Month is a real
   // paid tier, not a Free Plan). A plan change then always resolves
   // against this rather than "immediately" (FR-7.5).
-  currentPeriodEnd  DateTime?          @map("current_period_end") @db.Timestamptz
+  currentPeriodEnd  DateTime?           @map("current_period_end") @db.Timestamptz
   // FR-7.5 - a requested change is staged here and applied at
   // currentPeriodEnd by the scheduled cycle job, never immediately, except
   // the one FR-7.5-consistent case where there is no cycle yet to wait for
   // (a Free-Plan seller with no currentPeriodEnd) - see SubscriptionsService.
-  pendingPlanId     String?            @map("pending_plan_id") @db.Uuid
+  pendingPlanId     String?             @map("pending_plan_id") @db.Uuid
+  // Module 61 (SRS §5.7, FR-7.20) - which of the three cycles (monthly/
+  // six_month/yearly) this subscription is on; drives both the multiplier
+  // PlanFeeDebitService applies on renewal and the span it advances
+  // currentPeriodEnd by. Defaults to monthly - every subscription that
+  // existed before this column was purely monthly anyway.
+  billingInterval   PlanBillingInterval @default(monthly) @map("billing_interval")
   // v0.17/FR-7.11-7.15 - set while this seller is an actively-sponsored team
   // member; null for an unsponsored subscription (including a member who has
   // left, per FR-7.13's graceful downgrade).
-  sponsoredByTeamId String?            @map("sponsored_by_team_id") @db.Uuid
+  sponsoredByTeamId String?             @map("sponsored_by_team_id") @db.Uuid
   // v0.26/FR-33.1 - captured once, at signup, never backfillable. No
   // Growth & Partner Programs tables exist yet to resolve this against
   // (Module 22) - it is stored as given (shape-validated only) until then.
-  referralSource    String?            @map("referral_source")
-  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  referralSource    String?             @map("referral_source")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
 
   seller          Seller?   @relation(fields: [sellerId], references: [id])
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
@@ -2910,19 +2932,26 @@ enum TopUpRequestStatus {
 }
 
 model WalletTopUpRequest {
-  id          String             @id @default(uuid()) @db.Uuid
-  ownerType   WalletOwnerType    @map("owner_type")
-  ownerId     String             @map("owner_id") @db.Uuid
-  amount      Decimal            @db.Decimal(12, 2)
-  currency    String
+  id             String             @id @default(uuid()) @db.Uuid
+  ownerType      WalletOwnerType    @map("owner_type")
+  ownerId        String             @map("owner_id") @db.Uuid
+  amount         Decimal            @db.Decimal(12, 2)
+  currency       String
   // FR-6.23 - v1.0's one TopUpAdapter implementation is manual bank
   // transfer; the column exists now so a future gateway-based adapter has
   // somewhere to record itself without a schema change.
-  method      String             @default("bank_transfer")
-  status      TopUpRequestStatus @default(pending)
-  requestedAt DateTime           @default(now()) @map("requested_at") @db.Timestamptz
-  verifiedAt  DateTime?          @map("verified_at") @db.Timestamptz
-  verifiedBy  String?            @map("verified_by") @db.Uuid
+  method         String             @default("bank_transfer")
+  status         TopUpRequestStatus @default(pending)
+  // Module 59 (SRS §5.6g, FR-6.33) - set only on a combined signup
+  // payment: the portion of `amount`'s sibling total that pays the
+  // seller's first billing cycle rather than crediting the wallet.
+  // `amount` above keeps its pre-existing meaning (the wallet top-up
+  // portion only) so every ordinary top-up request is unaffected - null
+  // here is how verifyTopUp() tells an ordinary top-up from a combined one.
+  planFeePortion Decimal?           @map("plan_fee_portion") @db.Decimal(12, 2)
+  requestedAt    DateTime           @default(now()) @map("requested_at") @db.Timestamptz
+  verifiedAt     DateTime?          @map("verified_at") @db.Timestamptz
+  verifiedBy     String?            @map("verified_by") @db.Uuid
 
   verifiedByAdmin AdminUser? @relation(fields: [verifiedBy], references: [id])
 

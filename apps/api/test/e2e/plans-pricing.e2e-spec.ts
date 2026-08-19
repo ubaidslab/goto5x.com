@@ -70,7 +70,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("the public /plans endpoint renders every group/tier entirely from plan-editor data", async () => {
       const res = await request(app.getHttpServer()).get("/plans");
       expect(res.status).toBe(200);
-      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["First Month", "Starter", "Growth", "Pro"]);
+      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["Basic", "Starter", "Growth", "Pro"]);
       expect(res.body.team).toHaveLength(3);
       expect(res.body.supplier.map((p: { name: string }) => p.name)).toEqual(["Supplier Free", "Supplier Premium"]);
     });
@@ -118,8 +118,8 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     });
   });
 
-  describe("First Month entry pricing + inverse commission laddering (v0.33 FR-7.3/7.4)", () => {
-    it("First Month carries its own (higher) commission-rate override; a higher tier's own override takes precedence", async () => {
+  describe("Basic entry pricing + inverse commission laddering (v0.33 FR-7.3/7.4)", () => {
+    it("Basic carries its own (higher) commission-rate override; a higher tier's own override takes precedence", async () => {
       const { token, sellerId } = await signup("commission-ladder@example.com");
       await superuser.seller.update({ where: { id: sellerId }, data: { isTrusted: true, cnicHash: `hash-${sellerId}` } });
 
@@ -141,7 +141,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         0.5,
         "00000000-0000-0000-0000-000000000000",
       );
-      // First Month's own seeded 2% override (plans.seed.ts) is what the
+      // Basic's own seeded 2% override (plans.seed.ts) is what the
       // first order below exercises - no extra setup needed for it.
 
       const category = await superuser.category.create({ data: { name: "Ladder", slug: `ladder-${Date.now()}` } });
@@ -168,10 +168,10 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
           .set("Authorization", `Bearer ${token}`);
       }
 
-      // First Month (signup default, v0.33): its own seeded 2% override.
+      // Basic (signup default, v0.33): its own seeded 2% override.
       await placeAndPay(1000);
-      const firstMonthEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
-      expect(Number(firstMonthEntries[0].amount)).toBeCloseTo(20, 2); // 2% of 1000
+      const basicEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
+      expect(Number(basicEntries[0].amount)).toBeCloseTo(20, 2); // 2% of 1000
 
       // Move directly to Starter (a real cycle is already active by v0.33,
       // so the self-service change endpoint would defer this to next
@@ -187,49 +187,74 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
 
     it("FR-7.5: a plan change requested while already on a paid cycle is deferred to the next cycle, not applied immediately", async () => {
       const { token, sellerId } = await signup("next-cycle@example.com");
-      const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      const basicPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
       const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
 
-      // v0.33 - every seller starts on First Month with a real billing
-      // cycle already active (assignFirstMonthAtSignup), so even the very
-      // FIRST self-service change request defers to the next cycle; there
-      // is no more "no cycle yet -> immediate" case at signup.
+      // v0.33 - every seller starts on Basic with a real billing cycle
+      // already active (assignBasicPlanAtSignup), so even the very FIRST
+      // self-service change request defers to the next cycle; there is no
+      // more "no cycle yet -> immediate" case at signup.
       const firstChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
         .send({ planId: starterPlan.id });
       expect(firstChange.status).toBe(201);
-      expect(firstChange.body.planId).toBe(firstMonthPlan.id); // unchanged for now
+      expect(firstChange.body.planId).toBe(basicPlan.id); // unchanged for now
       expect(firstChange.body.pendingPlanId).toBe(starterPlan.id);
 
-      // A second change request while still on the same (First Month) cycle overwrites the pending target.
+      // A second change request while still on the same (Basic) cycle overwrites the pending target.
       const secondChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
         .send({ planId: growthPlan.id });
       expect(secondChange.status).toBe(201);
-      expect(secondChange.body.planId).toBe(firstMonthPlan.id); // still unchanged
+      expect(secondChange.body.planId).toBe(basicPlan.id); // still unchanged
       expect(secondChange.body.pendingPlanId).toBe(growthPlan.id);
 
       const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-      expect(subscription.planId).toBe(firstMonthPlan.id);
+      expect(subscription.planId).toBe(basicPlan.id);
       expect(subscription.pendingPlanId).toBe(growthPlan.id);
     });
   });
 
-  describe("Yearly billing (FR-7.6)", () => {
-    it("computes the discounted annual price correctly for a monthly tier", async () => {
-      const token = await adminToken("yearly-admin@example.com");
+  describe("Six-month/yearly billing, fixed multipliers (Module 61, FR-7.20 - replaces FR-7.6's admin-configurable-percent framing)", () => {
+    it("computes the six-month and yearly prices off the founder's fixed multipliers, off the ACTIVE (campaign-aware) monthly price, never the retired yearlyDiscountPercent", async () => {
+      const token = await adminToken("cycle-pricing-admin@example.com");
+      const settings = app.get(SettingsService);
+      const sixMonthMultiplier = await settings.resolve<number>("billing.six_month_price_multiplier");
+      const yearlyMultiplier = await settings.resolve<number>("billing.yearly_price_multiplier");
+
       const plan = await request(app.getHttpServer())
         .post("/admin/plans")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Yearly Test", planGroup: "individual", price: 1000, billingInterval: "monthly", yearlyDiscountPercent: 20 });
+        // yearlyDiscountPercent is still accepted (schema/DTO keep the
+        // column) but is no longer read for this computation - proven by
+        // asserting the multiplier-based figure below, not a 20%-off one.
+        .send({ name: "Cycle Test", planGroup: "individual", price: 1000, billingInterval: "monthly", yearlyDiscountPercent: 20 });
       expect(plan.body.yearlyPrice).toBeUndefined(); // create/update responses are raw rows, not the derived view
 
       const list = await request(app.getHttpServer()).get("/plans");
       const found = list.body.individual.find((p: { id: string }) => p.id === plan.body.id);
-      expect(found.yearlyPrice).toBe(9600); // 1000*12=12000, 20% off
+      expect(found.activePrice).toBe(1000); // no campaign active - falls back to price
+      expect(found.sixMonthPrice).toBe(1000 * sixMonthMultiplier);
+      expect(found.yearlyPrice).toBe(1000 * yearlyMultiplier);
+    });
+
+    it("a tier with an active campaign price bills/displays the campaign price as its active price - and the six-month/yearly figures follow it", async () => {
+      const token = await adminToken("campaign-cycle-admin@example.com");
+      const settings = app.get(SettingsService);
+      const sixMonthMultiplier = await settings.resolve<number>("billing.six_month_price_multiplier");
+
+      const plan = await request(app.getHttpServer())
+        .post("/admin/plans")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "Campaign Cycle Test", planGroup: "individual", price: 1000, campaignPrice: 700, campaignActive: true, billingInterval: "monthly" });
+
+      const list = await request(app.getHttpServer()).get("/plans");
+      const found = list.body.individual.find((p: { id: string }) => p.id === plan.body.id);
+      expect(found.activePrice).toBe(700);
+      expect(found.sixMonthPrice).toBe(700 * sixMonthMultiplier);
     });
   });
 
@@ -280,7 +305,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         return Number(entries[0].amount);
       }
 
-      // Both sellers start on First Month (v0.33), whose own plan-scoped
+      // Both sellers start on Basic (v0.33), whose own plan-scoped
       // override is 2% (not the global default) - the first-ever seller is
       // within the counter condition (rank 1 <= limit 1): 2% - 1% = 1%.
       const firstAmount = await orderAndCommission(firstToken, "campaign-first-store", firstSellerId);
@@ -307,7 +332,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
 
       const log = await superuser.adminAuditLog.findFirst({ where: { action: "plans.admin_granted", targetType: "subscription" } });
       expect(log).not.toBeNull();
-      expect((log!.beforeValue as { planName: string }).planName).toBe("First Month");
+      expect((log!.beforeValue as { planName: string }).planName).toBe("Basic");
       expect((log!.afterValue as { planName: string }).planName).toBe("Pro");
     });
   });
@@ -384,7 +409,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ name: "Perk Store", slug: "perk-store" });
 
-      // First Month (signup default, no override for this key) - rejected.
+      // Basic (signup default, no override for this key) - rejected.
       const rejected = await request(app.getHttpServer())
         .patch(`/stores/${store.body.id}/theme-settings`)
         .set("Authorization", `Bearer ${token}`)
@@ -406,7 +431,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("dashboard-personalization gating (FR-28.4) is finally enforced, not just documented (Module 10's open item, closed here)", async () => {
       const { token, sellerId } = await signup("dashboard-perk@example.com");
 
-      // First Month (signup default, global default ["default"] for this key) - "emerald" is rejected.
+      // Basic (signup default, global default ["default"] for this key) - "emerald" is rejected.
       const rejected = await request(app.getHttpServer())
         .patch("/sellers/me/dashboard-theme")
         .set("Authorization", `Bearer ${token}`)

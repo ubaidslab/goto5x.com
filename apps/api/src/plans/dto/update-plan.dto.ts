@@ -21,6 +21,21 @@ export class UpdatePlanDto {
   @Min(0)
   regularPrice?: number;
 
+  // Module 61 (FR-7.20) - see create-plan.dto.ts's own notes.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  firstCyclePrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  campaignPrice?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  campaignActive?: boolean;
+
   @IsOptional()
   @IsNumber()
   @IsPositive()
@@ -31,8 +46,8 @@ export class UpdatePlanDto {
   currency?: string;
 
   @IsOptional()
-  @IsIn(["monthly", "yearly", "none"])
-  billingInterval?: "monthly" | "yearly" | "none";
+  @IsIn(["monthly", "yearly", "none", "six_month"])
+  billingInterval?: "monthly" | "yearly" | "none" | "six_month";
 
   @IsOptional()
   @IsNumber()

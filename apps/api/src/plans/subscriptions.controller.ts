@@ -29,7 +29,7 @@ export class SubscriptionsController {
   @UseGuards(ImpersonationWriteGuard)
   @BlockDuringImpersonation()
   change(@CurrentSellerId() sellerId: string, @Body() dto: ChangePlanDto) {
-    return this.subscriptions.requestPlanChange(sellerId, dto.planId);
+    return this.subscriptions.requestPlanChange(sellerId, dto.planId, dto.billingInterval);
   }
 
   @Post("redeem-promo")

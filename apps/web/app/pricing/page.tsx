@@ -13,27 +13,41 @@ interface Plan {
   name: string;
   price: string;
   regularPrice: string | null;
+  campaignPrice: string | null;
+  campaignActive: boolean;
+  activePrice: number;
+  sixMonthPrice: number | null;
+  yearlyPrice: number | null;
   seatPrice: string | null;
   currency: string;
-  billingInterval: "monthly" | "yearly" | "none";
+  billingInterval: "monthly" | "yearly" | "none" | "six_month";
   mostPopular?: boolean;
 }
 
+interface PricingCopy {
+  benefits: string[];
+  shopifyComparison: string;
+  sixMonthMultiplier: number;
+  yearlyMultiplier: number;
+}
+
+type Cycle = "monthly" | "six_month" | "yearly";
+
 /**
- * v0.33/FR-7.19 - long, value-stacked per-tier copy the founder asked for.
- * Keyed by the live plan name from the API (never hard-coded prices/limits
- * that duplicate what plans.seed.ts already owns) - a tier renamed or
- * reordered from the admin plan editor falls back to generic copy below
- * rather than breaking.
+ * Module 61 (SRS §5.7, FR-7.20/7.21) - long, value-stacked per-tier copy
+ * the founder asked for. Keyed by the live plan name from the API (never
+ * hard-coded prices/limits that duplicate what plans.seed.ts already
+ * owns) - a tier renamed or reordered from the admin plan editor falls
+ * back to generic copy below rather than breaking.
  */
 const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: string[] }> = {
-  "First Month": {
-    description: "Try the full Starter experience at a steep first-month discount.",
+  Basic: {
+    description: "Get your first store live at a steep first-cycle discount, on a tier you can stay on for good.",
     features: [
-      "Full Starter feature set, discounted for your first billing cycle",
       "Up to 100 products",
       "2% commission on sales",
-      "Auto-continues onto Starter after your first month",
+      "A real discount on your first billing cycle only",
+      "No forced transition to a higher tier - Basic is permanent",
     ],
   },
   Starter: {
@@ -83,9 +97,9 @@ const FAQS = [
     answer: "No. Every plan below is the full price - no onboarding fee, no hidden line items.",
   },
   {
-    question: "What is First Month?",
+    question: "What happens on my first billing cycle?",
     answer:
-      "First Month is your discounted entry cycle - you get the full Starter feature set at a steep first-cycle discount. At the end of your first billing cycle you continue automatically onto Starter at its regular price, with no action needed.",
+      "Every tier has its own one-time first-cycle discount, paid together with your minimum wallet top-up in a single combined payment at signup. Every cycle after that bills at the tier's standing price - there's no forced transition to a different tier.",
   },
   {
     question: "Can I change plans later?",
@@ -101,25 +115,53 @@ const FAQS = [
   },
 ];
 
+const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", six_month: "6 months", yearly: "Yearly" };
+
 /** SRS §5.7/FR-7.17 - tier names/prices are read entirely from /plans (the plan editor's data) - adding or reordering a tier here is a data operation, never a deploy. */
 export default function PricingPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [plans, setPlans] = useState<{ individual: Plan[]; team: Plan[]; supplier: Plan[] } | null>(null);
+  const [copy, setCopy] = useState<PricingCopy | null>(null);
+  const [cycle, setCycle] = useState<Cycle>("monthly");
 
   useEffect(() => {
     fetch(`${apiBase}/plans`)
       .then((r) => r.json())
       .then(setPlans)
       .catch(() => {});
+    fetch(`${apiBase}/plans/pricing-copy`)
+      .then((r) => r.json())
+      .then(setCopy)
+      .catch(() => {});
   }, [apiBase]);
 
+  function cyclePriceFor(plan: Plan): number {
+    if (cycle === "six_month") return plan.sixMonthPrice ?? plan.activePrice;
+    if (cycle === "yearly") return plan.yearlyPrice ?? plan.activePrice;
+    return plan.activePrice;
+  }
+
   function priceLabel(plan: Plan) {
-    return plan.price === "0" ? "Free" : `Rs ${plan.price}`;
+    const value = cyclePriceFor(plan);
+    return value === 0 ? "Free" : `Rs ${value.toLocaleString()}`;
   }
 
   function regularPriceLabel(plan: Plan) {
-    if (!plan.regularPrice || Number(plan.regularPrice) <= Number(plan.price)) return undefined;
-    return `Rs ${plan.regularPrice}`;
+    if (!plan.regularPrice || Number(plan.regularPrice) <= plan.activePrice) return undefined;
+    if (cycle !== "monthly") return undefined; // the struck-through reference is only meaningful against the monthly figure
+    return `Rs ${Number(plan.regularPrice).toLocaleString()}`;
+  }
+
+  function savingsLabel(plan: Plan): string | undefined {
+    if (cycle === "monthly" || !copy) return undefined;
+    const multiplier = cycle === "six_month" ? copy.sixMonthMultiplier : copy.yearlyMultiplier;
+    const months = cycle === "six_month" ? 6 : 12;
+    const cyclePrice = cyclePriceFor(plan);
+    const payingMonthlyTotal = plan.activePrice * months;
+    const saved = payingMonthlyTotal - cyclePrice;
+    if (saved <= 0) return undefined;
+    const effectiveMonthly = Math.round(cyclePrice / months);
+    return `Rs ${effectiveMonthly.toLocaleString()}/mo effective - save Rs ${saved.toLocaleString()} vs. paying monthly ${months} times (${multiplier}x total)`;
   }
 
   return (
@@ -136,6 +178,32 @@ export default function PricingPage() {
               catalog.
             </p>
           </Reveal>
+
+          {copy && (
+            <Reveal delay={0.05} className="mt-10 flex flex-wrap justify-center gap-x-8 gap-y-3 text-sm text-ink-muted">
+              {copy.benefits.map((benefit) => (
+                <span key={benefit} className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                  {benefit}
+                </span>
+              ))}
+            </Reveal>
+          )}
+
+          <Reveal delay={0.1} className="mt-10 inline-flex rounded-full border border-border bg-surface p-1">
+            {(["monthly", "six_month", "yearly"] as Cycle[]).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setCycle(c)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                  cycle === c ? "bg-ink text-canvas" : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {CYCLE_LABELS[c]}
+              </button>
+            ))}
+          </Reveal>
         </div>
       </section>
 
@@ -145,16 +213,17 @@ export default function PricingPage() {
           {plans ? (
             <Reveal stagger={0.1} className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
               {plans.individual.map((plan) => {
-                const copy = INDIVIDUAL_TIER_COPY[plan.name] ?? DEFAULT_INDIVIDUAL_COPY;
+                const copyForTier = INDIVIDUAL_TIER_COPY[plan.name] ?? DEFAULT_INDIVIDUAL_COPY;
+                const savings = savingsLabel(plan);
                 return (
                   <PricingCard
                     key={plan.id}
                     name={plan.name}
                     priceLabel={priceLabel(plan)}
                     regularPriceLabel={regularPriceLabel(plan)}
-                    cadence={plan.price === "0" ? undefined : plan.billingInterval === "yearly" ? "year" : "month"}
-                    description={copy.description}
-                    features={copy.features}
+                    cadence={cyclePriceFor(plan) === 0 ? undefined : CYCLE_LABELS[cycle].toLowerCase()}
+                    description={copyForTier.description + (savings ? ` ${savings}` : "")}
+                    features={copyForTier.features}
                     featured={plan.mostPopular}
                   />
                 );
@@ -168,6 +237,7 @@ export default function PricingPage() {
               Every UZEYN plan undercuts Shopify's equivalent tier - no forced app fees, no 2.9%+30¢
               payment-processor markup on top, and a commission rate that only goes down as you grow.
             </p>
+            {copy?.shopifyComparison && <p className="mt-2 text-sm text-ink-faint">{copy.shopifyComparison}</p>}
           </Reveal>
         </div>
       </section>
@@ -201,7 +271,7 @@ export default function PricingPage() {
                 <PricingCard
                   key={plan.id}
                   name={plan.name}
-                  priceLabel={priceLabel(plan)}
+                  priceLabel={plan.price === "0" ? "Free" : `Rs ${plan.price}`}
                   cadence={plan.price === "0" ? undefined : plan.billingInterval === "yearly" ? "year" : "month"}
                   description="Aggregated order dashboard across every seller you fulfill for."
                   features={["Aggregated order dashboard", "Wallet & payouts", "Email support"]}

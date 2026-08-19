@@ -12,6 +12,7 @@ import { JwtAccessPayload } from "../common/types";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AdjustSellerWalletDto } from "./dto/adjust-seller-wallet.dto";
 import { RequestTopUpDto } from "./dto/request-topup.dto";
+import { ProgramCommissionService } from "./program-commission.service";
 import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
 import { WalletService } from "./wallet.service";
@@ -49,6 +50,20 @@ export class SellerWalletController {
     const currency = "PKR";
     const request = await this.wallet.requestTopUp(sellerId, dto.amount, currency);
     return { request, instructions: this.wallet.topUpInstructions(dto.amount, currency) };
+  }
+
+  /** FR-6.33 (Module 59) - the combined signup total preview: plan first-cycle fee + minimum wallet top-up, one breakdown. */
+  @Get("signup-payment")
+  getSignupPaymentPreview(@CurrentSellerId() sellerId: string) {
+    return this.wallet.getSignupPaymentPreview(sellerId, "PKR");
+  }
+
+  /** FR-6.33 - submits the one combined proof-of-payment; amounts are computed server-side, never accepted from the client. */
+  @Post("signup-payment")
+  @UseGuards(ImpersonationWriteGuard)
+  @BlockDuringImpersonation()
+  requestCombinedSignupPayment(@CurrentSellerId() sellerId: string) {
+    return this.wallet.requestCombinedSignupPayment(sellerId, "PKR");
   }
 }
 
@@ -103,6 +118,7 @@ export class AdminWalletController {
     private readonly supplierWallet: SupplierWalletService,
     private readonly graceLadder: WalletGraceLadderService,
     private readonly prismaAdmin: PrismaAdminService,
+    private readonly programCommission: ProgramCommissionService,
   ) {}
 
   @Get()
@@ -120,6 +136,20 @@ export class AdminWalletController {
     }
     const verified = await this.wallet.verifyTopUp(topUpId, user.adminUserId!);
     await this.graceLadder.checkAndRestore(verified.ownerId);
+    // FR-6.33 (Module 59) - referral commission accrues off a paid plan-fee
+    // amount (FR-33.4); a combined signup payment IS that amount's first
+    // occurrence, so this mirrors PlanFeeDebitService's own call after a
+    // successful renewal debit, kept as a separate step for the same
+    // reason it is there: ProgramCommissionService already depends on
+    // WalletService, so the accrual can't live inside WalletService itself
+    // without a circular provider dependency.
+    if (verified.planFeePortion !== null) {
+      await this.programCommission.accrueReferralCommissionIfApplicable(
+        verified.ownerId,
+        Number(verified.planFeePortion),
+        verified.currency,
+      );
+    }
     return verified;
   }
 

@@ -3978,7 +3978,7 @@ founder asked for the paused Professional Seller Readiness batch
 (Modules 54-58) to resume and complete first, with the corrected
 business-model work following it.
 
-- **Module 59 — Combined Entry-Flow Payment (§5.6g, FR-6.33).** New
+- **Module 59 — Combined Entry-Flow Payment (§5.6g, FR-6.33). BUILT.** New
   Settings Registry key `billing.minimum_signup_wallet_topup` (default
   Rs 699); extends the existing `WalletTopUpRequest`/
   `AdminWalletController` verify/reject flow (no new claim model — this
@@ -3988,26 +3988,52 @@ business-model work following it.
   proof-of-payment submission; a single admin verify action credits the
   wallet top-up and activates the subscription in the same transaction.
   Lowest-risk item — pure extension of an already-proven flow, no new
-  architectural primitive.
+  architectural primitive. `WalletService.getSignupPaymentPreview()`/
+  `requestCombinedSignupPayment()` compute/submit the breakdown with a
+  one-time submission guard; `verifyTopUp()` **activates** (not
+  advances) `currentPeriodEnd`, computed fresh from verification time so
+  it never stacks on the free placeholder period signup already grants.
+  Referral commission (FR-33.4) now accrues from a second call site —
+  `AdminWalletController.verify()`'s combined-signup branch, alongside
+  the pre-existing `PlanFeeDebitService` renewal branch — documented in
+  `program-commission.service.ts`. New seller wallet-page "Get started"
+  card + pending-verification alert. Proven by
+  `module59-combined-entry-flow-payment.e2e-spec.ts` (5 cases).
 - **Module 60 — Wallet/Commission Re-Verification Against Four-Tier Plans
-  (§5.6g, FR-6.35a).** Depends on Module 61 below existing so there is a
-  four-tier plan structure to verify against (built/tested together in
+  (§5.6g, FR-6.35a). BUILT.** Depends on Module 61 below existing so there
+  is a four-tier plan structure to verify against (built/tested together in
   practice). Confirms the existing grace ladder, `orders_paused`,
   negative-float floor, running-balance column, and daily reconciliation
   (Module 47) compute the correct debit amount off a plan's `price`/
   `firstCyclePrice`/`campaignPrice` and the correct multi-cycle multiplier
   — a test/audit module, not new production mechanics (the publish gate's
   wallet-balance condition and `PlanFeeDebitService`'s debit action are
-  both unchanged from how Module 20/47 already built them).
+  both unchanged from how Module 20/47 already built them). Proven by
+  `module60-wallet-commission-four-tier-reverification.e2e-spec.ts`
+  (7 cases): monthly/six-month/yearly renewal debit amounts and
+  cycle-advance spans, campaign-price billing, grace-ladder pause under
+  a large six-month/yearly fee, running-balance cache correctness, and
+  immediate `billingInterval` write on self-service cycle change.
 - **Module 61 — Four-Tier Plan Pricing Model + Pricing Page Rebuild
-  (§5.7 FR-7.20/7.21).** Schema: `Plan.firstCyclePrice`/`campaignPrice`/
+  (§5.7 FR-7.20/7.21). BUILT.** Schema: `Plan.firstCyclePrice`/`campaignPrice`/
   `campaignActive`, `Subscription.billingInterval` (extends
   `PlanBillingInterval` with `six_month`), two new global Settings
   Registry multiplier keys. Retires FR-7.3's "First Month auto-transitions
   to Starter" mechanism in favor of Basic being a permanent tier with its
-  own `firstCyclePrice`. Pricing page copy corrected per FR-7.21 v0.36 —
-  no "0% commission" claim; positions on direct-to-seller payment,
-  transparent low commission, and "your money never sits with us."
+  own `firstCyclePrice` (`assignFirstMonthAtSignup` renamed
+  `assignBasicPlanAtSignup`). Pricing page copy corrected per FR-7.21
+  v0.36 — no "0% commission" claim; positions on direct-to-seller
+  payment, transparent low commission, and "your money never sits with
+  us." `resolveActivePlanPrice()`/`computeCyclePrice()`
+  (`plan-pricing.util.ts`) unify pricing-page display and actual billing
+  off the same fixed 5.5x/10x Settings-Registry multipliers, replacing
+  the old `yearlyDiscountPercent`-based computation (left unread in
+  schema/DTOs, a disclosed scope decision). New
+  `GET /plans/pricing-copy` endpoint drives the pricing page's benefit
+  bullets/Shopify comparison from Settings, never hard-coded. Proven by
+  the rewritten `module44-first-month-pricing.e2e-spec.ts` and
+  `plans-pricing.e2e-spec.ts` (Basic-tier rename, fixed-multiplier
+  six-month/yearly pricing, campaign-price flow-through).
 - **Module 62 — Seller Payment Gateway Connect, Raast-first (§5.6h,
   FR-6.36-6.39). BUILT — first in the resequenced order, per the founder
   directive below.** Same scope as the original design plus Raast as the

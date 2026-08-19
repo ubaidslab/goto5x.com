@@ -1,4 +1,4 @@
-import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min } from "class-validator";
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min } from "class-validator";
 import { $Enums } from "@prisma/client";
 
 export class CreatePlanDto {
@@ -25,6 +25,24 @@ export class CreatePlanDto {
   @Min(0)
   regularPrice?: number;
 
+  // Module 61 (FR-7.20) - a one-time discount for the subscription's very
+  // first billing cycle only.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  firstCyclePrice?: number;
+
+  // Module 61 (FR-7.20) - a second, separately-toggleable discounted
+  // price for a time-boxed campaign; see campaignActive below.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  campaignPrice?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  campaignActive?: boolean;
+
   // FR-7.18 - only meaningful for planGroup = "team"; PlansService rejects
   // it otherwise.
   @IsOptional()
@@ -36,8 +54,8 @@ export class CreatePlanDto {
   @IsString()
   currency?: string;
 
-  @IsIn(["monthly", "yearly", "none"])
-  billingInterval!: "monthly" | "yearly" | "none";
+  @IsIn(["monthly", "yearly", "none", "six_month"])
+  billingInterval!: "monthly" | "yearly" | "none" | "six_month";
 
   @IsOptional()
   @IsNumber()

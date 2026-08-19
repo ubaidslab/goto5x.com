@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
+import { Plan, PlanBillingInterval } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { addInterval } from "../plans/subscriptions.service";
+import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { round2 } from "../orders/money.util";
 import { ProgramCommissionService } from "./program-commission.service";
 import { WalletService } from "./wallet.service";
@@ -140,7 +142,11 @@ export class PlanFeeDebitService {
       if (subscription.plan.planGroup !== "individual" || Number(subscription.plan.price) <= 0) continue;
 
       const balance = await this.wallet.getBalance(subscription.sellerId!);
-      const fee = Number(subscription.plan.price);
+      // Module 61 (FR-7.20) - the renewal amount respects an active
+      // campaign price the same way the pricing page does (resolveActivePlanPrice),
+      // then the subscription's own chosen cycle multiplier (monthly/six_month/yearly) -
+      // never a stored per-cycle price.
+      const fee = await this.cyclePriceFor(subscription.plan, subscription.billingInterval);
 
       if (balance >= fee) {
         await this.prismaAdmin.$transaction((tx) =>
@@ -153,7 +159,7 @@ export class PlanFeeDebitService {
         );
         await this.prismaAdmin.subscription.update({
           where: { id: subscription.id },
-          data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.plan.billingInterval as "monthly" | "yearly") },
+          data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.billingInterval as "monthly" | "six_month" | "yearly") },
         });
         // SRS §5.33 FR-33.4 - the ONLY call site: referral commission is
         // calculated exclusively against a referred seller's own paid
@@ -171,6 +177,14 @@ export class PlanFeeDebitService {
 
     onDowngrade(paused);
     return debited;
+  }
+
+  /** Module 61 (FR-7.20) - the amount a renewal actually bills: the resolved active (campaign-aware) monthly price, times the subscription's own cycle multiplier. */
+  private async cyclePriceFor(plan: Plan, billingInterval: PlanBillingInterval): Promise<number> {
+    const activeMonthlyPrice = resolveActivePlanPrice(plan);
+    const sixMonth = await this.settings.resolve<number>("billing.six_month_price_multiplier");
+    const yearly = await this.settings.resolve<number>("billing.yearly_price_multiplier");
+    return computeCyclePrice(activeMonthlyPrice, billingInterval as "monthly" | "six_month" | "yearly", { sixMonth, yearly });
   }
 
   /** FR-7.15/7.18, ported to a wallet debit (leader-billed, active-member-count x seat price). */

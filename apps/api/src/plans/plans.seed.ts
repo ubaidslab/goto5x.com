@@ -178,6 +178,89 @@ export async function seedPlansSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  // Module 61 (SRS §5.7, FR-7.20) - the founder's fixed-multiplier
+  // billing-cycle model, replacing FR-7.6's admin-configurable-percent
+  // yearly-discount framing. Both fixed multipliers off the active
+  // monthly price - never a separately stored per-cycle price.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.six_month_price_multiplier" },
+    create: {
+      key: "billing.six_month_price_multiplier",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 5.5,
+      validation: { min: 0 },
+      description: "A six-month subscription cycle bills this many times the active monthly price, for 6 months of service (FR-7.20).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.yearly_price_multiplier" },
+    create: {
+      key: "billing.yearly_price_multiplier",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 10,
+      validation: { min: 0 },
+      description: "A yearly subscription cycle bills this many times the active monthly price, for 12 months of service (FR-7.20).",
+    },
+    update: {},
+  });
+
+  // Module 61 (FR-7.21) - the pricing page's headline benefit block,
+  // corrected v0.36 to drop the retracted "0% commission" claim. Three
+  // positioning points plus a one-line Shopify comparison, all Settings
+  // Registry strings so the founder can edit copy with no deploy - never
+  // hard-coded in the frontend.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "marketing.pricing_benefit_1" },
+    create: {
+      key: "marketing.pricing_benefit_1",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "Buyer payments go straight to your own account",
+      description: "Pricing page headline benefit, point 1 of 3 (FR-7.21).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "marketing.pricing_benefit_2" },
+    create: {
+      key: "marketing.pricing_benefit_2",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "Transparent low commission, as low as 1% - never a payment-processor markup on top",
+      description: "Pricing page headline benefit, point 2 of 3 (FR-7.21).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "marketing.pricing_benefit_3" },
+    create: {
+      key: "marketing.pricing_benefit_3",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "Your money never sits with us",
+      description: "Pricing page headline benefit, point 3 of 3 (FR-7.21).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "marketing.pricing_shopify_comparison" },
+    create: {
+      key: "marketing.pricing_shopify_comparison",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "Starter undercuts Shopify's Basic plan on both subscription fee and transaction commission - copy, not a live price feed.",
+      description: "Pricing page's one-line comparison against Shopify's nearest equivalent tier (FR-7.21).",
+    },
+    update: {},
+  });
 }
 
 /**
@@ -188,20 +271,63 @@ export async function seedPlansSettings(prisma: PrismaClient) {
  * price/regularPrice/yearlyDiscountPercent so an existing plan's own
  * founder-edited name/sortOrder is never clobbered by re-seeding.
  *
- * v0.33/FR-7.3/FR-7.19 - there is no more Free Plan. tierOrder 0 is now
- * "First Month", a real (paid, tracked) tier that every seller starts on -
- * it auto-transitions to Starter after one billing cycle
- * (SubscriptionsService's pendingPlanId sweep). Per-tier commission %,
- * product limit, and staff-account allowance below are the exact SRS
- * "Plans & Pricing" launch defaults - seeded as data, never hard-coded in
- * application logic.
+ * Module 61 (SRS §5.7, FR-7.20) - four PERMANENT tiers: Basic, Starter,
+ * Growth, Pro. Basic replaces the old "First Month" tier-level concept -
+ * a seller who signs up on Basic may stay on it indefinitely (the old
+ * auto-transition-to-Starter-at-cycle-end mechanism is retired;
+ * SubscriptionsService.assignBasicPlanAtSignup() no longer queues a
+ * pendingPlanId). The one-time signup discount that "First Month" used to
+ * provide moves to a PER-TIER `firstCyclePrice` instead - whichever tier a
+ * seller picks, their very first cycle bills at that tier's
+ * firstCyclePrice, every cycle after at `price`. Launch defaults per
+ * FR-7.20 v0.37 (lowered once commission was confirmed active alongside
+ * subscription fees). Basic additionally seeds a `campaignPrice`
+ * (inactive by default - an admin toggles `campaignActive` from the plan
+ * editor when a campaign actually starts).
  */
 export async function seedPlansData(prisma: PrismaClient) {
   const individualTiers = [
-    { name: "First Month", tierOrder: 0, price: 1499, regularPrice: 5799, billingInterval: "monthly" as const, commissionPercent: 2, productLimit: 100 },
-    { name: "Starter", tierOrder: 1, price: 5799, regularPrice: 6999, billingInterval: "monthly" as const, commissionPercent: 2, productLimit: 100 },
-    { name: "Growth", tierOrder: 2, price: 14999, regularPrice: 17999, billingInterval: "monthly" as const, commissionPercent: 1.5, productLimit: 500 },
-    { name: "Pro", tierOrder: 3, price: 27999, regularPrice: 34999, billingInterval: "monthly" as const, commissionPercent: 1, productLimit: 100_000 },
+    {
+      name: "Basic",
+      tierOrder: 0,
+      price: 2999,
+      regularPrice: 3999,
+      firstCyclePrice: 999,
+      campaignPrice: 2499,
+      billingInterval: "monthly" as const,
+      commissionPercent: 2,
+      productLimit: 100,
+    },
+    {
+      name: "Starter",
+      tierOrder: 1,
+      price: 5299,
+      regularPrice: 6499,
+      firstCyclePrice: 1499,
+      billingInterval: "monthly" as const,
+      commissionPercent: 2,
+      productLimit: 100,
+    },
+    {
+      name: "Growth",
+      tierOrder: 2,
+      price: 13999,
+      regularPrice: 16999,
+      firstCyclePrice: 2999,
+      billingInterval: "monthly" as const,
+      commissionPercent: 1.5,
+      productLimit: 500,
+    },
+    {
+      name: "Pro",
+      tierOrder: 3,
+      price: 26999,
+      regularPrice: 32999,
+      firstCyclePrice: 4999,
+      billingInterval: "monthly" as const,
+      commissionPercent: 1,
+      productLimit: 100_000,
+    },
   ];
   for (const tier of individualTiers) {
     const { commissionPercent, productLimit, ...planFields } = tier;
@@ -244,6 +370,8 @@ async function upsertPlan(
     tierOrder: number;
     price: number;
     regularPrice?: number;
+    firstCyclePrice?: number;
+    campaignPrice?: number;
     seatPrice?: number;
     billingInterval: "monthly" | "yearly" | "none";
     yearlyDiscountPercent?: number;
@@ -252,6 +380,8 @@ async function upsertPlan(
   const shared = {
     price: data.price,
     regularPrice: data.regularPrice ?? null,
+    firstCyclePrice: data.firstCyclePrice ?? null,
+    campaignPrice: data.campaignPrice ?? null,
     seatPrice: data.seatPrice ?? null,
     billingInterval: data.billingInterval,
     yearlyDiscountPercent: data.yearlyDiscountPercent ?? null,

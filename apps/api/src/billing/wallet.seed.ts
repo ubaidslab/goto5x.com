@@ -118,6 +118,25 @@ export async function seedWalletSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Module 59 (SRS §5.6g, FR-6.33) - the wallet-credit portion of the
+  // combined signup total (`firstCyclePrice + this`), a deliberately
+  // separate key from `billing.wallet_min_initial_topup` above: that one
+  // gates *publishing*, this one is the amount bundled into the one-time
+  // first-payment screen so a brand-new wallet already clears the publish
+  // gate the moment the combined payment is verified.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.minimum_signup_wallet_topup" },
+    create: {
+      key: "billing.minimum_signup_wallet_topup",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 699,
+      validation: { min: 0 },
+      description: "The wallet top-up (PKR) bundled into a new seller's combined signup payment, alongside their plan's first-cycle price, as one total and one proof-of-payment (SRS FR-6.33).",
+    },
+    update: {},
+  });
+
   // Module 20 (FR-7.10 supplement) - the actual gate the Supplier Premium
   // Plan's fee gets checked against, resolved with the same plan-scope
   // mechanism every other plan-gated feature already uses (FR-8.1) - see

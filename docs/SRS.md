@@ -7832,40 +7832,137 @@ Module 52, v0.34)
       returns page, pricing page, homepage FAQ) continues to show its
       commission rate/amount; no page anywhere claims "0% commission"
       (FR-6.31, FR-7.21).
-- [ ] At signup, the combined total (`firstCyclePrice +
+- [x] At signup, the combined total (`firstCyclePrice +
       billing.minimum_signup_wallet_topup`, default top-up Rs 699) is
       displayed as **one** amount with a breakdown line, and the seller
       submits **one** proof-of-payment for it — never two separate
-      payment steps (FR-6.33).
-- [ ] Verifying a combined signup claim, in one transaction, both posts a
+      payment steps (FR-6.33). Module 59: extends the existing
+      `WalletTopUpRequest`/`AdminWalletController` verify/reject
+      mechanism (Module 20) via a new nullable `WalletTopUpRequest
+      .planFeePortion` field, rather than a second claim system.
+      `amount` keeps its pre-existing meaning (top-up portion only);
+      `planFeePortion` carries the plan-fee portion.
+      `WalletService.getSignupPaymentPreview()`/
+      `requestCombinedSignupPayment()` compute the breakdown and enforce
+      a one-time submission guard (blocked while an earlier combined
+      request is pending/verified; a rejected one may be resubmitted).
+      New `SellerWalletController` endpoints
+      `GET`/`POST /sellers/me/wallet/signup-payment`; new "Get started"
+      card + pending-verification alert on the seller wallet page.
+- [x] Verifying a combined signup claim, in one transaction, both posts a
       `wallet_topup` ledger entry for the top-up portion and
       activates/advances `Subscription.currentPeriodEnd` for the plan-fee
       portion; rejecting credits neither (FR-6.33).
-- [ ] Subsequent billing-cycle plan fees continue to debit from wallet
+      `WalletService.verifyTopUp()` extended: when `planFeePortion` is
+      set, `currentPeriodEnd` is **activated** (computed fresh from
+      verification time via `addInterval(new Date(), interval)`) rather
+      than **advanced** (never stacked on the free placeholder period
+      `assignBasicPlanAtSignup` already granted at signup) — this avoids
+      double-crediting a seller with two periods stacked together and
+      correctly compensates for admin-processing delay. Never posts a
+      `wallet_plan_fee_debit` for the plan-fee portion, since that money
+      never entered the wallet. Referral commission (FR-33.4) now
+      accrues from two call sites — documented in
+      `program-commission.service.ts`'s updated docstring — the existing
+      `PlanFeeDebitService.debitDuePlanFees()` renewal branch, and a new
+      `AdminWalletController.verify()` combined-signup-payment branch
+      (kept as an orchestration-layer call to avoid a circular DI
+      dependency with `WalletService`). Proven by
+      `module59-combined-entry-flow-payment.e2e-spec.ts` (5 cases):
+      preview/submit/one-time-guard, verify credits only the top-up
+      portion with zero `wallet_plan_fee_debit` entries and activates
+      `currentPeriodEnd` within a `[before, after]` time window, referral
+      commission accrual on the plan-fee portion, and reject-then-
+      resubmit.
+- [x] Subsequent billing-cycle plan fees continue to debit from wallet
       balance via `PlanFeeDebitService`, sharing the existing grace
       ladder and `orders_paused`/restore mechanics with commission debits
       — no separate claim-based renewal path was introduced (FR-6.34).
+      Unaffected by Module 59/60 — `PlanFeeDebitService.debitDuePlanFees()`
+      remains the sole renewal-debit path; Module 61 only changed what
+      amount it computes (`cyclePriceFor()`, below), not the mechanism.
 - [ ] Publishing a store still gates on all three original conditions —
       payment method, verified CNIC, **and** wallet balance above the
       configured minimum; the wallet-balance condition was never dropped
       (FR-6.35).
-- [ ] Grace ladder, orders-paused-on-insufficient-balance, negative-float
+- [x] Grace ladder, orders-paused-on-insufficient-balance, negative-float
       floor, running-balance column, and daily reconciliation (Module 47)
       re-verified correct against the four-tier plan structure's three
       price fields and three billing-cycle multipliers (FR-6.35a,
-      FR-7.20).
-- [ ] Four permanent tiers (Basic/Starter/Growth/Pro) each carry
+      FR-7.20). Module 60 is an audit/test module — no new production
+      mechanics; it proves the existing grace-ladder/pause/restore/
+      reconciliation code correctly computes against Module 61's three
+      price fields (`price`/`firstCyclePrice`/`campaignPrice`) and three
+      billing-cycle multipliers (monthly 1x, six-month 5.5x, yearly
+      10x). Proven by
+      `module60-wallet-commission-four-tier-reverification.e2e-spec.ts`
+      (7 cases): monthly renewal debits exactly `price`; six-month
+      renewal debits `price × sixMonthMultiplier` and advances 6 months;
+      yearly renewal debits `price × yearlyMultiplier` and advances 12
+      months; renewal during an active campaign debits `campaignPrice`
+      not `price`; insufficient balance for a large six-month/yearly fee
+      still pauses stores via the unchanged grace ladder; running-balance
+      cache still matches `computeLedgerBalance()` after a six-month
+      debit; a seller can self-select `six_month` via
+      `POST /sellers/me/subscription/change` with `billingInterval`
+      written immediately while the tier itself still defers via
+      `pendingPlanId` (FR-7.5).
+- [x] Four permanent tiers (Basic/Starter/Growth/Pro) each carry
       `regularPrice`/`price`/`firstCyclePrice`, with Basic's
       `campaignPrice`/`campaignActive` toggle proven to switch the
       displayed active price without touching `price` itself (FR-7.20).
-- [ ] A new subscription's very first billing cycle bills at
+      Module 61: the old "First Month" tier-level auto-transition-to-
+      Starter concept is **retired**; renamed to **Basic**, a PERMANENT
+      tier (no more `pendingPlanId` queued at signup —
+      `assignFirstMonthAtSignup` renamed to `assignBasicPlanAtSignup`).
+      New `Plan.firstCyclePrice`/`campaignPrice`/`campaignActive` fields.
+      `resolveActivePlanPrice(plan)` (`plan-pricing.util.ts`) =
+      `campaignPrice` while `campaignActive`, else `price` — read
+      **identically** by both the pricing-page display path
+      (`plans.service.ts`) and the actual billing path
+      (`plan-fee-debit.service.ts`), a deliberate consistency choice so
+      a campaign price shown to a shopper is exactly what gets billed.
+      Admin plan editor (`admin/plans/page.tsx`) gained First-cycle
+      price/Campaign price columns and an activate/deactivate toggle
+      button.
+- [x] A new subscription's very first billing cycle bills at
       `firstCyclePrice` (monthly cycle only) and every subsequent cycle
       at `price`/`campaignPrice`, on the **same** tier — no forced
-      transition to a different tier (FR-7.20).
-- [ ] Six-month and yearly prices are computed as 5.5× and 10× the active
+      transition to a different tier (FR-7.20). Proven by the rewritten
+      `module44-first-month-pricing.e2e-spec.ts` ("Basic never
+      auto-transitions to Starter at cycle end" — `applyDueCycleChanges()`
+      has nothing queued to apply, `result.applied` is `0`, and
+      `currentPeriodEnd` is untouched) and by
+      `plans-pricing.e2e-spec.ts`'s renamed Basic-tier assertions
+      (`firstCyclePrice` set and less than `price`).
+- [x] Six-month and yearly prices are computed as 5.5× and 10× the active
       monthly price via the Settings-Registry-held multipliers, not
       stored as separate per-cycle rows, and both are selectable on the
-      pricing page and the admin plan editor (FR-7.20).
+      pricing page and the admin plan editor (FR-7.20). New
+      `PlanBillingInterval.six_month` enum value and
+      `Subscription.billingInterval` field (default `monthly`) drive
+      which multiplier a renewal applies and which span
+      `currentPeriodEnd` advances by.
+      `computeCyclePrice(activeMonthlyPrice, interval, multipliers)`
+      (`plan-pricing.util.ts`) replaces the old
+      `yearlyDiscountPercent`-based `computeYearlyPrice()`; new global
+      Settings keys `billing.six_month_price_multiplier` (5.5) and
+      `billing.yearly_price_multiplier` (10) replace FR-7.6's old
+      admin-configurable-percent framing (the old
+      `yearlyDiscountPercent` column/DTO field is left unread — a
+      disclosed scope decision, not removed, to avoid a larger
+      destructive migration). `requestPlanChange(sellerId, newPlanId,
+      billingInterval?)` writes `billingInterval` **immediately** (it
+      only affects the next renewal's multiplier/interval-advance),
+      unlike the tier itself which still defers via `pendingPlanId` per
+      FR-7.5's mid-cycle rule. New Settings keys
+      `marketing.pricing_benefit_1/2/3` and
+      `marketing.pricing_shopify_comparison` drive FR-7.21's headline
+      benefit block/Shopify comparison on the rebuilt pricing page
+      (`GET /plans/pricing-copy`) — never hard-coded in the frontend.
+      Proven by `plans-pricing.e2e-spec.ts`'s new "Six-month/yearly
+      billing, fixed multipliers" block (fixed-multiplier computation,
+      and an active campaign price flowing through to `sixMonthPrice`).
 - [x] `StorePaymentGatewayConnection` credentials are AES-256-GCM
       encrypted at rest and never appear in any API response — proven by
       a test asserting a connection-fetch/list response never contains

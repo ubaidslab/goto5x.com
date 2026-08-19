@@ -14,4 +14,10 @@ export class PlansController {
   list() {
     return this.plans.listGrouped();
   }
+
+  /** Module 61 (FR-7.21) - the pricing page's headline benefit block and Shopify comparison, Settings-Registry-driven. */
+  @Get("pricing-copy")
+  getPricingCopy() {
+    return this.plans.getPricingCopy();
+  }
 }

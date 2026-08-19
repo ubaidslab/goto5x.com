@@ -4,13 +4,16 @@ import { AuditLogService } from "../admin/audit-log.service";
 import type { SettingsContext } from "../settings-registry/settings.types";
 
 /**
- * A billing-cycle-length step for FR-7.5's next-cycle math. v1.0 has only
- * monthly/yearly paid intervals. Exported - Module 20's PlanFeeDebitService
- * reuses this for the exact same cadence math rather than duplicating it.
+ * A billing-cycle-length step for FR-7.5's next-cycle math. Exported -
+ * Module 20's PlanFeeDebitService reuses this for the exact same cadence
+ * math rather than duplicating it. Module 61 (FR-7.20) added `six_month`
+ * (advances 6 calendar months, covering the cycle a 5.5x-multiplier
+ * payment buys) alongside the original monthly/yearly steps.
  */
-export function addInterval(from: Date, interval: "monthly" | "yearly"): Date {
+export function addInterval(from: Date, interval: "monthly" | "six_month" | "yearly"): Date {
   const next = new Date(from);
   if (interval === "yearly") next.setUTCFullYear(next.getUTCFullYear() + 1);
+  else if (interval === "six_month") next.setUTCMonth(next.getUTCMonth() + 6);
   else next.setUTCMonth(next.getUTCMonth() + 1);
   return next;
 }
@@ -32,38 +35,35 @@ export class SubscriptionsService {
   ) {}
 
   /**
-   * Called once, from AuthService.signup() - every seller starts on First
-   * Month (individual, tier 0, v0.33/FR-7.1/7.3): a real, tracked, paid
+   * Called once, from AuthService.signup() - every seller starts on Basic
+   * (individual, tier 0, v0.33/FR-7.1/7.3, renamed from "First Month" and
+   * made a PERMANENT tier by Module 61/FR-7.20): a real, tracked, paid
    * first billing cycle - there is no more Free Plan and no free trial.
-   * pendingPlanId is set to Starter (tier 1) immediately, so the existing
-   * applyDueCycleChanges() sweep (FR-7.5) auto-transitions the seller onto
-   * Starter the moment the First Month cycle ends, with no separate
-   * transition mechanism needed. `referralSource` (SRS FR-33.1) is
-   * captured here, once, since this is the only place a Subscription row
-   * is ever created for a seller - already-shape-validated by
-   * resolveReferralSource(), never re-validated against a program table
-   * here since none exist yet (Module 22).
+   * Module 61 retires the old auto-transition-to-Starter mechanism (no
+   * more pendingPlanId queued here) - a seller who signs up on Basic may
+   * stay on it indefinitely, same as any other tier, unless they
+   * explicitly request a change via requestPlanChange(). The signup-time
+   * discount that "First Month" used to provide is now Basic's own
+   * `firstCyclePrice`, applied by Module 59's combined-payment flow, not
+   * by this method. `referralSource` (SRS FR-33.1) is captured here, once,
+   * since this is the only place a Subscription row is ever created for a
+   * seller - already-shape-validated by resolveReferralSource(), never
+   * re-validated against a program table here since none exist yet
+   * (Module 22).
    */
-  async assignFirstMonthAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
-    const firstMonthPlan = await this.prisma.plan.findFirst({
+  async assignBasicPlanAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
+    const basicPlan = await this.prisma.plan.findFirst({
       where: { planGroup: "individual", tierOrder: 0 },
     });
-    if (!firstMonthPlan) {
+    if (!basicPlan) {
       // Seeding failure, not a seller-facing condition - plans.seed.ts always
       // creates this row before the app accepts signups.
-      throw new Error("No First Month (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
-    }
-    const starterPlan = await this.prisma.plan.findFirst({
-      where: { planGroup: "individual", tierOrder: 1 },
-    });
-    if (!starterPlan) {
-      throw new Error("No Starter (individual, tier 1) plan exists - plans.seed.ts must run before signup.");
+      throw new Error("No Basic (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
     }
     await this.prisma.subscription.create({
       data: {
         sellerId,
-        planId: firstMonthPlan.id,
-        pendingPlanId: starterPlan.id,
+        planId: basicPlan.id,
         currentPeriodEnd: addInterval(new Date(), "monthly"),
         referralSource,
       },
@@ -139,11 +139,16 @@ export class SubscriptionsService {
    * yet (currentPeriodEnd null - e.g. a desponsored team member) has no
    * cycle to wait for, so the change applies now and starts a real cycle.
    * Every seller now gets a real currentPeriodEnd from signup (v0.33's
-   * First Month), so this branch no longer fires for ordinary signups.
+   * Basic), so this branch no longer fires for ordinary signups.
    * Disclosed decision (no explicit SRS text pins this edge case) - see
    * docs/build-plan.md's Module 14 note.
+   *
+   * Module 61 (FR-7.20) - `billingInterval`, when supplied, is written
+   * immediately (never staged behind pendingPlanId): it only governs the
+   * NEXT renewal's fee/multiplier and interval-advance, so unlike the tier
+   * itself there is no mid-cycle proration concern to defer against.
    */
-  async requestPlanChange(sellerId: string, newPlanId: string) {
+  async requestPlanChange(sellerId: string, newPlanId: string, billingInterval?: "monthly" | "six_month" | "yearly") {
     const subscription = await this.prisma.subscription.findUnique({ where: { sellerId } });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
     const newPlan = await this.prisma.plan.findUnique({ where: { id: newPlanId } });
@@ -158,14 +163,15 @@ export class SubscriptionsService {
         data: {
           planId: newPlanId,
           pendingPlanId: null,
-          currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(new Date(), newPlan.billingInterval),
+          billingInterval,
+          currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(new Date(), billingInterval ?? "monthly"),
         },
       });
     }
 
     return this.prisma.subscription.update({
       where: { sellerId },
-      data: { pendingPlanId: newPlanId },
+      data: { pendingPlanId: newPlanId, billingInterval },
     });
   }
 
