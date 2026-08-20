@@ -287,7 +287,6 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Gate Still Works Store", slug: "gate-still-works-store" });
     const storeId = store.body.id as string;
-    const adminToken = await createAndLoginAdmin("gate-still-works-admin@example.com");
 
     await superuser.storePaymentInstructions.update({ where: { storeId }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: sellerId }, data: { cnicHash: `hash-${sellerId}` } });
@@ -307,17 +306,11 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     // since balance sits at 0 forever), but the code itself is untouched
     // and still correct when called directly - "dormant, not deleted",
     // same discipline as every other de-scheduled mechanism in this
-    // codebase.
-    const settings = app.get(SettingsService);
-    const threshold = await settings.resolve<number>("billing.wallet_low_balance_warning_threshold");
-    // Land just below the warning threshold (not below the negative-float
-    // floor, which would pause immediately instead of warn) - balance
-    // starts at 0, so the debit itself is `-(threshold - 10)`.
-    await request(app.getHttpServer())
-      .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ amount: -(threshold - 10), reason: "drain for dormant grace-ladder test" });
-
+    // codebase. Balance is 0 (never funded), and the real defaults put 0
+    // strictly between the negative-float floor (-100) and the warning
+    // threshold (200), so the seller lands in the warn branch with no
+    // adjustment needed - draining further would cross the floor instead
+    // and trip the immediate-pause branch, not the warn one.
     const { WalletGraceLadderService } = await import("../../src/billing/wallet-grace-ladder.service");
     const graceLadder = app.get(WalletGraceLadderService);
     const sweep = await graceLadder.runSweep(new Date());
