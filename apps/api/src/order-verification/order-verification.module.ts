@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
+import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { EmailOtpAdapter } from "./adapters/email-otp.adapter";
 import { PrepaidConfirmationAdapter } from "./adapters/prepaid-confirmation.adapter";
+import { PrepaidPartialAdvanceAdapter } from "./adapters/prepaid-partial-advance.adapter";
 import { WhatsAppOtpAdapter } from "./adapters/whatsapp-otp.adapter";
 import { BuyerOrderVerificationController } from "./buyer-order-verification.controller";
 import { OrderVerificationService } from "./order-verification.service";
@@ -19,7 +21,7 @@ import { SellerVerificationEmailsService } from "./seller-verification-emails.se
  * OrdersService (task #254) to gate the pending -> confirmed transition on.
  */
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, PlansModule],
   controllers: [
     BuyerOrderVerificationController,
     SellerVerificationEmailsController,
@@ -30,6 +32,7 @@ import { SellerVerificationEmailsService } from "./seller-verification-emails.se
     WhatsAppOtpAdapter,
     EmailOtpAdapter,
     PrepaidConfirmationAdapter,
+    PrepaidPartialAdvanceAdapter,
     SellerVerificationEmailsService,
     OrderVerificationService,
   ],

@@ -8,6 +8,22 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 76: Prepaid Partial-Advance Verification
+
+A new anti-fake-order verification channel: a buyer pays a small
+percentage of the order total (5% by default) through the seller's own
+connected payment gateway at checkout - a genuinely new mechanism, not a
+gate on an existing one. On a verified partial payment the order
+auto-confirms; the remainder stays cash-on-delivery. Free starting at
+RUN; GO keeps only email and WhatsApp verification.
+
+### Added
+- A new order-verification channel, "Prepaid Partial-Advance," gated to
+  RUN and above.
+- Checkout for a store using this channel now requires an active,
+  connected payment gateway - the same readiness check Email OTP already
+  had for a connected sender.
+
 ## Module 75: Feature-Gate Ladder
 
 The founder-approved feature-gate ladder across GO/RUN/RISE/FLY. Store

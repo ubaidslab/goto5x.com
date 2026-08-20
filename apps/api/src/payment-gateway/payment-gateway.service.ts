@@ -1,15 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PaymentGatewayProvider } from "@prisma/client";
+import { round2 } from "../orders/money.util";
 import { OrdersService } from "../orders/orders.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { BankTransferGatewayAdapter } from "./adapters/bank-transfer-gateway.adapter";
 import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
 import { decryptGatewayCredential, encryptGatewayCredential } from "./payment-gateway-credential-crypto.util";
-import { SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
+import { GatewayVerifyResult, SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
 
 /**
  * FR-6.36 - Raast is offered first (lowest priorityOrder), Easypaisa/
@@ -58,6 +60,7 @@ export class PaymentGatewayService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prismaAdmin: PrismaAdminService,
     private readonly orders: OrdersService,
+    private readonly settings: SettingsService,
     config: ConfigService,
     raastAdapter: RaastGatewayAdapter,
     easypaisaAdapter: EasypaisaGatewayAdapter,
@@ -218,18 +221,107 @@ export class PaymentGatewayService {
    * checks regardless of how it was reached.
    */
   async verifyAndConfirm(storeId: string, orderId: string, provider: PaymentGatewayProvider, reference?: string) {
-    const [connection, order, store] = await Promise.all([
-      this.prismaAdmin.storePaymentGatewayConnection.findUnique({
-        where: { uniq_store_gateway_provider: { storeId, provider } },
-      }),
+    const [order, store] = await Promise.all([
       this.prismaAdmin.order.findUnique({ where: { id: orderId } }),
       this.prismaAdmin.store.findUnique({ where: { id: storeId } }),
     ]);
+    if (!order || order.storeId !== storeId) throw new NotFoundException("Order not found.");
+    if (!store) throw new NotFoundException("Store not found.");
+
+    const result = await this.chargeViaGateway(storeId, provider, orderId, Number(order.totalAmount), order.currency, reference);
+    if (!result.verified) {
+      throw new BadRequestException("Payment could not be verified with this provider yet.");
+    }
+
+    return this.orders.markAsPaid(store.sellerId, storeId, orderId);
+  }
+
+  /**
+   * FR-6.52 (Module 76) - the partial-advance amount (a plan-gated
+   * store-level percentage of the order total) + this store's active
+   * gateway options, buyer-facing. `orderId`'s own OrderVerification row
+   * carries the channel snapshot (never re-resolved from the store's
+   * CURRENT setting) - same reasoning as regenerateAndSend()'s comment.
+   */
+  async getPartialAdvanceOptionsByToken(token: string) {
+    const { order } = await this.resolvePendingPartialAdvanceOrder(token);
+    const percent = await this.settings.resolve<number>("orders.prepaid_partial_advance_percent", { storeId: order.storeId });
+    return {
+      amount: round2(Number(order.totalAmount) * (percent / 100)),
+      currency: order.currency,
+      providers: await this.listActiveForCheckout(order.storeId),
+    };
+  }
+
+  /**
+   * FR-6.52 - the buyer-facing verify entry point. On a verified partial
+   * payment, the order auto-confirms: this channel's OrderVerification row
+   * moves straight to "verified" (a direct Prisma write mirroring
+   * OrderVerificationService.verifyOtp()'s own update + timeline write,
+   * rather than a new PaymentGatewayModule -> OrderVerificationModule edge
+   * for a few lines - every OrderVerification status transition in this
+   * codebase is already written at its own call site, never through a
+   * shared helper) and markAsPaid() runs immediately after, same as a
+   * full-amount gateway payment already does.
+   */
+  async verifyPartialAdvanceByToken(token: string, provider: PaymentGatewayProvider, reference?: string) {
+    const { order, verification, store } = await this.resolvePendingPartialAdvanceOrder(token);
+    const percent = await this.settings.resolve<number>("orders.prepaid_partial_advance_percent", { storeId: order.storeId });
+    const amount = round2(Number(order.totalAmount) * (percent / 100));
+
+    const result = await this.chargeViaGateway(order.storeId, provider, order.id, amount, order.currency, reference);
+    if (!result.verified) {
+      throw new BadRequestException("Payment could not be verified with this provider yet.");
+    }
+
+    await this.prismaAdmin.orderVerification.update({
+      where: { orderId: order.id },
+      data: { status: "verified", verifiedAt: new Date() },
+    });
+    await this.prismaAdmin.orderTimelineEvent.create({
+      data: { storeId: order.storeId, orderId: order.id, eventType: "verification_confirmed", afterValue: { channel: verification.channel } },
+    });
+
+    return this.orders.markAsPaid(store.sellerId, order.storeId, order.id);
+  }
+
+  private async resolvePendingPartialAdvanceOrder(token: string) {
+    const order = await this.prismaAdmin.order.findUnique({
+      where: { statusLookupToken: token },
+      select: { id: true, storeId: true, totalAmount: true, currency: true },
+    });
+    if (!order) throw new NotFoundException("Order not found.");
+
+    const [verification, store] = await Promise.all([
+      this.prismaAdmin.orderVerification.findUnique({ where: { orderId: order.id } }),
+      this.prismaAdmin.store.findUnique({ where: { id: order.storeId } }),
+    ]);
+    if (!store) throw new NotFoundException("Store not found.");
+    if (!verification || verification.channel !== "prepaid_partial_advance") {
+      throw new BadRequestException("This order isn't using the prepaid partial-advance verification channel.");
+    }
+    if (verification.status !== "pending") {
+      throw new BadRequestException(`This order's verification is already "${verification.status}".`);
+    }
+
+    return { order, verification, store };
+  }
+
+  /** Shared connection/adapter/decrypt/verify core - the only difference between a full-amount and a partial-advance gateway charge is the `amount` passed in. */
+  private async chargeViaGateway(
+    storeId: string,
+    provider: PaymentGatewayProvider,
+    orderId: string,
+    amount: number,
+    currency: string,
+    reference: string | undefined,
+  ): Promise<GatewayVerifyResult> {
+    const connection = await this.prismaAdmin.storePaymentGatewayConnection.findUnique({
+      where: { uniq_store_gateway_provider: { storeId, provider } },
+    });
     if (!connection || !connection.isActive || connection.storeId !== storeId) {
       throw new NotFoundException("No active connection for this provider.");
     }
-    if (!order || order.storeId !== storeId) throw new NotFoundException("Order not found.");
-    if (!store) throw new NotFoundException("Store not found.");
     if (!connection.apiKeyEncrypted) {
       throw new BadRequestException("This connection has no credentials saved yet.");
     }
@@ -237,21 +329,16 @@ export class PaymentGatewayService {
     const adapter = this.adapters.get(provider);
     if (!adapter) throw new BadRequestException("This provider is not supported.");
 
-    const result = await adapter.verifyPayment({
+    return adapter.verifyPayment({
       connection: {
         merchantId: connection.merchantId,
         apiKey: decryptGatewayCredential(connection.apiKeyEncrypted, this.encryptionKey),
         apiSecret: connection.apiSecretEncrypted ? decryptGatewayCredential(connection.apiSecretEncrypted, this.encryptionKey) : null,
       },
       orderId,
-      amount: Number(order.totalAmount),
-      currency: order.currency,
+      amount,
+      currency,
       reference,
     });
-    if (!result.verified) {
-      throw new BadRequestException("Payment could not be verified with this provider yet.");
-    }
-
-    return this.orders.markAsPaid(store.sellerId, storeId, orderId);
   }
 }

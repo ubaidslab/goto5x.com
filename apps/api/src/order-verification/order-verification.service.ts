@@ -1,18 +1,20 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { OrderVerificationChannel } from "@prisma/client";
 import { EmailService } from "../notifications/email.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { EmailOtpAdapter } from "./adapters/email-otp.adapter";
 import { PrepaidConfirmationAdapter } from "./adapters/prepaid-confirmation.adapter";
+import { PrepaidPartialAdvanceAdapter } from "./adapters/prepaid-partial-advance.adapter";
 import { WhatsAppOtpAdapter } from "./adapters/whatsapp-otp.adapter";
 import { generateOtp, hashOtp } from "./otp.util";
 import { SellerVerificationEmailsService } from "./seller-verification-emails.service";
 import { VerificationChannelAdapter } from "./verification-channel-adapter.interface";
 
-const VALID_CHANNELS: readonly string[] = ["whatsapp_otp", "email_otp", "prepaid_confirmation"];
+const VALID_CHANNELS: readonly string[] = ["whatsapp_otp", "email_otp", "prepaid_confirmation", "prepaid_partial_advance"];
 
 export interface CreateVerificationParams {
   storeId: string;
@@ -44,14 +46,17 @@ export class OrderVerificationService {
     private readonly senderEmails: SellerVerificationEmailsService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    private readonly subscriptions: SubscriptionsService,
     whatsAppAdapter: WhatsAppOtpAdapter,
     emailAdapter: EmailOtpAdapter,
     prepaidAdapter: PrepaidConfirmationAdapter,
+    prepaidPartialAdvanceAdapter: PrepaidPartialAdvanceAdapter,
   ) {
     this.adapters = new Map([
       [whatsAppAdapter.channel, whatsAppAdapter as VerificationChannelAdapter],
       [emailAdapter.channel, emailAdapter as VerificationChannelAdapter],
       [prepaidAdapter.channel, prepaidAdapter as VerificationChannelAdapter],
+      [prepaidPartialAdvanceAdapter.channel, prepaidPartialAdvanceAdapter as VerificationChannelAdapter],
     ]);
   }
 
@@ -64,12 +69,28 @@ export class OrderVerificationService {
    */
   async assertChannelReady(sellerId: string, storeId: string): Promise<void> {
     const channel = await this.settings.resolve<string>("orders.verification_channel", { storeId });
-    if (channel !== "email_otp") return;
-    const sender = await this.senderEmails.pickSenderForSend(sellerId, storeId);
-    if (!sender) {
-      throw new BadRequestException(
-        "This store's Email OTP verification has no connected sender email available - checkout isn't available.",
-      );
+    if (channel === "email_otp") {
+      const sender = await this.senderEmails.pickSenderForSend(sellerId, storeId);
+      if (!sender) {
+        throw new BadRequestException(
+          "This store's Email OTP verification has no connected sender email available - checkout isn't available.",
+        );
+      }
+      return;
+    }
+    // Module 76 (FR-6.52) - a store configured for the partial-advance
+    // channel with no active gateway connection could never let a buyer
+    // actually pay the advance, same failure mode as Email OTP's missing
+    // sender above. A direct Prisma read rather than injecting
+    // PaymentGatewayService - that would be circular (PaymentGatewayModule
+    // imports OrdersModule, which imports this module).
+    if (channel === "prepaid_partial_advance") {
+      const activeGateways = await this.prismaAdmin.storePaymentGatewayConnection.count({ where: { storeId, isActive: true } });
+      if (activeGateways === 0) {
+        throw new BadRequestException(
+          "This store's prepaid partial-advance verification has no connected, active payment gateway - checkout isn't available.",
+        );
+      }
     }
   }
 
@@ -315,7 +336,7 @@ export class OrderVerificationService {
     if (verification.status !== "pending") {
       throw new BadRequestException(`This order's verification is already "${verification.status}".`);
     }
-    if (verification.channel === "prepaid_confirmation") {
+    if (verification.channel === "prepaid_confirmation" || verification.channel === "prepaid_partial_advance") {
       throw new BadRequestException("This order's verification channel has no code to resend.");
     }
 
@@ -441,6 +462,15 @@ export class OrderVerificationService {
     dto: { channel: string; messageTemplate?: string },
   ) {
     await this.assertOwnsStore(sellerId, storeId);
+    // Module 76 (FR-6.52) - free from RUN upward; GO keeps only email +
+    // WhatsApp (no partial-advance option).
+    if (dto.channel === "prepaid_partial_advance") {
+      const planContext = await this.subscriptions.getPlanContext(sellerId);
+      const enabled = await this.settings.resolve<boolean>("orders.prepaid_partial_advance_enabled", planContext);
+      if (!enabled) {
+        throw new ForbiddenException("Prepaid partial-advance verification is not included in your current plan.");
+      }
+    }
     await this.settings.setValue("orders.verification_channel", "store", storeId, dto.channel, userId);
     if (dto.messageTemplate !== undefined) {
       await this.settings.setValue("orders.verification_message_template", "store", storeId, dto.messageTemplate, userId);

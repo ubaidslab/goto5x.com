@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { OrdersModule } from "../orders/orders.module";
+import { SettingsModule } from "../settings-registry/settings.module";
 import { BankTransferGatewayAdapter } from "./adapters/bank-transfer-gateway.adapter";
 import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
@@ -16,7 +17,7 @@ import { PaymentGatewayService } from "./payment-gateway.service";
  * PaymentGatewayModule), so this import direction is acyclic.
  */
 @Module({
-  imports: [OrdersModule],
+  imports: [OrdersModule, SettingsModule],
   controllers: [PaymentGatewayController, BuyerPaymentGatewayController],
   providers: [RaastGatewayAdapter, EasypaisaGatewayAdapter, JazzCashGatewayAdapter, BankTransferGatewayAdapter, PaymentGatewayService],
   exports: [PaymentGatewayService],

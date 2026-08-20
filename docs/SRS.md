@@ -8350,9 +8350,41 @@ Module 52, v0.34)
       (its RISE-upgrade store-limit test asserted the old real number 2,
       now decoupled via a seller-scoped override so it tests the upgrade
       mechanism, not RISE's current business number).
-- [ ] Prepaid partial-advance (5%) verification channel exists and is
+- [x] Prepaid partial-advance (5%) verification channel exists and is
       plan-gated (free RUN+, GO gets only email/WhatsApp) (FR-6.52,
-      Module 76).
+      Module 76). New `OrderVerificationChannel` enum value
+      `prepaid_partial_advance` (migration
+      `20260811100000_module76_prepaid_partial_advance`) with its own
+      no-op `PrepaidPartialAdvanceAdapter` (mirrors `PrepaidConfirmationAdapter`'s
+      shape - no OTP, no message to send). Its "verify" step is a real
+      buyer-initiated gateway payment, not a code: two new buyer-facing
+      routes on `PaymentGatewayService`/`BuyerPaymentGatewayController`
+      (`GET/POST .../gateway-payment/:token/partial-advance[/verify]`)
+      reuse the exact same `SellerPaymentGatewayAdapter` map Module 62
+      already built (refactored the shared connection/decrypt/verify core
+      into `chargeViaGateway()`), charging a new Settings-configurable
+      `orders.prepaid_partial_advance_percent` (store/global, default 5)
+      of the order total instead of the full amount. On a verified partial
+      payment the `OrderVerification` row moves straight to `"verified"`
+      (a direct write mirroring `OrderVerificationService.verifyOtp()`'s
+      own update+timeline pattern - every status transition in this file
+      is already written at its own call site) and `OrdersService.
+      markAsPaid()` runs immediately after, the same "auto-confirms"
+      wiring a full-amount gateway payment already had. Plan-gated via a
+      new boolean `orders.prepaid_partial_advance_enabled` (off by
+      default, on for RUN+ - tierOrder >= 1), set inside `seedPlansData()`'s
+      per-tier loop next to the RISE+FLY gates Module 75 added there,
+      enforced in `OrderVerificationService.updateSettingsForStore()`
+      when a seller tries to select this channel. `assertChannelReady()`
+      (Module 26's pre-checkout "store readiness" gate) extended with a
+      direct Prisma check that a store configured for this channel has at
+      least one active gateway connection, same failure mode Email OTP's
+      missing-sender guard already covers - avoids a
+      PaymentGatewayModule/OrderVerificationModule circular import since
+      that check is a raw table read, not a service injection. Proven by
+      new `module76-prepaid-partial-advance.e2e-spec.ts`, reusing Module
+      62's fake-gateway-adapter e2e precedent (the real provider adapters
+      call external APIs with no live sandbox to test against).
 - [ ] Email verification is free on every tier; WhatsApp is plan-gated
       (FR-6.53, Module 77).
 - [ ] Referral program renamed "Commerce Students Support", Rs 345/

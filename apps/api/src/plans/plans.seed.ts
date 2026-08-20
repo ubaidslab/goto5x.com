@@ -367,6 +367,13 @@ export async function seedPlansData(prisma: PrismaClient) {
       await setPlanScopedSetting(prisma, "theme.coded_mode_enabled", plan.id, true);
       await setPlanScopedSetting(prisma, "theme.premium_tier_enabled", plan.id, true);
     }
+
+    // Module 76 (SRS §5.6j/FR-6.52) - prepaid partial-advance verification,
+    // free from RUN upward (tierOrder >= 1); same "set here, defined in the
+    // owning module's seed file" idiom as the RISE+FLY gates just above.
+    if (tier.tierOrder >= 1) {
+      await setPlanScopedSetting(prisma, "orders.prepaid_partial_advance_enabled", plan.id, true);
+    }
   }
 
   // FR-7.18 - team tiers carry seatPrice (per sponsored seat), not `price`

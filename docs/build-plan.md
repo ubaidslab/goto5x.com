@@ -4200,12 +4200,17 @@ here).
   full-suite sweep fixed 4 pre-existing specs the new gates broke
   (module32-gift-cards, module33-customer-segments, module34-email-campaigns,
   tenancy).
-- **Module 76 — Prepaid Partial-Advance, 5% (§5.6j, FR-6.52).** Not yet
-  built. New `OrderVerificationChannel` (`prepaid_partial_advance`) - a
-  genuinely new mechanism, not a gate on something pre-existing: buyer
-  pays 5% via the seller's connected Module 62 gateway at checkout, order
-  auto-confirms on verified partial payment, remainder stays COD. Free
-  from RUN upward; GO keeps only email + WhatsApp verification free.
+- **Module 76 — Prepaid Partial-Advance, 5% (§5.6j, FR-6.52).** BUILT.
+  New `OrderVerificationChannel` (`prepaid_partial_advance`) - a genuinely
+  new mechanism, not a gate on something pre-existing: buyer pays a
+  Settings-configurable percent (default 5%) via the seller's connected
+  Module 62 gateway at checkout (two new buyer-facing routes reusing
+  Module 62's existing adapter map), order auto-confirms on verified
+  partial payment (`OrderVerification` -> verified, then `markAsPaid()`),
+  remainder stays COD. Free from RUN upward (a new
+  `orders.prepaid_partial_advance_enabled` gate, off by default); GO
+  keeps only email + WhatsApp verification free. Proven by
+  `module76-prepaid-partial-advance.e2e-spec.ts`.
 - **Module 77 — Verification-Channel Pricing (§5.6j, FR-6.53).** Not yet
   built. Email verification free on every tier, always. WhatsApp becomes
   plan-gated. SMS verification does not exist as a channel and is

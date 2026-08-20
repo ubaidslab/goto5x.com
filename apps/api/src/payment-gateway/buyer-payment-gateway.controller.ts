@@ -20,4 +20,15 @@ export class BuyerPaymentGatewayController {
   verify(@Param("token") token: string, @Body() dto: VerifyGatewayPaymentDto) {
     return this.paymentGateway.verifyByToken(token, dto.provider, dto.reference);
   }
+
+  /** FR-6.52 (Module 76) - the partial-advance amount due + this store's active gateway options. */
+  @Get("partial-advance")
+  getPartialAdvanceOptions(@Param("token") token: string) {
+    return this.paymentGateway.getPartialAdvanceOptionsByToken(token);
+  }
+
+  @Post("partial-advance/verify")
+  verifyPartialAdvance(@Param("token") token: string, @Body() dto: VerifyGatewayPaymentDto) {
+    return this.paymentGateway.verifyPartialAdvanceByToken(token, dto.provider, dto.reference);
+  }
 }

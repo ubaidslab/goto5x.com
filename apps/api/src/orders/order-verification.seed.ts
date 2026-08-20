@@ -13,7 +13,42 @@ export async function seedOrderVerificationSettings(prisma: PrismaClient) {
       allowedScopes: ["store", "global"],
       defaultValue: "none",
       description:
-        'One of "none" / "whatsapp_otp" / "email_otp" / "prepaid_confirmation" - the order-verification channel this store uses (FR-37.1). An unrecognized value is treated as "none" defensively, never as an error that blocks checkout.',
+        'One of "none" / "whatsapp_otp" / "email_otp" / "prepaid_confirmation" / "prepaid_partial_advance" - the order-verification channel this store uses (FR-37.1). An unrecognized value is treated as "none" defensively, never as an error that blocks checkout.',
+    },
+    update: {},
+  });
+
+  // Module 76 (SRS §5.6j/FR-6.52) - the new anti-fake-order channel: a
+  // buyer pays this percentage of the order total via the seller's own
+  // connected Module 62 gateway at checkout; the order auto-confirms on a
+  // verified partial payment, the remainder stays COD.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.prepaid_partial_advance_percent" },
+    create: {
+      key: "orders.prepaid_partial_advance_percent",
+      valueType: "number",
+      allowedScopes: ["global", "store"],
+      defaultValue: 5,
+      validation: { min: 1, max: 50 },
+      description: "Percentage of the order total a buyer pays as a partial advance via the connected gateway (FR-6.52).",
+    },
+    update: {},
+  });
+
+  // Free from RUN upward; GO keeps only email + WhatsApp verification free
+  // (no partial-advance option) - plan-scoped value set inside
+  // plans.seed.ts's seedPlansData() loop, same "definition here, value set
+  // where the tier/plan.id pairing already exists" idiom Module 75
+  // established for teams.leader_eligible/theme.coded_mode_enabled/
+  // theme.premium_tier_enabled.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.prepaid_partial_advance_enabled" },
+    create: {
+      key: "orders.prepaid_partial_advance_enabled",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan", "seller"],
+      defaultValue: false,
+      description: "Whether a seller's plan includes the prepaid partial-advance verification channel (FR-6.52). Off by default; on for RUN+.",
     },
     update: {},
   });
