@@ -182,6 +182,10 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     it("a verified top-up credits the wallet, audit-logged; marking an order paid debits commission - never a pending order", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("wallet-flow@example.com", "wallet-flow-store");
       const adminToken = await createAndLoginAdmin("wallet-flow-admin@example.com");
+      // Module 74 dropped every plan's seeded commissionPercent to 0 - a
+      // seller-scoped override (highest precedence) restores this test's
+      // original nonzero-rate assumption regardless of the seeded default.
+      await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
       await topUpAndVerify(token, adminToken, 1000);
 
       const balanceAfterTopUp = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
@@ -261,7 +265,10 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
 
   describe("Negative-float / mid-flight sale safety (FR-6.26)", () => {
     it("a confirmed sale's commission debit succeeds even when it takes the balance negative, within the configured floor", async () => {
-      const { token, storeId } = await signupLoginAndCreatePublishedStore("mid-flight@example.com", "mid-flight-store");
+      const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("mid-flight@example.com", "mid-flight-store");
+      // Seller-scoped override - Module 74 dropped every plan's seeded
+      // commissionPercent to 0, which would make this debit a no-op.
+      await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
       const { productId, variantId } = await addProduct(token, storeId, 50);
       // Balance is 0 here (no top-up) - a real seller could never have
       // published without one, but this proves the debit itself never
@@ -286,6 +293,9 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       // come from markAsPaid's own immediate floor check, never the
       // gentler warn-then-grace ladder (which only a sweep can trigger).
       await settings.setValue("billing.wallet_negative_float_floor", "global", null, -1, ADMIN_ID);
+      // Seller-scoped override - Module 74 dropped every plan's seeded
+      // commissionPercent to 0, which would make this debit a no-op.
+      await settings.setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
 
       const { productId, variantId } = await addProduct(token, storeId, 200);
       const order = await createAndPayManualOrder(token, storeId, productId, variantId);

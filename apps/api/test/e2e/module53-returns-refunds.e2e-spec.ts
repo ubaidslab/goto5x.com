@@ -3,9 +3,11 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { ReturnsService } from "../../src/returns/returns.service";
 import { UnitEconomicsService } from "../../src/guardrails/unit-economics.service";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 const shippingAddress = { fullName: "Buyer", line1: "House 1", city: "Lahore", country: "PK", phone: "03001234567" };
 
 /**
@@ -52,6 +54,12 @@ describe("Returns & Refunds Workflow (e2e) - SRS §5.60/§14.59 (Module 53)", ()
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
+    // Module 74 dropped every plan's seeded commissionPercent to 0 - a
+    // seller-scoped override (highest precedence) restores this file's
+    // original nonzero-rate assumption, which the refund-reversal tests
+    // need (reverseCommissionForRefund() is a no-op at a zero amount, so
+    // no refund_adjustment entry would exist to assert against otherwise).
+    await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", storeRow.sellerId, 2, ADMIN_ID);
     return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.uzeyn.com` };
   }
 
