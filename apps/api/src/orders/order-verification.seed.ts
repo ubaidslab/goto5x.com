@@ -35,8 +35,9 @@ export async function seedOrderVerificationSettings(prisma: PrismaClient) {
     update: {},
   });
 
-  // Free from RUN upward; GO keeps only email + WhatsApp verification free
-  // (no partial-advance option) - plan-scoped value set inside
+  // Free from RUN upward (superseded by Module 77/FR-6.53 for WhatsApp
+  // specifically - see orders.whatsapp_verification_enabled just below;
+  // GO's free set is now email-only) - plan-scoped value set inside
   // plans.seed.ts's seedPlansData() loop, same "definition here, value set
   // where the tier/plan.id pairing already exists" idiom Module 75
   // established for teams.leader_eligible/theme.coded_mode_enabled/
@@ -49,6 +50,26 @@ export async function seedOrderVerificationSettings(prisma: PrismaClient) {
       allowedScopes: ["global", "plan", "seller"],
       defaultValue: false,
       description: "Whether a seller's plan includes the prepaid partial-advance verification channel (FR-6.52). Off by default; on for RUN+.",
+    },
+    update: {},
+  });
+
+  // Module 77 (SRS §5.6j/FR-6.53) - verification-channel pricing: email
+  // verification stays free on every tier, always (email_otp has, and
+  // keeps, no plan gate at all); WhatsApp becomes plan-gated here (real
+  // per-message cost once a future automated WhatsApp Business API
+  // adapter replaces today's manual wa.me-deep-link one, FR-37.9). SMS
+  // does not exist as a channel in this codebase and stays out of scope.
+  // Same "definition here, value set in plans.seed.ts's per-tier loop"
+  // idiom as orders.prepaid_partial_advance_enabled just above.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.whatsapp_verification_enabled" },
+    create: {
+      key: "orders.whatsapp_verification_enabled",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan", "seller"],
+      defaultValue: false,
+      description: "Whether a seller's plan includes WhatsApp order verification (FR-6.53). Off by default; on for RUN+. Email verification is never gated.",
     },
     update: {},
   });

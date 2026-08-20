@@ -1,10 +1,12 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 import { startTestSmtpServer, TestSmtpServer } from "./smtp-test-server";
 
 const PASSWORD = "correct-horse-battery";
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 const SMTP_PORT = 2526;
 
 /**
@@ -113,7 +115,13 @@ describe("Order Verification Channel Adapter (e2e) - SRS §3.5/§5.37, §14.37",
   });
 
   it("a seller can read and update their own store's verification channel + message template via the settings endpoint", async () => {
-    const { token, storeId, hostname } = await signupLoginAndCreateStore("verify-settings@example.com", "verify-settings-store");
+    const { token, storeId, hostname, sellerId } = await signupLoginAndCreateStore("verify-settings@example.com", "verify-settings-store");
+    // Module 77 (§5.6j/FR-6.53) - WhatsApp verification is now plan-gated
+    // (off by default, on for RUN+); a fresh signup starts on GO. This
+    // test's whole point is the settings endpoint's real read/write
+    // round-trip, not the gate, so a seller-scoped override (highest
+    // precedence) restores access regardless of the signup default tier.
+    await app.get(SettingsService).setValue("orders.whatsapp_verification_enabled", "seller", sellerId, true, ADMIN_ID);
 
     const initial = await request(app.getHttpServer())
       .get(`/stores/${storeId}/verification-settings`)

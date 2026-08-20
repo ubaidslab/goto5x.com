@@ -8385,8 +8385,29 @@ Module 52, v0.34)
       new `module76-prepaid-partial-advance.e2e-spec.ts`, reusing Module
       62's fake-gateway-adapter e2e precedent (the real provider adapters
       call external APIs with no live sandbox to test against).
-- [ ] Email verification is free on every tier; WhatsApp is plan-gated
-      (FR-6.53, Module 77).
+- [x] Email verification is free on every tier; WhatsApp is plan-gated
+      (FR-6.53, Module 77). `email_otp` carries no plan gate at all
+      (unchanged - was already free on every tier). New boolean
+      `orders.whatsapp_verification_enabled` (off by default, on for
+      RUN+, same tierOrder >= 1 boundary as Module 76's
+      `orders.prepaid_partial_advance_enabled`, set right next to it
+      inside `seedPlansData()`'s per-tier loop), enforced in
+      `OrderVerificationService.updateSettingsForStore()` when a seller
+      tries to select `whatsapp_otp`. The gate applies only at
+      selection time - a store already using WhatsApp verification keeps
+      working uninterrupted through a later downgrade, same precedent as
+      every other feature gate in this ladder (Module 75). SMS
+      verification does not exist as a channel and stays explicitly out
+      of scope - not invented to satisfy this FR. Proven by new
+      `module77-verification-channel-pricing.e2e-spec.ts`; fixed one
+      pre-existing spec (`module26-order-verification`'s settings-endpoint
+      round-trip test) that configured `whatsapp_otp` through the real
+      PATCH endpoint on a fresh GO-tier signup - given a seller-scoped
+      override (highest precedence) since its actual point is the
+      settings round-trip, not the new gate. Every other whatsapp_otp
+      reference across the suite (module26's OTP-mechanics tests,
+      module27, module55) seeds the `OrderVerification`/`SettingsValue`
+      row directly via Prisma, bypassing the gate entirely - unaffected.
 - [ ] Referral program renamed "Commerce Students Support", Rs 345/
       referral for up to 2 renewal cycles, admin-approval-gated (FR-33.5,
       Module 78).

@@ -8,6 +8,18 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 77: Verification-Channel Pricing
+
+Email order verification stays free on every tier, always. WhatsApp
+verification becomes plan-gated, free starting at RUN - the same
+boundary the prepaid partial-advance channel got in Module 76. The gate
+only applies when a seller picks the channel; a store already using
+WhatsApp verification keeps working through a later downgrade.
+
+### Changed
+- WhatsApp order verification now requires RUN or above; email
+  verification is unaffected and stays free everywhere.
+
 ## Module 76: Prepaid Partial-Advance Verification
 
 A new anti-fake-order verification channel: a buyer pays a small

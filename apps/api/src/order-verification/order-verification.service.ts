@@ -462,13 +462,21 @@ export class OrderVerificationService {
     dto: { channel: string; messageTemplate?: string },
   ) {
     await this.assertOwnsStore(sellerId, storeId);
-    // Module 76 (FR-6.52) - free from RUN upward; GO keeps only email +
-    // WhatsApp (no partial-advance option).
+    // Module 76 (FR-6.52) - free from RUN upward.
     if (dto.channel === "prepaid_partial_advance") {
       const planContext = await this.subscriptions.getPlanContext(sellerId);
       const enabled = await this.settings.resolve<boolean>("orders.prepaid_partial_advance_enabled", planContext);
       if (!enabled) {
         throw new ForbiddenException("Prepaid partial-advance verification is not included in your current plan.");
+      }
+    }
+    // Module 77 (FR-6.53) - same RUN+ boundary; email verification is
+    // never gated (email_otp has no corresponding check here at all).
+    if (dto.channel === "whatsapp_otp") {
+      const planContext = await this.subscriptions.getPlanContext(sellerId);
+      const enabled = await this.settings.resolve<boolean>("orders.whatsapp_verification_enabled", planContext);
+      if (!enabled) {
+        throw new ForbiddenException("WhatsApp verification is not included in your current plan.");
       }
     }
     await this.settings.setValue("orders.verification_channel", "store", storeId, dto.channel, userId);

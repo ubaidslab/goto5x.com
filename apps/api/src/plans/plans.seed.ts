@@ -371,8 +371,11 @@ export async function seedPlansData(prisma: PrismaClient) {
     // Module 76 (SRS §5.6j/FR-6.52) - prepaid partial-advance verification,
     // free from RUN upward (tierOrder >= 1); same "set here, defined in the
     // owning module's seed file" idiom as the RISE+FLY gates just above.
+    // Module 77 (FR-6.53) - WhatsApp verification, same RUN+ boundary
+    // (email verification is never gated, on every tier including GO).
     if (tier.tierOrder >= 1) {
       await setPlanScopedSetting(prisma, "orders.prepaid_partial_advance_enabled", plan.id, true);
+      await setPlanScopedSetting(prisma, "orders.whatsapp_verification_enabled", plan.id, true);
     }
   }
 

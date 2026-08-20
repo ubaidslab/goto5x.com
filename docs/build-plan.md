@@ -4211,10 +4211,16 @@ here).
   `orders.prepaid_partial_advance_enabled` gate, off by default); GO
   keeps only email + WhatsApp verification free. Proven by
   `module76-prepaid-partial-advance.e2e-spec.ts`.
-- **Module 77 — Verification-Channel Pricing (§5.6j, FR-6.53).** Not yet
-  built. Email verification free on every tier, always. WhatsApp becomes
-  plan-gated. SMS verification does not exist as a channel and is
-  explicitly out of scope.
+- **Module 77 — Verification-Channel Pricing (§5.6j, FR-6.53).** BUILT.
+  Email verification stays free on every tier, always (no gate exists on
+  `email_otp`). WhatsApp becomes plan-gated via a new
+  `orders.whatsapp_verification_enabled` boolean, off by default, on for
+  RUN+ - the same tier boundary and seeding idiom as Module 76's
+  `orders.prepaid_partial_advance_enabled`, enforced at channel-selection
+  time only (an already-configured store isn't retroactively broken by a
+  later downgrade). SMS verification does not exist as a channel and is
+  explicitly out of scope. Proven by
+  `module77-verification-channel-pricing.e2e-spec.ts`.
 - **Module 78 — Referral Program Rename (§5.33, FR-33.5).** Not yet
   built. "Commerce Students Support," Rs 345/referral for up to 2 renewal
   cycles, admin-approval-gated (existing gate, unchanged).
