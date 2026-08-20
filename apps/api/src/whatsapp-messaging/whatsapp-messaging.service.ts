@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { OrderPricingService } from "../orders/order-pricing.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
@@ -24,6 +25,7 @@ export class WhatsAppMessagingService {
     private readonly settings: SettingsService,
     private readonly storefront: StorefrontService,
     private readonly pricing: OrderPricingService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   private orderNumber(orderId: string): string {
@@ -112,6 +114,46 @@ export class WhatsAppMessagingService {
       store_link: `https://${hostname}`,
     });
     return { deepLink: buildWhatsAppDeepLink(cart.buyerWhatsapp, message) };
+  }
+
+  /**
+   * FR-55.4 (Module 48) - the fourth generator, and unlike the three above,
+   * not tied to an existing Order/Cart row: reachable for any published
+   * product at any time. No captured buyer WhatsApp number exists for this
+   * trigger, so `buildWhatsAppDeepLink` gets `null` - the resulting link
+   * opens WhatsApp's own share/contact picker rather than a pre-addressed
+   * chat. Gated Growth+ (FR-55.2's mechanism, own key per FR-55.4's own note).
+   */
+  async generateProductShareLink(sellerId: string, storeId: string, productId: string) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const enabled = await this.settings.resolve<boolean>("whatsapp.product_share_enabled", planContext);
+    if (!enabled) {
+      throw new ForbiddenException("WhatsApp product sharing is a Growth-plan feature - upgrade your plan to use it.");
+    }
+
+    const { product, store } = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: productId },
+        include: { variants: { take: 1, orderBy: { price: "asc" } } },
+      });
+      if (!product || product.storeId !== storeId) throw new NotFoundException("Product not found.");
+      const store = await tx.store.findUniqueOrThrow({ where: { id: storeId }, include: { domains: true } });
+      return { product, store };
+    });
+    if (product.status !== "active") {
+      throw new BadRequestException("Only a published product can be shared.");
+    }
+
+    const hostname = await this.storefront.canonicalHostnameFor(store);
+    const template = await this.settings.resolve<string>("whatsapp.product_share_template", { storeId });
+    const message = interpolateWhatsAppTemplate(template, {
+      product_title: product.title,
+      price: Number(product.variants[0]?.price ?? 0).toFixed(2),
+      currency: store.currency,
+      store_name: store.name,
+      product_link: `https://${hostname}/products/${product.id}`,
+    });
+    return { deepLink: buildWhatsAppDeepLink(null, message) };
   }
 
   /** Backs the seller-facing abandoned-cart list (FR-41.1c) - `hasWhatsapp` tells the UI which rows can actually generate a recovery link. */

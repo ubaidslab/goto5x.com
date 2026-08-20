@@ -34,6 +34,41 @@ export async function seedExternalApiSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Module 48 (SRS §5.55, FR-55.1-55.3) - a new endpoint alongside the
+  // existing Product Feed API above, not a reshape of it (that one already
+  // serves a different, founder-owned Social Media SaaS product). Own rate
+  // limit so the two feeds never share a budget, same "own key, shared
+  // mechanism" idiom as every other module this batch.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "external_api.meta_catalog_feed_rate_limit_per_hour" },
+    create: {
+      key: "external_api.meta_catalog_feed_rate_limit_per_hour",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 120,
+      description: "Max Meta Commerce Catalog feed calls per hour, keyed per seller API token (FR-55.3, §6.5).",
+    },
+    update: {},
+  });
+
+  // FR-55.2 - "Plan-gated, Growth tier and above." Same allowedScopes:
+  // ["global","plan"] idiom FR-7.1's product-limit gating established, not
+  // a new gating mechanism. Value set in plans.seed.ts's per-tier loop
+  // (RISE+FLY, tierOrder >= 2 - the "Growth"-equivalent tier under the
+  // GO/RUN/RISE/FLY rename, same boundary as gift_cards.enabled/
+  // customer_segments.enabled).
+  await prisma.settingsDefinition.upsert({
+    where: { key: "social_media.meta_catalog_feed_enabled" },
+    create: {
+      key: "social_media.meta_catalog_feed_enabled",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan"],
+      defaultValue: false,
+      description: "Whether a seller can access the Meta Commerce Catalog feed endpoint (FR-55.2). Growth tier (RISE) and above.",
+    },
+    update: {},
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "template_store.showcase_url" },
     create: {

@@ -41,6 +41,39 @@ export async function seedWhatsAppMessagingSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  // Module 48 (SRS §5.55, FR-55.4) - the fourth generator, product-scoped
+  // rather than Order/Cart-scoped. Same seller-editable-template idiom as
+  // the three triggers above.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "whatsapp.product_share_template" },
+    create: {
+      key: "whatsapp.product_share_template",
+      valueType: "string",
+      allowedScopes: ["store", "global"],
+      defaultValue: "Check out {{product_title}} for {{currency}} {{price}} at {{store_name}}: {{product_link}}",
+      description:
+        "Seller-editable WhatsApp product-share message; {{product_title}}/{{price}}/{{currency}}/{{store_name}}/{{product_link}} are interpolated at generation time (FR-55.4).",
+    },
+    update: {},
+  });
+
+  // FR-55.2/55.4 - "gated Growth+ per FR-55.2's mechanism": a dedicated key,
+  // same RISE+FLY (tierOrder >= 2) boundary as FR-55.2's Meta catalog feed
+  // gate, not a literal shared key across two different owning modules -
+  // same "own key, shared boundary" precedent as Module 76/77. Value set
+  // in plans.seed.ts's per-tier loop.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "whatsapp.product_share_enabled" },
+    create: {
+      key: "whatsapp.product_share_enabled",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan"],
+      defaultValue: false,
+      description: "Whether a seller can generate a WhatsApp product-share deep link (FR-55.4). Growth tier (RISE) and above.",
+    },
+    update: {},
+  });
 }
 
 if (require.main === module) {

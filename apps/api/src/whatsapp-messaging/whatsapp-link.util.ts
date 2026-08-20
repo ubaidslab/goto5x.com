@@ -3,9 +3,15 @@
  * the existing WhatsAppOtpAdapter (Module 26): digits-only phone number,
  * URL-encoded interpolated text. v1.0 never sends anything itself - the
  * seller taps this link and sends it from their own connected WhatsApp app.
+ *
+ * FR-55.4 (Module 48) extends this with an optional recipient: the product-
+ * share trigger isn't tied to a specific buyer's captured WhatsApp number
+ * (unlike the three Order/Cart-scoped triggers, which always pass one), so
+ * a nullish `buyerWhatsapp` omits the phone segment - `wa.me/?text=...` opens
+ * WhatsApp's own contact/share picker instead of a pre-addressed chat.
  */
-export function buildWhatsAppDeepLink(buyerWhatsapp: string, message: string): string {
-  const digitsOnly = buyerWhatsapp.replace(/[^\d]/g, "");
+export function buildWhatsAppDeepLink(buyerWhatsapp: string | null | undefined, message: string): string {
+  const digitsOnly = buyerWhatsapp ? buyerWhatsapp.replace(/[^\d]/g, "") : "";
   return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`;
 }
 

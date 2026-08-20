@@ -3600,9 +3600,23 @@ as the right order after research — no changes:
   - Verified: full local unit suite (38/38, 186/186 tests) and full local
     e2e suite, plus a real CI-verified green run on the pushed commit.
 - **Module 48 — Facebook/Instagram Shop feed + WhatsApp catalog links
-  (Growth+).** The only net-new feature in this batch (the other five are
-  fixes/corrections) — correctly last, and its Growth-tier gate depends
-  on Module 44's tier data existing first.
+  (Growth+).** BUILT (built last, after the entire Subscription Business
+  Readiness batch, per the founder's final re-sequencing - see below).
+  The only net-new feature in this batch (the other five are
+  fixes/corrections) — its Growth-tier gate depends on Module 44's tier
+  data existing first. Two capabilities: a new `GET external/social-media/
+  meta-catalog-feed` endpoint alongside the existing (unchanged, still
+  ungated) product-feed one, adding Meta-Commerce-Catalog-required fields
+  (`availability`/`condition`/`description`/`brand`/`currency`, derived
+  from existing columns - no schema change); and a fourth WhatsApp
+  deep-link generator (`WhatsAppMessagingService.
+  generateProductShareLink()`), product-scoped rather than Order/Cart-
+  scoped, reusing `buildWhatsAppDeepLink()` extended to support a nullish
+  recipient (opens WhatsApp's share picker instead of a pre-addressed
+  chat). Both gated Growth+ (RISE+FLY) via their own Settings Registry
+  keys, set in `plans.seed.ts`'s existing tierOrder >= 2 loop. No new
+  dashboard UI - copy/backend only, the founder's explicit scoping for
+  this module. Proven by `module48-social-commerce-links.e2e-spec.ts`.
 
 ### Phase B — remaining pre-launch audit findings (smaller, sequenced after Phase A)
 
@@ -4125,6 +4139,17 @@ batch's ten FRs will need individual re-amendment when their turn comes,
 since they were written against the wallet-active model this batch
 retires (flagged case-by-case at that time, not preemptively rewritten
 here).
+
+**Actual final build order (superseding the "between Modules 59-61 and
+Module 48" line above):** the founder's live, in-session direction
+reversed this once the Subscription Business Readiness batch was
+renumbered 73-80 (see §5.6j) - that batch was built first (Modules
+73-80, this document's own section above), and Module 48 was
+deliberately held back to run **after** it, as the explicit final piece
+of backend/feature work before the UI/UX design phase begins. Flagging
+this the same way Module 78/79's FR-numbering discrepancy was flagged:
+the plan text above is the historical record of what was *originally*
+proposed, not what was actually built last.
 
 - **Module 73 — Subscription-Only Renewal Mechanism (§5.6j, FR-6.50).
   BUILT.** Publish gate drops its wallet-balance precondition entirely

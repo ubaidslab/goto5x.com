@@ -5002,7 +5002,8 @@ disclosed)
 
 ### 5.55 Facebook/Instagram Shop Feed & WhatsApp Catalog Links (new, v0.33
 — deep-audit Phase A item 6; two Growth+-gated capabilities, both reusing
-existing machinery rather than building new integrations)
+existing machinery rather than building new integrations) — **BUILT,
+Module 48**
 - FR-55.1: **Meta-compatible product catalog feed.** A new,
   Meta-Commerce-Catalog-compliant feed endpoint, extending FR-24.9's
   existing Product Feed API field set to what Meta's own catalog format
@@ -5042,6 +5043,49 @@ existing machinery rather than building new integrations)
   Meta-gated, automated WhatsApp Business API send/catalog-sync sequence
   is unaffected by FR-55.4 — the product-share link is a free,
   seller-clicked convenience, not a step toward automation.
+
+**Implementation notes (Module 48):** `GET external/social-media/
+meta-catalog-feed` ships as a new endpoint alongside the existing `GET
+external/social-media/product-feed` (unchanged route, unchanged shape,
+still ungated) in `ProductFeedController`/`ProductFeedService` — same
+bearer-token auth, same RLS tenant-isolation (FR-55.3), a shared private
+`resolveToken()` extracted so both endpoints validate identically without
+duplicating the auth/revocation/disabled-client checks. The new feed adds
+`id`/`availability`/`condition`/`description`/`brand`/`currency`:
+`availability` is derived (`trackInventory === false || stockQuantity >
+0` → "in stock"), `condition` is a constant `"new"` (no schema field
+tracks used/refurbished — nothing else needed one), `brand` reuses
+`Store.name` (no separate manufacturer-brand field exists on `Product`),
+`currency` reuses the already-existing `Store.currency` column. Gated via
+a new `social_media.meta_catalog_feed_enabled` key (`allowedScopes:
+["global","plan"]`, same FR-7.1 idiom), own rate-limit key
+(`external_api.meta_catalog_feed_rate_limit_per_hour`) so the two feeds
+never share a budget. FR-55.4's product-share link extends
+`buildWhatsAppDeepLink()` to accept a nullish phone (omits the recipient
+segment — `wa.me/?text=...` opens WhatsApp's own share picker, since
+unlike the three Order/Cart-scoped triggers there is no captured buyer
+number to address it to) and adds `WhatsAppMessagingService.
+generateProductShareLink()` as the fourth generator, following the exact
+same fetch/validate/template-interpolate/build-link shape as the existing
+three, behind its own `whatsapp.product_share_enabled` gate (own key,
+same RISE+FLY/Growth+ boundary as the Meta feed gate — FR-55.4's "gated
+Growth+ per FR-55.2's mechanism" read as "same pattern," not "literally
+the same key across two unrelated owning modules," matching this SRS's
+standing "own key, shared boundary" precedent from Modules 76/77). Both
+gates' values are set in `plans.seed.ts`'s existing tierOrder >= 2 loop,
+alongside the other RISE+FLY gates it already sets (`teams.
+leader_eligible` etc.) — Growth is "RISE" under the GO/RUN/RISE/FLY
+rename (FR-7.22). No new dashboard UI — the founder scoped this as the
+final backend/feature module before the UI/UX design phase; the feed
+consumer is external (the Social Media SaaS/Meta) and the product-share
+button's placement is left to that phase, same as every other
+already-built-but-not-yet-designed dashboard surface. Proven by new
+`module48-social-commerce-links.e2e-spec.ts`: Meta feed returns the
+extra fields correctly for a RISE seller and stays tenant-isolated; a
+GO/RUN seller is rejected with a clear upgrade message on the new feed
+while the pre-existing, ungated product-feed endpoint is unaffected;
+product-share link generation is gated identically, omits the phone
+segment, rejects a draft product, and honors a seller-edited template.
 
 ---
 

@@ -8,6 +8,27 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 48: Facebook/Instagram Shop Feed + WhatsApp Catalog Links
+
+Two Growth-tier-and-above capabilities, both extending existing machinery
+rather than building new integrations, and both the final piece of
+backend/feature work before the UI/UX design phase begins. A new,
+Meta-Commerce-Catalog-compliant product feed endpoint sits alongside the
+existing Product Feed API (unchanged, still ungated) - adding
+availability, condition, description, brand, and currency fields a
+seller can paste straight into Meta Commerce Manager. A new WhatsApp
+"share this product" deep link joins the existing three (order
+confirmation, shipping update, cart recovery) as a fourth generator, the
+first not tied to a specific order or cart - it opens WhatsApp's own
+share picker rather than a pre-addressed chat, since there's no captured
+buyer number to address it to.
+
+### Added
+- `GET external/social-media/meta-catalog-feed` - a Meta-format product
+  feed, gated Growth tier and above.
+- A WhatsApp product-share link, generated from any published product at
+  any time, gated identically.
+
 ## Module 80: Pricing Page Rebuild
 
 The pricing page now surfaces every feature shipped so far - badges,

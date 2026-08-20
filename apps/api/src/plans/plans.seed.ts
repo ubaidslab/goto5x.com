@@ -367,6 +367,10 @@ export async function seedPlansData(prisma: PrismaClient) {
       await setPlanScopedSetting(prisma, "teams.leader_eligible", plan.id, true);
       await setPlanScopedSetting(prisma, "theme.coded_mode_enabled", plan.id, true);
       await setPlanScopedSetting(prisma, "theme.premium_tier_enabled", plan.id, true);
+      // Module 48 (SRS §5.55, FR-55.2/55.4) - "Growth tier and above," the
+      // same RISE+FLY boundary as the three gates just above.
+      await setPlanScopedSetting(prisma, "social_media.meta_catalog_feed_enabled", plan.id, true);
+      await setPlanScopedSetting(prisma, "whatsapp.product_share_enabled", plan.id, true);
     }
 
     // Module 76 (SRS §5.6j/FR-6.52) - prepaid partial-advance verification,

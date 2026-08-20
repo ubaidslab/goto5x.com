@@ -40,4 +40,14 @@ export class WhatsAppMessagingController {
   ) {
     return this.whatsapp.generateCartRecoveryLink(sellerId, storeId, cartId);
   }
+
+  /** FR-55.4 (Module 48) - the fourth generator, product-scoped rather than Order/Cart-scoped. */
+  @Get("products/:productId/share-link")
+  getProductShareLink(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Param("productId") productId: string,
+  ) {
+    return this.whatsapp.generateProductShareLink(sellerId, storeId, productId);
+  }
 }

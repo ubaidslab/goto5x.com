@@ -5,6 +5,11 @@ describe("buildWhatsAppDeepLink", () => {
     const link = buildWhatsAppDeepLink("+92 300-1234567", "Hi there! 50% off");
     expect(link).toBe(`https://wa.me/923001234567?text=${encodeURIComponent("Hi there! 50% off")}`);
   });
+
+  it("FR-55.4 (Module 48) - a nullish phone omits the recipient segment, opening the share picker instead of a pre-addressed chat", () => {
+    const link = buildWhatsAppDeepLink(null, "Check out this product!");
+    expect(link).toBe(`https://wa.me/?text=${encodeURIComponent("Check out this product!")}`);
+  });
 });
 
 describe("interpolateWhatsAppTemplate", () => {
