@@ -1,7 +1,9 @@
 "use client";
 
+import { LayoutDashboard, LifeBuoy, Megaphone, Palette, ShieldCheck, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { FAQAccordion } from "@/components/marketing/FAQAccordion";
+import { FeatureCatalogCard } from "@/components/marketing/FeatureCatalogCard";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { MarketingNav } from "@/components/marketing/MarketingNav";
 import { PricingCard } from "@/components/marketing/PricingCard";
@@ -117,6 +119,88 @@ const FAQS = [
 ];
 
 const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", six_month: "6 months", yearly: "Yearly" };
+
+/**
+ * Module 80 (SRS §5.6j, FR-7.24) - "every existing feature... grouped into
+ * readable sections." A curated, representative list (not literally every
+ * Settings key) - each line names a real, shipped mechanism, never an
+ * aspirational one. Per-tier availability lives on the plan cards above;
+ * this section's job is breadth, not a second gate-by-gate breakdown.
+ */
+const FEATURE_CATALOG: { icon: typeof ShoppingBag; title: string; items: string[] }[] = [
+  {
+    icon: ShoppingBag,
+    title: "Selling",
+    items: [
+      "Storefront builder - live in minutes, no code",
+      "Connect a local supplier and sell without holding stock",
+      "Multi-store - run more than one storefront from one account",
+      "Gift cards, both seller-issued and buyer-purchased",
+      "A real returns & refunds workflow, not an inbox thread",
+      "Bulk product and order tools built for real catalogs",
+      "Delivery-time badges that set real buyer expectations",
+    ],
+  },
+  {
+    icon: Palette,
+    title: "Design",
+    items: [
+      "Four structurally distinct premium themes - not one layout, new colors",
+      "D-Studio: a real coded-theme escape hatch, not a locked builder",
+      "Free custom domain connection, TLS handled automatically",
+      "Storefront merchandising & discovery controls",
+      "Remove the “Managed by UZEYN” storefront mark",
+      "Product reviews with photos and video",
+    ],
+  },
+  {
+    icon: Megaphone,
+    title: "Marketing",
+    items: [
+      "Email campaigns to your own customer list",
+      "Customer segments - target by spend, order count, or location",
+      "Facebook/Instagram Shop feed + WhatsApp catalog links",
+      "Advanced, per-store SEO control",
+      "Referral programs - Commerce Students Support & Certified Ambassador",
+      "WhatsApp seller tools",
+    ],
+  },
+  {
+    icon: LayoutDashboard,
+    title: "Operations",
+    items: [
+      "Real-time profit & loss - not a spreadsheet you build yourself",
+      "Analytics that reflect confirmed orders, never inflated by pending ones",
+      "Staff accounts with role-based permissions",
+      "Teams - sponsor teammates on a shared plan",
+      "One-click full data export",
+      "Custom invoice & receipt branding",
+      "Orders Command Center - every order that needs attention, one screen",
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    title: "Trust & Security",
+    items: [
+      "Order verification - email always free, WhatsApp and prepaid-advance from RUN",
+      "Verified Store badge - an earned signal, not a marketing badge",
+      "A public store health score",
+      "Every listing moderated before it goes live",
+      "CNIC-backed seller identity checks",
+      "Account security - device limits and login alerts",
+    ],
+  },
+  {
+    icon: LifeBuoy,
+    title: "Support",
+    items: [
+      "A guided onboarding wizard for your first store",
+      "Email support on every tier, priority support on FLY",
+      "A custom @support.uzeyn.com email address (FLY)",
+      "Every payment verification reviewed by a real person",
+    ],
+  },
+];
 
 /** SRS §5.7/FR-7.17 - tier names/prices are read entirely from /plans (the plan editor's data) - adding or reordering a tier here is a data operation, never a deploy. */
 export default function PricingPage() {
@@ -236,7 +320,7 @@ export default function PricingPage() {
           <Reveal delay={0.15} className="mt-16 text-center">
             <p className="text-body text-ink-muted">
               Every UZEYN plan undercuts Shopify's equivalent tier - no forced app fees, no 2.9%+30¢
-              payment-processor markup on top, and a commission rate that only goes down as you grow.
+              payment-processor markup, and 0% commission on every sale, on every tier.
             </p>
             {copy?.shopifyComparison && <p className="mt-2 text-sm text-ink-faint">{copy.shopifyComparison}</p>}
           </Reveal>
@@ -282,6 +366,21 @@ export default function PricingPage() {
           </div>
         </section>
       )}
+
+      <section className="border-t border-border py-32">
+        <div className="mx-auto max-w-6xl px-6">
+          <SectionTitle
+            eyebrow="Everything included"
+            title="Every feature, not a locked-away add-on."
+            description="What you actually get, grouped the way you'll use it - not buried in a comparison table."
+          />
+          <Reveal stagger={0.1} className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURE_CATALOG.map((category) => (
+              <FeatureCatalogCard key={category.title} icon={category.icon} title={category.title} items={category.items} />
+            ))}
+          </Reveal>
+        </div>
+      </section>
 
       <section className="border-t border-border py-32">
         <div className="mx-auto max-w-3xl px-6">

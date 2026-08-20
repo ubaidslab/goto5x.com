@@ -8,6 +8,33 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 80: Pricing Page Rebuild
+
+The pricing page now surfaces every feature shipped so far - badges,
+on-demand export, gateway connect, gift cards, customer segments,
+referral programs, WhatsApp verification, prepaid partial-advance, and
+more - grouped into six readable sections (Selling, Design, Marketing,
+Operations, Trust & Security, Support) instead of leaving them scattered
+across dashboard screens with no single place a prospective seller can
+see the whole feature set. Copy also now leads harder on "0% commission
+on every sale, on every tier" and "your money never sits with us - buyers
+pay you directly," and both the homepage and pricing page state the
+local-dropshipping angle explicitly: connect with local suppliers and
+sell without holding stock. Copy only - closes out the Subscription
+Business Readiness batch (Modules 73-80); no new backend.
+
+### Added
+- A feature-catalog section on the pricing page, grouped into Selling /
+  Design / Marketing / Operations / Trust & Security / Support, covering
+  every feature shipped through Module 79.
+
+### Changed
+- Pricing page: replaced a stale commission-tiering line with "0%
+  commission on every sale, on every tier"; the wallet-never-holds-funds
+  benefit line now explicitly says "buyers pay you directly."
+- Homepage: the supplier feature card and inventory FAQ answer now name
+  local suppliers and "sell without holding stock" explicitly.
+
 ## Module 79: Ambassador Program Repricing
 
 Two independent changes for the Ambassador program. Referral commission

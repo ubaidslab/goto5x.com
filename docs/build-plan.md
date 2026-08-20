@@ -4250,11 +4250,21 @@ here).
   instead of a new billing path; revocation reverts at the next cycle
   (grace, not punishment). Admin approval to join is unchanged. Proven
   by `module79-ambassador-repricing.e2e-spec.ts`.
-- **Module 80 — Pricing Page Rebuild (§5.6j, FR-7.24).** Not yet built.
-  Every existing feature grouped into Selling/Design/Marketing/
-  Operations/Trust & Security/Support sections; "0% commission"/"your
-  money never sits with us" positioning; local-dropshipping copy on the
-  homepage/pricing page (copy only).
+- **Module 80 — Pricing Page Rebuild (§5.6j, FR-7.24).** BUILT. New
+  `FeatureCatalogCard` component + `FEATURE_CATALOG` array rendering
+  every existing feature grouped into Selling/Design/Marketing/
+  Operations/Trust & Security/Support sections, as an unconditional
+  section on the pricing page (not gated behind the live-plans fetch).
+  "0% commission on every sale, on every tier" replaces a stale pre-
+  Module-73 commission-tiering line; `marketing.pricing_benefit_3`'s
+  seeded default corrected to "Your money never sits with us - buyers pay
+  you directly." Local-dropshipping copy ("connect with local suppliers...
+  sell without holding stock") on both the homepage supplier feature card
+  and its inventory FAQ answer. Copy only, no new backend. Visually
+  verified with Playwright screenshots against a running dev server (not
+  just typecheck/build). Proven by existing e2e coverage (no test asserted
+  the old benefit-3 string) plus a full local unit-test run (46 suites,
+  278 tests, all passing) and a clean `tsc --noEmit`.
 - **Modules 81-88 — Buyer Experience Batch (new SRS §5.66, FR-66.1-66.8).**
   Not yet built. Optional buyer accounts; product reviews with media
   (Drive-stored, moderation-extended); live chat widget (plan-gated);

@@ -55,8 +55,8 @@ const FEATURES = [
   },
   {
     icon: Truck,
-    title: "Suppliers built in",
-    description: "Connect Printify or your own supplier links - fulfillment happens without you touching a warehouse.",
+    title: "Local suppliers, zero stock",
+    description: "Connect with local suppliers - Printify or your own links - and sell without ever holding stock yourself.",
   },
   {
     icon: Wallet,
@@ -96,7 +96,7 @@ const FAQS = [
   },
   {
     question: "Can I sell without holding any inventory?",
-    answer: "Yes - connect a supplier (Printify is built in) and orders route straight to them for fulfillment.",
+    answer: "Yes - connect with local suppliers (Printify is built in) and sell without holding stock. Orders route straight to them for fulfillment.",
   },
 ];
 

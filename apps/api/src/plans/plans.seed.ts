@@ -268,8 +268,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       key: "marketing.pricing_benefit_3",
       valueType: "string",
       allowedScopes: ["global"],
-      defaultValue: "Your money never sits with us",
-      description: "Pricing page headline benefit, point 3 of 3 (FR-7.21).",
+      // Module 80 (v0.39, FR-7.24) - the founder's exact positioning phrase.
+      defaultValue: "Your money never sits with us - buyers pay you directly",
+      description: "Pricing page headline benefit, point 3 of 3 (FR-7.21/FR-7.24).",
     },
     update: {},
   });

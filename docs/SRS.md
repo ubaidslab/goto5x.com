@@ -8516,9 +8516,42 @@ Module 52, v0.34)
       (switched its example program from ambassador to the still-
       unchanged Creator program, which demonstrates the same invariant
       just as well).
-- [ ] Pricing page rebuilt with every feature grouped into readable
+- [x] Pricing page rebuilt with every feature grouped into readable
       sections and the "0% commission"/"your money never sits with us"
-      positioning (FR-7.24, Module 80).
+      positioning (FR-7.24, Module 80). New `FeatureCatalogCard`
+      component (icon-in-box header + checkmarked feature list, sharing
+      `FeatureCard`'s `bg-accent-subtle`/`text-accent` icon-box language
+      without being visually identical - two different reading modes,
+      skim vs. verify) rendering a new `FEATURE_CATALOG` array: six
+      categories (Selling / Design / Marketing / Operations / Trust &
+      Security / Support), 4-7 items each, covering every feature already
+      shipped through Module 79 (badges, on-demand export, gateway
+      connect, gift cards, customer segments, referral programs, WhatsApp
+      verification, prepaid partial-advance, etc.) - copy only, reading
+      from what already exists, no new backend. Inserted as an
+      unconditional `<section>` on the pricing page (not gated behind the
+      live-plans fetch, so it always renders even if `/plans` is slow or
+      briefly unavailable) between the Supplier plans section and the
+      FAQ. Also fixed a stale, factually-incorrect line left over from
+      the pre-Module-73 commission-based model ("a commission rate that
+      only goes down as you grow" - no longer true under the subscription-
+      only model) to "0% commission on every sale, on every tier."
+      `marketing.pricing_benefit_3`'s seeded default text (`plans.seed.ts`)
+      corrected from "Your money never sits with us" to "Your money never
+      sits with us - buyers pay you directly" to match FR-7.24's exact
+      phrase (FR-7.21's existing pricing-psychology copy slot, reused
+      rather than duplicated). Homepage (`app/page.tsx`) also updated:
+      the supplier `FeatureCard` retitled "Local suppliers, zero stock"
+      with copy naming Printify/own-supplier links and "sell without ever
+      holding stock yourself," and the "Can I sell without holding any
+      inventory?" FAQ answer reworded to the same "connect with local
+      suppliers... sell without holding stock" phrasing - both realizing
+      FR-7.24's local-dropshipping positioning requirement. Verified
+      visually: Playwright screenshots of both `/pricing` (feature-catalog
+      grid renders as designed, monochrome + single accent, no AI-default
+      tells) and `/` (updated supplier card and FAQ answer both present)
+      against a locally running dev server, confirming this wasn't just a
+      typecheck/build pass but an actually-rendered page.
 
 ### 14.68 Buyer Experience Batch (new, v0.39, §5.66, not yet built)
 - [ ] Guest checkout stays the default; an optional buyer account gives
