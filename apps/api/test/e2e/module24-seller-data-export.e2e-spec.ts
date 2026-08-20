@@ -7,7 +7,6 @@ import { encryptDriveToken } from "../../src/media/drive-token-crypto.util";
 import { DRIVE_CLIENT, DRIVE_FILE_SCOPE, IDriveClient } from "../../src/media/google-drive/drive-client.interface";
 import { DataExportService } from "../../src/data-export/data-export.service";
 import { EmailService } from "../../src/notifications/email.service";
-import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
@@ -101,11 +100,6 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     return verify.body.accessToken as string;
   }
 
-  async function topUpAndVerify(token: string, adminToken: string, amount: number) {
-    const req = await request(app.getHttpServer()).post("/sellers/me/wallet/topup-requests").set("Authorization", `Bearer ${token}`).send({ amount });
-    await request(app.getHttpServer()).post(`/admin/wallet-topups/${req.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
-  }
-
   /** Module 56 (SRS §5.63/FR-63.2) - the on-demand export path is now Pro-gated; every pre-existing test below exercises the export mechanics, not the gate itself, so it upgrades its seller to Pro first. */
   async function upgradeToPro(sellerId: string) {
     const proPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 3 } });
@@ -113,11 +107,28 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
   }
 
   /** Forces a seller onto a paid plan due for renewal right now, with enough wallet balance to cover the fee. */
-  async function makeDueForRenewal(email: string, token: string, sellerId: string, adminEmailSuffix: string) {
+  /**
+   * Module 73 (v0.38) - the wallet no longer auto-debits a renewal; a
+   * seller's plan fee is paid through the admin-verify flow instead
+   * (WalletService.requestPlanFeePayment()/verifyTopUp()). This helper
+   * puts the seller on a real paid plan due for renewal and returns the
+   * admin token the caller needs to verify that payment itself.
+   */
+  async function makeDueForRenewal(sellerId: string, adminEmailSuffix: string): Promise<string> {
     const paidPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: { gt: 0 } } });
     await superuser.subscription.update({ where: { sellerId }, data: { planId: paidPlan.id, currentPeriodEnd: new Date() } });
-    const adminToken = await createAndLoginAdmin(`admin-${adminEmailSuffix}@example.com`);
-    await topUpAndVerify(token, adminToken, 100000);
+    return createAndLoginAdmin(`admin-${adminEmailSuffix}@example.com`);
+  }
+
+  async function payPlanFee(token: string, adminToken: string) {
+    const submit = await request(app.getHttpServer())
+      .post("/sellers/me/wallet/plan-fee-payment")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    const verify = await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(verify.status).toBe(201);
   }
 
   async function seedOneOfEach(storeId: string) {
@@ -159,13 +170,10 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
   it("a subscription renewal triggers an export containing the trailing-period products/orders/customers CSVs plus one summary PDF (FR-36.1/36.2)", async () => {
     const { token, storeId, sellerId } = await createStore("export-renewal@example.com", "export-renewal");
     await seedOneOfEach(storeId);
-    await makeDueForRenewal("export-renewal@example.com", token, sellerId, "export-renewal");
+    const adminToken = await makeDueForRenewal(sellerId, "export-renewal");
+    await payPlanFee(token, adminToken);
 
-    const planFeeDebit = app.get(PlanFeeDebitService);
     const dataExport = app.get(DataExportService);
-    const sweep = await planFeeDebit.runMonthlyDebitSweep(new Date());
-    expect(sweep.renewedSellerIds).toContain(sellerId);
-
     await dataExport.triggerRenewalExport(sellerId);
     const created = await superuser.sellerDataExport.findFirstOrThrow({ where: { sellerId }, orderBy: { createdAt: "desc" } });
     expect(created.trigger).toBe("subscription_renewal");
@@ -294,14 +302,9 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
 
   it("a forced export-generation/delivery failure is logged and never blocks, delays, or fails the subscription renewal itself (FR-36.4)", async () => {
     const { token, sellerId } = await createStore("export-nonblocking@example.com", "export-nonblocking");
-    await makeDueForRenewal("export-nonblocking@example.com", token, sellerId, "export-nonblocking");
-
-    const planFeeDebit = app.get(PlanFeeDebitService);
-    const sweep = await planFeeDebit.runMonthlyDebitSweep(new Date());
-    expect(sweep.renewedSellerIds).toContain(sellerId);
+    const adminToken = await makeDueForRenewal(sellerId, "export-nonblocking");
+    await payPlanFee(token, adminToken);
     const subscriptionAfterRenewal = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-    const ledgerCountAfterRenewal = await superuser.ledgerEntry.count({ where: { sellerId, type: "wallet_plan_fee_debit" } });
-    expect(ledgerCountAfterRenewal).toBe(1);
 
     // Now force the export itself to fail outright (a bogus export ID - processExport must never throw).
     const dataExport = app.get(DataExportService);
@@ -312,7 +315,5 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     // The already-completed renewal is provably untouched by any of the above.
     const subscriptionAfter = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
     expect(subscriptionAfter.currentPeriodEnd?.getTime()).toBe(subscriptionAfterRenewal.currentPeriodEnd?.getTime());
-    const ledgerCountAfter = await superuser.ledgerEntry.count({ where: { sellerId, type: "wallet_plan_fee_debit" } });
-    expect(ledgerCountAfter).toBe(1);
   }, 30000);
 });

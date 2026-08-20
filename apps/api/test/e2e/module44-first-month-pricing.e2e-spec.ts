@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { SubscriptionsService } from "../../src/plans/subscriptions.service";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -116,7 +117,7 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     expect(after.currentPeriodEnd).toEqual(past); // untouched - nothing was due to apply
   });
 
-  it("plan-fee expiry pauses orders (orders_paused) - never falls back to a Free plan reassignment", async () => {
+  it("Module 73 (v0.38) - plan-fee expiry pauses orders (orders_paused) only once the grace window elapses, never falls back to a Free plan reassignment", async () => {
     const { token, sellerId } = await signup("basic-expiry@example.com");
     const store = await request(app.getHttpServer())
       .post("/stores")
@@ -125,12 +126,16 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     const storeId = store.body.id as string;
 
     const planBefore = (await superuser.subscription.findUniqueOrThrow({ where: { sellerId } })).planId;
+    const settings = app.get(SettingsService);
+    const graceDays = await settings.resolve<number>("billing.plan_fee_grace_days");
 
-    // Force the cycle due against an empty wallet (default balance is 0).
-    await superuser.subscription.update({ where: { sellerId }, data: { currentPeriodEnd: new Date(Date.now() - 1000) } });
+    // Force the cycle due, with no verified renewal payment.
+    const cycleEnd = new Date(Date.now() - 1000);
+    await superuser.subscription.update({ where: { sellerId }, data: { currentPeriodEnd: cycleEnd } });
 
     const planFeeDebit = app.get(PlanFeeDebitService);
-    await planFeeDebit.runMonthlyDebitSweep(new Date());
+    const pastGrace = new Date(cycleEnd.getTime() + (graceDays + 1) * 24 * 60 * 60 * 1000);
+    await planFeeDebit.runMonthlyDebitSweep(pastGrace);
 
     const storeAfter = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
     expect(storeAfter.status).toBe("orders_paused");
@@ -139,7 +144,7 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     expect(subscriptionAfter.planId).toBe(planBefore); // unchanged - never reassigned to any other plan
   });
 
-  it("a verified top-up restores a plan-fee-paused store, through the same wallet-grace-ladder restore path", async () => {
+  it("Module 73 (v0.38) - a verified plan-fee payment restores a paused store instantly", async () => {
     const { token, sellerId } = await signup("basic-restore@example.com");
     const store = await request(app.getHttpServer())
       .post("/stores")
@@ -147,20 +152,24 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
       .send({ name: "Restore Store", slug: "basic-restore-store" });
     const storeId = store.body.id as string;
 
-    await superuser.subscription.update({ where: { sellerId }, data: { currentPeriodEnd: new Date(Date.now() - 1000) } });
+    const settings = app.get(SettingsService);
+    const graceDays = await settings.resolve<number>("billing.plan_fee_grace_days");
+    const cycleEnd = new Date(Date.now() - 1000);
+    await superuser.subscription.update({ where: { sellerId }, data: { currentPeriodEnd: cycleEnd } });
 
     const planFeeDebit = app.get(PlanFeeDebitService);
-    await planFeeDebit.runMonthlyDebitSweep(new Date());
+    const pastGrace = new Date(cycleEnd.getTime() + (graceDays + 1) * 24 * 60 * 60 * 1000);
+    await planFeeDebit.runMonthlyDebitSweep(pastGrace);
     const pausedStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
     expect(pausedStore.status).toBe("orders_paused");
 
     const adminToken = await createAndLoginAdmin("basic-restore-admin@example.com");
-    const topUp = await request(app.getHttpServer())
-      .post("/sellers/me/wallet/topup-requests")
+    const submit = await request(app.getHttpServer())
+      .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
-      .send({ amount: 30000 });
+      .send({});
     await request(app.getHttpServer())
-      .post(`/admin/wallet-topups/${topUp.body.request.id}/verify`)
+      .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
       .set("Authorization", `Bearer ${adminToken}`);
 
     const restoredStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });

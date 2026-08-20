@@ -1,7 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 
@@ -217,27 +216,34 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       });
       expect(commissionAfterGmv).toHaveLength(0);
 
-      // Only the referred seller's OWN plan-subscription fee debit generates referral commission, at the configured rate.
+      // Only the referred seller's OWN plan-subscription fee, verified
+      // through the admin-verify flow, generates referral commission
+      // (Module 73, v0.38 - PlanFeeDebitService no longer debits or
+      // accrues anything; every plan-fee payment, first cycle or renewal,
+      // goes through AdminWalletController.verify() instead).
       const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
       // v0.33 - a real billing cycle is already active from signup (First
       // Month), so the self-service change endpoint would defer this to
       // the next cycle (FR-7.5) rather than switch planId immediately;
       // write the subscription row directly to isolate this test to the
       // referral-commission-on-plan-fee question.
-      const referredSubscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: referred.sellerId } });
-      const dueDate = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
       await superuser.subscription.update({
-        where: { id: referredSubscription.id },
-        data: { planId: starterPlan.id, pendingPlanId: null, currentPeriodEnd: dueDate },
+        where: { sellerId: referred.sellerId },
+        data: { planId: starterPlan.id, pendingPlanId: null },
       });
 
-      const planFeeDebit = app.get(PlanFeeDebitService);
-      await planFeeDebit.runMonthlyDebitSweep(dueDate);
+      const submit = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${referred.token}`)
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
 
       const commissionEntry = await superuser.ledgerEntry.findFirstOrThrow({
         where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
       });
-      const expectedCommission = Number(starterPlan.price) * 0.08; // growth.ambassador_commission_percent default
+      const expectedCommission = (submit.body.amountDue as number) * 0.08; // growth.ambassador_commission_percent default
       expect(Number(commissionEntry.amount)).toBeCloseTo(expectedCommission, 2);
     });
 

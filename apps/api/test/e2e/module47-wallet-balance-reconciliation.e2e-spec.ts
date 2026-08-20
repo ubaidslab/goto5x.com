@@ -310,10 +310,13 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     // codebase.
     const settings = app.get(SettingsService);
     const threshold = await settings.resolve<number>("billing.wallet_low_balance_warning_threshold");
+    // Land just below the warning threshold (not below the negative-float
+    // floor, which would pause immediately instead of warn) - balance
+    // starts at 0, so the debit itself is `-(threshold - 10)`.
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ amount: -(threshold + 10), reason: "drain for dormant grace-ladder test" });
+      .send({ amount: -(threshold - 10), reason: "drain for dormant grace-ladder test" });
 
     const { WalletGraceLadderService } = await import("../../src/billing/wallet-grace-ladder.service");
     const graceLadder = app.get(WalletGraceLadderService);

@@ -4,7 +4,7 @@ import request from "supertest";
 import { WalletGraceLadderService } from "../../src/billing/wallet-grace-ladder.service";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
@@ -134,9 +134,8 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
   }
 
   describe("Publish gate (FR-6.21)", () => {
-    it("cannot go live without payment method, CNIC, and a minimum wallet top-up - all three", async () => {
+    it("Module 73 (v0.38) - cannot go live without payment method and CNIC, but publishes with no wallet interaction at all (the third original condition, minimum wallet top-up, was dropped)", async () => {
       const { token, storeId, sellerId } = await createUnpublishedStore("publish-gate@example.com", "publish-gate-store");
-      const adminToken = await createAndLoginAdmin("publish-gate-admin@example.com");
 
       // Signup/store creation itself required no wallet interaction.
       const balanceBeforeAnything = await request(app.getHttpServer())
@@ -156,17 +155,17 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       expect(noCnic.status).toBe(400);
 
       await superuser.seller.update({ where: { id: sellerId }, data: { cnicHash: `hash-${sellerId}` } });
-      const noTopUp = await request(app.getHttpServer())
-        .post(`/stores/${storeId}/publish`)
-        .set("Authorization", `Bearer ${token}`);
-      expect(noTopUp.status).toBe(400);
-
-      await topUpAndVerify(token, adminToken, 500);
       const published = await request(app.getHttpServer())
         .post(`/stores/${storeId}/publish`)
         .set("Authorization", `Bearer ${token}`);
       expect(published.status).toBe(201);
       expect(published.body.publishedAt).toBeTruthy();
+
+      // Still no wallet interaction - balance stays 0.
+      const balanceAfterPublish = await request(app.getHttpServer())
+        .get("/sellers/me/wallet")
+        .set("Authorization", `Bearer ${token}`);
+      expect(balanceAfterPublish.body.balance).toBe(0);
     });
 
     it("blocks checkout on an unpublished store even with payment method + CNIC configured", async () => {
@@ -370,47 +369,38 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     });
   });
 
-  describe("Plan fee / team seat / device slot wallet debits (FR-6.24, revised v0.33 FR-7.2)", () => {
-    it("debits a paid plan's fee monthly; insufficient balance pauses orders (never a Free-Plan reassignment - there is no more Free Plan)", async () => {
-      const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("plan-fee@example.com", "plan-fee-store");
-      const adminToken = await createAndLoginAdmin("plan-fee-admin@example.com");
-      await topUpAndVerify(token, adminToken, 5000);
+  describe("Plan fee overdue detection (FR-6.24, revised v0.38 Module 73 - no more wallet auto-debit)", () => {
+    it("Module 73 (v0.38) - the sweep never debits any more, only detects overdue past the grace window and pauses; the subscription stays on the exact same plan (never reassigned - there is no more Free Plan)", async () => {
+      const { storeId, sellerId } = await signupLoginAndCreatePublishedStore("plan-fee@example.com", "plan-fee-store");
 
-      // Every seller starts on First Month (v0.33) - already a real, paid,
-      // tracked billing cycle, so no plan change is needed to exercise the
-      // fee-debit sweep.
       const planFeeDebit = app.get(PlanFeeDebitService);
-      const aMonthLater = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
-      const firstSweep = await planFeeDebit.runMonthlyDebitSweep(aMonthLater);
-      expect(firstSweep.debited).toBeGreaterThanOrEqual(1);
+      const settings = app.get(SettingsService);
+      const graceDays = await settings.resolve<number>("billing.plan_fee_grace_days");
 
-      const balanceAfterFee = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
-      expect(balanceAfterFee.body.balance).toBeLessThan(5000);
-
-      // Drain the wallet, then let the next cycle's fee hit an empty wallet.
       const subscriptionRow = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
       const planBeforeShortfall = subscriptionRow.planId;
-      await superuser.subscription.update({
-        where: { id: subscriptionRow.id },
-        data: { currentPeriodEnd: aMonthLater },
-      });
-      // Spend the whole balance on commission so nothing is left for the fee.
-      const balance = (await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`)).body.balance;
-      await seedLedgerEntry(superuser, { sellerId, type: "wallet_plan_fee_debit", amount: balance, currency: "PKR" });
+      const cycleEnd = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
+      await superuser.subscription.update({ where: { id: subscriptionRow.id }, data: { currentPeriodEnd: cycleEnd } });
 
-      const secondCycle = new Date(aMonthLater.getTime() + 31 * 24 * 60 * 60 * 1000);
-      const secondSweep = await planFeeDebit.runMonthlyDebitSweep(secondCycle);
-      expect(secondSweep.downgraded).toBeGreaterThanOrEqual(1); // v0.33: counts stores paused, not plans downgraded
+      // Still within the grace window past cycleEnd - never paused, never debited.
+      const withinGrace = new Date(cycleEnd.getTime() + 1000);
+      const graceSweep = await planFeeDebit.runMonthlyDebitSweep(withinGrace);
+      expect(graceSweep.debited).toBe(0);
+      expect(graceSweep.downgraded).toBe(0);
+      const storeWithinGrace = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
+      expect(storeWithinGrace.status).toBe("active");
+
+      // Past the grace deadline with no verified renewal - pauses, never debits.
+      const pastGrace = new Date(cycleEnd.getTime() + (graceDays + 1) * 24 * 60 * 60 * 1000);
+      const overdueSweep = await planFeeDebit.runMonthlyDebitSweep(pastGrace);
+      expect(overdueSweep.debited).toBe(0);
+      expect(overdueSweep.downgraded).toBeGreaterThanOrEqual(1); // counts stores paused, not plans downgraded
 
       // The subscription stays on the exact same plan - never reassigned,
       // since there is no more Free Plan to fall back to.
       const afterShortfall = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
       expect(afterShortfall.planId).toBe(planBeforeShortfall);
 
-      // Insufficient plan-fee balance now pauses orders via the same
-      // mechanism as the wallet low-balance grace ladder
-      // (WalletGraceLadderService.pauseActiveStores()) - unified per the
-      // founder's explicit instruction.
       const store = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
       expect(store.status).toBe("orders_paused");
     });
