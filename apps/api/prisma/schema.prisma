@@ -2605,6 +2605,14 @@ model ProgramParticipant {
   decidedAt            DateTime?                @map("decided_at") @db.Timestamptz
   decidedByAdminUserId String?                  @map("decided_by_admin_user_id") @db.Uuid
   decisionNotes        String?                  @map("decision_notes")
+  // Module 79 (SRS §5.33, FR-33.6 pre-Module-78-numbering / "Ambassador
+  // Program repricing") - how many of this ambassador's OWN stores are
+  // plan-fee-exempt (PlanFeeDebitService/ProgramCommissionService). Set
+  // from growth.ambassador_free_store_slots at approval time (same
+  // "issued only at approval" precedent as referralCode), admin-editable
+  // afterward. Null/unset for every non-ambassador participant - never
+  // meaningful for student_referral/creator.
+  freeStoreSlotsGranted Int?                     @map("free_store_slots_granted")
   createdAt            DateTime                 @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -2644,6 +2652,14 @@ model ReferralAttribution {
   // for their own unchanged cap). Incremented only when a Student Referral
   // renewal commission is actually paid; unused by ambassador/creator.
   renewalPayoutCount     Int                 @default(0) @map("renewal_payout_count")
+  // Module 79 (FR-33.6 pre-Module-78-numbering / "Ambassador Program
+  // repricing") - Ambassador's own count-based cap, in MONTHS rather than
+  // renewal-events (a single renewal payment can cover 1/6/12 months
+  // depending on the referred seller's billing cycle, pro-rated against
+  // the remaining cap) - a distinct field from renewalPayoutCount above,
+  // which counts discrete Student Referral renewal events, not months.
+  // Unused by student_referral/creator.
+  commissionMonthsPaid   Int                 @default(0) @map("commission_months_paid")
 
   participant    ProgramParticipant @relation(fields: [participantId], references: [id])
   referredSeller Seller             @relation("ReferralAttributionReferred", fields: [referredSellerId], references: [id])

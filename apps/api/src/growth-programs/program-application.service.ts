@@ -59,10 +59,25 @@ export class ProgramApplicationService {
   async approve(adminUserId: string, participantId: string, notes: string | undefined): Promise<ProgramParticipant> {
     const before = await this.requirePending(participantId);
     const referralCode = generateReferralCode();
+    // Module 79 (FR-33.6 pre-Module-78-numbering) - only Ambassador ever
+    // gets free store slots; the Settings default is applied once, here,
+    // at approval time (same "issued only at approval" precedent as
+    // referralCode above) - never re-resolved later, so a subsequent
+    // change to the global default doesn't retroactively change what an
+    // already-approved ambassador was granted.
+    const freeStoreSlotsGranted =
+      before.programType === "ambassador" ? await this.settings.resolve<number>("growth.ambassador_free_store_slots") : null;
 
     const after = await this.prismaAdmin.programParticipant.update({
       where: { id: participantId },
-      data: { status: "approved", referralCode, decidedAt: new Date(), decidedByAdminUserId: adminUserId, decisionNotes: notes ?? null },
+      data: {
+        status: "approved",
+        referralCode,
+        freeStoreSlotsGranted,
+        decidedAt: new Date(),
+        decidedByAdminUserId: adminUserId,
+        decisionNotes: notes ?? null,
+      },
     });
     await this.auditLog.record({
       adminUserId,
@@ -135,6 +150,32 @@ export class ProgramApplicationService {
       targetId: participantId,
       beforeValue: { status: before.status },
       afterValue: { status: "terminated" },
+    });
+    return after;
+  }
+
+  /** Module 79 - admin override of an already-approved Ambassador's granted free-store-slot count, independent of the Settings default. */
+  async updateFreeStoreSlots(adminUserId: string, participantId: string, freeStoreSlotsGranted: number): Promise<ProgramParticipant> {
+    const before = await this.prismaAdmin.programParticipant.findUnique({ where: { id: participantId } });
+    if (!before) throw new NotFoundException("Program participant not found.");
+    if (before.programType !== "ambassador") {
+      throw new BadRequestException("Free store slots only apply to the Ambassador program.");
+    }
+    if (before.status !== "approved") {
+      throw new BadRequestException("Only an approved participant can have their free store slots edited.");
+    }
+
+    const after = await this.prismaAdmin.programParticipant.update({
+      where: { id: participantId },
+      data: { freeStoreSlotsGranted },
+    });
+    await this.auditLog.record({
+      adminUserId,
+      action: "growth_programs.free_store_slots_updated",
+      targetType: "program_participant",
+      targetId: participantId,
+      beforeValue: { freeStoreSlotsGranted: before.freeStoreSlotsGranted },
+      afterValue: { freeStoreSlotsGranted },
     });
     return after;
   }

@@ -232,19 +232,35 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
         data: { planId: starterPlan.id, pendingPlanId: null },
       });
 
-      const submit = await request(app.getHttpServer())
+      // Module 79 (v0.39) - Ambassador commission is now a flat per-month
+      // amount on RENEWALS only, never the referred seller's first/initial
+      // payment - this first submit+verify is that first payment, so it
+      // must generate no commission at all.
+      const firstPayment = await request(app.getHttpServer())
         .post("/sellers/me/wallet/plan-fee-payment")
         .set("Authorization", `Bearer ${referred.token}`)
         .send({});
       await request(app.getHttpServer())
-        .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
+        .post(`/admin/wallet-topups/${firstPayment.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      const noCommissionYet = await superuser.ledgerEntry.findMany({
+        where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
+      });
+      expect(noCommissionYet).toHaveLength(0);
+
+      // The first RENEWAL earns a flat growth.ambassador_flat_commission_per_month_pkr (default 499) - Starter bills monthly, so exactly 1 month's worth.
+      const renewal = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${referred.token}`)
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${renewal.body.request.id}/verify`)
         .set("Authorization", `Bearer ${adminToken}`);
 
       const commissionEntry = await superuser.ledgerEntry.findFirstOrThrow({
         where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
       });
-      const expectedCommission = (submit.body.amountDue as number) * 0.08; // growth.ambassador_commission_percent default
-      expect(Number(commissionEntry.amount)).toBeCloseTo(expectedCommission, 2);
+      expect(Number(commissionEntry.amount)).toBe(499);
     });
 
     it("a stale/unmatched referral code never blocks signup and creates no attribution", async () => {

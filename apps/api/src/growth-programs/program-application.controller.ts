@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { AllowReviewer } from "../common/decorators/allow-reviewer.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -7,6 +7,7 @@ import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { JwtAccessPayload } from "../common/types";
 import { ApplyProgramDto } from "./dto/apply-program.dto";
 import { DecideApplicationDto } from "./dto/decide-application.dto";
+import { UpdateFreeStoreSlotsDto } from "./dto/update-free-store-slots.dto";
 import { ProgramApplicationService } from "./program-application.service";
 import { ProgramRewardService } from "./program-reward.service";
 
@@ -70,6 +71,17 @@ export class AdminProgramApplicationController {
   terminate(@CurrentUser() user: JwtAccessPayload, @Param("participantId") participantId: string, @Body() dto: DecideApplicationDto) {
     this.assertAdminUserId(user);
     return this.applications.terminate(user.adminUserId, participantId, dto.notes);
+  }
+
+  /** Module 79 - admin override of an approved Ambassador's granted free-store-slot count. */
+  @Patch(":participantId/free-store-slots")
+  updateFreeStoreSlots(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("participantId") participantId: string,
+    @Body() dto: UpdateFreeStoreSlotsDto,
+  ) {
+    this.assertAdminUserId(user);
+    return this.applications.updateFreeStoreSlots(user.adminUserId, participantId, dto.freeStoreSlotsGranted);
   }
 
   private assertAdminUserId(user: JwtAccessPayload): asserts user is JwtAccessPayload & { adminUserId: string } {

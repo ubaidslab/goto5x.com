@@ -218,20 +218,26 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     const referred = await signup("referred@example.com");
     const adminToken = await createAndLoginAdmin("referral-admin@example.com");
 
+    // Module 79 (v0.39) moved Ambassador to a flat, RENEWAL-only model
+    // (never the first payment) - this test's actual point is the call-
+    // site consolidation ("accrues on BOTH first payment and every
+    // renewal, from exactly one place"), which the still-unchanged
+    // Creator program (percent-of-every-payment, no first-vs-renewal
+    // distinction) demonstrates just as well.
     const participant = await superuser.programParticipant.create({
-      data: { sellerId: referrer.sellerId, programType: "ambassador", status: "approved" },
+      data: { sellerId: referrer.sellerId, programType: "creator", status: "approved" },
     });
     await superuser.referralAttribution.create({
       data: {
         referredSellerId: referred.sellerId,
         participantId: participant.id,
-        programType: "ambassador",
+        programType: "creator",
         commissionWindowEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
       },
     });
 
     const settings = app.get(SettingsService);
-    const ratePercent = await settings.resolve<number>("growth.ambassador_commission_percent");
+    const ratePercent = await settings.resolve<number>("growth.student_creator_commission_percent");
 
     const { submit: firstSubmit } = await payPlanFee(referred.token, adminToken);
     const balanceAfterFirst = await getBalance(referrer.token);

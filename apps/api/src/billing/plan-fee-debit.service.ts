@@ -3,6 +3,7 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { addInterval } from "../plans/subscriptions.service";
 import { round2 } from "../orders/money.util";
+import { ProgramCommissionService } from "./program-commission.service";
 import { WalletService } from "./wallet.service";
 import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
@@ -37,6 +38,7 @@ export class PlanFeeDebitService {
     private readonly wallet: WalletService,
     private readonly supplierWallet: SupplierWalletService,
     private readonly walletGraceLadder: WalletGraceLadderService,
+    private readonly programCommission: ProgramCommissionService,
   ) {}
 
   /**
@@ -146,6 +148,26 @@ export class PlanFeeDebitService {
       // Team-sponsored members carry currentPeriodEnd: null (SubscriptionsService.sponsorMember) so
       // they never appear here; this loop is individual-group paid plans only.
       if (subscription.plan.planGroup !== "individual" || Number(subscription.plan.price) <= 0) continue;
+
+      // Module 79 - an Ambassador's own store(s) exempt via granted free
+      // slots never get paused for non-payment; their cycle advances
+      // silently, exactly like a real verified renewal would, so
+      // currentPeriodEnd stays close to "now." That matters if the
+      // exemption is later revoked (suspended/terminated participant, or
+      // they create more stores than their granted slot count) - the
+      // existing grace-day window then behaves exactly as it would for
+      // any other seller (one grace period before pause), never an unfair
+      // immediate catch-up pause for however long they were exempt.
+      if (
+        subscription.billingInterval !== "none" &&
+        (await this.programCommission.isExemptFromPlanFeeViaAmbassadorSlots(subscription.sellerId!))
+      ) {
+        await this.prismaAdmin.subscription.update({
+          where: { id: subscription.id },
+          data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.billingInterval) },
+        });
+        continue;
+      }
 
       const graceDeadline = new Date(subscription.currentPeriodEnd!.getTime() + graceDays * 24 * 60 * 60 * 1000);
       if (graceDeadline > now) continue; // still within the admin-verification grace window - not overdue yet

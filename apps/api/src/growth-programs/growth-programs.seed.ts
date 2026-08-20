@@ -19,6 +19,10 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Module 79 repriced Ambassador off this percent/window pair onto the
+  // flat per-month model below - kept under their original names (dormant,
+  // not deleted, same treatment Module 78 gave the old student_creator
+  // shared keys) in case a future admin ever wants the percent model back.
   await prisma.settingsDefinition.upsert({
     where: { key: "growth.ambassador_commission_percent" },
     create: {
@@ -27,7 +31,7 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: 8,
       validation: { min: 0, max: 100 },
-      description: "Ambassador referral commission (%) of a referred seller's paid plan-subscription amount (FR-33.5).",
+      description: "DORMANT since Module 79 (superseded by growth.ambassador_flat_commission_per_month_pkr) - the old Ambassador referral commission (%) of a referred seller's paid plan-subscription amount.",
     },
     update: {},
   });
@@ -40,7 +44,59 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: 6,
       validation: { min: 1, max: 60 },
-      description: "How many months of a referred seller's plan-subscription payments earn Ambassador commission (FR-33.5) - locked in per-attribution at the moment of attribution.",
+      description: "DORMANT since Module 79 (superseded by growth.ambassador_max_commission_months, a count of MONTHS rather than a time window) - how many months of a referred seller's plan-subscription payments used to earn Ambassador commission under the old model.",
+    },
+    update: {},
+  });
+
+  // Module 79 (SRS §5.33, FR-33.6 pre-Module-78-numbering / "Ambassador
+  // Program repricing") - Rs 499 (Settings-configurable) per RENEWED
+  // MONTH of a referred seller's plan fee - never their first/initial
+  // payment - up to 3 months total, pro-rated (a single renewal payment
+  // can cover 1/6/12 months depending on the referred seller's billing
+  // cycle). See ProgramCommissionService's dedicated ambassador branch
+  // and ReferralAttribution.commissionMonthsPaid.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "growth.ambassador_flat_commission_per_month_pkr" },
+    create: {
+      key: "growth.ambassador_flat_commission_per_month_pkr",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 499,
+      validation: { min: 0, max: 1000000 },
+      description: "Flat PKR commission paid to an Ambassador per renewed month of a referred seller's plan fee (FR-33.6 pre-Module-78-numbering).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "growth.ambassador_max_commission_months" },
+    create: {
+      key: "growth.ambassador_max_commission_months",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 3,
+      validation: { min: 0, max: 60 },
+      description: "Maximum total months of a referred seller's renewal payments that earn Ambassador commission (FR-33.6 pre-Module-78-numbering) - the referred seller's own FIRST/initial payment never counts; a renewal payment covering more months than remain under this cap is pro-rated down to what remains.",
+    },
+    update: {},
+  });
+
+  // Module 79 - approved ambassadors gain this many of their OWN stores
+  // exempt from plan-fee billing entirely (PlanFeeDebitService/
+  // ProgramCommissionService.isExemptFromPlanFeeViaAmbassadorSlots()) -
+  // the Settings default applied at approval time
+  // (ProgramApplicationService.approve()); admin-editable per ambassador
+  // afterward via PATCH admin/growth-programs/applications/:id/free-store-slots.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "growth.ambassador_free_store_slots" },
+    create: {
+      key: "growth.ambassador_free_store_slots",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 3,
+      validation: { min: 0, max: 100 },
+      description: "Default number of an approved Ambassador's own stores that are exempt from plan-fee billing (demo/generate-their-own-sales use), granted at approval time and admin-editable per ambassador afterward.",
     },
     update: {},
   });

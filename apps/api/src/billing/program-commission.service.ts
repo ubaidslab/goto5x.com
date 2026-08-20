@@ -1,5 +1,4 @@
 import { Injectable } from "@nestjs/common";
-import { ReferralProgramType } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { round2 } from "../orders/money.util";
@@ -56,8 +55,15 @@ export class ProgramCommissionService {
       await this.accrueStudentReferralCommission(attribution.id, participant.sellerId, attribution.renewalPayoutCount, isRenewal, currency);
       return;
     }
+    if (attribution.programType === "ambassador") {
+      await this.accrueAmbassadorCommission(attribution.id, participant.sellerId, referredSellerId, attribution.commissionMonthsPaid, isRenewal, currency);
+      return;
+    }
 
-    const ratePercent = await this.commissionRatePercentFor(attribution.programType);
+    // Only "creator" ever reaches here now - Module 78/79 moved
+    // student_referral/ambassador onto their own dedicated flat-rate
+    // branches above.
+    const ratePercent = await this.settings.resolve<number>("growth.student_creator_commission_percent");
     const amount = round2((planFeeAmount * ratePercent) / 100);
     if (amount <= 0) return;
 
@@ -96,10 +102,68 @@ export class ProgramCommissionService {
     });
   }
 
-  private async commissionRatePercentFor(programType: ReferralProgramType): Promise<number> {
-    if (programType === "ambassador") {
-      return this.settings.resolve<number>("growth.ambassador_commission_percent");
-    }
-    return this.settings.resolve<number>("growth.student_creator_commission_percent");
+  /**
+   * FR-33.6 pre-Module-78-numbering (Module 79) - "Ambassador Program
+   * repricing": Rs 499 (Settings-configurable) per RENEWED MONTH of the
+   * referred seller's plan fee, never their first/initial payment, up to
+   * 3 total months (also configurable), pro-rated - a single renewal
+   * payment can cover 1/6/12 months depending on the referred seller's
+   * billing cycle, and only pays for however many of those months still
+   * fit under the remaining cap.
+   */
+  private async accrueAmbassadorCommission(
+    attributionId: string,
+    referringSellerId: string,
+    referredSellerId: string,
+    commissionMonthsPaidSoFar: number,
+    isRenewal: boolean,
+    currency: string,
+  ): Promise<void> {
+    if (!isRenewal) return;
+    const maxMonths = await this.settings.resolve<number>("growth.ambassador_max_commission_months");
+    const monthsRemaining = maxMonths - commissionMonthsPaidSoFar;
+    if (monthsRemaining <= 0) return;
+
+    const subscription = await this.prismaAdmin.subscription.findUnique({ where: { sellerId: referredSellerId } });
+    if (!subscription) return;
+    const monthsThisPayment = monthsForBillingInterval(subscription.billingInterval);
+    const monthsToPay = Math.min(monthsThisPayment, monthsRemaining);
+    if (monthsToPay <= 0) return;
+
+    const perMonth = await this.settings.resolve<number>("growth.ambassador_flat_commission_per_month_pkr");
+    const amount = round2(perMonth * monthsToPay);
+    if (amount <= 0) return;
+
+    await this.prismaAdmin.$transaction(async (tx) => {
+      await this.wallet.postLedgerEntry(tx, { sellerId: referringSellerId, type: "program_commission_credit", amount, currency });
+      await tx.referralAttribution.update({
+        where: { id: attributionId },
+        data: { commissionMonthsPaid: { increment: monthsToPay } },
+      });
+    });
   }
+
+  /**
+   * Module 79 - whether this seller's plan fee is currently exempt via
+   * their own approved Ambassador participant's granted free store slots
+   * (never their referral commission - a completely separate mechanic).
+   * Read by PlanFeeDebitService (same BillingModule, no cross-module DI
+   * needed - see this class's own header comment for why that matters).
+   */
+  async isExemptFromPlanFeeViaAmbassadorSlots(sellerId: string): Promise<boolean> {
+    const participant = await this.prismaAdmin.programParticipant.findUnique({
+      where: { uniq_program_participant_seller_program: { sellerId, programType: "ambassador" } },
+    });
+    if (!participant || participant.status !== "approved") return false;
+    if (!participant.freeStoreSlotsGranted || participant.freeStoreSlotsGranted <= 0) return false;
+
+    const storeCount = await this.prismaAdmin.store.count({ where: { sellerId } });
+    return storeCount <= participant.freeStoreSlotsGranted;
+  }
+}
+
+function monthsForBillingInterval(interval: string): number {
+  if (interval === "yearly") return 12;
+  if (interval === "six_month") return 6;
+  return 1; // monthly
 }

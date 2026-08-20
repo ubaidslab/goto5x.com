@@ -8,6 +8,29 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 79: Ambassador Program Repricing
+
+Two independent changes for the Ambassador program. Referral commission
+moves from 8% of every plan-fee payment (for 6 months) to a flat Rs 499
+per renewed month (never the referred seller's first payment), up to 3
+months, pro-rated for longer billing cycles. Separately, an approved
+ambassador's own account now gets a configurable number of their own
+stores exempt from plan-fee billing entirely - a benefit the founder
+scoped explicitly as their own stores, not new accounts, and independent
+of referral commission - so they can demo the platform or run their own
+stores free of charge, up to that count.
+
+### Changed
+- Ambassador commission is now a flat Rs 499 per renewed month (capped
+  at 3, pro-rated), instead of 8% of every payment for 6 months.
+
+### Added
+- Approved ambassadors get a configurable number of their own
+  plan-fee-exempt stores, admin-editable per ambassador. Revoking the
+  benefit (suspending the ambassador, or exceeding the granted count)
+  reverts billing at the next cycle rather than an immediate catch-up
+  charge.
+
 ## Module 78: Referral Program Rename - Commerce Students Support
 
 The Student Referral program is renamed "Commerce Students Support" and

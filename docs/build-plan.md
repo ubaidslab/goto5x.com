@@ -4237,10 +4237,19 @@ here).
   names ("Commerce STUDENTS Support"), not the literal label; see
   `docs/SRS.md` §14.67 for the full flag. Proven by
   `module78-referral-program-rename.e2e-spec.ts`.
-- **Module 79 — Ambassador Program Repricing (§5.33, FR-33.6).** Not yet
-  built. Rs 499/referred store/renewed month up to 3 months pro-rated,
-  admin-approval-gated, new Settings-configurable free-demo-account count
-  for approved ambassadors.
+- **Module 79 — Ambassador Program Repricing (§5.33, FR-33.6).** BUILT.
+  Two independent mechanics. Commission: Rs 499/referred store per
+  renewed month (never the referred seller's first/initial payment), up
+  to 3 months pro-rated - replaces the old 8%/6-month model (kept
+  dormant, not deleted). Free store slots: the founder clarified this as
+  a Settings-configurable count of the ambassador's OWN stores exempt
+  from plan-fee billing (granted at approval, admin-editable after) -
+  not new user accounts, not a bypass of CNIC/verification, and
+  independent of referral commission - reusing the existing overdue-
+  detection sweep so an exempt seller's cycle just advances silently
+  instead of a new billing path; revocation reverts at the next cycle
+  (grace, not punishment). Admin approval to join is unchanged. Proven
+  by `module79-ambassador-repricing.e2e-spec.ts`.
 - **Module 80 — Pricing Page Rebuild (§5.6j, FR-7.24).** Not yet built.
   Every existing feature grouped into Selling/Design/Marketing/
   Operations/Trust & Security/Support sections; "0% commission"/"your

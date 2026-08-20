@@ -8452,10 +8452,70 @@ Module 52, v0.34)
       module22-growth-partner-programs's existing Ambassador-only
       commission test is unaffected (different program type, untouched
       code path) - verified by re-reading it, not just assuming.
-- [ ] Ambassador Program repriced to Rs 499/referred store/renewed month
+- [x] Ambassador Program repriced to Rs 499/referred store/renewed month
       up to 3 months pro-rated, admin-approval-gated, with a
       Settings-configurable free-demo-account count for approved
-      ambassadors (FR-33.6, Module 79).
+      ambassadors (FR-33.6, Module 79). Two independent mechanics:
+
+      **Commission repricing** - Ambassador moves off its old percent-of-
+      plan-fee/6-month-window model (`growth.ambassador_commission_percent`/
+      `_commission_window_months`, kept dormant not deleted, same
+      treatment Module 78 gave Student Referral's old shared keys) onto a
+      flat `growth.ambassador_flat_commission_per_month_pkr` (default
+      499) per RENEWED month of the referred seller's plan fee - never
+      their first/initial payment - up to
+      `growth.ambassador_max_commission_months` (default 3) total months,
+      pro-rated (a renewal payment covering more months than remain under
+      the cap pays only for what remains). New
+      `ReferralAttribution.commissionMonthsPaid` field (distinct from
+      Module 78's `renewalPayoutCount`, which counts discrete renewal
+      EVENTS for Student Referral - Ambassador's cap is in MONTHS, since
+      one renewal payment can cover 1/6/12 months depending on the
+      referred seller's own billing cycle). `ProgramCommissionService.
+      accrueReferralCommissionIfApplicable()` gained a dedicated
+      `accrueAmbassadorCommission()` branch; only "creator" still reaches
+      the old shared percent-based path.
+
+      **Free store slots (scoped per the founder's explicit design, not
+      guessed)** - a genuinely separate benefit from referral commission:
+      an approved Ambassador's OWN account gets a Settings-configurable
+      count (`growth.ambassador_free_store_slots`, default 3) of their
+      own stores exempt from plan-fee billing, granted at approval time
+      (new `ProgramParticipant.freeStoreSlotsGranted`, same "issued only
+      at approval" precedent as `referralCode`) and admin-editable
+      afterward per ambassador (`PATCH admin/growth-programs/
+      applications/:id/free-store-slots`). Reuses the EXISTING overdue-
+      detection sweep (`PlanFeeDebitService.debitDuePlanFees()`) rather
+      than a new billing path: an exempt seller's cycle silently advances
+      by one billing interval each time the sweep finds it due (new
+      `ProgramCommissionService.isExemptFromPlanFeeViaAmbassadorSlots()`,
+      checking approved status + store count against the granted slots),
+      exactly like a real verified renewal would - never paused. This
+      keeps `currentPeriodEnd` close to "now," so if the exemption is
+      later revoked (suspended/terminated, or the ambassador creates more
+      stores than granted), the existing grace-day window behaves
+      normally from then on - one grace period before pause, never an
+      unfair immediate catch-up pause for however long they were exempt.
+      Does NOT create new user accounts, bypass CNIC/verification, or
+      touch referral commission mechanics - scoped exactly to the
+      founder's own design when asked to clarify the otherwise-
+      unspecified "free platform accounts" mechanism.
+
+      Proven by new `module79-ambassador-repricing.e2e-spec.ts` (first
+      payment pays nothing, a monthly renewal pays flat, a six-month
+      renewal pro-rates down to the remaining cap, nothing accrues once
+      the cap is used; slot grant-at-approval and admin override; the
+      exemption itself - never paused within the granted count, cycle
+      advances silently; revocation reverts at the next cycle, not an
+      immediate catch-up pause). Fixed two pre-existing tests the
+      commission-model change broke: module22-growth-partner-programs's
+      ambassador-specific commission test (added an explicit first-
+      payment-pays-nothing step, then asserted the new flat renewal
+      amount) and module73-subscription-only-renewal's "accrues on both
+      first payment AND every renewal" call-site-consolidation test
+      (switched its example program from ambassador to the still-
+      unchanged Creator program, which demonstrates the same invariant
+      just as well).
 - [ ] Pricing page rebuilt with every feature grouped into readable
       sections and the "0% commission"/"your money never sits with us"
       positioning (FR-7.24, Module 80).
