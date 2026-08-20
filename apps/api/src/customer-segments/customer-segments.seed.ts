@@ -14,7 +14,7 @@ export async function seedCustomerSegmentsSettings(prisma: PrismaClient) {
     create: {
       key: "customer_segments.enabled",
       valueType: "boolean",
-      allowedScopes: ["global", "plan"],
+      allowedScopes: ["global", "plan", "seller"],
       defaultValue: false,
       description: "Whether a seller's plan includes customer segments (FR-7.23). Off by default; on for RISE+FLY.",
     },

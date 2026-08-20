@@ -34,7 +34,7 @@ export async function seedGiftCardsSettings(prisma: PrismaClient) {
     create: {
       key: "gift_cards.enabled",
       valueType: "boolean",
-      allowedScopes: ["global", "plan"],
+      allowedScopes: ["global", "plan", "seller"],
       defaultValue: false,
       description: "Whether a seller's plan includes seller-issued gift cards (FR-7.23). Off by default; on for RISE+FLY.",
     },

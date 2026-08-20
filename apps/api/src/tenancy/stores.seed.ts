@@ -14,7 +14,7 @@ export async function seedStoresSettings(prisma: PrismaClient) {
     create: {
       key: "stores.max_per_seller",
       valueType: "number",
-      allowedScopes: ["global", "plan"],
+      allowedScopes: ["global", "plan", "seller"],
       defaultValue: 1,
       validation: { min: 1 },
       description:

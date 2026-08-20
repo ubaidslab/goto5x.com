@@ -12,7 +12,7 @@ export async function seedCampaignsSettings(prisma: PrismaClient) {
     create: {
       key: "email_campaigns.monthly_send_limit",
       valueType: "number",
-      allowedScopes: ["global", "plan"],
+      allowedScopes: ["global", "plan", "seller"],
       defaultValue: 500,
       validation: { min: 0 },
       description:
