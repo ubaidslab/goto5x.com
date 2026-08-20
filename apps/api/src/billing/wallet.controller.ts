@@ -159,6 +159,7 @@ export class AdminWalletController {
         verified.ownerId,
         Number(verified.planFeePortion),
         verified.currency,
+        isRenewal,
       );
       // Module 24 (FR-36.1(a)) - a RENEWAL export, never a first-payment
       // one (there's nothing to export yet for a brand-new seller). Pushed

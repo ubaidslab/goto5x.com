@@ -4221,9 +4221,22 @@ here).
   later downgrade). SMS verification does not exist as a channel and is
   explicitly out of scope. Proven by
   `module77-verification-channel-pricing.e2e-spec.ts`.
-- **Module 78 — Referral Program Rename (§5.33, FR-33.5).** Not yet
-  built. "Commerce Students Support," Rs 345/referral for up to 2 renewal
-  cycles, admin-approval-gated (existing gate, unchanged).
+- **Module 78 — Referral Program Rename (§5.33, FR-33.5).** BUILT.
+  Student Referral (internal `student_referral` enum value unchanged)
+  renamed "Commerce Students Support" (new admin-editable display-name
+  Settings string) and repriced off its old shared percent-of-plan-fee
+  model (previously shared with Creator) onto a flat Rs 345 per
+  RENEWAL of the referred seller's plan fee - never their first/initial
+  payment - capped at 2 renewals via a new count field on
+  `ReferralAttribution`, not the old time window (Ambassador/Creator
+  both keep their original, unchanged percent/window model). Admin
+  approval stays the existing, unchanged gate. **Note:** the v0.39
+  directive's FR-33.5/FR-33.6 labels for Modules 78/79 collide with
+  Module 22's original FR-33.5=Ambassador/FR-33.6=Student Referral
+  assignment - this module implements the program the text actually
+  names ("Commerce STUDENTS Support"), not the literal label; see
+  `docs/SRS.md` §14.67 for the full flag. Proven by
+  `module78-referral-program-rename.e2e-spec.ts`.
 - **Module 79 — Ambassador Program Repricing (§5.33, FR-33.6).** Not yet
   built. Rs 499/referred store/renewed month up to 3 months pro-rated,
   admin-approval-gated, new Settings-configurable free-demo-account count

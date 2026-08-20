@@ -68,6 +68,14 @@ export class ReferralAttributionService {
     if (programType === "ambassador") {
       return this.settings.resolve<number>("growth.ambassador_commission_window_months");
     }
+    if (programType === "student_referral") {
+      // Module 78 (FR-33.5) - Student Referral's real cap is now
+      // ReferralAttribution.renewalPayoutCount (a count, not a time
+      // window) - a large sentinel here means this time-based check in
+      // ProgramCommissionService never becomes the binding constraint for
+      // this program type.
+      return 1200; // 100 years
+    }
     return this.settings.resolve<number>("growth.student_creator_commission_window_months");
   }
 }

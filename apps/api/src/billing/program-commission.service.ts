@@ -31,13 +31,31 @@ export class ProgramCommissionService {
     private readonly wallet: WalletService,
   ) {}
 
-  async accrueReferralCommissionIfApplicable(referredSellerId: string, planFeeAmount: number, currency: string): Promise<void> {
+  /**
+   * `isRenewal` (Module 78, FR-33.5) - already computed by the sole caller
+   * (AdminWalletController.verify(), from WalletService.verifyTopUp()'s own
+   * return value) - distinguishes the referred seller's first/initial
+   * plan-fee payment from a later renewal, which Student Referral's new
+   * flat-per-renewal model needs and the old percent-of-every-payment
+   * model (still used by Ambassador/Creator) never did.
+   */
+  async accrueReferralCommissionIfApplicable(
+    referredSellerId: string,
+    planFeeAmount: number,
+    currency: string,
+    isRenewal: boolean,
+  ): Promise<void> {
     const attribution = await this.prismaAdmin.referralAttribution.findUnique({ where: { referredSellerId } });
     if (!attribution) return;
-    if (attribution.commissionWindowEndsAt < new Date()) return; // window closed permanently for this attribution (FR-33.5/33.6/33.7)
+    if (attribution.commissionWindowEndsAt < new Date()) return; // window closed permanently for this attribution (ambassador/creator - FR-33.5/33.6 pre-Module-78 numbering)
 
     const participant = await this.prismaAdmin.programParticipant.findUniqueOrThrow({ where: { id: attribution.participantId } });
     if (participant.status !== "approved") return; // suspended/terminated participants never accrue NEW commission
+
+    if (attribution.programType === "student_referral") {
+      await this.accrueStudentReferralCommission(attribution.id, participant.sellerId, attribution.renewalPayoutCount, isRenewal, currency);
+      return;
+    }
 
     const ratePercent = await this.commissionRatePercentFor(attribution.programType);
     const amount = round2((planFeeAmount * ratePercent) / 100);
@@ -46,6 +64,36 @@ export class ProgramCommissionService {
     await this.prismaAdmin.$transaction((tx) =>
       this.wallet.postLedgerEntry(tx, { sellerId: participant.sellerId, type: "program_commission_credit", amount, currency }),
     );
+  }
+
+  /**
+   * FR-33.5 (Module 78) - "Commerce Students Support": Rs 345 (Settings-
+   * configurable) per renewal, up to 2 renewals (also configurable), never
+   * the referred seller's first/initial payment. Increments
+   * renewalPayoutCount in the same transaction as the ledger post so the
+   * count and the money it gates always move together.
+   */
+  private async accrueStudentReferralCommission(
+    attributionId: string,
+    referringSellerId: string,
+    renewalPayoutCountSoFar: number,
+    isRenewal: boolean,
+    currency: string,
+  ): Promise<void> {
+    if (!isRenewal) return;
+    const maxPayouts = await this.settings.resolve<number>("growth.student_referral_max_renewal_payouts");
+    if (renewalPayoutCountSoFar >= maxPayouts) return;
+
+    const amount = await this.settings.resolve<number>("growth.student_referral_flat_commission_pkr");
+    if (amount <= 0) return;
+
+    await this.prismaAdmin.$transaction(async (tx) => {
+      await this.wallet.postLedgerEntry(tx, { sellerId: referringSellerId, type: "program_commission_credit", amount, currency });
+      await tx.referralAttribution.update({
+        where: { id: attributionId },
+        data: { renewalPayoutCount: { increment: 1 } },
+      });
+    });
   }
 
   private async commissionRatePercentFor(programType: ReferralProgramType): Promise<number> {

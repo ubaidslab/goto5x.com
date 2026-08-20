@@ -8,6 +8,27 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 78: Referral Program Rename - Commerce Students Support
+
+The Student Referral program is renamed "Commerce Students Support" and
+repriced: a flat Rs 345 for each of up to 2 renewals of a referred
+seller's plan (never their first payment), replacing the old percentage-
+of-plan-fee model it used to share with the Creator program (which is
+unaffected). Admin approval to join is unchanged.
+
+### Changed
+- Student Referral commission is now a flat Rs 345 per renewal, capped
+  at 2 renewals per referral, instead of a percentage of the referred
+  seller's plan fee.
+
+### Note
+The founder's own spec numbering for this module and the next
+(Ambassador Program Repricing) collides with the original FR numbers
+those two programs were assigned when first built - flagged in
+`docs/SRS.md` rather than silently building the wrong program under the
+right label. Program identity (which is renamed vs. repriced) followed
+the module's plain-language description, not the label.
+
 ## Module 77: Verification-Channel Pricing
 
 Email order verification stays free on every tier, always. WhatsApp

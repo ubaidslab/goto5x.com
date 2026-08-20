@@ -2637,6 +2637,13 @@ model ReferralAttribution {
   // shorten or lengthen an attribution already in flight.
   commissionWindowEndsAt DateTime            @map("commission_window_ends_at") @db.Timestamptz
   attributedAt           DateTime            @default(now()) @map("attributed_at") @db.Timestamptz
+  // Module 78 (SRS §5.33, FR-33.5) - Student Referral's flat-per-renewal
+  // commission (replacing its old percent-of-plan-fee model) is capped by
+  // COUNT ("up to 2 renewal cycles"), not the time-based
+  // commissionWindowEndsAt above (Ambassador/Creator still use that field
+  // for their own unchanged cap). Incremented only when a Student Referral
+  // renewal commission is actually paid; unused by ambassador/creator.
+  renewalPayoutCount     Int                 @default(0) @map("renewal_payout_count")
 
   participant    ProgramParticipant @relation(fields: [participantId], references: [id])
   referredSeller Seller             @relation("ReferralAttributionReferred", fields: [referredSellerId], references: [id])

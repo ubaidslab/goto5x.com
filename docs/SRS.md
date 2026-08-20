@@ -8408,9 +8408,50 @@ Module 52, v0.34)
       reference across the suite (module26's OTP-mechanics tests,
       module27, module55) seeds the `OrderVerification`/`SettingsValue`
       row directly via Prisma, bypassing the gate entirely - unaffected.
-- [ ] Referral program renamed "Commerce Students Support", Rs 345/
+- [x] Referral program renamed "Commerce Students Support", Rs 345/
       referral for up to 2 renewal cycles, admin-approval-gated (FR-33.5,
-      Module 78).
+      Module 78). **FR-numbering note:** the v0.39 directive's "FR-33.5
+      (Module 78)"/"FR-33.6 (Module 79)" labels collide with Module 22's
+      ORIGINAL FR-33.5 (Ambassador) / FR-33.6 (Student Referral)
+      assignment (§14.33 below) - this entry implements the program
+      Module 78's own text names ("Commerce STUDENTS Support," matching
+      Student Referral's identity), not the literal FR label, which
+      would otherwise point at Ambassador. Module 79 correspondingly
+      implements Ambassador repricing despite being labeled "FR-33.6."
+      Flagging here rather than silently perpetuating a wrong
+      cross-reference; the founder can renumber if desired.
+
+      `student_referral` (internal enum value, unchanged - the rename is
+      a display/marketing name via new global string
+      `growth.student_referral_program_name`, default "Commerce Students
+      Support") moves off the shared percent-of-plan-fee/time-window
+      model it used to share with `creator` (`growth.
+      student_creator_commission_percent`/`_window_months` - kept under
+      their original key names but now Creator-only; Ambassador/Creator
+      both unaffected, unchanged) onto a flat PKR amount
+      (`growth.student_referral_flat_commission_pkr`, default 345) paid
+      only on a RENEWAL of the referred seller's plan fee - never their
+      first/initial payment - capped by COUNT
+      (`growth.student_referral_max_renewal_payouts`, default 2) via a
+      new `ReferralAttribution.renewalPayoutCount` field (migration
+      `20260811120000_module78_referral_program_rename`), not by the
+      existing time-based `commissionWindowEndsAt` (still real for
+      ambassador/creator; student_referral gets a 100-year sentinel there
+      so it's never the binding constraint). `ProgramCommissionService.
+      accrueReferralCommissionIfApplicable()` gained an `isRenewal`
+      parameter - already computed by its sole caller
+      (`AdminWalletController.verify()`, from `WalletService.
+      verifyTopUp()`'s own return value) - and a dedicated
+      `accrueStudentReferralCommission()` branch that increments the
+      count in the same transaction as the ledger post. Admin
+      approval/application/suspension mechanics are the existing,
+      unchanged gate (FR-33.2). Proven by new
+      `module78-referral-program-rename.e2e-spec.ts` (initial payment
+      never pays, each of 2 renewals pays flat, a 3rd renewal pays
+      nothing, both numbers admin-configurable with no deploy);
+      module22-growth-partner-programs's existing Ambassador-only
+      commission test is unaffected (different program type, untouched
+      code path) - verified by re-reading it, not just assuming.
 - [ ] Ambassador Program repriced to Rs 499/referred store/renewed month
       up to 3 months pro-rated, admin-approval-gated, with a
       Settings-configurable free-demo-account count for approved
