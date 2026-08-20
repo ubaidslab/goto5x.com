@@ -1,9 +1,10 @@
 import { randomBytes } from "crypto";
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { IssueGiftCardDto } from "./dto/issue-gift-card.dto";
@@ -29,6 +30,7 @@ export class GiftCardsService {
     private readonly storefront: StorefrontService,
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   /** FR-49.2 (buyer-purchase path) - creates a `pending_payment` card; unusable until FR-49.3's payment confirmation. */
@@ -49,8 +51,17 @@ export class GiftCardsService {
     });
   }
 
-  /** FR-49.2 (seller-issued path) - active immediately; never a revenue event. */
+  /**
+   * FR-49.2 (seller-issued path) - active immediately; never a revenue
+   * event. Module 75 (FR-7.23) - plan-gated; the buyer-purchase path
+   * (purchase() above) is left ungated, same reasoning as its own doc
+   * comment.
+   */
   async issue(sellerId: string, storeId: string, dto: IssueGiftCardDto) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const enabled = await this.settings.resolve<boolean>("gift_cards.enabled", planContext);
+    if (!enabled) throw new ForbiddenException("Gift cards are not included in your current plan.");
+
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");

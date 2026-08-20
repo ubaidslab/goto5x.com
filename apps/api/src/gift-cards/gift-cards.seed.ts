@@ -19,6 +19,38 @@ export async function seedGiftCardsSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  // Module 75 (SRS §5.6j/FR-7.23) - gift cards were previously fully
+  // ungated; new plan-scoped feature gate, off by default (global), on for
+  // RISE+FLY - the same "advanced feature starts at RISE" boundary as
+  // customer_segments.enabled/staff.max_accounts/premium templates/
+  // D-Studio/team-leader eligibility elsewhere in this ladder. Gates
+  // GiftCardsService.issue() (seller-issued cards) only, not the
+  // buyer-purchase path - a store's own configuration already controls
+  // whether buyers see a gift-card purchase option at all. Must run after
+  // seedPlansData() - the paid plan rows it queries must already exist.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "gift_cards.enabled" },
+    create: {
+      key: "gift_cards.enabled",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan"],
+      defaultValue: false,
+      description: "Whether a seller's plan includes seller-issued gift cards (FR-7.23). Off by default; on for RISE+FLY.",
+    },
+    update: {},
+  });
+
+  const giftCardEligiblePlans = await prisma.plan.findMany({
+    where: { planGroup: "individual", tierOrder: { gte: 2 } },
+  });
+  for (const plan of giftCardEligiblePlans) {
+    await prisma.settingsValue.upsert({
+      where: { uniq_settings_scope: { definitionKey: "gift_cards.enabled", scopeType: "plan", scopeId: plan.id } },
+      create: { definitionKey: "gift_cards.enabled", scopeType: "plan", scopeId: plan.id, value: true },
+      update: { value: true },
+    });
+  }
 }
 
 if (require.main === module) {

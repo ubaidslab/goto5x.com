@@ -8314,9 +8314,42 @@ Module 52, v0.34)
       updated to inject an explicit test-owned commission-rate override
       (seller-scoped, highest precedence) where the test's actual point
       is the accrual MECHANISM, not any specific tier's real rate.
-- [ ] Feature-gate ladder (stores/staff/email quota/gift cards/customer
+- [x] Feature-gate ladder (stores/staff/email quota/gift cards/customer
       segments/premium templates/D-Studio/team-leader eligibility) is
-      correct across all four tiers (FR-7.23, Module 75).
+      correct across all four tiers (FR-7.23, Module 75). Store limits
+      raised to GO 1/RUN 3/RISE 5/FLY 10 (`stores.max_per_seller`,
+      `stores.seed.ts`; RUN and FLY were the two that changed, GO stays on
+      the global default and RISE's number happened to already match).
+      Email-campaign quota given its first-ever per-tier ladder (GO 799/
+      RUN 2,499/RISE 10,000/FLY unlimited via a 1-billion sentinel -
+      `email_campaigns.monthly_send_limit`, `campaigns.seed.ts`; previously
+      every tier shared one global default of 500). Staff-account limits
+      (RISE 3/FLY 10) were already correct from Module 35, verified
+      unchanged. Two genuinely new plan-scoped gates added where none
+      existed before - `gift_cards.enabled` and `customer_segments.enabled`
+      (both boolean, off by default, on for RISE+FLY, gating
+      `GiftCardsService.issue()`/`CustomerSegmentsService.create()`
+      respectively; gift cards' buyer-purchase path and segments' read-only
+      list/getOne/previewCount stay ungated). Closed the latent gap FR-7.23
+      itself named: `teams.leader_eligible`/`theme.coded_mode_enabled`/
+      `theme.premium_tier_enabled` were all defined since Modules 4/14/18
+      but never plan-scoped to any tier (every seller silently resolved
+      the `global` default of `false`) - now set `true` for RISE+FLY
+      directly inside `seedPlansData()`'s existing per-tier loop (same
+      idiom already used there for `billing.commission_rate_percent`, whose
+      definition likewise lives in a different file). Proven by new
+      `module75-feature-gate-ladder.e2e-spec.ts`, plus a full-suite sweep
+      that found and fixed four pre-existing specs whose fixtures/
+      assumptions the new gates broke: `module32-gift-cards` and
+      `module33-customer-segments` (fresh GO-tier signups now need a
+      seller-scoped `*.enabled` override to keep exercising the mechanism
+      itself, not the new gate), `module34-email-campaigns` (segment
+      creation needed the same override; its quota test's `global`-scoped
+      override was silently shadowed by GO's new plan-scoped 799 and had
+      to move to `seller` scope, highest precedence), and `tenancy`
+      (its RISE-upgrade store-limit test asserted the old real number 2,
+      now decoupled via a seller-scoped override so it tests the upgrade
+      mechanism, not RISE's current business number).
 - [ ] Prepaid partial-advance (5%) verification channel exists and is
       plan-gated (free RUN+, GO gets only email/WhatsApp) (FR-6.52,
       Module 76).

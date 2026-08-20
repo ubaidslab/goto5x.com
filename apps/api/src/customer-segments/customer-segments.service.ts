@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Customer, CustomerSegment, Prisma } from "@prisma/client";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SettingsService } from "../settings-registry/settings.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { CreateCustomerSegmentDto } from "./dto/create-customer-segment.dto";
 import { PreviewCustomerSegmentDto } from "./dto/preview-customer-segment.dto";
 import { UpdateCustomerSegmentDto } from "./dto/update-customer-segment.dto";
@@ -15,9 +17,18 @@ import { CustomerForMatching, LocationForMatching, matchesSegmentCriteria, Segme
  */
 @Injectable()
 export class CustomerSegmentsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
+  ) {}
 
+  /** Module 75 (FR-7.23) - plan-gated; read-only usage (list/getOne/previewCount) of already-saved segments is left ungated. */
   async create(sellerId: string, storeId: string, dto: CreateCustomerSegmentDto) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const enabled = await this.settings.resolve<boolean>("customer_segments.enabled", planContext);
+    if (!enabled) throw new ForbiddenException("Customer segments are not included in your current plan.");
+
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");

@@ -1,7 +1,10 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 
 describe("Tenant isolation on stores (e2e) - SRS §3.2/§14.2/§14.12 release gate", () => {
   let app: INestApplication;
@@ -145,7 +148,7 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     await superuser.subscription.update({ where: { sellerId }, data: { planId: higherPlan.id } });
   }
 
-  it("a First Month/Starter seller (limit 1) is blocked from creating a second store with a clear message, and the block lifts immediately on upgrade to Growth (limit 2)", async () => {
+  it("a GO seller (limit 1) is blocked from creating a second store with a clear message, and the block lifts immediately on upgrade to a higher tier", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-limit@example.com");
 
     const first = await request(app.getHttpServer())
@@ -162,6 +165,12 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     expect(second.body.message.message).toMatch(/store limit \(1\) has been reached/i);
 
     await upgradeToMultiStoreTier(sellerId);
+    // Module 75 (§5.6j/FR-7.23) raised RISE's real store limit to 5 - this
+    // test's actual point is the upgrade MECHANISM (the block lifting
+    // immediately), not RISE's specific business number, so a
+    // seller-scoped override (highest precedence) keeps the limit small
+    // and the test's third-store assertion below meaningful.
+    await app.get(SettingsService).setValue("stores.max_per_seller", "seller", sellerId, 2, ADMIN_ID);
 
     const afterUpgrade = await request(app.getHttpServer())
       .post("/stores")

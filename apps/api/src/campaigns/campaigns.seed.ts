@@ -34,6 +34,31 @@ export async function seedCampaignsSettings(prisma: PrismaClient) {
     },
     update: {},
   });
+
+  // Module 75 (SRS §5.6j/FR-7.23) - the founder-approved feature-gate
+  // ladder: GO 799/RUN 2,499/RISE 10,000/FLY unlimited. FLY's "unlimited"
+  // is represented as a very large sentinel (no real seller could plausibly
+  // send this many campaign emails in a month) rather than teaching
+  // EmailCampaignsService's plain-number quota math a distinct "unlimited"
+  // concept. Must run after seedPlansData() - the paid plan rows it
+  // queries must already exist.
+  const EMAIL_CAMPAIGNS_UNLIMITED_SENTINEL = 1_000_000_000;
+  const monthlyLimitByTierOrder: Record<number, number> = {
+    0: 799,
+    1: 2_499,
+    2: 10_000,
+    3: EMAIL_CAMPAIGNS_UNLIMITED_SENTINEL,
+  };
+  const individualPlans = await prisma.plan.findMany({ where: { planGroup: "individual" } });
+  for (const plan of individualPlans) {
+    const value = monthlyLimitByTierOrder[plan.tierOrder];
+    if (value == null) continue;
+    await prisma.settingsValue.upsert({
+      where: { uniq_settings_scope: { definitionKey: "email_campaigns.monthly_send_limit", scopeType: "plan", scopeId: plan.id } },
+      create: { definitionKey: "email_campaigns.monthly_send_limit", scopeType: "plan", scopeId: plan.id, value },
+      update: { value },
+    });
+  }
 }
 
 if (require.main === module) {

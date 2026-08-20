@@ -8,6 +8,27 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 75: Feature-Gate Ladder
+
+The founder-approved feature-gate ladder across GO/RUN/RISE/FLY. Store
+limits raised (GO 1/RUN 3/RISE 5/FLY 10) and email-campaign quotas given
+their first-ever per-tier ladder (GO 799/RUN 2,499/RISE 10,000/FLY
+unlimited - every tier previously shared one global default). Two brand
+new plan-scoped gates where none existed before - gift cards and customer
+segments, both off by default, both on for RISE+FLY. Closed a latent gap:
+premium-template access and D-Studio/team-leader eligibility were defined
+since early modules but never actually turned on for any tier - every
+seller silently got the `false` default regardless of plan. Now on for
+RISE+FLY.
+
+### Changed
+- Store, email-campaign, gift-card, and customer-segment limits/gates now
+  vary correctly by plan tier instead of sharing one global value (or, for
+  gift cards/segments, having no gate at all).
+- Selecting a premium storefront template, using D-Studio's custom-code
+  escape hatch, and becoming a team leader now actually require RISE or
+  FLY, closing a gap where they were built but silently open to everyone.
+
 ## Module 74: Final Plans + First-Cycle Discount
 
 Commission drops to 0% on every tier - the engine stays fully intact and

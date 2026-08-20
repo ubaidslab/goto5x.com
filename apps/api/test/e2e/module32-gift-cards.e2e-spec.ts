@@ -66,6 +66,12 @@ describe("Gift Cards (e2e) - SRS §5.49, §14.49", () => {
     // (highest precedence) restores this file's 2% baseline without
     // depending on any tier's real seeded value.
     await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", storeRow.sellerId, 2, ADMIN_ID);
+    // Module 75 (§5.6j/FR-7.23) - gift_cards.enabled is now plan-gated (off
+    // by default, on for RISE+FLY); a fresh signup starts on GO. This
+    // file's whole point is exercising the gift-card mechanism itself, not
+    // the gate, so a seller-scoped override (highest precedence) restores
+    // access regardless of the signup default tier.
+    await app.get(SettingsService).setValue("gift_cards.enabled", "seller", storeRow.sellerId, true, ADMIN_ID);
     return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.uzeyn.com` };
   }
 

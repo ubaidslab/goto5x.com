@@ -4183,14 +4183,23 @@ here).
   deleted, injecting an explicit test-owned commission override
   (seller-scoped) wherever a test's real point was the accrual mechanism,
   not any specific tier's rate.
-- **Module 75 — Feature-Gate Ladder (§5.6j, FR-7.23).** Not yet built.
-  Store limits (GO 1/RUN 3/RISE 5/FLY 10), staff accounts, email-campaign
-  quotas (GO 799/RUN 2,499/RISE 10,000/FLY unlimited), new plan-scoped
-  gates for gift cards and customer segments (previously ungated),
+- **Module 75 — Feature-Gate Ladder (§5.6j, FR-7.23).** BUILT. Store
+  limits GO 1/RUN 3/RISE 5/FLY 10 (`stores.seed.ts`); staff accounts
+  verified already correct (RISE 3/FLY 10, unchanged); email-campaign
+  quotas GO 799/RUN 2,499/RISE 10,000/FLY unlimited (`campaigns.seed.ts`,
+  "unlimited" = a 1-billion sentinel, no code change to the quota math);
+  new plan-scoped gates `gift_cards.enabled`/`customer_segments.enabled`
+  (both previously fully ungated, both off by default/on for RISE+FLY);
   premium-template access (`theme.premium_tier_enabled`) and D-Studio/
   team-leader eligibility (`theme.coded_mode_enabled`/`teams.leader_eligible`)
   turned on for RISE+FLY, closing the latent gap where neither was ever
-  actually enabled for any tier.
+  actually enabled for any tier - all three set inside `seedPlansData()`'s
+  existing per-tier loop even though their definitions live in three
+  different files, same precedent as `billing.commission_rate_percent`
+  there already. Proven by `module75-feature-gate-ladder.e2e-spec.ts`;
+  full-suite sweep fixed 4 pre-existing specs the new gates broke
+  (module32-gift-cards, module33-customer-segments, module34-email-campaigns,
+  tenancy).
 - **Module 76 — Prepaid Partial-Advance, 5% (§5.6j, FR-6.52).** Not yet
   built. New `OrderVerificationChannel` (`prepaid_partial_advance`) - a
   genuinely new mechanism, not a gate on something pre-existing: buyer

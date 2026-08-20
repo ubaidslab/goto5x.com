@@ -23,13 +23,14 @@ export async function seedStoresSettings(prisma: PrismaClient) {
     update: {},
   });
 
-  // Individual: First Month/Starter keep the global default of 1 (no
-  // override needed). Growth gets 2, Pro gets 5 (founder-specified range
-  // was 3-5; 5 chosen as the launch ceiling). Team group mirrors the same
-  // shape by tierOrder position (Team Starter implicitly 1 via the global
-  // default, Team Growth 2, Team Scale 5).
+  // Module 75 (SRS §5.6j/FR-7.23) - the founder-approved feature-gate
+  // ladder: GO 1/RUN 3/RISE 5/FLY 10. GO keeps the global default of 1 (no
+  // override needed); RUN, previously also on the global default, now gets
+  // its own explicit override. Team group is untouched by this ladder
+  // (individual-tier-only per FR-7.23), keeping its own pre-existing
+  // mapping by tierOrder position.
   const maxStoresByTierAndGroup: Record<"individual" | "team", Record<number, number>> = {
-    individual: { 2: 2, 3: 5 },
+    individual: { 1: 3, 2: 5, 3: 10 },
     team: { 1: 2, 2: 5 },
   };
   const paidPlans = await prisma.plan.findMany({

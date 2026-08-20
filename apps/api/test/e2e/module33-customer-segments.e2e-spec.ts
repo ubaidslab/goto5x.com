@@ -1,9 +1,11 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Module 33 (SRS §5.50, §14.50) - Customer Segments. A saved filter, never a
@@ -50,6 +52,12 @@ describe("Customer Segments (e2e) - SRS §5.50, §14.50", () => {
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
+    // Module 75 (§5.6j/FR-7.23) - customer_segments.enabled is now
+    // plan-gated (off by default, on for RISE+FLY); a fresh signup starts
+    // on GO. This file's whole point is exercising the segments mechanism
+    // itself, not the gate, so a seller-scoped override (highest
+    // precedence) restores access regardless of the signup default tier.
+    await app.get(SettingsService).setValue("customer_segments.enabled", "seller", storeRow.sellerId, true, ADMIN_ID);
     return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
   }
 

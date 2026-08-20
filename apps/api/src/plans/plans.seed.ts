@@ -351,6 +351,22 @@ export async function seedPlansData(prisma: PrismaClient) {
     const plan = await upsertPlan(prisma, { planGroup: "individual", yearlyDiscountPercent: 16.67, ...planFields });
     await setPlanScopedSetting(prisma, "billing.commission_rate_percent", plan.id, commissionPercent);
     await setPlanScopedSetting(prisma, "catalog.product_limit", plan.id, productLimit);
+
+    // Module 75 (SRS §5.6j/FR-7.23) - closes the latent gap where
+    // teams.leader_eligible/theme.coded_mode_enabled/theme.premium_tier_
+    // enabled were all defined (by this file and themes.seed.ts/
+    // external-api.seed.ts respectively) but never actually turned on for
+    // any tier - every seller resolved all three to their global `false`
+    // default. Turned on for RISE+FLY (tierOrder >= 2), same boundary as
+    // gift_cards.enabled/customer_segments.enabled/staff.max_accounts.
+    // Their VALUES are set here (not in their owning files) for the same
+    // reason billing.commission_rate_percent's values already are above -
+    // this loop is where the tier/plan.id pairing already exists.
+    if (tier.tierOrder >= 2) {
+      await setPlanScopedSetting(prisma, "teams.leader_eligible", plan.id, true);
+      await setPlanScopedSetting(prisma, "theme.coded_mode_enabled", plan.id, true);
+      await setPlanScopedSetting(prisma, "theme.premium_tier_enabled", plan.id, true);
+    }
   }
 
   // FR-7.18 - team tiers carry seatPrice (per sponsored seat), not `price`
@@ -417,7 +433,7 @@ async function upsertPlan(
 }
 
 /** Same plan-scoped upsert pattern as staff.seed.ts/themes.seed.ts's per-tier settings loops. */
-async function setPlanScopedSetting(prisma: PrismaClient, definitionKey: string, planId: string, value: number) {
+async function setPlanScopedSetting(prisma: PrismaClient, definitionKey: string, planId: string, value: number | boolean) {
   await prisma.settingsValue.upsert({
     where: { uniq_settings_scope: { definitionKey, scopeType: "plan", scopeId: planId } },
     create: { definitionKey, scopeType: "plan", scopeId: planId, value },

@@ -60,6 +60,13 @@ describe("Email Campaigns (e2e) - SRS §5.51, §14.51", () => {
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
+    // Module 75 (§5.6j/FR-7.23) - customer_segments.enabled is now
+    // plan-gated (off by default, on for RISE+FLY); a fresh signup starts
+    // on GO. This file's whole point is exercising campaigns (which target
+    // a segment as setup, not this file's focus), so a seller-scoped
+    // override (highest precedence) restores segment-creation access
+    // regardless of the signup default tier.
+    await app.get(SettingsService).setValue("customer_segments.enabled", "seller", storeRow.sellerId, true, ADMIN_ID);
     return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com`, sellerId: storeRow.sellerId };
   }
 
@@ -145,14 +152,18 @@ describe("Email Campaigns (e2e) - SRS §5.51, §14.51", () => {
   });
 
   it("FR-51.2: a send exceeding the plan's remaining monthly quota is rejected entirely, never partially sent", async () => {
-    const { token, storeId, hostname } = await signupLoginAndCreateStore("camp2@example.com", "camp2-store");
+    const { token, storeId, hostname, sellerId } = await signupLoginAndCreateStore("camp2@example.com", "camp2-store");
     const { productId, variantId } = await createSelfProduct(token, storeId, 500);
     await checkoutAndPay(token, storeId, hostname, productId, variantId, "quota-buyer1@example.com");
     await checkoutAndPay(token, storeId, hostname, productId, variantId, "quota-buyer2@example.com");
     await checkoutAndPay(token, storeId, hostname, productId, variantId, "quota-buyer3@example.com");
 
     // 2 customers is over this quota (1) - the whole campaign must be blocked, not sent to 1 of 2.
-    await app.get(SettingsService).setValue("email_campaigns.monthly_send_limit", "global", null, 1, ADMIN_ID);
+    // Module 75 (§5.6j/FR-7.23) gave GO its own plan-scoped quota (799),
+    // which now shadows a global-scoped override entirely (plan beats
+    // global in precedence) - seller-scoped (highest precedence) is the
+    // only override that actually reaches this seller's resolved quota.
+    await app.get(SettingsService).setValue("email_campaigns.monthly_send_limit", "seller", sellerId, 1, ADMIN_ID);
 
     const senderEmailId = await connectSender(token, "campaigns2@seller-example.com");
     const segment = await request(app.getHttpServer())
@@ -173,7 +184,7 @@ describe("Email Campaigns (e2e) - SRS §5.51, §14.51", () => {
     expect(list.body).toHaveLength(0);
 
     // Raise the quota back up - the same campaign now succeeds and consumes it.
-    await app.get(SettingsService).setValue("email_campaigns.monthly_send_limit", "global", null, 500, ADMIN_ID);
+    await app.get(SettingsService).setValue("email_campaigns.monthly_send_limit", "seller", sellerId, 500, ADMIN_ID);
     const accepted = await request(app.getHttpServer())
       .post(`/stores/${storeId}/campaigns`)
       .set("Authorization", `Bearer ${token}`)
