@@ -44,6 +44,21 @@ interface TeamMembership {
   team: { id: string; name: string; plan: Plan; leader: { businessName: string } };
 }
 
+interface PlanFeePaymentRequest {
+  id: string;
+  planFeePortion: number | null;
+  status: "pending" | "verified" | "rejected";
+  requestedAt: string;
+}
+
+interface PlanFeePaymentPreview {
+  planName: string;
+  amountDue: number;
+  isRenewal: boolean;
+  currency: string;
+  instructions: string;
+}
+
 // FR-7.17 - the whole point: this page renders entirely from /plans data,
 // never a hard-coded tier list. Adding/reordering a tier changes what's
 // displayed here with no deploy.
@@ -61,6 +76,16 @@ export default function BillingPage() {
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [inviteEmail, setInviteEmail] = useState<Record<string, string>>({});
 
+  // Module 73 (v0.38) - the plan-fee payment card. There is no wallet
+  // balance/top-up concept for a seller any more - just the amount due
+  // right now (first cycle, discounted, or an ordinary renewal at full
+  // price) and payment history.
+  const [paymentPreview, setPaymentPreview] = useState<PlanFeePaymentPreview | null>(null);
+  const [paymentRequests, setPaymentRequests] = useState<PlanFeePaymentRequest[] | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentInstructions, setPaymentInstructions] = useState<string | null>(null);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
   function loadAll() {
     api.get<{ individual: Plan[]; team: Plan[]; supplier: Plan[] }>("/plans").then(setPlans).catch(() => {});
     api
@@ -70,9 +95,29 @@ export default function BillingPage() {
       .finally(() => setLoaded(true));
     api.get<Team[]>("/sellers/me/teams").then(setTeams).catch(() => {});
     api.get<TeamMembership[]>("/sellers/me/team-membership").then(setMemberships).catch(() => {});
+    api.get<PlanFeePaymentPreview>("/sellers/me/wallet/plan-fee-payment").then(setPaymentPreview).catch(() => setPaymentPreview(null));
+    api
+      .get<PlanFeePaymentRequest[]>("/sellers/me/wallet/topup-requests")
+      .then((all) => setPaymentRequests(all.filter((r) => r.planFeePortion !== null)))
+      .catch(() => setPaymentRequests([]));
   }
 
   useEffect(loadAll, []);
+
+  async function submitPlanFeePayment() {
+    setPaymentError(null);
+    setPaymentInstructions(null);
+    setSubmittingPayment(true);
+    try {
+      const result = await api.post<{ instructions: string }>("/sellers/me/wallet/plan-fee-payment", {});
+      setPaymentInstructions(result.instructions);
+      loadAll();
+    } catch (err) {
+      setPaymentError(err instanceof ApiError ? err.message : "Could not submit that payment.");
+    } finally {
+      setSubmittingPayment(false);
+    }
+  }
 
   async function changePlan(planId: string) {
     setError(null);
@@ -172,6 +217,48 @@ export default function BillingPage() {
             )}
           </CardBody>
         </Card>
+
+        {(paymentRequests?.some((r) => r.status === "pending") ?? false) ? (
+          <Alert tone="info">Your plan-fee payment is pending admin verification.</Alert>
+        ) : (
+          paymentPreview && (
+            <Card>
+              <CardHeader
+                title={paymentPreview.isRenewal ? "Plan fee due" : "Get started"}
+                description={`${paymentPreview.planName} - ${paymentPreview.isRenewal ? "renewal" : "first cycle (discounted)"}`}
+              />
+              <CardBody className="space-y-4">
+                {paymentError && <Alert>{paymentError}</Alert>}
+                {paymentInstructions && <Alert tone="info">{paymentInstructions}</Alert>}
+                <div className="rounded-lg border border-border p-4">
+                  <p className="text-3xl font-semibold text-ink">Rs. {paymentPreview.amountDue.toFixed(2)}</p>
+                </div>
+                <Button loading={submittingPayment} onClick={submitPlanFeePayment}>
+                  Pay - Rs. {paymentPreview.amountDue.toFixed(2)}
+                </Button>
+              </CardBody>
+            </Card>
+          )
+        )}
+
+        {paymentRequests && paymentRequests.length > 0 && (
+          <Card>
+            <CardHeader title="Payment history" />
+            <CardBody className="divide-y divide-border">
+              {paymentRequests.map((r) => (
+                <div key={r.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium text-ink">Rs. {Number(r.planFeePortion ?? 0).toFixed(2)}</p>
+                    <p className="text-xs text-ink-muted">{new Date(r.requestedAt).toLocaleString()}</p>
+                  </div>
+                  <Badge tone={r.status === "verified" ? "success" : r.status === "rejected" ? "danger" : "warning"}>
+                    {r.status}
+                  </Badge>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+        )}
 
         {!activeMembership && plans && (
           <Card>

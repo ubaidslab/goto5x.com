@@ -3,8 +3,7 @@ import { NestFactory } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { Worker } from "bullmq";
 import { AppModule } from "../app.module";
-import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
-import { WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME } from "../billing/wallet-low-balance-sweep.queue";
+import { PLAN_FEE_RENEWAL_EXPORT_QUEUE_NAME } from "../billing/plan-fee-renewal-export.queue";
 import { WalletReconciliationService } from "../billing/wallet-reconciliation.service";
 import { WALLET_RECONCILIATION_QUEUE_NAME } from "../billing/wallet-reconciliation.queue";
 import { PlanFeeDebitService } from "../billing/plan-fee-debit.service";
@@ -45,7 +44,6 @@ async function main() {
   const domainVerification = appContext.get(DomainVerificationService);
   const supplierSync = appContext.get(SupplierSyncService);
   const cart = appContext.get(CartService);
-  const walletGraceLadder = appContext.get(WalletGraceLadderService);
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const walletReconciliation = appContext.get(WalletReconciliationService);
   const dormantStores = appContext.get(DormantStoreService);
@@ -130,19 +128,25 @@ async function main() {
     console.error(`plan-fee-debit job ${job?.id} failed:`, err);
   });
 
-  // Module 20 (FR-6.25) - replaces Module 11's overdue-invoice-suspend
-  // sweep for the commission side of the wallet: warning -> grace days ->
-  // orders_paused, with instant restore handled separately at top-up
-  // verification time (AdminWalletController).
-  const walletLowBalanceSweepWorker = new Worker(
-    WALLET_LOW_BALANCE_SWEEP_QUEUE_NAME,
-    async () => walletGraceLadder.runSweep(),
+  // Module 73 (v0.38) - the wallet-low-balance sweep worker that used to
+  // run here is REMOVED (unscheduled, not deleted - see BillingModule's
+  // docstring for why leaving it scheduled would actively harm sellers now
+  // that wallet balance sits at 0 forever). This is its replacement bridge:
+  // AdminWalletController pushes a job here the moment an admin verifies a
+  // RENEWAL plan-fee payment (never a first payment - nothing to export
+  // yet for a brand-new seller), and this worker completes the same
+  // FR-36.1(a) data-export trigger the old wallet-auto-debit sweep used to
+  // fire directly, at this same orchestration layer (outside the module
+  // graph, so BillingModule never needs to import DataExportModule).
+  const planFeeRenewalExportWorker = new Worker(
+    PLAN_FEE_RENEWAL_EXPORT_QUEUE_NAME,
+    async (job) => dataExport.triggerRenewalExport(job.data.sellerId as string),
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 
-  walletLowBalanceSweepWorker.on("failed", (job, err) => {
+  planFeeRenewalExportWorker.on("failed", (job, err) => {
     // eslint-disable-next-line no-console
-    console.error(`wallet-low-balance-sweep job ${job?.id} failed:`, err);
+    console.error(`plan-fee-renewal-export job ${job?.id} failed:`, err);
   });
 
   // Module 47 (new FR-6.29) - the daily wallet-balance reconciliation
@@ -275,7 +279,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit/wallet-low-balance-sweep - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep).",
   );
 
   const shutdown = async () => {
@@ -283,7 +287,7 @@ async function main() {
     await supplierSyncWorker.close();
     await cartAbandonmentWorker.close();
     await planFeeDebitWorker.close();
-    await walletLowBalanceSweepWorker.close();
+    await planFeeRenewalExportWorker.close();
     await walletReconciliationWorker.close();
     await dormantStoreWorker.close();
     await productImportWorker.close();

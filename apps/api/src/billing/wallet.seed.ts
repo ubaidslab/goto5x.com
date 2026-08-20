@@ -120,10 +120,12 @@ export async function seedWalletSettings(prisma: PrismaClient) {
 
   // Module 59 (SRS §5.6g, FR-6.33) - the wallet-credit portion of the
   // combined signup total (`firstCyclePrice + this`), a deliberately
-  // separate key from `billing.wallet_min_initial_topup` above: that one
-  // gates *publishing*, this one is the amount bundled into the one-time
-  // first-payment screen so a brand-new wallet already clears the publish
-  // gate the moment the combined payment is verified.
+  // Module 73 (v0.38) - DORMANT. The combined signup payment this key fed
+  // (Module 59) is retired: signup/renewal now submit a plan-fee-only
+  // payment (WalletService.getPlanFeePaymentPreview()/
+  // requestPlanFeePayment()), never a bundled wallet top-up. Left seeded,
+  // unread, same "kept not deleted" treatment as every other dormant
+  // wallet-era key below - re-activatable if the wallet ever comes back.
   await prisma.settingsDefinition.upsert({
     where: { key: "billing.minimum_signup_wallet_topup" },
     create: {
@@ -132,7 +134,27 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: 699,
       validation: { min: 0 },
-      description: "The wallet top-up (PKR) bundled into a new seller's combined signup payment, alongside their plan's first-cycle price, as one total and one proof-of-payment (SRS FR-6.33).",
+      description: "DORMANT (v0.38) - the wallet top-up (PKR) a combined signup payment used to bundle in, before Module 73 retired the combined-payment model in favor of a plan-fee-only payment. Unread.",
+    },
+    update: {},
+  });
+
+  // Module 73 (v0.38, SRS §5.6g amended) - the subscription-only renewal
+  // mechanism's grace window: a subscription becomes overdue at
+  // Subscription.currentPeriodEnd, but PlanFeeDebitService's sweep only
+  // pauses the seller's stores once currentPeriodEnd + this many days has
+  // passed with no verified renewal payment - covering the ordinary lag
+  // between "seller submitted a payment proof" and "admin verified it",
+  // never punishing that lag as if it were non-payment.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.plan_fee_grace_days" },
+    create: {
+      key: "billing.plan_fee_grace_days",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 3,
+      validation: { min: 0, max: 30 },
+      description: "Days past Subscription.currentPeriodEnd before a seller's stores pause for plan-fee non-payment (v0.38) - covers ordinary admin-verification lag on an already-submitted payment.",
     },
     update: {},
   });

@@ -14,11 +14,11 @@ import { WalletService } from "./wallet.service";
  * so BillingModule never has to import GrowthProgramsModule (which itself
  * imports BillingModule, for WalletService, in the withdrawal flow).
  *
- * FR-33.4 (binding) - called from exactly two places, both a real paid
- * plan-fee amount: PlanFeeDebitService.debitDuePlanFees()'s successful-
- * debit branch (every renewal), and AdminWalletController.verify()'s
- * combined-signup-payment branch (Module 59, FR-6.33 - the first cycle,
- * paid up front instead of via a later debit). Never called for team-seat/
+ * FR-33.4 (binding) - Module 73 (v0.38) collapsed this back to exactly ONE
+ * call site: AdminWalletController.verify()'s plan-fee-payment branch,
+ * for every real paid plan-fee amount (first cycle AND every renewal
+ * after it - PlanFeeDebitService no longer debits anything, so it no
+ * longer has a call site here either). Never called for team-seat/
  * device-slot debits or wallet top-ups - those are not "the referred
  * seller's own plan-subscription amount," so referral commission must
  * never accrue from them.

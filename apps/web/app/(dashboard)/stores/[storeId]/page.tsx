@@ -239,10 +239,11 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
     );
   }
 
-  // Module 20 (SRS §5.6e, FR-6.21) - the explicit "go live" moment: a
-  // seller with products still needs to publish before real orders can
-  // complete. publish() itself checks payment method + CNIC + minimum
-  // wallet top-up and returns a clear message if any is missing.
+  // Module 73 (v0.38) - the explicit "go live" moment: a seller with
+  // products still needs to publish before real orders can complete.
+  // publish() itself checks payment method + identity verification only
+  // now - the old minimum wallet top-up condition is dropped (wallet is
+  // hidden; plan-fee payment is a separate, unrelated flow).
   if (!store.publishedAt) {
     return (
       <div>
@@ -252,19 +253,13 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
             <div>
               <h2 className="text-base font-semibold text-ink">Ready to go live?</h2>
               <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
-                Publishing requires a payment method, identity verification, and a minimum wallet top-up - all
-                one-time steps.
+                Publishing requires a payment method and identity verification - both one-time steps.
               </p>
             </div>
             {publishError && <Alert>{publishError}</Alert>}
-            <div className="flex gap-2">
-              <Button loading={publishing} onClick={publish}>
-                Publish store
-              </Button>
-              <Link href={`/stores/${params.storeId}/wallet`}>
-                <Button variant="secondary">Top up wallet</Button>
-              </Link>
-            </div>
+            <Button loading={publishing} onClick={publish}>
+              Publish store
+            </Button>
           </CardBody>
         </Card>
       </div>

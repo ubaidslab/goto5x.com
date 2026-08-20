@@ -4106,13 +4106,114 @@ prior "next" note in this document:
    primitive introduced by this batch.
 
 Modules 38-43 (Phase C, below) remain queued **after** this entire chain,
-unaffected by the reordering. **The founder has directed that all
-autonomous module work stop once Modules 62, 59-61, 48, and 63-72 are
-complete** — the UI/UX design phase is the next topic, and the founder
-wants to discuss its direction before any of that work begins.
+unaffected by the reordering.
 
 This batch is slotted **after** Module 58, once the Professional Seller
 Readiness batch (Modules 54-58) is complete — not ahead of it.
+
+## Founder-directed re-sequencing, v0.39 — Subscription-Only Business Model + Buyer Experience Batch
+
+**Final, locked business-model decision, superseding v0.36-v0.38's
+wallet-active/commission-active design:** UZEYN earns from subscriptions
+only now (see SRS §5.6j for the full rationale — commission requires
+either payment-aggregator registration or gateway split-payment, neither
+of which exists yet; ship subscription-only now, re-activate commission
+later). This new batch is slotted **between Modules 59-61 and Module
+48** in the founder's build order — Modules 63-72 (Subscription Business
+Readiness) still run after Module 48, unchanged, but several of that
+batch's ten FRs will need individual re-amendment when their turn comes,
+since they were written against the wallet-active model this batch
+retires (flagged case-by-case at that time, not preemptively rewritten
+here).
+
+- **Module 73 — Subscription-Only Renewal Mechanism (§5.6j, FR-6.50).
+  BUILT.** Publish gate drops its wallet-balance precondition entirely
+  (`WalletGraceLadderService.publish()` - payment method + CNIC only).
+  `WalletService.getSignupPaymentPreview()`/`requestCombinedSignupPayment()`
+  (Module 59) renamed `getPlanFeePaymentPreview()`/`requestPlanFeePayment()`
+  and made plan-fee-only (`amount` always 0) - callable every cycle, not
+  just at signup; guard blocks only a PENDING duplicate. `hasEverPaidPlanFee()`
+  distinguishes a first payment (activate `currentPeriodEnd` fresh from
+  verification time, at `firstCyclePrice`) from a renewal (advance/stack
+  onto the existing `currentPeriodEnd`, at the full active price via the
+  unchanged `resolveActivePlanPrice()`/`computeCyclePrice()`).
+  `PlanFeeDebitService.debitDuePlanFees()` is gutted to pure overdue
+  detection - new `billing.plan_fee_grace_days` (default 3) window before
+  `pauseActiveStores()` fires; new unconditional
+  `WalletGraceLadderService.restoreAfterPlanFeePayment()` restores on
+  verify. `WalletLowBalanceSweepScheduler` is removed from
+  `BillingModule`'s providers and its worker.main.ts consumer deleted -
+  "unscheduled, not deleted," same discipline as the old invoice
+  scheduler - since a permanent 0 balance would otherwise pause every
+  seller. Referral commission (FR-33.4) collapses back to one call site
+  (`AdminWalletController.verify()`); the renewal-only data-export trigger
+  (FR-36.1(a)) moves from the old sweep to a new `PlanFeeRenewalExportTrigger`
+  bridge (its own tiny BullMQ queue) pushed from `AdminWalletController.verify()`
+  and consumed in worker.main.ts, avoiding a BillingModule -> DataExportModule
+  cycle. Seller dashboard: the Wallet page/route is retired; a new Billing
+  page (`/stores/:id/billing`) shows only the amount due and payment
+  history. `module59-combined-entry-flow-payment.e2e-spec.ts`/
+  `module60-wallet-commission-four-tier-reverification.e2e-spec.ts` are
+  deleted (their premise - wallet auto-debit renewals - no longer exists)
+  and superseded by a new `module73-subscription-only-renewal.e2e-spec.ts`
+  (7 cases); `module47-wallet-balance-reconciliation.e2e-spec.ts`'s
+  publish-gate case is rewritten to match.
+- **Module 74 — Final Plans + First-Cycle Discount (§5.6j/§5.7, FR-6.51/
+  FR-7.22).** Not yet built. Commission -> 0% on every tier, removed from
+  every seller-facing surface (engine stays intact/dormant). Tiers
+  renamed/repriced GO (Rs 6,500/Rs 7,999 regular)/RUN (Rs 17,500/Rs
+  18,999)/RISE (Rs 49,999/Rs 64,999)/FLY (Rs 99,999/Rs 129,999) - data-only
+  change, same `Plan` rows. New global `billing.first_cycle_discount_percent`
+  (default 50) replaces the per-plan `firstCyclePrice` column as the
+  first-cycle computation (dormant/unread after, same treatment as
+  `yearlyDiscountPercent`).
+- **Module 75 — Feature-Gate Ladder (§5.6j, FR-7.23).** Not yet built.
+  Store limits (GO 1/RUN 3/RISE 5/FLY 10), staff accounts, email-campaign
+  quotas (GO 799/RUN 2,499/RISE 10,000/FLY unlimited), new plan-scoped
+  gates for gift cards and customer segments (previously ungated),
+  premium-template access (`theme.premium_tier_enabled`) and D-Studio/
+  team-leader eligibility (`theme.coded_mode_enabled`/`teams.leader_eligible`)
+  turned on for RISE+FLY, closing the latent gap where neither was ever
+  actually enabled for any tier.
+- **Module 76 — Prepaid Partial-Advance, 5% (§5.6j, FR-6.52).** Not yet
+  built. New `OrderVerificationChannel` (`prepaid_partial_advance`) - a
+  genuinely new mechanism, not a gate on something pre-existing: buyer
+  pays 5% via the seller's connected Module 62 gateway at checkout, order
+  auto-confirms on verified partial payment, remainder stays COD. Free
+  from RUN upward; GO keeps only email + WhatsApp verification free.
+- **Module 77 — Verification-Channel Pricing (§5.6j, FR-6.53).** Not yet
+  built. Email verification free on every tier, always. WhatsApp becomes
+  plan-gated. SMS verification does not exist as a channel and is
+  explicitly out of scope.
+- **Module 78 — Referral Program Rename (§5.33, FR-33.5).** Not yet
+  built. "Commerce Students Support," Rs 345/referral for up to 2 renewal
+  cycles, admin-approval-gated (existing gate, unchanged).
+- **Module 79 — Ambassador Program Repricing (§5.33, FR-33.6).** Not yet
+  built. Rs 499/referred store/renewed month up to 3 months pro-rated,
+  admin-approval-gated, new Settings-configurable free-demo-account count
+  for approved ambassadors.
+- **Module 80 — Pricing Page Rebuild (§5.6j, FR-7.24).** Not yet built.
+  Every existing feature grouped into Selling/Design/Marketing/
+  Operations/Trust & Security/Support sections; "0% commission"/"your
+  money never sits with us" positioning; local-dropshipping copy on the
+  homepage/pricing page (copy only).
+- **Modules 81-88 — Buyer Experience Batch (new SRS §5.66, FR-66.1-66.8).**
+  Not yet built. Optional buyer accounts; product reviews with media
+  (Drive-stored, moderation-extended); live chat widget (plan-gated);
+  shipping cost calculator on product/cart pages; wishlist (plan-gated);
+  stock countdown; image zoom + product video; order tracking polish +
+  missing-tracking alert (Orders Command Center flag, Settings-configurable
+  window). Each item is its own module, one FR each, same per-item
+  numbering discipline as the Professional Seller Readiness and
+  Subscription Business Readiness batches. Explicitly NOT building:
+  frequently-bought-together, SMS order confirmation, AI store design via
+  MCP/agent linking (security risk, founder's decision), or a
+  customizable/build-your-own plan (roadmap note).
+
+**The founder has directed that all autonomous module work stop once
+Modules 73-88, 48, and 63-72 are complete** — the UI/UX design phase is
+the next topic, and the founder wants to discuss its direction before any
+of that work begins.
 
 ---
 

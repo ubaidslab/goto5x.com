@@ -2543,6 +2543,108 @@ resequencing.
   the one place platform-owed money is settled (distinct from FR-6.36-39's
   buyer-to-seller payment rails, which UZEYN never touches).
 
+### 5.6j Subscription-Only Business Model — Commission Deactivated, Wallet Hidden (new v0.39; supersedes §5.6f/§5.6g's wallet-active mechanics; §5.6i's Modules 63-72 will each be individually re-amended when their turn comes, since several assume the wallet-active model this section retires)
+**Final, locked business-model decision — UZEYN earns from subscriptions
+only (plus template sales later via the separate Template Store SaaS).**
+Commission requires either collecting buyer funds (payment-aggregator
+regulation, needs a registered entity UZEYN doesn't have yet) or gateway
+split-payment (confirmed unsupported by Safepay and every gateway
+evaluated for Module 62). Rather than delay launch, UZEYN ships
+subscription-only now and re-activates commission later once a Pvt Ltd
+and a split-payment-capable gateway exist. This is the same design intent
+as the founder's original (cancelled) Module 59 — reapplied here
+permanently, on the mechanisms this SRS actually built since then
+(Modules 20/47/59-61), not a fresh design.
+
+- FR-6.50 (Module 73): **Subscription-only renewal mechanism.** The
+  publish gate (FR-6.21) drops its wallet-balance condition entirely —
+  payment method + verified CNIC are the only two conditions left. A
+  seller's plan fee — first cycle **and every renewal after it** — is
+  paid through the same `WalletTopUpRequest`/`AdminWalletController`
+  admin-verify flow FR-6.33 already built, now plan-fee-only (never a
+  bundled wallet top-up; `amount` is always 0, `planFeePortion` carries
+  the whole amount due). A seller's first-ever verified payment
+  **activates** `Subscription.currentPeriodEnd` fresh from verification
+  time, at the tier's discounted `firstCyclePrice`; every payment after
+  that **advances** (stacks onto) the existing `currentPeriodEnd`, at the
+  tier's full active (campaign-aware) price for the subscription's own
+  billing-cycle multiplier (FR-7.20, unchanged computation, now read by
+  `WalletService` instead of the retired auto-debit path).
+  `PlanFeeDebitService`'s wallet-auto-debit renewal (FR-6.34) is retired
+  in favor of this; it now performs only overdue detection — a
+  subscription becomes due at `currentPeriodEnd` but stays un-paused for
+  a new `billing.plan_fee_grace_days` (default 3, admin-editable) more
+  days, covering ordinary admin-verification lag, before
+  `WalletGraceLadderService.pauseActiveStores()` pauses it (the same
+  mechanism the now-dormant wallet-low-balance ladder used); a verified
+  payment restores instantly via a new unconditional
+  `restoreAfterPlanFeePayment()`. The wallet-low-balance sweep and its
+  scheduler are unscheduled (not deleted) — with the wallet hidden and
+  commission going to 0% (FR-6.51 below), every balance would sit at 0
+  forever, which is *below* any positive warning threshold, so a
+  still-scheduled sweep would eventually pause every seller for a debt
+  that was never real. Referral commission (FR-33.4) collapses back to
+  exactly one call site — `AdminWalletController.verify()` — since
+  `PlanFeeDebitService` no longer has a successful-debit branch to accrue
+  from. The seller dashboard's wallet page is retired; a new Billing page
+  (`/stores/:id/billing`) shows only the plan fee due right now and
+  payment history — no balance, no top-up, no transaction ledger visible
+  to a seller anywhere.
+- FR-6.51 (Module 74): **Commission → 0% on every tier, removed from
+  every seller-facing surface** (dashboards, invoices, settings, pricing
+  page). The commission engine (`LedgerService.accrueCommission()`,
+  `billing.commission_rate_percent`) stays fully intact and tested in
+  code, exactly as dormant and re-activatable as the Safepay/COD adapters
+  — only the seeded per-tier rate changes, alongside the tier
+  rename/repricing below.
+- FR-7.22 (Module 74): **Renamed, repriced tiers — GO/RUN/RISE/FLY,**
+  replacing Basic/Starter/Growth/Pro (data-only change, same `Plan` rows
+  — see `docs/build-plan.md` for the founder-approved price table). New
+  Settings Registry key `billing.first_cycle_discount_percent` (default
+  50, global) replaces the per-plan `firstCyclePrice` column as the
+  first-cycle computation — every tier's first cycle bills at 50% off its
+  standing price, admin-configurable in one place rather than per plan;
+  `firstCyclePrice` goes dormant/unread, same treatment as the already-
+  dormant `yearlyDiscountPercent`. Promotional coupon codes remain a
+  separate, admin-controlled mechanism, out of scope here.
+- FR-7.23 (Module 75): **Feature-gate ladder across GO/RUN/RISE/FLY** —
+  store limits, staff accounts, email-campaign quotas, gift cards,
+  customer segments, premium-template access, D-Studio/team-leader
+  eligibility (closing the latent gap where the last two were defined but
+  never actually enabled for any tier) — per the founder-approved matrix.
+- FR-6.52 (Module 76): **Prepaid partial-advance (5%), a new anti-fake-
+  order verification channel.** A buyer pays 5% of the order total via
+  the seller's own connected Module 62 payment gateway at checkout; the
+  order auto-confirms on verified partial payment, the remainder stays
+  COD. Free from RUN upward; GO keeps only email + WhatsApp verification
+  free (no partial-advance option).
+- FR-6.53 (Module 77): **Verification-channel pricing.** Email
+  verification stays free on every tier, always. WhatsApp verification
+  becomes plan-gated (real per-message cost). SMS verification does not
+  exist as a channel in this codebase and is explicitly out of scope
+  here — not invented to satisfy this FR.
+- FR-33.5 (Module 78): **Referral program renamed "Commerce Students
+  Support."** Rs 345 per referral, payable for up to 2 renewal cycles if
+  the referred seller renews that many times; still requires admin
+  approval to join (FR-33.x's existing approval gate, unchanged).
+- FR-33.6 (Module 79): **Ambassador Program repricing.** Rs 499 per
+  referred store per renewed month, up to 3 months (pro-rated); still
+  requires admin approval to join. Approved ambassadors gain a new
+  Settings-configurable number of free platform accounts to demo/generate
+  their own sales.
+- FR-7.24 (Module 80): **Pricing page rebuild.** Every existing feature
+  (badges, on-demand export, gateway connect, etc.) surfaced, grouped
+  into readable sections (Selling / Design / Marketing / Operations /
+  Trust & Security / Support); copy positions on "0% commission — keep
+  every rupee you earn" and "your money never sits with us — buyers pay
+  you directly"; local-dropshipping positioning ("connect with local
+  suppliers, sell without holding stock") on the homepage/pricing page,
+  copy only, no new backend.
+- Explicitly NOT built (founder's decision, documented for the record):
+  AI store design via MCP/agent linking (security risk, revisit
+  post-launch only if ever); a customizable/build-your-own plan
+  (roadmap note, not v1.0).
+
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans — **First Month, Starter, Growth, Pro** (v0.33: these
   were previously illustrative names; they are now the real, seeded v1.0
@@ -5295,6 +5397,57 @@ Readiness item 10; plan-gated where sensible)
   overall "Growth/Pro sellers are the paying, professional audience"
   premise.
 
+### 5.66 Buyer Experience Batch (new, v0.39 — founder-approved after Parts A/B's subscription-only decision; Modules 81-88)
+Eight buyer-facing improvements, each reusing an existing mechanism where
+one exists (Module 24's Drive storage, Module 27's Orders Command Center,
+Module 55's notification hooks) rather than inventing a parallel one.
+Explicitly NOT building, per the founder's directive: frequently-bought-
+together, SMS order confirmation (no SMS channel exists, §5.6j FR-6.53),
+AI store design, or a customizable/build-your-own plan (§5.6j).
+
+- FR-66.1 (Module 81): **Optional buyer accounts.** Guest checkout stays
+  the default path, unchanged. A buyer may optionally create an account
+  (signup/login, separate identity space from `User`/seller auth) for
+  order history, saved details, and faster reorder — never a requirement
+  to complete a purchase.
+- FR-66.2 (Module 82): **Product reviews with media.** Extends §5.14's
+  review model with up to 3 photos + 1 video per review (capped size,
+  e.g. 12MB), stored via the seller's connected Google Drive (Module 24's
+  existing storage path, not a new object-storage integration) with a
+  generated video thumbnail. The existing moderation queue (§5.27)
+  extends to cover review media, not a second queue.
+- FR-66.3 (Module 83): **Live chat widget.** On-site buyer-seller chat,
+  a distinct surface from the existing WhatsApp button (§5.41) — real-
+  time-feeling (poll or a lightweight push mechanism, not necessarily a
+  new WebSocket infrastructure investment), with a "seller is away"
+  fallback state. Plan-gated (§5.6j's feature-gate ladder, FR-7.23).
+- FR-66.4 (Module 84): **Shipping cost calculator**, visible on product
+  and cart pages, not only at checkout — reuses whatever shipping-rate
+  computation checkout already performs, surfaced earlier in the buyer
+  journey.
+- FR-66.5 (Module 85): **Wishlist / save for later**, plan-gated the same
+  way as the live chat widget (FR-66.3).
+- FR-66.6 (Module 86): **Stock countdown** — a low-stock urgency
+  indicator on product pages, reading the existing inventory count
+  (§5.39), no new tracked field.
+- FR-66.7 (Module 87): **Image zoom + product video with thumbnail** on
+  the product detail page.
+- FR-66.8 (Module 88): **Order tracking page polish, plus a
+  missing-tracking alert.** Tracking-ID upload responsibility is
+  unchanged and stays split exactly as already built: a supplier-
+  fulfilled item's tracking ID is uploaded only by the supplier
+  (`SupplierOrdersService`); a self-fulfilled item's only by the seller
+  (`OrdersService`). New: if an order has been confirmed/paid for more
+  than a Settings-configurable window (`orders.missing_tracking_alert_hours`,
+  default 24) with no tracking uploaded on any of its items, the
+  responsible party (seller or supplier, per item) is notified via their
+  existing notification channel (§5.10/§5.41), and the order surfaces as
+  a flagged/overdue state in the Orders Command Center (§5.38) — re-
+  checked on a schedule, the alert persists until tracking is uploaded or
+  the order is otherwise resolved (cancelled/refunded). The buyer-facing
+  tracking page keeps a clean status timeline with UZEYN branding,
+  unchanged in mechanism.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -7849,6 +8002,11 @@ Module 52, v0.34)
       New `SellerWalletController` endpoints
       `GET`/`POST /sellers/me/wallet/signup-payment`; new "Get started"
       card + pending-verification alert on the seller wallet page.
+      **SUPERSEDED v0.39 (§5.6j, FR-6.50/Module 73):** the combined
+      top-up-plus-plan-fee model is retired; these endpoints are renamed
+      `GET`/`POST /sellers/me/wallet/plan-fee-payment` (plan-fee only,
+      `amount` always 0), and the seller wallet page is retired in favor
+      of a Billing page. See §14.67.
 - [x] Verifying a combined signup claim, in one transaction, both posts a
       `wallet_topup` ledger entry for the top-up portion and
       activates/advances `Subscription.currentPeriodEnd` for the plan-fee
@@ -7881,10 +8039,19 @@ Module 52, v0.34)
       Unaffected by Module 59/60 — `PlanFeeDebitService.debitDuePlanFees()`
       remains the sole renewal-debit path; Module 61 only changed what
       amount it computes (`cyclePriceFor()`, below), not the mechanism.
-- [ ] Publishing a store still gates on all three original conditions —
-      payment method, verified CNIC, **and** wallet balance above the
-      configured minimum; the wallet-balance condition was never dropped
-      (FR-6.35).
+      **SUPERSEDED v0.39 (§5.6j, FR-6.50/Module 73):** wallet
+      auto-debit renewal is retired. Every renewal now goes through the
+      same admin-verify flow as the first cycle;
+      `debitDuePlanFees()` performs only overdue detection (grace-day
+      pause), never a debit. See §14.67.
+- [x] Publishing a store gates on payment method + verified CNIC only.
+      **SUPERSEDED v0.39 (§5.6j, FR-6.50/Module 73):** the third original
+      condition (wallet balance above the configured minimum, FR-6.35)
+      is DROPPED, not just relaxed — wallet is hidden from sellers, so
+      there is nothing left to check a balance against. This flips the
+      historical FR-6.35 claim below it (which asserted the condition was
+      "never dropped") — that assertion was accurate through v0.36-v0.38
+      and is superseded, not wrong at the time it was written. See §14.67.
 - [x] Grace ladder, orders-paused-on-insufficient-balance, negative-float
       floor, running-balance column, and daily reconciliation (Module 47)
       re-verified correct against the four-tier plan structure's three
@@ -8058,6 +8225,107 @@ Module 52, v0.34)
       posts a `refund_adjustment` wallet-ledger entry for the configured
       percentage of `firstCyclePrice` — a wallet credit, never an
       external gateway reversal (FR-6.49, Module 72).
+
+### 14.67 Subscription-Only Business Model — Commission Deactivated, Wallet Hidden (new, v0.39, §5.6j/§5.66)
+- [x] The publish gate drops its wallet-balance condition entirely —
+      payment method + verified CNIC are the only two conditions left
+      (FR-6.50, Module 73). `WalletGraceLadderService.publish()` no
+      longer resolves `billing.wallet_min_initial_topup` or calls
+      `wallet.getBalance()` at all.
+- [x] A seller's plan fee - first cycle AND every renewal after it - is
+      paid through the same admin-verify flow, plan-fee-only (FR-6.50,
+      Module 73). New `WalletService.getPlanFeePaymentPreview()`/
+      `requestPlanFeePayment()` (renamed from Module 59's signup-only
+      `getSignupPaymentPreview()`/`requestCombinedSignupPayment()`);
+      `amount` is always 0, `planFeePortion` carries the whole amount
+      due. Request guard blocks only a PENDING duplicate (a verified
+      request never blocks the next cycle, unlike Module 59's
+      signup-only guard).
+- [x] A first-ever verified payment activates `currentPeriodEnd` fresh
+      from verification time at the discounted `firstCyclePrice`; every
+      payment after that advances (stacks onto) the existing
+      `currentPeriodEnd` at the full active price for the subscription's
+      billing-cycle multiplier (FR-6.50, Module 73). Distinguished via
+      `hasEverPaidPlanFee()` - the existence of any OTHER verified
+      plan-fee-portion request for the seller, excluding the one just
+      verified.
+- [x] `PlanFeeDebitService.debitDuePlanFees()` performs only overdue
+      detection now, never a debit: a subscription overdue past
+      `currentPeriodEnd + billing.plan_fee_grace_days` (new key, default
+      3) with no verified renewal pauses via the unchanged
+      `WalletGraceLadderService.pauseActiveStores()`; a verified payment
+      restores instantly via the new, unconditional
+      `restoreAfterPlanFeePayment()` (FR-6.50, Module 73).
+- [x] The wallet-low-balance sweep scheduler is unscheduled from the
+      worker cron (its service/scheduler/queue code is untouched and
+      still directly callable/tested - "dormant, not deleted") - leaving
+      it scheduled would pause every seller for a permanent 0 balance
+      that was never real debt (FR-6.50, Module 73).
+- [x] Referral commission (FR-33.4) accrues from exactly one call site -
+      `AdminWalletController.verify()`'s plan-fee branch - for both first
+      payments and renewals (FR-6.50, Module 73). `PlanFeeDebitService`
+      no longer has a call site here.
+- [x] The seller dashboard's wallet page is retired; a new Billing page
+      (`/stores/:id/billing`) shows only the plan fee due and payment
+      history - no balance, no top-up, no transaction ledger anywhere in
+      the seller-facing UI (FR-6.50, Module 73).
+      Proven by `module73-subscription-only-renewal.e2e-spec.ts` (7
+      cases): first-payment activate-fresh, renewal advance-stacks,
+      pending-only guard, campaign+six-month renewal pricing, referral
+      commission on both first and renewal payments, grace-day sweep
+      (no pause within grace, pause past it, instant restore on verify),
+      and `restoreAfterPlanFeePayment()`'s unconditional behavior -
+      superseding Module 59/60's retired e2e specs (deleted). The
+      publish-gate assertion is proven by the rewritten
+      `module47-wallet-balance-reconciliation.e2e-spec.ts`'s last case.
+- [ ] Commission is 0% on every tier and removed from every seller-facing
+      surface; the engine itself stays intact/dormant (FR-6.51,
+      Module 74).
+- [ ] Plans are renamed/repriced GO/RUN/RISE/FLY; first-cycle discount is
+      a Settings-driven 50%-off-of-price computation, not a per-plan
+      stored value (FR-7.22, Module 74).
+- [ ] Feature-gate ladder (stores/staff/email quota/gift cards/customer
+      segments/premium templates/D-Studio/team-leader eligibility) is
+      correct across all four tiers (FR-7.23, Module 75).
+- [ ] Prepaid partial-advance (5%) verification channel exists and is
+      plan-gated (free RUN+, GO gets only email/WhatsApp) (FR-6.52,
+      Module 76).
+- [ ] Email verification is free on every tier; WhatsApp is plan-gated
+      (FR-6.53, Module 77).
+- [ ] Referral program renamed "Commerce Students Support", Rs 345/
+      referral for up to 2 renewal cycles, admin-approval-gated (FR-33.5,
+      Module 78).
+- [ ] Ambassador Program repriced to Rs 499/referred store/renewed month
+      up to 3 months pro-rated, admin-approval-gated, with a
+      Settings-configurable free-demo-account count for approved
+      ambassadors (FR-33.6, Module 79).
+- [ ] Pricing page rebuilt with every feature grouped into readable
+      sections and the "0% commission"/"your money never sits with us"
+      positioning (FR-7.24, Module 80).
+
+### 14.68 Buyer Experience Batch (new, v0.39, §5.66, not yet built)
+- [ ] Guest checkout stays the default; an optional buyer account gives
+      order history, saved details, and faster reorder (FR-66.1,
+      Module 81).
+- [ ] A review may include up to 3 photos + 1 video (capped size),
+      Drive-stored with a generated video thumbnail, and review media
+      flows through the existing moderation queue (FR-66.2, Module 82).
+- [ ] A live chat widget, distinct from the WhatsApp button, shows a
+      "seller is away" fallback and is plan-gated (FR-66.3, Module 83).
+- [ ] A shipping cost calculator is visible on product and cart pages,
+      not only checkout (FR-66.4, Module 84).
+- [ ] Wishlist/save-for-later exists and is plan-gated the same way as
+      the chat widget (FR-66.5, Module 85).
+- [ ] A low-stock countdown indicator renders on product pages (FR-66.6,
+      Module 86).
+- [ ] Product images support zoom, and a product video with thumbnail
+      renders on the product page (FR-66.7, Module 87).
+- [ ] A missing-tracking alert fires when an order has been confirmed/
+      paid for longer than the configured window with no tracking on any
+      item, notifying the responsible party (seller or supplier, per
+      item) and flagging the order as overdue in the Orders Command
+      Center until resolved; tracking-upload responsibility itself stays
+      exactly split as already built (FR-66.8, Module 88).
 
 ---
 

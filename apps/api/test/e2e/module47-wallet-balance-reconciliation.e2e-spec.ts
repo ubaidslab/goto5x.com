@@ -280,7 +280,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     expect(driftItemAfter.count).toBeGreaterThanOrEqual(1);
   });
 
-  it("the publish gate and the low-balance grace ladder still read correct values off the new cached balance (FR-6.21/FR-6.25 unaffected by the running-total swap)", async () => {
+  it("Module 73 (v0.38) - the publish gate no longer checks wallet balance at all; the wallet-low-balance grace ladder stays dormant-but-intact when invoked directly", async () => {
     const { token, sellerId } = await signup("gate-still-works@example.com");
     const store = await request(app.getHttpServer())
       .post("/stores")
@@ -292,29 +292,28 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     await superuser.storePaymentInstructions.update({ where: { storeId }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: sellerId }, data: { cnicHash: `hash-${sellerId}` } });
 
+    // Module 73 - payment method + CNIC alone now publish a store; wallet
+    // balance is 0 (never topped up, and there is no seller-facing top-up
+    // path any more) and that is no longer a blocker.
+    const balanceBeforePublish = await getBalance(token);
+    expect(balanceBeforePublish).toBe(0);
+    const published = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/publish`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(published.status).toBe(201);
+
+    // The wallet-low-balance grace-ladder SWEEP is unscheduled from the
+    // worker cron now (Module 73 - it would otherwise pause every seller,
+    // since balance sits at 0 forever), but the code itself is untouched
+    // and still correct when called directly - "dormant, not deleted",
+    // same discipline as every other de-scheduled mechanism in this
+    // codebase.
     const settings = app.get(SettingsService);
-    const minTopUp = await settings.resolve<number>("billing.wallet_min_initial_topup");
-
-    const belowMin = await request(app.getHttpServer())
-      .post(`/stores/${storeId}/publish`)
-      .set("Authorization", `Bearer ${token}`);
-    expect(belowMin.status).toBe(400);
-
-    await topUpAndVerify(token, adminToken, minTopUp);
-    const atMin = await request(app.getHttpServer())
-      .post(`/stores/${storeId}/publish`)
-      .set("Authorization", `Bearer ${token}`);
-    expect(atMin.status).toBe(201);
-
-    // Grace ladder: drain to below the warning threshold via an admin debit
-    // (a real ledger write through the new atomic path), then run a sweep.
     const threshold = await settings.resolve<number>("billing.wallet_low_balance_warning_threshold");
-    const balanceNow = await getBalance(token);
-    const drainAmount = round2(balanceNow - threshold + 10);
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ amount: -drainAmount, reason: "drain for grace-ladder test" });
+      .send({ amount: -(threshold + 10), reason: "drain for dormant grace-ladder test" });
 
     const { WalletGraceLadderService } = await import("../../src/billing/wallet-grace-ladder.service");
     const graceLadder = app.get(WalletGraceLadderService);

@@ -13,6 +13,7 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AdjustSellerWalletDto } from "./dto/adjust-seller-wallet.dto";
 import { RequestTopUpDto } from "./dto/request-topup.dto";
 import { ProgramCommissionService } from "./program-commission.service";
+import { PlanFeeRenewalExportTrigger } from "./plan-fee-renewal-export.service";
 import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
 import { WalletService } from "./wallet.service";
@@ -52,18 +53,22 @@ export class SellerWalletController {
     return { request, instructions: this.wallet.topUpInstructions(dto.amount, currency) };
   }
 
-  /** FR-6.33 (Module 59) - the combined signup total preview: plan first-cycle fee + minimum wallet top-up, one breakdown. */
-  @Get("signup-payment")
-  getSignupPaymentPreview(@CurrentSellerId() sellerId: string) {
-    return this.wallet.getSignupPaymentPreview(sellerId, "PKR");
+  /**
+   * Module 73 (v0.38) - retires Module 59's combined signup-only preview.
+   * Plan-fee-only now, and covers every due cycle (signup AND renewal),
+   * not just signup: whichever amount is due right now.
+   */
+  @Get("plan-fee-payment")
+  getPlanFeePaymentPreview(@CurrentSellerId() sellerId: string) {
+    return this.wallet.getPlanFeePaymentPreview(sellerId, "PKR");
   }
 
-  /** FR-6.33 - submits the one combined proof-of-payment; amounts are computed server-side, never accepted from the client. */
-  @Post("signup-payment")
+  /** Module 73 (v0.38) - submits the one proof-of-payment for the plan fee due right now; the amount is computed server-side, never accepted from the client. */
+  @Post("plan-fee-payment")
   @UseGuards(ImpersonationWriteGuard)
   @BlockDuringImpersonation()
-  requestCombinedSignupPayment(@CurrentSellerId() sellerId: string) {
-    return this.wallet.requestCombinedSignupPayment(sellerId, "PKR");
+  requestPlanFeePayment(@CurrentSellerId() sellerId: string) {
+    return this.wallet.requestPlanFeePayment(sellerId, "PKR");
   }
 }
 
@@ -119,6 +124,7 @@ export class AdminWalletController {
     private readonly graceLadder: WalletGraceLadderService,
     private readonly prismaAdmin: PrismaAdminService,
     private readonly programCommission: ProgramCommissionService,
+    private readonly renewalExportTrigger: PlanFeeRenewalExportTrigger,
   ) {}
 
   @Get()
@@ -134,21 +140,34 @@ export class AdminWalletController {
     if (request.ownerType === "supplier") {
       return this.supplierWallet.verifyTopUp(topUpId, user.adminUserId!);
     }
-    const verified = await this.wallet.verifyTopUp(topUpId, user.adminUserId!);
+    const { request: verified, isRenewal } = await this.wallet.verifyTopUp(topUpId, user.adminUserId!);
     await this.graceLadder.checkAndRestore(verified.ownerId);
-    // FR-6.33 (Module 59) - referral commission accrues off a paid plan-fee
-    // amount (FR-33.4); a combined signup payment IS that amount's first
-    // occurrence, so this mirrors PlanFeeDebitService's own call after a
-    // successful renewal debit, kept as a separate step for the same
-    // reason it is there: ProgramCommissionService already depends on
-    // WalletService, so the accrual can't live inside WalletService itself
-    // without a circular provider dependency.
+
+    // Module 73 (v0.38) - every plan-fee payment (signup OR renewal) lands
+    // here now, not just Module 59's old combined-signup-only path.
     if (verified.planFeePortion !== null) {
+      // The plan-fee-payment counterpart to checkAndRestore() above -
+      // unconditional, since payment verification IS the gate now (there's
+      // no wallet-balance threshold left to also check).
+      await this.graceLadder.restoreAfterPlanFeePayment(verified.ownerId);
+      // FR-33.4 - referral commission accrues off a paid plan-fee amount;
+      // kept as a separate step (not inside WalletService itself) because
+      // ProgramCommissionService already depends on WalletService, so the
+      // accrual can't live inside WalletService without a circular
+      // provider dependency.
       await this.programCommission.accrueReferralCommissionIfApplicable(
         verified.ownerId,
         Number(verified.planFeePortion),
         verified.currency,
       );
+      // Module 24 (FR-36.1(a)) - a RENEWAL export, never a first-payment
+      // one (there's nothing to export yet for a brand-new seller). Pushed
+      // through PlanFeeRenewalExportTrigger's own queue rather than
+      // injecting DataExportService directly, which would create a real
+      // module cycle (see that service's docstring).
+      if (isRenewal) {
+        await this.renewalExportTrigger.trigger(verified.ownerId);
+      }
     }
     return verified;
   }

@@ -62,11 +62,11 @@ export default function StoreDashboardLayout({
       {store?.status === "orders_paused" && (
         <div className="px-6 pt-3">
           <Alert tone="warning">
-            This store isn&apos;t accepting new orders right now - your wallet balance is too low.{" "}
-            <a href={`/stores/${params.storeId}/wallet`} className="font-semibold underline">
-              Top up your wallet
+            This store isn&apos;t accepting new orders right now - your plan fee is overdue.{" "}
+            <a href={`/stores/${params.storeId}/billing`} className="font-semibold underline">
+              Pay your plan fee
             </a>{" "}
-            to resume instantly.
+            to resume as soon as it&apos;s verified.
           </Alert>
         </div>
       )}

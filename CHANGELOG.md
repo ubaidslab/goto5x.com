@@ -8,6 +8,30 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 73: Subscription-Only Renewal Mechanism
+
+Final, locked business-model decision (v0.39) - UZEYN earns from
+subscriptions only now, not commission (commission requires a payment-
+aggregator registration or gateway split-payment support, neither of
+which exists yet - see docs/SRS.md §5.6j for the full rationale).
+
+### Changed
+- The publish gate no longer checks wallet balance - payment method and
+  verified CNIC are the only two conditions to publish a store.
+- A seller's plan fee - first cycle AND every renewal after it - is now
+  paid through the same admin-verify flow, plan-fee-only. A first payment
+  activates the subscription's paid period fresh from verification time,
+  at a discount; every renewal after that advances the existing period at
+  the full price. Non-payment pauses a store a few grace days after the
+  cycle ends (not immediately) to cover ordinary admin-verification lag;
+  a verified payment restores it instantly.
+- The wallet-low-balance auto-pause sweep is retired (unscheduled, not
+  deleted) - it would otherwise pause every seller for a wallet balance
+  that permanently sits at zero now that there's no top-up concept.
+- The seller dashboard's Wallet page is replaced by a Billing page
+  showing only the amount due and payment history - no balance, no
+  top-up, nothing wallet-shaped visible to a seller any more.
+
 ## Module 61: Four-Tier Plan Pricing Model + Pricing Page Rebuild
 
 Corrected business-model batch, built after Module 62 per the founder's

@@ -28,8 +28,16 @@ export class WalletGraceLadderService {
   /**
    * FR-6.21 - an explicit, seller-clicked action (not an implicit per-
    * checkout-attempt gate, the founder-confirmed design call): payment
-   * method + CNIC + minimum wallet top-up, all three. Sticky - publishedAt
-   * is never cleared once set, same discipline as onboardingCompletedAt.
+   * method + CNIC. Sticky - publishedAt is never cleared once set, same
+   * discipline as onboardingCompletedAt.
+   *
+   * Module 73 (v0.38) - the third original condition (minimum wallet
+   * top-up) is DROPPED, not just relaxed: wallet is hidden from sellers
+   * now, so there is nothing left to check a balance against. Plan-fee
+   * payment is verified separately (WalletService.getPlanFeePaymentPreview()/
+   * requestPlanFeePayment()) and is unrelated to whether a store may go
+   * live - a seller publishes as soon as they've configured a payment
+   * method and verified their identity.
    */
   async publish(sellerId: string, storeId: string): Promise<{ publishedAt: Date }> {
     const store = await this.prismaAdmin.store.findUnique({ where: { id: storeId } });
@@ -42,13 +50,6 @@ export class WalletGraceLadderService {
     }
     if (!(await this.sellerIdentity.hasCnic(sellerId))) {
       throw new BadRequestException("Complete identity verification (CNIC) before publishing this store.");
-    }
-    const minTopUp = await this.settings.resolve<number>("billing.wallet_min_initial_topup");
-    const balance = await this.wallet.getBalance(sellerId);
-    if (balance < minTopUp) {
-      throw new BadRequestException(
-        `Top up your wallet to at least ${minTopUp} before publishing this store (current balance: ${balance}).`,
-      );
     }
 
     const updated = await this.prismaAdmin.store.update({
@@ -86,6 +87,31 @@ export class WalletGraceLadderService {
       where: { id: sellerId },
       data: { walletLowBalanceWarningSentAt: null, walletGracePeriodEndsAt: null },
     });
+    const restored = await this.prismaAdmin.store.updateMany({
+      where: { sellerId, status: "orders_paused" },
+      data: { status: "active" },
+    });
+    if (restored.count > 0) {
+      await this.events.emit({
+        eventType: "wallet.orders_resumed",
+        actorType: "system",
+        entityType: "seller",
+        entityId: sellerId,
+        metadata: { storeCount: restored.count },
+      });
+    }
+  }
+
+  /**
+   * Module 73 (v0.38) - the plan-fee-payment counterpart to
+   * checkAndRestore() above: unconditional, since payment verification
+   * itself is the gate here - there's no balance threshold left to also
+   * check. Restores every one of this seller's orders_paused stores to
+   * active the instant an admin verifies their plan-fee payment (whether
+   * that pause came from PlanFeeDebitService's grace-day sweep or, in
+   * principle, any other pauseActiveStores() caller).
+   */
+  async restoreAfterPlanFeePayment(sellerId: string): Promise<void> {
     const restored = await this.prismaAdmin.store.updateMany({
       where: { sellerId, status: "orders_paused" },
       data: { status: "active" },

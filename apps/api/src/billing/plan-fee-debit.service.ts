@@ -1,11 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { Plan, PlanBillingInterval } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { addInterval } from "../plans/subscriptions.service";
-import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { round2 } from "../orders/money.util";
-import { ProgramCommissionService } from "./program-commission.service";
 import { WalletService } from "./wallet.service";
 import { SupplierWalletService } from "./supplier-wallet.service";
 import { WalletGraceLadderService } from "./wallet-grace-ladder.service";
@@ -20,9 +17,11 @@ function currentCalendarMonthStart(now: Date): Date {
  * always flagged as "schema ready, job never built" - now built as a wallet
  * debit instead of the dormant invoice-generation path (FR-6.28). Three
  * independent debit kinds, each idempotent in its own way:
- *  - plan fee: gated on Subscription.currentPeriodEnd, same as the old
- *    invoice job would have been, but now also the thing that ADVANCES
- *    currentPeriodEnd (no prior job ever did that for an unchanged plan).
+ *  - plan fee: Module 73 (v0.38) retired the wallet auto-debit here (see
+ *    debitDuePlanFees() below) - it's now purely an overdue-detection
+ *    check, since a seller's plan fee is paid through the admin-verify
+ *    flow instead (WalletService.verifyTopUp()), which is also what
+ *    advances currentPeriodEnd now.
  *  - team seat total: idempotent per calendar month via a ledger-entry
  *    existence check (mirrors the old invoice job's per-period uniqueness
  *    check, since there's no per-team invoice row to key off anymore).
@@ -37,19 +36,18 @@ export class PlanFeeDebitService {
     private readonly settings: SettingsService,
     private readonly wallet: WalletService,
     private readonly supplierWallet: SupplierWalletService,
-    private readonly programCommission: ProgramCommissionService,
     private readonly walletGraceLadder: WalletGraceLadderService,
   ) {}
 
   /**
-   * `renewedSellerIds` (Module 24, SRS §5.36, FR-36.1(a)) - every seller
-   * whose plan fee was just successfully debited this sweep (i.e. actually
-   * renewed, not downgraded) - the worker triggers each one's data export
-   * AFTER this sweep returns, at the orchestration layer rather than via a
-   * direct service injection here, so BillingModule never needs to import
-   * DataExportModule (which itself imports MediaModule -> AuthModule ->
-   * GrowthProgramsModule -> BillingModule - a real cycle this avoids
-   * entirely rather than papering over with forwardRef()).
+   * `renewedSellerIds` (Module 24, SRS §5.36, FR-36.1(a)) - Module 73
+   * (v0.38) DORMANT: this sweep no longer performs renewals (see
+   * debitDuePlanFees() below), so it never populates this any more. The
+   * renewal-export trigger moved to the admin-verify path
+   * (AdminWalletController.verify() -> PlanFeeRenewalExportTrigger), the
+   * one place a renewal now actually happens. Field kept in the return
+   * shape (always empty) to avoid churning worker.main.ts's consumer for
+   * no behavioral gain.
    *
    * `downgraded` (v0.33) - now a mixed counter: on the seller side it
    * counts stores PAUSED for plan-fee non-payment (there is no more Free
@@ -63,7 +61,7 @@ export class PlanFeeDebitService {
     let downgraded = 0;
     const renewedSellerIds: string[] = [];
 
-    debited += await this.debitDuePlanFees(now, (n) => (downgraded += n), (id) => renewedSellerIds.push(id));
+    downgraded += await this.debitDuePlanFees(now);
     debited += await this.debitDueTeamSeatTotals(now);
     debited += await this.debitDueDeviceSlotAddOns(now);
     debited += await this.debitDueSupplierPlanFees(now, (n) => (downgraded += n));
@@ -117,23 +115,31 @@ export class PlanFeeDebitService {
   }
 
   /**
-   * FR-7.2 (revised v0.33) - there is no more Free Plan to fall back to.
-   * Insufficient balance now pauses every one of the seller's active
-   * stores via WalletGraceLadderService.pauseActiveStores() - the exact
-   * same mechanism the wallet-low-balance grace ladder already uses, per
-   * the founder's explicit "unify the two mechanisms" instruction. The
-   * subscription itself is left overdue (currentPeriodEnd stays in the
-   * past); it never gets reassigned to another plan, so the seller resumes
-   * on the same plan and cycle the moment they pay and the store is
-   * restored (WalletGraceLadderService.checkAndRestore()).
+   * Module 73 (v0.38) - retires the wallet auto-debit this method used to
+   * perform (FR-7.2). A seller's plan fee is now paid entirely through the
+   * admin-verify flow (WalletService.getPlanFeePaymentPreview()/
+   * requestPlanFeePayment(), verified by WalletService.verifyTopUp()),
+   * which is also what advances currentPeriodEnd - never this sweep. This
+   * is now purely an overdue-detection check: a subscription becomes due
+   * at currentPeriodEnd, but stays un-paused for `billing.plan_fee_grace_days`
+   * more days (covering the ordinary lag between "seller submitted a
+   * payment proof" and "admin verified it") before its stores pause via
+   * WalletGraceLadderService.pauseActiveStores() - the same mechanism the
+   * (now-dormant) wallet-low-balance grace ladder used. The subscription
+   * itself is left overdue (currentPeriodEnd stays in the past); it never
+   * gets reassigned to another plan, so the seller resumes on the same
+   * plan and cycle the moment their payment is verified and the store is
+   * restored (WalletGraceLadderService.restoreAfterPlanFeePayment()).
+   * Returns the number of sellers paused this run (there is no more
+   * "debited" concept here).
    */
-  private async debitDuePlanFees(now: Date, onDowngrade: (count: number) => void, onRenewed: (sellerId: string) => void): Promise<number> {
+  private async debitDuePlanFees(now: Date): Promise<number> {
+    const graceDays = await this.settings.resolve<number>("billing.plan_fee_grace_days");
     const due = await this.prismaAdmin.subscription.findMany({
       where: { sellerId: { not: null }, currentPeriodEnd: { lte: now } },
       include: { plan: true },
     });
 
-    let debited = 0;
     let paused = 0;
 
     for (const subscription of due) {
@@ -141,50 +147,14 @@ export class PlanFeeDebitService {
       // they never appear here; this loop is individual-group paid plans only.
       if (subscription.plan.planGroup !== "individual" || Number(subscription.plan.price) <= 0) continue;
 
-      const balance = await this.wallet.getBalance(subscription.sellerId!);
-      // Module 61 (FR-7.20) - the renewal amount respects an active
-      // campaign price the same way the pricing page does (resolveActivePlanPrice),
-      // then the subscription's own chosen cycle multiplier (monthly/six_month/yearly) -
-      // never a stored per-cycle price.
-      const fee = await this.cyclePriceFor(subscription.plan, subscription.billingInterval);
+      const graceDeadline = new Date(subscription.currentPeriodEnd!.getTime() + graceDays * 24 * 60 * 60 * 1000);
+      if (graceDeadline > now) continue; // still within the admin-verification grace window - not overdue yet
 
-      if (balance >= fee) {
-        await this.prismaAdmin.$transaction((tx) =>
-          this.wallet.postLedgerEntry(tx, {
-            sellerId: subscription.sellerId!,
-            type: "wallet_plan_fee_debit",
-            amount: round2(fee),
-            currency: subscription.plan.currency,
-          }),
-        );
-        await this.prismaAdmin.subscription.update({
-          where: { id: subscription.id },
-          data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.billingInterval as "monthly" | "six_month" | "yearly") },
-        });
-        // SRS §5.33 FR-33.4 - the ONLY call site: referral commission is
-        // calculated exclusively against a referred seller's own paid
-        // plan-subscription amount, never GMV/sales/wallet top-ups. Never
-        // blocks this debit - a missing/expired/suspended attribution is a
-        // silent no-op inside this call.
-        await this.programCommission.accrueReferralCommissionIfApplicable(subscription.sellerId!, round2(fee), subscription.plan.currency);
-        onRenewed(subscription.sellerId!);
-        debited += 1;
-      } else {
-        const result = await this.walletGraceLadder.pauseActiveStores(subscription.sellerId!);
-        if (result.count > 0) paused += 1;
-      }
+      const result = await this.walletGraceLadder.pauseActiveStores(subscription.sellerId!);
+      if (result.count > 0) paused += 1;
     }
 
-    onDowngrade(paused);
-    return debited;
-  }
-
-  /** Module 61 (FR-7.20) - the amount a renewal actually bills: the resolved active (campaign-aware) monthly price, times the subscription's own cycle multiplier. */
-  private async cyclePriceFor(plan: Plan, billingInterval: PlanBillingInterval): Promise<number> {
-    const activeMonthlyPrice = resolveActivePlanPrice(plan);
-    const sixMonth = await this.settings.resolve<number>("billing.six_month_price_multiplier");
-    const yearly = await this.settings.resolve<number>("billing.yearly_price_multiplier");
-    return computeCyclePrice(activeMonthlyPrice, billingInterval as "monthly" | "six_month" | "yearly", { sixMonth, yearly });
+    return paused;
   }
 
   /** FR-7.15/7.18, ported to a wallet debit (leader-billed, active-member-count x seat price). */

@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { LedgerEntry, LedgerEntryType, Prisma } from "@prisma/client";
+import { LedgerEntry, LedgerEntryType, Plan, PlanBillingInterval, Prisma, WalletTopUpRequest } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { EventsService } from "../events/events.service";
 import { round2 } from "../orders/money.util";
 import { SettingsService } from "../settings-registry/settings.service";
 import { addInterval } from "../plans/subscriptions.service";
+import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { ManualBankTransferTopUpAdapter } from "./top-up-adapter.interface";
 
 /**
@@ -233,55 +234,77 @@ export class WalletService {
   }
 
   /**
-   * Module 59 (SRS §5.6g, FR-6.33) - the combined signup total, computed
-   * server-side (never client-supplied - a seller cannot choose their own
-   * plan-fee portion). `planFeePortion` is the plan's `firstCyclePrice`
-   * (Module 61, FR-7.20) - a one-time discount for the subscription's very
-   * first billing cycle - falling back to `price` for a tier with no
-   * firstCyclePrice set (e.g. one created outside the launch seed).
+   * Module 73 (v0.38, SRS §5.6g amended) - retires Module 59's combined
+   * signup total (plan fee + bundled wallet top-up). Wallet is hidden from
+   * sellers now, so this is plan-fee-only: whichever amount is due right
+   * now, computed server-side (never client-supplied). A seller's very
+   * first-ever payment is discounted (`firstCyclePrice`, falling back to
+   * `price` for a tier with none set); every payment after that - the
+   * SAME mechanism now also covers ordinary renewals, not just signup -
+   * is the full active (campaign-aware) price for the subscription's own
+   * billing interval.
    */
-  async getSignupPaymentPreview(sellerId: string, currency: string) {
+  async getPlanFeePaymentPreview(sellerId: string, currency: string) {
     const subscription = await this.prismaAdmin.subscription.findUnique({
       where: { sellerId },
       include: { plan: true },
     });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
 
-    const topUpPortion = round2(await this.settings.resolve<number>("billing.minimum_signup_wallet_topup"));
-    const planFeePortion = round2(Number(subscription.plan.firstCyclePrice ?? subscription.plan.price));
+    const isRenewal = await this.hasEverPaidPlanFee(sellerId);
+    const amountDue = isRenewal
+      ? await this.cyclePriceFor(subscription.plan, subscription.billingInterval)
+      : round2(Number(subscription.plan.firstCyclePrice ?? subscription.plan.price));
+
     return {
       planName: subscription.plan.name,
-      planFeePortion,
-      topUpPortion,
-      total: round2(planFeePortion + topUpPortion),
+      amountDue,
+      isRenewal,
       currency,
-      instructions: this.topUpAdapter.instructionsFor(planFeePortion + topUpPortion, currency),
+      instructions: this.topUpAdapter.instructionsFor(amountDue, currency),
     };
   }
 
+  /** Whether this seller has ANY prior admin-verified plan-fee payment - the signal that distinguishes a first payment (fresh discount, fresh-from-now activation) from a renewal (full price, stacks onto the existing cycle). */
+  private async hasEverPaidPlanFee(sellerId: string): Promise<boolean> {
+    const prior = await this.prismaAdmin.walletTopUpRequest.findFirst({
+      where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "verified" },
+    });
+    return prior !== null;
+  }
+
+  /** Same computation PlanFeeDebitService used to make for its now-retired auto-debit (Module 61, FR-7.20) - campaign-aware active price, times the subscription's own cycle multiplier. */
+  private async cyclePriceFor(plan: Plan, billingInterval: PlanBillingInterval): Promise<number> {
+    const activeMonthlyPrice = resolveActivePlanPrice(plan);
+    const sixMonth = await this.settings.resolve<number>("billing.six_month_price_multiplier");
+    const yearly = await this.settings.resolve<number>("billing.yearly_price_multiplier");
+    return computeCyclePrice(activeMonthlyPrice, billingInterval as "monthly" | "six_month" | "yearly", { sixMonth, yearly });
+  }
+
   /**
-   * FR-6.33 - one proof-of-payment for the combined total, submitted
-   * through the exact same WalletTopUpRequest row an ordinary top-up uses
-   * (`amount` keeps meaning "the wallet-credit portion"; `planFeePortion`
-   * carries the rest). One-time by design: a second combined request is
-   * rejected while an earlier one is still pending or already verified,
-   * but a REJECTED one may be resubmitted, same as any ordinary top-up.
+   * Module 73 (v0.38) - one proof-of-payment for the plan fee due right
+   * now, submitted through the same WalletTopUpRequest row Module 59 used
+   * (`amount` is always 0 now - there is no wallet-credit portion any
+   * more; `planFeePortion` carries the whole amount). Unlike Module 59's
+   * signup-only guard, this is callable every cycle: blocked only while an
+   * earlier request is still PENDING (a verified one is a resolved past
+   * cycle, not a block on the next one).
    */
-  async requestCombinedSignupPayment(sellerId: string, currency: string) {
+  async requestPlanFeePayment(sellerId: string, currency: string) {
     const existing = await this.prismaAdmin.walletTopUpRequest.findFirst({
-      where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: { in: ["pending", "verified"] } },
+      where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "pending" },
     });
     if (existing) {
-      throw new BadRequestException("A combined signup payment has already been submitted for this account.");
+      throw new BadRequestException("A plan-fee payment request is already pending for this account.");
     }
 
-    const preview = await this.getSignupPaymentPreview(sellerId, currency);
+    const preview = await this.getPlanFeePaymentPreview(sellerId, currency);
     const request = await this.prismaAdmin.walletTopUpRequest.create({
       data: {
         ownerType: "seller",
         ownerId: sellerId,
-        amount: preview.topUpPortion,
-        planFeePortion: preview.planFeePortion,
+        amount: 0,
+        planFeePortion: preview.amountDue,
         currency,
         method: this.topUpAdapter.method,
       },
@@ -306,49 +329,69 @@ export class WalletService {
   /**
    * FR-6.23 - the credit lands only once an admin verifies it, audit-logged
    * exactly like every other control-plane mutation (FR-8.9). Returns the
-   * seller id so the caller (AdminWalletController) can trigger
-   * WalletGraceLadderService's instant-restore check (FR-6.25) - kept as a
-   * separate call rather than a callback so the two services don't need to
-   * know about each other.
+   * seller id (via `request`) so the caller (AdminWalletController) can
+   * trigger WalletGraceLadderService's instant-restore check (FR-6.25) -
+   * kept as a separate call rather than a callback so the two services
+   * don't need to know about each other.
    *
-   * FR-6.33 (Module 59) - when `planFeePortion` is set, this is a combined
-   * signup payment: in the SAME transaction as the wallet-credit ledger
-   * post, the seller's Subscription.currentPeriodEnd is activated for one
-   * full billing interval measured from THIS verification (not stacked on
-   * top of the free placeholder period SubscriptionsService.
-   * assignBasicPlanAtSignup() already granted at signup) - this is what
-   * "activates" (rather than "advances") means here: the real, paid clock
-   * starts the moment payment is actually confirmed, so an admin-processing
-   * delay after signup never costs the seller part of a paid cycle.
+   * Module 73 (v0.38) - when `planFeePortion` is set, this is a plan-fee
+   * payment (signup OR renewal - Module 59's combined-signup-only model is
+   * retired). `isRenewal` distinguishes the two: false (no PRIOR verified
+   * plan-fee payment exists for this seller) means "activate" -
+   * currentPeriodEnd is computed fresh from THIS verification
+   * (`addInterval(now, interval)`), never stacked on the free placeholder
+   * period assignBasicPlanAtSignup() already granted at signup, so an
+   * admin-processing delay after signup never costs the seller part of a
+   * paid cycle. true means "advance" - currentPeriodEnd stacks onto the
+   * subscription's own existing currentPeriodEnd, so paying a few days
+   * early (or with the grace-day admin-processing lag) never shortens the
+   * next cycle.
    */
-  async verifyTopUp(topUpId: string, adminUserId: string) {
+  async verifyTopUp(topUpId: string, adminUserId: string): Promise<{ request: WalletTopUpRequest; isRenewal: boolean }> {
     const request = await this.prismaAdmin.walletTopUpRequest.findUnique({ where: { id: topUpId } });
     if (!request) throw new NotFoundException("Top-up request not found.");
     if (request.status !== "pending") throw new BadRequestException("This top-up request has already been resolved.");
     if (request.ownerType !== "seller") throw new BadRequestException("This is not a seller top-up request.");
 
     const planFeePortion = request.planFeePortion !== null ? Number(request.planFeePortion) : null;
+    let isRenewal = false;
 
     await this.prismaAdmin.$transaction(async (tx) => {
       await tx.walletTopUpRequest.update({
         where: { id: topUpId },
         data: { status: "verified", verifiedAt: new Date(), verifiedBy: adminUserId },
       });
-      await this.postLedgerEntry(tx, {
-        sellerId: request.ownerId,
-        type: "wallet_topup_credit",
-        amount: Number(request.amount),
-        currency: request.currency,
-      });
+      // Module 73 - `amount` is always 0 for a plan-fee-only request now;
+      // skip the (meaningless, noisy) zero-amount ledger entry. A
+      // genuinely funded top-up - dormant, no seller-facing path creates
+      // one any more, but the mechanism stays intact - still credits.
+      if (Number(request.amount) > 0) {
+        await this.postLedgerEntry(tx, {
+          sellerId: request.ownerId,
+          type: "wallet_topup_credit",
+          amount: Number(request.amount),
+          currency: request.currency,
+        });
+      }
       if (planFeePortion !== null && planFeePortion > 0) {
+        const priorVerified = await tx.walletTopUpRequest.findFirst({
+          where: {
+            id: { not: topUpId },
+            ownerType: "seller",
+            ownerId: request.ownerId,
+            planFeePortion: { not: null },
+            status: "verified",
+          },
+        });
+        isRenewal = priorVerified !== null;
+
         const subscription = await tx.subscription.findUniqueOrThrow({
           where: { sellerId: request.ownerId },
           include: { plan: true },
         });
-        await tx.subscription.update({
-          where: { sellerId: request.ownerId },
-          data: { currentPeriodEnd: addInterval(new Date(), subscription.plan.billingInterval as "monthly" | "yearly") },
-        });
+        const interval = subscription.billingInterval as "monthly" | "six_month" | "yearly";
+        const nextPeriodEnd = isRenewal ? addInterval(subscription.currentPeriodEnd!, interval) : addInterval(new Date(), interval);
+        await tx.subscription.update({ where: { sellerId: request.ownerId }, data: { currentPeriodEnd: nextPeriodEnd } });
       }
     });
 
@@ -369,7 +412,8 @@ export class WalletService {
       metadata: { amount: Number(request.amount) },
     });
 
-    return this.prismaAdmin.walletTopUpRequest.findUniqueOrThrow({ where: { id: topUpId } });
+    const verified = await this.prismaAdmin.walletTopUpRequest.findUniqueOrThrow({ where: { id: topUpId } });
+    return { request: verified, isRenewal };
   }
 
   async rejectTopUp(topUpId: string, adminUserId: string) {

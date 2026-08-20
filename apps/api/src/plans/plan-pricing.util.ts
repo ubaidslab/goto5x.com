@@ -11,9 +11,9 @@ export function computeYearlyPrice(monthlyPrice: number, yearlyDiscountPercent: 
  * tier right now: `campaignPrice` while `campaignActive` is true (a
  * time-boxed campaign variant), `price` otherwise. Never `regularPrice`
  * (that stays a pure struck-through reference, FR-7.19) and never
- * `firstCyclePrice` (that's a signup-only discount, resolved separately by
- * whoever computes a NEW subscription's very first cycle - see Module 59's
- * WalletService.getSignupPaymentPreview()).
+ * `firstCyclePrice` (that's a first-payment-only discount, resolved
+ * separately by whoever computes a seller's very first plan-fee payment -
+ * see WalletService.getPlanFeePaymentPreview(), Module 73).
  */
 export function resolveActivePlanPrice(plan: { price: unknown; campaignPrice: unknown; campaignActive: boolean }): number {
   if (plan.campaignActive && plan.campaignPrice !== null && plan.campaignPrice !== undefined) {

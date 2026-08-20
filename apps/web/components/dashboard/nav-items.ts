@@ -40,7 +40,6 @@ export const navItems: NavItem[] = [
   { label: "WhatsApp recovery", href: (id) => `/stores/${id}/whatsapp`, builtInModule10: false },
   { label: "Analytics", href: (id) => `/stores/${id}/analytics`, builtInModule10: false },
   { label: "Profit & Loss", href: (id) => `/stores/${id}/pnl`, builtInModule10: false },
-  { label: "Wallet", href: (id) => `/stores/${id}/wallet`, builtInModule10: true },
   { label: "Store Health", href: (id) => `/stores/${id}/health`, builtInModule10: true },
   { label: "Verified Store", href: (id) => `/stores/${id}/verification`, builtInModule10: true },
   { label: "Order Verification", href: (id) => `/stores/${id}/order-verification`, builtInModule10: false },
