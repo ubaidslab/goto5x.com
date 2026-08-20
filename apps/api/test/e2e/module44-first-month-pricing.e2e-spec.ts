@@ -10,16 +10,17 @@ const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
 
 /**
- * v0.33/SRS "Plans & Pricing", updated for Module 61 (SRS §5.7, FR-7.20):
- * no Free Plan anywhere, signup assigns Basic with a real billing cycle,
- * Basic is now a PERMANENT tier (the old auto-transition-to-Starter
- * mechanism this suite originally proved is retired - a seller stays on
- * Basic indefinitely unless they explicitly request a change), plan-fee
- * expiry pauses orders (never a Free-Plan reassignment), a verified
- * top-up restores a plan-fee-paused store, and no code path can still
+ * v0.33/SRS "Plans & Pricing", updated for Module 61 (SRS §5.7, FR-7.20)
+ * and renamed for Module 74 (v0.39, GO/RUN/RISE/FLY): no Free Plan
+ * anywhere, signup assigns the entry tier (GO) with a real billing cycle,
+ * the entry tier is a PERMANENT tier (the old auto-transition-to-next-tier
+ * mechanism this suite originally proved is retired - a seller stays on it
+ * indefinitely unless they explicitly request a change), plan-fee expiry
+ * pauses orders (never a Free-Plan reassignment), a verified plan-fee
+ * payment restores a plan-fee-paused store, and no code path can still
  * resolve a Free plan.
  */
-describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2e) - v0.33/Module 61", () => {
+describe("GO entry-tier pricing - no Free Plan, no forced tier transition (e2e) - v0.33/Module 61, renamed v0.39/Module 74", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
 
@@ -72,15 +73,18 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     return verify.body.accessToken as string;
   }
 
-  it("there is no Free plan anywhere in the seeded plan data - individual tierOrder 0 is Basic, a real paid tier", async () => {
+  it("there is no Free plan anywhere in the seeded plan data - individual tierOrder 0 is GO, a real paid tier", async () => {
     const freeNamed = await superuser.plan.findFirst({ where: { name: "Free" } });
     expect(freeNamed).toBeNull();
 
-    const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-    expect(basic.name).toBe("Basic");
-    expect(Number(basic.price)).toBeGreaterThan(0);
-    expect(Number(basic.firstCyclePrice)).toBeGreaterThan(0);
-    expect(Number(basic.firstCyclePrice)).toBeLessThan(Number(basic.price));
+    const go = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    expect(go.name).toBe("GO");
+    expect(Number(go.price)).toBeGreaterThan(0);
+    // Module 74 (v0.39) - firstCyclePrice is DORMANT now (unread, always
+    // null on a freshly seeded tier); the first-cycle discount is a global
+    // Settings-driven percentage instead - see the WalletService coverage
+    // in module73-subscription-only-renewal.e2e-spec.ts.
+    expect(go.firstCyclePrice).toBeNull();
 
     // The supplier Free tier is a deliberately separate, legitimate concept
     // (FR-7.10) - untouched by this removal.
@@ -88,19 +92,19 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     expect(supplierFree.name).toBe("Supplier Free");
   });
 
-  it("signup assigns Basic with a real billing cycle and NO pending-plan auto-transition (Module 61 retires the old First-Month-to-Starter mechanism)", async () => {
-    const { sellerId } = await signup("basic-signup@example.com");
+  it("signup assigns the entry tier with a real billing cycle and NO pending-plan auto-transition (Module 61 retires the old auto-transition-to-next-tier mechanism)", async () => {
+    const { sellerId } = await signup("go-signup@example.com");
     const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-    const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    const go = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
 
-    expect(subscription.planId).toBe(basic.id);
+    expect(subscription.planId).toBe(go.id);
     expect(subscription.pendingPlanId).toBeNull();
     expect(subscription.currentPeriodEnd).not.toBeNull();
   });
 
-  it("Basic never auto-transitions to Starter at cycle end - applyDueCycleChanges() has nothing queued to apply, and the seller stays on Basic", async () => {
-    const { sellerId } = await signup("basic-stays@example.com");
-    const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+  it("the entry tier never auto-transitions to the next tier at cycle end - applyDueCycleChanges() has nothing queued to apply, and the seller stays on it", async () => {
+    const { sellerId } = await signup("go-stays@example.com");
+    const go = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
 
     // Back-date the cycle end - if any pendingPlanId WERE queued, this is
     // exactly when the sweep would apply it.
@@ -112,7 +116,7 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     expect(result.applied).toBe(0);
 
     const after = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-    expect(after.planId).toBe(basic.id); // unchanged - Basic is permanent unless explicitly changed
+    expect(after.planId).toBe(go.id); // unchanged - the entry tier is permanent unless explicitly changed
     expect(after.pendingPlanId).toBeNull();
     expect(after.currentPeriodEnd).toEqual(past); // untouched - nothing was due to apply
   });
@@ -180,7 +184,7 @@ describe("Basic entry-tier pricing - no Free Plan, no forced tier transition (e2
     const subscriptions = app.get(SubscriptionsService) as unknown as Record<string, unknown>;
     expect(subscriptions.assignFreePlanAtSignup).toBeUndefined();
     expect(subscriptions.scheduleDowngradeToFreeAtPeriodEnd).toBeUndefined();
-    expect(typeof (subscriptions as unknown as SubscriptionsService).assignBasicPlanAtSignup).toBe("function");
-    expect(typeof (subscriptions as unknown as SubscriptionsService).scheduleDowngradeToStarterAtPeriodEnd).toBe("function");
+    expect(typeof (subscriptions as unknown as SubscriptionsService).assignEntryTierAtSignup).toBe("function");
+    expect(typeof (subscriptions as unknown as SubscriptionsService).scheduleDowngradeToFallbackTierAtPeriodEnd).toBe("function");
   });
 });

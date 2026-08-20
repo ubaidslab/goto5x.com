@@ -212,13 +212,15 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       // limit); this test creates a second store for the same (CNIC-less)
       // seller purely to exercise name-consistency across two stores.
       // v0.34/Module 49 (FR-56.1) reintroduced a *plan-tier* store-count
-      // limit (a different mechanism, not the old per-identity one) -
-      // First Month/Starter is capped at 1, so this seller needs a Growth
-      // upgrade before a second store is legitimately allowed.
+      // limit (a different mechanism, not the old per-identity one) - the
+      // two entry tiers are capped at 1 store, so this seller needs an
+      // upgrade to a higher tier before a second store is legitimately
+      // allowed. Looked up by tierOrder, never by name (this tier has
+      // already been renamed twice).
       const matchUser = await superuser.user.findUniqueOrThrow({ where: { email: "name-match@example.com" } });
       const matchSeller = await superuser.seller.findUniqueOrThrow({ where: { userId: matchUser.id } });
-      const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", name: "Growth" } });
-      await superuser.subscription.update({ where: { sellerId: matchSeller.id }, data: { planId: growthPlan.id } });
+      const higherPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
+      await superuser.subscription.update({ where: { sellerId: matchSeller.id }, data: { planId: higherPlan.id } });
 
       const mismatchStoreId = await createStore(matchToken, "name-mismatch-store");
       const mismatching = await request(app.getHttpServer())

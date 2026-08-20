@@ -133,6 +133,11 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
   it("balance is correct after a mix of credits and debits, and matches an independent from-scratch ledger recomputation", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("mixed-ledger@example.com", "mixed-ledger-store");
     const adminToken = await createAndLoginAdmin("mixed-ledger-admin@example.com");
+    // Module 74 (v0.39) - every tier seeds commissionPercent 0 now; a
+    // seller-scoped override (highest precedence) gives this test a real
+    // nonzero commission debit to exercise, same pattern as the race-fix
+    // test below.
+    await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
 
     await topUpAndVerify(token, adminToken, 1000); // credit: +1000
     const { productId, variantId } = await addProduct(token, storeId, 500);
@@ -165,7 +170,11 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     const adminToken = await createAndLoginAdmin("race-fix-admin@example.com");
     const settings = app.get(SettingsService);
 
-    await settings.setValue("billing.commission_rate_percent", "global", null, 2, ADMIN_ID);
+    // Module 74 (v0.39) - every tier now seeds commissionPercent 0, which
+    // (seller > plan > global precedence) would shadow a mere global
+    // override. Set it at SELLER scope instead, so this test's real
+    // per-order commission math still has a nonzero rate to measure.
+    await settings.setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
     await topUpAndVerify(token, adminToken, 5000);
 
     // Measure the real per-order commission debit (K) empirically via one

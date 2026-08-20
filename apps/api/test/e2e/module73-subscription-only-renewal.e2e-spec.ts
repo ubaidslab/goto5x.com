@@ -5,6 +5,7 @@ import { SettingsService } from "../../src/settings-registry/settings.service";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { WalletGraceLadderService } from "../../src/billing/wallet-grace-ladder.service";
 import { addInterval } from "../../src/plans/subscriptions.service";
+import { resolveActivePlanPrice } from "../../src/plans/plan-pricing.util";
 import { round2 } from "../../src/orders/money.util";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
@@ -100,18 +101,21 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     return res.body.balance as number;
   }
 
-  it("a first plan-fee payment previews at the tier's discounted firstCyclePrice and activates currentPeriodEnd fresh from verification time", async () => {
+  it("Module 74 (v0.39) - a first plan-fee payment previews at the Settings-driven first-cycle discount off the active price and activates currentPeriodEnd fresh from verification time", async () => {
     const { token, sellerId } = await signup("first-payment@example.com");
     const adminToken = await createAndLoginAdmin("first-payment-admin@example.com");
-    const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    const settings = app.get(SettingsService);
+    const discountPercent = await settings.resolve<number>("billing.first_cycle_discount_percent");
+    const expectedFirstCycle = round2(resolveActivePlanPrice(entryPlan) * (1 - discountPercent / 100));
 
     const preview = await request(app.getHttpServer())
       .get("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`);
     expect(preview.status).toBe(200);
     expect(preview.body.isRenewal).toBe(false);
-    expect(preview.body.amountDue).toBe(round2(Number(basic.firstCyclePrice)));
-    expect(preview.body.amountDue).toBeLessThan(round2(Number(basic.price)));
+    expect(preview.body.amountDue).toBe(expectedFirstCycle);
+    expect(preview.body.amountDue).toBeLessThan(round2(Number(entryPlan.price)));
 
     const before = new Date();
     const { submit, verify } = await payPlanFee(token, adminToken);
@@ -191,7 +195,12 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     await payPlanFee(token, adminToken); // first payment, discounted
 
     const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-    await superuser.plan.update({ where: { id: basic.id }, data: { campaignActive: true } });
+    // Module 74 (v0.39) - GO no longer seeds a real campaignPrice (the
+    // founder gave no promotional figure to seed); inject a test-owned
+    // value to prove the mechanism, same pattern as the commission tests
+    // above.
+    const testCampaignPrice = 999;
+    await superuser.plan.update({ where: { id: basic.id }, data: { campaignActive: true, campaignPrice: testCampaignPrice } });
     await request(app.getHttpServer())
       .post("/sellers/me/subscription/change")
       .set("Authorization", `Bearer ${token}`)
@@ -201,7 +210,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
       .get("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`);
     expect(preview.body.isRenewal).toBe(true);
-    expect(preview.body.amountDue).toBe(round2(Number(basic.campaignPrice) * sixMonthMultiplier));
+    expect(preview.body.amountDue).toBe(round2(testCampaignPrice * sixMonthMultiplier));
   });
 
   it("referral commission accrues on both the first payment AND every renewal after it (FR-33.4, one call site now: AdminWalletController.verify())", async () => {

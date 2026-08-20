@@ -152,7 +152,7 @@ export class TeamsService {
       where: { id: membership.id },
       data: { status: "left", leftAt: new Date() },
     });
-    await this.subscriptions.scheduleDowngradeToStarterAtPeriodEnd(sellerId);
+    await this.subscriptions.scheduleDowngradeToFallbackTierAtPeriodEnd(sellerId);
 
     await this.events.emit({
       eventType: "team_member.left",

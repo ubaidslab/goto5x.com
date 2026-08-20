@@ -208,11 +208,13 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       const onPlan = await signupLoginAndCreateStore("msg-plan-seller-a@example.com", "msg-plan-seller-a-store");
       const offPlan = await signupLoginAndCreateStore("msg-plan-seller-b@example.com", "msg-plan-seller-b-store");
 
-      // Every seller starts on Free at signup (FR-7.1/7.3) - not this test's
-      // focus, so move the second seller to a different tier directly
-      // rather than exercising the real upgrade flow.
-      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { name: "Starter" } });
-      await superuser.subscription.update({ where: { sellerId: offPlan.sellerId }, data: { planId: starterPlan.id } });
+      // Every seller starts on the entry tier at signup (FR-7.1/7.3) - not
+      // this test's focus, so move the second seller to a different tier
+      // directly rather than exercising the real upgrade flow. Looked up
+      // by tierOrder, never by name (this tier has already been renamed
+      // twice).
+      const differentTierPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      await superuser.subscription.update({ where: { sellerId: offPlan.sellerId }, data: { planId: differentTierPlan.id } });
 
       const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: onPlan.sellerId } });
 

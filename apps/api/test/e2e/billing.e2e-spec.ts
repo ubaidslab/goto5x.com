@@ -2,7 +2,10 @@ import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { InvoicesService } from "../../src/billing/invoices.service";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * SRS §5.6c/§14.6c - Commission & Invoicing Engine. Financial Truth
@@ -60,6 +63,15 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     // than every test going through the real publish flow (top-up + verify).
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
     const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+
+    // Module 74 (v0.39) - every tier now seeds commissionPercent 0 (§5.6j
+    // FR-6.51, the engine stays intact/dormant); this whole file's premise
+    // is proving the ACCRUAL MECHANISM at a real nonzero rate, so a
+    // seller-scoped override (highest precedence) restores the file's
+    // long-standing 2% baseline without depending on any tier's real
+    // seeded value.
+    await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", seller.id, 2, ADMIN_ID);
+
     return { token, storeId: store.body.id as string, sellerId: seller.id as string };
   }
 
@@ -97,7 +109,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     return { orderId: order.body.id as string, markPaidStatus: markPaid.status };
   }
 
-  it("FR-6.16: marking an order paid accrues commission_accrued at First Month's 2% plan-scoped rate (v0.33, signup default) on the post-discount product+shipping subtotal, excluding tax", async () => {
+  it("FR-6.16: marking an order paid accrues commission_accrued at the seller's plan-scoped rate on the post-discount product+shipping subtotal, excluding tax", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreateStore("commission-basic@example.com", "commission-basic-store");
     const { orderId, markPaidStatus } = await createPaidOrder(token, storeId, 1000, 10);
     expect(markPaidStatus).toBe(201);
@@ -106,7 +118,8 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].type).toBe("commission_accrued");
     // price 1000, tax 10% exclusive -> subtotal 1000, tax 100, total 1100.
-    // Commission base = total - tax = 1000. First Month's 2% of 1000 = 20.
+    // Commission base = total - tax = 1000. This file's 2% baseline (see
+    // signupLoginAndCreateStore's seller-scoped override) of 1000 = 20.
     expect(Number(entries[0].amount)).toBeCloseTo(20, 2);
   });
 
@@ -155,7 +168,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
 
     const invoices = await superuser.sellerInvoice.findMany({ where: { sellerId } });
     expect(invoices).toHaveLength(1);
-    // First Month's 2% of 1000 + 2% of 2000 = 60
+    // This file's 2% baseline: 2% of 1000 + 2% of 2000 = 60
     expect(Number(invoices[0].totalAmount)).toBeCloseTo(60, 2);
     expect(invoices[0].status).toBe("pending");
 
@@ -217,7 +230,7 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
 
     const secondEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, orderId: second.orderId } });
     expect(secondEntries).toHaveLength(1);
-    expect(Number(secondEntries[0].amount)).toBeCloseTo(40, 2); // untouched (First Month's 2% of 2000)
+    expect(Number(secondEntries[0].amount)).toBeCloseTo(40, 2); // untouched (this file's 2% baseline, 2% of 2000)
   });
 
   it("tenant isolation: seller A cannot see seller B's invoices via the API; RLS denies cross-tenant ledger access at the database level", async () => {

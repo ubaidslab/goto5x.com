@@ -209,6 +209,25 @@ export async function seedPlansSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Module 74 (v0.39, SRS §5.6j FR-7.22) - replaces the retired per-plan
+  // `firstCyclePrice` column: every tier's first-ever plan-fee payment
+  // bills at this percentage off its standing `price` (campaign-aware,
+  // via resolveActivePlanPrice()) - one global knob instead of an
+  // individually-edited value per tier. See WalletService.
+  // getPlanFeePaymentPreview()'s first-payment branch.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.first_cycle_discount_percent" },
+    create: {
+      key: "billing.first_cycle_discount_percent",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 50,
+      validation: { min: 0, max: 100 },
+      description: "Percentage off the active price for a seller's very first plan-fee payment, every tier alike (FR-7.22) - replaces the retired per-plan firstCyclePrice column.",
+    },
+    update: {},
+  });
+
   // Module 61 (FR-7.21) - the pricing page's headline benefit block,
   // corrected v0.36 to drop the retracted "0% commission" claim. Three
   // positioning points plus a one-line Shopify comparison, all Settings
@@ -226,13 +245,18 @@ export async function seedPlansSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Module 74 (v0.39) - "as low as 1%" is corrected: commission is 0% on
+  // every tier now (§5.6j, FR-6.51). A full copy/positioning rebuild is
+  // Module 80's job (FR-7.24, "0% commission - keep every rupee you earn");
+  // this is only the minimal accuracy fix so the default string isn't
+  // false in the meantime.
   await prisma.settingsDefinition.upsert({
     where: { key: "marketing.pricing_benefit_2" },
     create: {
       key: "marketing.pricing_benefit_2",
       valueType: "string",
       allowedScopes: ["global"],
-      defaultValue: "Transparent low commission, as low as 1% - never a payment-processor markup on top",
+      defaultValue: "0% commission - keep every rupee you earn",
       description: "Pricing page headline benefit, point 2 of 3 (FR-7.21).",
     },
     update: {},
@@ -256,7 +280,7 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       key: "marketing.pricing_shopify_comparison",
       valueType: "string",
       allowedScopes: ["global"],
-      defaultValue: "Starter undercuts Shopify's Basic plan on both subscription fee and transaction commission - copy, not a live price feed.",
+      defaultValue: "RUN undercuts Shopify's Basic plan on both subscription fee and transaction commission - copy, not a live price feed.",
       description: "Pricing page's one-line comparison against Shopify's nearest equivalent tier (FR-7.21).",
     },
     update: {},
@@ -271,61 +295,54 @@ export async function seedPlansSettings(prisma: PrismaClient) {
  * price/regularPrice/yearlyDiscountPercent so an existing plan's own
  * founder-edited name/sortOrder is never clobbered by re-seeding.
  *
- * Module 61 (SRS §5.7, FR-7.20) - four PERMANENT tiers: Basic, Starter,
- * Growth, Pro. Basic replaces the old "First Month" tier-level concept -
- * a seller who signs up on Basic may stay on it indefinitely (the old
- * auto-transition-to-Starter-at-cycle-end mechanism is retired;
- * SubscriptionsService.assignBasicPlanAtSignup() no longer queues a
- * pendingPlanId). The one-time signup discount that "First Month" used to
- * provide moves to a PER-TIER `firstCyclePrice` instead - whichever tier a
- * seller picks, their very first cycle bills at that tier's
- * firstCyclePrice, every cycle after at `price`. Launch defaults per
- * FR-7.20 v0.37 (lowered once commission was confirmed active alongside
- * subscription fees). Basic additionally seeds a `campaignPrice`
- * (inactive by default - an admin toggles `campaignActive` from the plan
- * editor when a campaign actually starts).
+ * Module 74 (v0.39, SRS §5.6j FR-7.22) - four PERMANENT tiers, renamed and
+ * repriced under the subscription-only model: GO/RUN/RISE/FLY (formerly
+ * Basic/Starter/Growth/Pro, before that First Month/Starter/Growth/Pro -
+ * kept deliberately brand-agnostic in code, see SubscriptionsService.
+ * assignEntryTierAtSignup()). `firstCyclePrice` is DORMANT now - the
+ * founder's directive made the first-cycle discount a single global
+ * Settings-driven percentage off every tier's `price` uniformly
+ * (`billing.first_cycle_discount_percent`, WalletService.
+ * getPlanFeePaymentPreview()) rather than a per-tier stored value, so this
+ * column is left unset (null) here - same "kept in schema, not deleted,
+ * simply unread" treatment as the already-dormant `yearlyDiscountPercent`.
  */
 export async function seedPlansData(prisma: PrismaClient) {
   const individualTiers = [
     {
-      name: "Basic",
+      name: "GO",
       tierOrder: 0,
-      price: 2999,
-      regularPrice: 3999,
-      firstCyclePrice: 999,
-      campaignPrice: 2499,
+      price: 6499,
+      regularPrice: 7999,
       billingInterval: "monthly" as const,
-      commissionPercent: 2,
+      commissionPercent: 0,
       productLimit: 100,
     },
     {
-      name: "Starter",
+      name: "RUN",
       tierOrder: 1,
-      price: 5299,
-      regularPrice: 6499,
-      firstCyclePrice: 1499,
+      price: 14999,
+      regularPrice: 18999,
       billingInterval: "monthly" as const,
-      commissionPercent: 2,
+      commissionPercent: 0,
       productLimit: 100,
     },
     {
-      name: "Growth",
+      name: "RISE",
       tierOrder: 2,
-      price: 13999,
-      regularPrice: 16999,
-      firstCyclePrice: 2999,
+      price: 43999,
+      regularPrice: 49999,
       billingInterval: "monthly" as const,
-      commissionPercent: 1.5,
+      commissionPercent: 0,
       productLimit: 500,
     },
     {
-      name: "Pro",
+      name: "FLY",
       tierOrder: 3,
-      price: 26999,
-      regularPrice: 32999,
-      firstCyclePrice: 4999,
+      price: 73999,
+      regularPrice: 79999,
       billingInterval: "monthly" as const,
-      commissionPercent: 1,
+      commissionPercent: 0,
       productLimit: 100_000,
     },
   ];

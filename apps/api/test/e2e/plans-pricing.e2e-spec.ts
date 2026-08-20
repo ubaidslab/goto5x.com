@@ -70,7 +70,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("the public /plans endpoint renders every group/tier entirely from plan-editor data", async () => {
       const res = await request(app.getHttpServer()).get("/plans");
       expect(res.status).toBe(200);
-      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["Basic", "Starter", "Growth", "Pro"]);
+      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["GO", "RUN", "RISE", "FLY"]);
       expect(res.body.team).toHaveLength(3);
       expect(res.body.supplier.map((p: { name: string }) => p.name)).toEqual(["Supplier Free", "Supplier Premium"]);
     });
@@ -118,8 +118,8 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     });
   });
 
-  describe("Basic entry pricing + inverse commission laddering (v0.33 FR-7.3/7.4)", () => {
-    it("Basic carries its own (higher) commission-rate override; a higher tier's own override takes precedence", async () => {
+  describe("Entry-tier pricing + inverse commission laddering (v0.33 FR-7.3/7.4)", () => {
+    it("GO carries its own commission-rate override; a higher tier's own override takes precedence", async () => {
       const { token, sellerId } = await signup("commission-ladder@example.com");
       await superuser.seller.update({ where: { id: sellerId }, data: { isTrusted: true, cnicHash: `hash-${sellerId}` } });
 
@@ -133,16 +133,16 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       // real publish flow (top-up + verify) in every test.
       await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
 
-      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      await app.get(SettingsService).setValue(
-        "billing.commission_rate_percent",
-        "plan",
-        starterPlan.id,
-        0.5,
-        "00000000-0000-0000-0000-000000000000",
-      );
-      // Basic's own seeded 2% override (plans.seed.ts) is what the
-      // first order below exercises - no extra setup needed for it.
+      // Module 74 (v0.39) - every tier seeds commissionPercent 0 now
+      // (§5.6j FR-6.51, the engine stays intact/dormant); this test proves
+      // the PRECEDENCE mechanism (a higher tier's own override wins), so it
+      // injects explicit test-owned rates on both tiers rather than relying
+      // on the real (now all-zero) seeded defaults.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      const runPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      const adminId = "00000000-0000-0000-0000-000000000000";
+      await app.get(SettingsService).setValue("billing.commission_rate_percent", "plan", goPlan.id, 2, adminId);
+      await app.get(SettingsService).setValue("billing.commission_rate_percent", "plan", runPlan.id, 0.5, adminId);
 
       const category = await superuser.category.create({ data: { name: "Ladder", slug: `ladder-${Date.now()}` } });
       async function placeAndPay(price: number) {
@@ -168,53 +168,53 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
           .set("Authorization", `Bearer ${token}`);
       }
 
-      // Basic (signup default, v0.33): its own seeded 2% override.
+      // GO (signup default, v0.33): the 2% override injected above.
       await placeAndPay(1000);
-      const basicEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
-      expect(Number(basicEntries[0].amount)).toBeCloseTo(20, 2); // 2% of 1000
+      const goEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
+      expect(Number(goEntries[0].amount)).toBeCloseTo(20, 2); // 2% of 1000
 
-      // Move directly to Starter (a real cycle is already active by v0.33,
-      // so the self-service change endpoint would defer this to next
-      // cycle per FR-7.5 - writing the row directly isolates this test to
-      // the commission-precedence question, which FR-7.5's own deferral
-      // rule is covered separately below).
-      await superuser.subscription.update({ where: { sellerId }, data: { planId: starterPlan.id } });
+      // Move directly to RUN (a real cycle is already active by v0.33, so
+      // the self-service change endpoint would defer this to next cycle
+      // per FR-7.5 - writing the row directly isolates this test to the
+      // commission-precedence question, which FR-7.5's own deferral rule
+      // is covered separately below).
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: runPlan.id } });
 
       await placeAndPay(1000);
       const allEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" }, orderBy: { createdAt: "asc" } });
-      expect(Number(allEntries[1].amount)).toBeCloseTo(5, 2); // 0.5% of 1000, the Starter override
+      expect(Number(allEntries[1].amount)).toBeCloseTo(5, 2); // 0.5% of 1000, the RUN override
     });
 
     it("FR-7.5: a plan change requested while already on a paid cycle is deferred to the next cycle, not applied immediately", async () => {
       const { token, sellerId } = await signup("next-cycle@example.com");
-      const basicPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
-      const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      const runPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      const risePlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
 
-      // v0.33 - every seller starts on Basic with a real billing cycle
-      // already active (assignBasicPlanAtSignup), so even the very FIRST
-      // self-service change request defers to the next cycle; there is no
-      // more "no cycle yet -> immediate" case at signup.
+      // v0.33 - every seller starts on the entry tier with a real billing
+      // cycle already active (assignEntryTierAtSignup), so even the very
+      // FIRST self-service change request defers to the next cycle; there
+      // is no more "no cycle yet -> immediate" case at signup.
       const firstChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
-        .send({ planId: starterPlan.id });
+        .send({ planId: runPlan.id });
       expect(firstChange.status).toBe(201);
-      expect(firstChange.body.planId).toBe(basicPlan.id); // unchanged for now
-      expect(firstChange.body.pendingPlanId).toBe(starterPlan.id);
+      expect(firstChange.body.planId).toBe(goPlan.id); // unchanged for now
+      expect(firstChange.body.pendingPlanId).toBe(runPlan.id);
 
-      // A second change request while still on the same (Basic) cycle overwrites the pending target.
+      // A second change request while still on the same (entry-tier) cycle overwrites the pending target.
       const secondChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
-        .send({ planId: growthPlan.id });
+        .send({ planId: risePlan.id });
       expect(secondChange.status).toBe(201);
-      expect(secondChange.body.planId).toBe(basicPlan.id); // still unchanged
-      expect(secondChange.body.pendingPlanId).toBe(growthPlan.id);
+      expect(secondChange.body.planId).toBe(goPlan.id); // still unchanged
+      expect(secondChange.body.pendingPlanId).toBe(risePlan.id);
 
       const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
-      expect(subscription.planId).toBe(basicPlan.id);
-      expect(subscription.pendingPlanId).toBe(growthPlan.id);
+      expect(subscription.planId).toBe(goPlan.id);
+      expect(subscription.pendingPlanId).toBe(risePlan.id);
     });
   });
 
@@ -269,6 +269,11 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       const adminId = "00000000-0000-0000-0000-000000000000";
       await settings.setValue("billing.launch_campaign_discount_percent", "global", null, 1, adminId);
       await settings.setValue("billing.launch_campaign_seller_limit", "global", null, 1, adminId); // only the first-ever seller
+      // Module 74 (v0.39) - GO seeds commissionPercent 0 now; inject a
+      // test-owned 2% override so the campaign-discount subtraction below
+      // (2% - 1% = 1%) has a real base rate to subtract from.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await settings.setValue("billing.commission_rate_percent", "plan", goPlan.id, 2, adminId);
 
       async function orderAndCommission(token: string, storeSlug: string, sellerId: string) {
         const store = await request(app.getHttpServer())
@@ -305,9 +310,9 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         return Number(entries[0].amount);
       }
 
-      // Both sellers start on Basic (v0.33), whose own plan-scoped
-      // override is 2% (not the global default) - the first-ever seller is
-      // within the counter condition (rank 1 <= limit 1): 2% - 1% = 1%.
+      // Both sellers start on GO (v0.33), whose plan-scoped override was
+      // just set to 2% above - the first-ever seller is within the counter
+      // condition (rank 1 <= limit 1): 2% - 1% = 1%.
       const firstAmount = await orderAndCommission(firstToken, "campaign-first-store", firstSellerId);
       expect(firstAmount).toBeCloseTo(10, 2);
 
@@ -321,19 +326,19 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("bypasses checkout entirely and is captured in admin_audit_logs with before/after plan", async () => {
       const { sellerId } = await signup("admin-grant@example.com");
       const token = await adminToken("admin-grant-admin@example.com");
-      const proPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 3 } });
+      const flyPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 3 } });
 
       const res = await request(app.getHttpServer())
         .post(`/admin/sellers/${sellerId}/plan`)
         .set("Authorization", `Bearer ${token}`)
-        .send({ planId: proPlan.id });
+        .send({ planId: flyPlan.id });
       expect(res.status).toBe(201);
-      expect(res.body.planId).toBe(proPlan.id);
+      expect(res.body.planId).toBe(flyPlan.id);
 
       const log = await superuser.adminAuditLog.findFirst({ where: { action: "plans.admin_granted", targetType: "subscription" } });
       expect(log).not.toBeNull();
-      expect((log!.beforeValue as { planName: string }).planName).toBe("Basic");
-      expect((log!.afterValue as { planName: string }).planName).toBe("Pro");
+      expect((log!.beforeValue as { planName: string }).planName).toBe("GO");
+      expect((log!.afterValue as { planName: string }).planName).toBe("FLY");
     });
   });
 
@@ -409,14 +414,14 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ name: "Perk Store", slug: "perk-store" });
 
-      // Basic (signup default, no override for this key) - rejected.
+      // GO (signup default, no override for this key) - rejected.
       const rejected = await request(app.getHttpServer())
         .patch(`/stores/${store.body.id}/theme-settings`)
         .set("Authorization", `Bearer ${token}`)
         .send({ customCode: "<div>x</div>" });
       expect(rejected.status).toBe(403);
 
-      // Grant Pro, and bind the perk to Pro specifically via a plan-scoped override.
+      // Grant FLY, and bind the perk to FLY specifically via a plan-scoped override.
       const proPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 3 } });
       await superuser.subscription.update({ where: { sellerId }, data: { planId: proPlan.id } });
       await app.get(SettingsService).setValue("theme.coded_mode_enabled", "plan", proPlan.id, true, "00000000-0000-0000-0000-000000000000");
@@ -431,7 +436,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("dashboard-personalization gating (FR-28.4) is finally enforced, not just documented (Module 10's open item, closed here)", async () => {
       const { token, sellerId } = await signup("dashboard-perk@example.com");
 
-      // Basic (signup default, global default ["default"] for this key) - "emerald" is rejected.
+      // GO (signup default, global default ["default"] for this key) - "emerald" is rejected.
       const rejected = await request(app.getHttpServer())
         .patch("/sellers/me/dashboard-theme")
         .set("Authorization", `Bearer ${token}`)

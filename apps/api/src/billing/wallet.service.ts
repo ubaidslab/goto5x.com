@@ -238,11 +238,12 @@ export class WalletService {
    * signup total (plan fee + bundled wallet top-up). Wallet is hidden from
    * sellers now, so this is plan-fee-only: whichever amount is due right
    * now, computed server-side (never client-supplied). A seller's very
-   * first-ever payment is discounted (`firstCyclePrice`, falling back to
-   * `price` for a tier with none set); every payment after that - the
-   * SAME mechanism now also covers ordinary renewals, not just signup -
-   * is the full active (campaign-aware) price for the subscription's own
-   * billing interval.
+   * first-ever payment is discounted (Module 74, v0.39 - a global
+   * `billing.first_cycle_discount_percent` off the active price, replacing
+   * the retired per-tier `firstCyclePrice` column); every payment after
+   * that - the SAME mechanism now also covers ordinary renewals, not just
+   * signup - is the full active (campaign-aware) price for the
+   * subscription's own billing interval.
    */
   async getPlanFeePaymentPreview(sellerId: string, currency: string) {
     const subscription = await this.prismaAdmin.subscription.findUnique({
@@ -254,7 +255,7 @@ export class WalletService {
     const isRenewal = await this.hasEverPaidPlanFee(sellerId);
     const amountDue = isRenewal
       ? await this.cyclePriceFor(subscription.plan, subscription.billingInterval)
-      : round2(Number(subscription.plan.firstCyclePrice ?? subscription.plan.price));
+      : await this.firstCyclePriceFor(subscription.plan);
 
     return {
       planName: subscription.plan.name,
@@ -271,6 +272,13 @@ export class WalletService {
       where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "verified" },
     });
     return prior !== null;
+  }
+
+  /** Module 74 (v0.39, FR-7.22) - campaign-aware active price, discounted by the global first-cycle percentage. Replaces reading the retired per-tier `firstCyclePrice` column. */
+  private async firstCyclePriceFor(plan: Plan): Promise<number> {
+    const activePrice = resolveActivePlanPrice(plan);
+    const discountPercent = await this.settings.resolve<number>("billing.first_cycle_discount_percent");
+    return round2(activePrice * (1 - discountPercent / 100));
   }
 
   /** Same computation PlanFeeDebitService used to make for its now-retired auto-debit (Module 61, FR-7.20) - campaign-aware active price, times the subscription's own cycle multiplier. */
@@ -340,7 +348,7 @@ export class WalletService {
    * plan-fee payment exists for this seller) means "activate" -
    * currentPeriodEnd is computed fresh from THIS verification
    * (`addInterval(now, interval)`), never stacked on the free placeholder
-   * period assignBasicPlanAtSignup() already granted at signup, so an
+   * period assignEntryTierAtSignup() already granted at signup, so an
    * admin-processing delay after signup never costs the seller part of a
    * paid cycle. true means "advance" - currentPeriodEnd stacks onto the
    * subscription's own existing currentPeriodEnd, so paying a few days

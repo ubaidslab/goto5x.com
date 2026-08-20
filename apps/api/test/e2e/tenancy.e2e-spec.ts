@@ -137,9 +137,12 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     return { token, sellerId: seller.id as string };
   }
 
-  async function upgradeToGrowth(sellerId: string) {
-    const growthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", name: "Growth" } });
-    await superuser.subscription.update({ where: { sellerId }, data: { planId: growthPlan.id } });
+  // Module 74 (v0.39) - looked up by tierOrder, never by name, so a
+  // future tier rename (this one has already happened twice) never
+  // requires touching this helper again.
+  async function upgradeToMultiStoreTier(sellerId: string) {
+    const higherPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: higherPlan.id } });
   }
 
   it("a First Month/Starter seller (limit 1) is blocked from creating a second store with a clear message, and the block lifts immediately on upgrade to Growth (limit 2)", async () => {
@@ -158,7 +161,7 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     expect(second.status).toBe(400);
     expect(second.body.message.message).toMatch(/store limit \(1\) has been reached/i);
 
-    await upgradeToGrowth(sellerId);
+    await upgradeToMultiStoreTier(sellerId);
 
     const afterUpgrade = await request(app.getHttpServer())
       .post("/stores")
@@ -176,7 +179,7 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
 
   it("a seller who owns two stores cannot see or mutate one store's data from the other store's dashboard context (explicit cross-store assertion, not just relying on the RLS guarantee)", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-isolation@example.com");
-    await upgradeToGrowth(sellerId);
+    await upgradeToMultiStoreTier(sellerId);
 
     const createFirst = await request(app.getHttpServer())
       .post("/stores")
@@ -224,7 +227,7 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
 
   it("the store switcher lists exactly the seller's own stores via GET /stores", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-switcher@example.com");
-    await upgradeToGrowth(sellerId);
+    await upgradeToMultiStoreTier(sellerId);
 
     await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Switcher One", slug: "switcher-one" });
     await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Switcher Two", slug: "switcher-two" });

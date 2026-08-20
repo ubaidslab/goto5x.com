@@ -38,23 +38,28 @@ type Cycle = "monthly" | "six_month" | "yearly";
  * the founder asked for. Keyed by the live plan name from the API (never
  * hard-coded prices/limits that duplicate what plans.seed.ts already
  * owns) - a tier renamed or reordered from the admin plan editor falls
- * back to generic copy below rather than breaking.
+ * back to generic copy below rather than breaking. Module 74 (v0.39)
+ * renamed the tiers GO/RUN/RISE/FLY and dropped the per-tier commission
+ * lines (commission is 0% on every tier now, communicated once via the
+ * shared benefit banner instead of repeated per-tier) - the full feature
+ * list per tier (staff counts, gift cards, FB/IG feed, etc.) is Module
+ * 75's job as those gates are actually built, not rewritten ahead of it
+ * here.
  */
 const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: string[] }> = {
-  Basic: {
+  GO: {
     description: "Get your first store live at a steep first-cycle discount, on a tier you can stay on for good.",
     features: [
       "Up to 100 products",
-      "2% commission on sales",
+      "Order verification (OTP/call/WhatsApp)",
       "A real discount on your first billing cycle only",
-      "No forced transition to a higher tier - Basic is permanent",
+      "No forced transition to a higher tier - GO is permanent",
     ],
   },
-  Starter: {
-    description: "For getting your first store live and taking real orders.",
+  RUN: {
+    description: "For growing sellers ready to scale past a one-person operation.",
     features: [
       "Up to 100 products",
-      "2% commission on sales",
       "Order verification (OTP/call/WhatsApp)",
       "Profit & loss dashboard",
       "Free custom domain connection",
@@ -63,25 +68,21 @@ const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: stri
       "“Managed by UZEYN” storefront mark",
     ],
   },
-  Growth: {
-    description: "For sellers ready to scale past a one-person operation.",
+  RISE: {
+    description: "For established sellers running a real, multi-product operation.",
     features: [
       "Up to 500 products",
-      "1.5% commission on sales",
-      "3 staff accounts",
+      "Order verification (OTP/call/WhatsApp)",
       "Email marketing campaigns",
-      "Gift cards & customer segments",
-      "Facebook/Instagram Shop feed",
       "Full D-Studio design tools",
       "Inventory management",
     ],
   },
-  Pro: {
-    description: "For established stores that have outgrown the basics.",
+  FLY: {
+    description: "For high-volume, multi-store operations that have outgrown the basics.",
     features: [
       "Unlimited products",
-      "1% commission on sales - the lowest tier",
-      "10 staff accounts",
+      "Order verification (OTP/call/WhatsApp)",
       "@support.uzeyn.com custom email",
       "Remove the “Managed by UZEYN” mark",
       "Priority support",
@@ -89,7 +90,7 @@ const INDIVIDUAL_TIER_COPY: Record<string, { description: string; features: stri
     ],
   },
 };
-const DEFAULT_INDIVIDUAL_COPY = { description: "A plan for growing stores.", features: ["Storefront + custom domain", "Wallet & payouts", "Email support"] };
+const DEFAULT_INDIVIDUAL_COPY = { description: "A plan for growing stores.", features: ["Storefront + custom domain", "Order verification", "Email support"] };
 
 const FAQS = [
   {
@@ -99,7 +100,7 @@ const FAQS = [
   {
     question: "What happens on my first billing cycle?",
     answer:
-      "Every tier has its own one-time first-cycle discount, paid together with your minimum wallet top-up in a single combined payment at signup. Every cycle after that bills at the tier's standing price - there's no forced transition to a different tier.",
+      "Every tier has the same one-time first-cycle discount off its standing price, paid in a single payment at signup and verified by our team. Every cycle after that bills at the tier's standing price - there's no forced transition to a different tier.",
   },
   {
     question: "Can I change plans later?",

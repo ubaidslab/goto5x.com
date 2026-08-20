@@ -8278,12 +8278,42 @@ Module 52, v0.34)
       superseding Module 59/60's retired e2e specs (deleted). The
       publish-gate assertion is proven by the rewritten
       `module47-wallet-balance-reconciliation.e2e-spec.ts`'s last case.
-- [ ] Commission is 0% on every tier and removed from every seller-facing
+- [x] Commission is 0% on every tier and removed from every seller-facing
       surface; the engine itself stays intact/dormant (FR-6.51,
-      Module 74).
-- [ ] Plans are renamed/repriced GO/RUN/RISE/FLY; first-cycle discount is
+      Module 74). `plans.seed.ts` seeds `commissionPercent: 0` for all
+      four individual tiers via the existing plan-scoped
+      `billing.commission_rate_percent` mechanism (unchanged) -
+      `LedgerService.accrueCommission()` itself is untouched, still runs
+      on every confirmed order, just resolves 0% by default now
+      (re-activatable per-tier or per-seller via the Settings admin UI
+      with no deploy). Marketing copy corrected to match (pricing page
+      benefit #2, homepage FAQ) - full positioning rebuild is Module 80.
+- [x] Plans are renamed/repriced GO/RUN/RISE/FLY; first-cycle discount is
       a Settings-driven 50%-off-of-price computation, not a per-plan
-      stored value (FR-7.22, Module 74).
+      stored value (FR-7.22, Module 74). Data-only rename (same `Plan`
+      rows, tierOrder unchanged): GO Rs 6,499/7,999, RUN Rs 14,999/18,999,
+      RISE Rs 43,999/49,999, FLY Rs 73,999/79,999 (price/regularPrice).
+      New global `billing.first_cycle_discount_percent` (default 50)
+      replaces the retired per-tier `firstCyclePrice` column -
+      `WalletService.getPlanFeePaymentPreview()`'s first-payment branch
+      now computes `resolveActivePlanPrice(plan) * (1 -
+      discountPercent/100)` (campaign-aware, via the new private
+      `firstCyclePriceFor()`) instead of reading `plan.firstCyclePrice`;
+      the column itself is left null/dormant, same treatment as the
+      already-dormant `yearlyDiscountPercent`. `SubscriptionsService`'s
+      two tier-name-bearing methods renamed brand-agnostic
+      (`assignBasicPlanAtSignup` → `assignEntryTierAtSignup`,
+      `scheduleDowngradeToStarterAtPeriodEnd` →
+      `scheduleDowngradeToFallbackTierAtPeriodEnd`) so a future rename -
+      this tier has now been renamed three times (First Month → Basic →
+      GO) - never requires touching these call sites again. Proven by
+      updates across ten pre-existing e2e specs that assumed the old
+      names/nonzero default commission (module44, plans-pricing,
+      module73, tenancy, trust-safety, module17-admin-control-plane,
+      billing, module32-gift-cards, module47) - none deleted, each
+      updated to inject an explicit test-owned commission-rate override
+      (seller-scoped, highest precedence) where the test's actual point
+      is the accrual MECHANISM, not any specific tier's real rate.
 - [ ] Feature-gate ladder (stores/staff/email quota/gift cards/customer
       segments/premium templates/D-Studio/team-leader eligibility) is
       correct across all four tiers (FR-7.23, Module 75).

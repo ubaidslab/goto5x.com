@@ -1,9 +1,11 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Module 32 (SRS §5.49, §14.49) - Gift Cards. Mirrors DiscountCode's
@@ -59,6 +61,11 @@ describe("Gift Cards (e2e) - SRS §5.49, §14.49", () => {
     await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: storeRow.sellerId }, data: { cnicHash: `test-cnic-hash-${storeRow.sellerId}` } });
     await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
+    // Module 74 (v0.39) - every tier now seeds commissionPercent 0 (§5.6j
+    // FR-6.51, the engine stays intact/dormant); a seller-scoped override
+    // (highest precedence) restores this file's 2% baseline without
+    // depending on any tier's real seeded value.
+    await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", storeRow.sellerId, 2, ADMIN_ID);
     return { token, storeId: store.body.id as string, sellerId: storeRow.sellerId, hostname: `${slug}.uzeyn.com` };
   }
 
@@ -177,7 +184,7 @@ describe("Gift Cards (e2e) - SRS §5.49, §14.49", () => {
     const ledgerEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, orderId: first.body.id } });
     const commission = ledgerEntries.find((e) => e.type === "commission_accrued");
     expect(commission).toBeDefined();
-    // First Month's 2% plan-scoped rate (v0.33 signup default, FR-7.4); base = totalAmount - taxAmount = 60 - 0.
+    // This file's 2% baseline (see signupLoginAndCreateStore's seller-scoped override); base = totalAmount - taxAmount = 60 - 0.
     expect(Number(commission!.amount)).toBeCloseTo(1.2, 2);
   });
 

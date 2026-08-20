@@ -131,7 +131,7 @@ export class InvoicesService {
           where: { teamId: invoice.teamId!, status: "active" },
         });
         for (const member of activeMembers) {
-          await this.subscriptions.scheduleDowngradeToStarterAtPeriodEnd(member.sellerId);
+          await this.subscriptions.scheduleDowngradeToFallbackTierAtPeriodEnd(member.sellerId);
         }
         continue;
       }

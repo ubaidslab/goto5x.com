@@ -8,6 +8,22 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Module 74: Final Plans + First-Cycle Discount
+
+Commission drops to 0% on every tier - the engine stays fully intact and
+tested, just resolves 0% by default now (re-activatable per-tier or
+per-seller with no deploy). Tiers renamed and repriced: GO (Rs 6,499,
+was Basic), RUN (Rs 14,999, was Starter), RISE (Rs 43,999, was Growth),
+FLY (Rs 73,999, was Pro) - a data change, not a deploy.
+
+### Changed
+- A new global setting controls every tier's first-cycle discount (50%
+  off the standing price by default) in one place, instead of a
+  separately stored discount per tier.
+- Renamed two internal methods that hard-coded a tier's brand name -
+  this tier has now been renamed three times, so the code no longer
+  refers to any of its names directly.
+
 ## Module 73: Subscription-Only Renewal Mechanism
 
 Final, locked business-model decision (v0.39) - UZEYN earns from

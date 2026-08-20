@@ -35,35 +35,38 @@ export class SubscriptionsService {
   ) {}
 
   /**
-   * Called once, from AuthService.signup() - every seller starts on Basic
-   * (individual, tier 0, v0.33/FR-7.1/7.3, renamed from "First Month" and
-   * made a PERMANENT tier by Module 61/FR-7.20): a real, tracked, paid
-   * first billing cycle - there is no more Free Plan and no free trial.
-   * Module 61 retires the old auto-transition-to-Starter mechanism (no
-   * more pendingPlanId queued here) - a seller who signs up on Basic may
-   * stay on it indefinitely, same as any other tier, unless they
-   * explicitly request a change via requestPlanChange(). The signup-time
-   * discount that "First Month" used to provide is now Basic's own
-   * `firstCyclePrice`, applied by Module 59's combined-payment flow, not
-   * by this method. `referralSource` (SRS FR-33.1) is captured here, once,
-   * since this is the only place a Subscription row is ever created for a
-   * seller - already-shape-validated by resolveReferralSource(), never
-   * re-validated against a program table here since none exist yet
-   * (Module 22).
+   * Called once, from AuthService.signup() - every seller starts on the
+   * entry individual tier (tier 0, v0.33/FR-7.1/7.3, made a PERMANENT tier
+   * by Module 61/FR-7.20): a real, tracked, paid first billing cycle -
+   * there is no more Free Plan and no free trial. Module 61 retires the
+   * old auto-transition-to-next-tier mechanism (no more pendingPlanId
+   * queued here) - a seller who signs up on the entry tier may stay on it
+   * indefinitely, same as any other tier, unless they explicitly request a
+   * change via requestPlanChange(). Method name is deliberately
+   * brand-agnostic (this tier has been renamed twice already - First
+   * Month, then Basic, now GO per Module 74/v0.39 - see plans.seed.ts) so
+   * a future rename never requires touching this call site again. The
+   * signup-time discount is a global Settings-driven percentage off the
+   * active price (Module 74, `billing.first_cycle_discount_percent`),
+   * applied by WalletService's plan-fee-payment flow, not by this method.
+   * `referralSource` (SRS FR-33.1) is captured here, once, since this is
+   * the only place a Subscription row is ever created for a seller -
+   * already-shape-validated by resolveReferralSource(), never re-validated
+   * against a program table here since none exist yet (Module 22).
    */
-  async assignBasicPlanAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
-    const basicPlan = await this.prisma.plan.findFirst({
+  async assignEntryTierAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
+    const entryPlan = await this.prisma.plan.findFirst({
       where: { planGroup: "individual", tierOrder: 0 },
     });
-    if (!basicPlan) {
+    if (!entryPlan) {
       // Seeding failure, not a seller-facing condition - plans.seed.ts always
       // creates this row before the app accepts signups.
-      throw new Error("No Basic (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
+      throw new Error("No entry (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
     }
     await this.prisma.subscription.create({
       data: {
         sellerId,
-        planId: basicPlan.id,
+        planId: entryPlan.id,
         currentPeriodEnd: addInterval(new Date(), "monthly"),
         referralSource,
       },
@@ -242,27 +245,32 @@ export class SubscriptionsService {
   }
 
   /**
-   * FR-7.13 - graceful downgrade to Starter (v0.33: the entry paid tier,
-   * now that Free no longer exists) at the *current* period's end, whether
-   * member-initiated or non-payment-triggered.
+   * FR-7.13 - graceful downgrade, on a team member losing sponsorship, to
+   * the fallback individual tier (tier 1 - v0.33: the entry PAID tier, now
+   * that Free no longer exists) at the *current* period's end, whether
+   * member-initiated or non-payment-triggered. Method name is deliberately
+   * brand-agnostic (tier 1 has been "Starter", now "RUN" per Module
+   * 74/v0.39 - see plans.seed.ts) so a future rename never requires
+   * touching this call site again.
    */
-  async scheduleDowngradeToStarterAtPeriodEnd(sellerId: string): Promise<void> {
-    const starterPlan = await this.prisma.plan.findFirst({ where: { planGroup: "individual", tierOrder: 1 } });
-    if (!starterPlan) throw new Error("No Starter (individual, tier 1) plan exists.");
+  async scheduleDowngradeToFallbackTierAtPeriodEnd(sellerId: string): Promise<void> {
+    const fallbackPlan = await this.prisma.plan.findFirst({ where: { planGroup: "individual", tierOrder: 1 } });
+    if (!fallbackPlan) throw new Error("No fallback (individual, tier 1) plan exists.");
     const subscription = await this.prisma.subscription.findUnique({ where: { sellerId } });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
 
     if (subscription.currentPeriodEnd === null) {
       // No cycle to wait for (e.g. a sponsored team member losing
-      // sponsorship) - starts a real Starter billing cycle immediately,
-      // same "nothing to defer" case requestPlanChange() handles. This is
-      // what lets the seller flow through the ordinary plan-fee-debit
-      // sweep (and, on non-payment, WalletGraceLadderService's pause) like
-      // any other paid subscription - no separate enforcement path needed.
+      // sponsorship) - starts a real billing cycle on the fallback tier
+      // immediately, same "nothing to defer" case requestPlanChange()
+      // handles. This is what lets the seller flow through the ordinary
+      // plan-fee-debit sweep (and, on non-payment,
+      // WalletGraceLadderService's pause) like any other paid
+      // subscription - no separate enforcement path needed.
       await this.prisma.subscription.update({
         where: { sellerId },
         data: {
-          planId: starterPlan.id,
+          planId: fallbackPlan.id,
           pendingPlanId: null,
           sponsoredByTeamId: null,
           currentPeriodEnd: addInterval(new Date(), "monthly"),
@@ -272,7 +280,7 @@ export class SubscriptionsService {
     }
     await this.prisma.subscription.update({
       where: { sellerId },
-      data: { pendingPlanId: starterPlan.id, sponsoredByTeamId: null },
+      data: { pendingPlanId: fallbackPlan.id, sponsoredByTeamId: null },
     });
   }
 }

@@ -4159,14 +4159,30 @@ here).
   (7 cases); `module47-wallet-balance-reconciliation.e2e-spec.ts`'s
   publish-gate case is rewritten to match.
 - **Module 74 — Final Plans + First-Cycle Discount (§5.6j/§5.7, FR-6.51/
-  FR-7.22).** Not yet built. Commission -> 0% on every tier, removed from
-  every seller-facing surface (engine stays intact/dormant). Tiers
-  renamed/repriced GO (Rs 6,500/Rs 7,999 regular)/RUN (Rs 17,500/Rs
-  18,999)/RISE (Rs 49,999/Rs 64,999)/FLY (Rs 99,999/Rs 129,999) - data-only
-  change, same `Plan` rows. New global `billing.first_cycle_discount_percent`
-  (default 50) replaces the per-plan `firstCyclePrice` column as the
-  first-cycle computation (dormant/unread after, same treatment as
-  `yearlyDiscountPercent`).
+  FR-7.22). BUILT.** Commission -> 0% on every tier (`plans.seed.ts`'s
+  `commissionPercent: 0` via the existing plan-scoped
+  `billing.commission_rate_percent` mechanism - `LedgerService.
+  accrueCommission()` untouched, just resolves 0% now, re-activatable
+  with no deploy). Tiers renamed/repriced GO (Rs 6,499/Rs 7,999
+  regular)/RUN (Rs 14,999/Rs 18,999)/RISE (Rs 43,999/Rs 49,999)/FLY
+  (Rs 73,999/Rs 79,999) - the founder's final Part B numbers, data-only
+  change, same `Plan` rows (tierOrder unchanged). New global
+  `billing.first_cycle_discount_percent` (default 50) replaces the
+  per-plan `firstCyclePrice` column as the first-cycle computation
+  (`WalletService.firstCyclePriceFor()` = `resolveActivePlanPrice(plan) *
+  (1 - discountPercent/100)`, campaign-aware); `firstCyclePrice` itself
+  is dormant/unread after, same treatment as `yearlyDiscountPercent`.
+  `SubscriptionsService`'s two tier-name-bearing methods renamed
+  brand-agnostic (`assignBasicPlanAtSignup` -> `assignEntryTierAtSignup`,
+  `scheduleDowngradeToStarterAtPeriodEnd` ->
+  `scheduleDowngradeToFallbackTierAtPeriodEnd`) so the next tier rename -
+  this one has happened three times now - never touches these call sites
+  again. Ten pre-existing e2e specs assumed the old tier names or the old
+  nonzero default commission rate (a real regression class first hit in
+  Module 73's own CI runs) - each was audited and fixed rather than
+  deleted, injecting an explicit test-owned commission override
+  (seller-scoped) wherever a test's real point was the accrual mechanism,
+  not any specific tier's rate.
 - **Module 75 — Feature-Gate Ladder (§5.6j, FR-7.23).** Not yet built.
   Store limits (GO 1/RUN 3/RISE 5/FLY 10), staff accounts, email-campaign
   quotas (GO 799/RUN 2,499/RISE 10,000/FLY unlimited), new plan-scoped
