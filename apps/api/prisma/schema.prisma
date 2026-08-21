@@ -491,6 +491,14 @@ model Store {
   // indefinitely (never deleted, never touched by FR-6.41's job, which
   // only ever acts on terminalPausedAt above).
   overLimitPausedAt     DateTime?       @map("over_limit_paused_at") @db.Timestamptz
+  // Module 64 (FR-6.41) - one sticky sent-at timestamp per warning
+  // milestone, same "sticky timestamp so a sweep never re-sends" pattern
+  // as dormantWarningSentAt/walletLowBalanceWarningSentAt. All three are
+  // cleared the instant terminalPausedAt is cleared (restoreAfterPlanFeePayment),
+  // so a future pause cycle starts the warning sequence fresh.
+  retentionWarningDay0SentAt  DateTime? @map("retention_warning_day0_sent_at") @db.Timestamptz
+  retentionWarningDay7SentAt  DateTime? @map("retention_warning_day7_sent_at") @db.Timestamptz
+  retentionWarningDay13SentAt DateTime? @map("retention_warning_day13_sent_at") @db.Timestamptz
 
   // Module 52 (SRS §5.59/FR-59.1) - the next human-readable Order.orderNumber
   // this store will assign, atomically incremented (via a plain UPDATE ...

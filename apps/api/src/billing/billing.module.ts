@@ -16,6 +16,8 @@ import { ProgramCommissionService } from "./program-commission.service";
 import { WalletReconciliationService } from "./wallet-reconciliation.service";
 import { WalletReconciliationScheduler } from "./wallet-reconciliation.scheduler";
 import { PlanFeeRenewalExportTrigger } from "./plan-fee-renewal-export.service";
+import { RetentionService } from "./retention.service";
+import { RetentionScheduler } from "./retention.scheduler";
 import {
   AdminWalletController,
   SellerWalletController,
@@ -69,7 +71,9 @@ import {
     ProgramCommissionService,
     WalletReconciliationService,
     WalletReconciliationScheduler,
+    RetentionService,
+    RetentionScheduler,
   ],
-  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService],
+  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService],
 })
 export class BillingModule {}

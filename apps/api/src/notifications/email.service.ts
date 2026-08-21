@@ -150,4 +150,26 @@ export class EmailService {
       `A buyer's order verification on ${storeName} failed after too many incorrect attempts. The order can't be confirmed until a fresh verification code is sent and completed. View it here: ${orderUrl}`,
     );
   }
+
+  /**
+   * SRS §5.6k/FR-6.41 (Module 64) - the 14-day retention window's three
+   * warning emails (day 0/7/13, `daysRemaining` computed by the caller).
+   * Deliberately hardcoded copy, not the admin-editable EmailTemplate
+   * mechanism Module 65 uses - the exact deletion scope stated here is
+   * legally/operationally load-bearing and must never drift from what the
+   * job actually deletes, so it is not left open to admin editing. This
+   * warning is never gated by the seller notification opt-out (unlike
+   * every other email in this file) - a seller cannot suppress the one
+   * notice that their data is about to be permanently deleted.
+   */
+  async sendDataRetentionWarningEmail(to: string, storeName: string, daysRemaining: number): Promise<void> {
+    const urgency = daysRemaining <= 0 ? "today" : `in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`;
+    await this.send(
+      to,
+      `Action needed: "${storeName}" data will be deleted ${urgency}`,
+      `"${storeName}" has been paused for non-payment. Unless you complete a plan-fee payment, all of its products, orders, customers, and store-specific settings (theme, domain, discount codes, gift cards, campaigns, segments) and analytics history will be permanently deleted ${urgency}.\n\n` +
+        `Your own seller account, billing history, and audit records are never deleted - you can always log back in and start a new store. But this store's data cannot be recovered once deleted.\n\n` +
+        `If you haven't already, export your data now from Settings -> Data export (delivered to your own Google Drive) as a backup before it's gone.`,
+    );
+  }
 }

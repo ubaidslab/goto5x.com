@@ -287,13 +287,18 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     expect(storeRestored.status).toBe("active");
   });
 
-  it("restoreAfterPlanFeePayment() is unconditional (payment verification alone is the gate) - proven directly against WalletGraceLadderService", async () => {
+  it("restoreAfterPlanFeePayment() is unconditional (payment verification alone is the gate) for stores paused for non-payment - proven directly against WalletGraceLadderService", async () => {
     const { token, sellerId } = await signup("restore-unconditional@example.com");
     await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Restore Store", slug: "restore-unconditional-store" });
-    await superuser.store.updateMany({ where: { sellerId }, data: { status: "orders_paused" } });
+    // Module 64 (FR-6.41) added terminalPausedAt as the specific non-payment
+    // pause-reason marker, scoping restoreAfterPlanFeePayment() to exactly
+    // the stores it paused - so simulating that pause reason here means
+    // setting it too, the same as the real pauseActiveStoresForNonPayment()
+    // path would.
+    await superuser.store.updateMany({ where: { sellerId }, data: { status: "orders_paused", terminalPausedAt: new Date() } });
 
     const graceLadder = app.get(WalletGraceLadderService);
     await graceLadder.restoreAfterPlanFeePayment(sellerId);

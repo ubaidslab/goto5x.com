@@ -113,8 +113,23 @@ export class WalletGraceLadderService {
    */
   async restoreAfterPlanFeePayment(sellerId: string): Promise<void> {
     const restored = await this.prismaAdmin.store.updateMany({
-      where: { sellerId, status: "orders_paused" },
-      data: { status: "active" },
+      // Module 66 (FR-6.43) - scoped to terminalPausedAt (non-payment)
+      // specifically: a routine plan-fee payment must never also restore a
+      // store paused for the unrelated multi-store-downgrade over-limit
+      // reason (overLimitPausedAt) - that one is only ever cleared by an
+      // upgrade reclaiming the slot, never by this path.
+      where: { sellerId, status: "orders_paused", terminalPausedAt: { not: null } },
+      // Module 64 (FR-6.41) - clears the retention timer and every
+      // warning-sent flag along with the restore itself, so a future pause
+      // cycle starts the 14-day window (and its warning sequence) fresh
+      // rather than inheriting stale state from this one.
+      data: {
+        status: "active",
+        terminalPausedAt: null,
+        retentionWarningDay0SentAt: null,
+        retentionWarningDay7SentAt: null,
+        retentionWarningDay13SentAt: null,
+      },
     });
     if (restored.count > 0) {
       await this.events.emit({
@@ -146,6 +161,25 @@ export class WalletGraceLadderService {
 
     const result = await this.pauseActiveStores(sellerId);
     return { paused: result.count > 0 };
+  }
+
+  /**
+   * Module 64 (SRS §5.6k, FR-6.41) - the ONLY caller that should ever set
+   * terminalPausedAt: PlanFeeDebitService.debitDuePlanFees(), the sole
+   * place a store is paused specifically for plan-fee non-payment. Every
+   * other pauseActiveStores() caller (the dormant wallet-floor/low-balance
+   * paths) pauses for a different reason and must never start the
+   * retention-deletion clock.
+   */
+  async pauseActiveStoresForNonPayment(sellerId: string): Promise<{ count: number }> {
+    const result = await this.pauseActiveStores(sellerId);
+    if (result.count > 0) {
+      await this.prismaAdmin.store.updateMany({
+        where: { sellerId, status: "orders_paused", terminalPausedAt: null },
+        data: { terminalPausedAt: new Date() },
+      });
+    }
+    return result;
   }
 
   /**

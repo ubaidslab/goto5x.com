@@ -172,7 +172,7 @@ export class PlanFeeDebitService {
       const graceDeadline = new Date(subscription.currentPeriodEnd!.getTime() + graceDays * 24 * 60 * 60 * 1000);
       if (graceDeadline > now) continue; // still within the admin-verification grace window - not overdue yet
 
-      const result = await this.walletGraceLadder.pauseActiveStores(subscription.sellerId!);
+      const result = await this.walletGraceLadder.pauseActiveStoresForNonPayment(subscription.sellerId!);
       if (result.count > 0) paused += 1;
     }
 

@@ -8,6 +8,8 @@ import { WalletReconciliationService } from "../billing/wallet-reconciliation.se
 import { WALLET_RECONCILIATION_QUEUE_NAME } from "../billing/wallet-reconciliation.queue";
 import { PlanFeeDebitService } from "../billing/plan-fee-debit.service";
 import { PLAN_FEE_DEBIT_QUEUE_NAME } from "../billing/plan-fee-debit.queue";
+import { RetentionService } from "../billing/retention.service";
+import { RETENTION_QUEUE_NAME } from "../billing/retention.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
@@ -46,6 +48,7 @@ async function main() {
   const cart = appContext.get(CartService);
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const walletReconciliation = appContext.get(WalletReconciliationService);
+  const retention = appContext.get(RetentionService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
   const storeHealth = appContext.get(StoreHealthScoreService);
@@ -175,6 +178,17 @@ async function main() {
     console.error(`dormant-store-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 64 (SRS §5.6k, FR-6.41) - 14-day retention warning-email +
+  // scheduled-deletion sweep.
+  const retentionWorker = new Worker(RETENTION_QUEUE_NAME, async () => retention.runSweep(), {
+    connection: { url: config.getOrThrow<string>("REDIS_URL") },
+  });
+
+  retentionWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`billing-retention-sweep job ${job?.id} failed:`, err);
+  });
+
   // Module 15 (FR-18.1/18.2) - per-upload job, unlike the sweeps above.
   // ProductImportService itself never throws for a single bad row (a
   // per-row error is logged onto the job's own error_log instead); this
@@ -279,7 +293,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64).",
   );
 
   const shutdown = async () => {
@@ -290,6 +304,7 @@ async function main() {
     await planFeeRenewalExportWorker.close();
     await walletReconciliationWorker.close();
     await dormantStoreWorker.close();
+    await retentionWorker.close();
     await productImportWorker.close();
     await storeHealthSweepWorker.close();
     await verificationReReviewSweepWorker.close();

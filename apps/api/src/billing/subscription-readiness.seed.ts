@@ -22,6 +22,19 @@ export async function seedSubscriptionReadinessSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "billing.retention_sweep_check_hours" },
+    create: {
+      key: "billing.retention_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 6,
+      validation: { min: 1, max: 24 },
+      description: "How often the 14-day retention warning-email + deletion sweep runs (FR-6.41).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "billing.gateway_health_alert_threshold_percent" },
     create: {
       key: "billing.gateway_health_alert_threshold_percent",
