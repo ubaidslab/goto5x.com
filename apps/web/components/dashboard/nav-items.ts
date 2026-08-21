@@ -48,10 +48,11 @@ import {
  *     Navigation/nav-menu editor (/navigation). FR-1.6's "coded mode"
  *     escape hatch is deliberately still unbuilt (see lib/theme-presets.ts)
  *     and is NOT part of this hub.
- *   Settings hub (phase not yet assigned by the founder's Phase 1-8 list -
- *     flagged back explicitly, see Phase 1 report) absorbs: Domains
- *     (/domains), Store Health (/health), Verified Store (/verification),
- *     Import & export (/data).
+ *   Settings hub (Phase 5, confirmed - the founder's own "Admin" group
+ *     here is seller-facing and belongs to Operations/Phase 5; Phase 6
+ *     is Module 25's fully separate platform-admin terminal, unaffected)
+ *     absorbs: Domains (/domains), Store Health (/health), Verified Store
+ *     (/verification), Import & export (/data).
  *
  * Payments and Reports are real, already-built features (Module 62 gateway
  * connect; Module 24 data export) that lived only inside Settings until

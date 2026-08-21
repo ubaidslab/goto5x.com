@@ -2427,13 +2427,13 @@ absorbs Customizer + the Navigation/nav-menu editor (FR-1.6's "coded
 mode" stays deliberately unbuilt, not part of this hub); Settings hub
 absorbs Domains/Store Health/Verified Store/Import & export.
 
-**Flagged back to the founder, not silently decided:** the seller
-dashboard's own "Admin" nav group (Reports/Staff/Billing & Plan/
-Settings) has no assigned Part in the founder's 8-part sequence - "admin
-terminal re-skin" (Part 6) refers to Module 25's separate platform-admin
-surface per Part B item 9's own text, not this group. Recommending it
-folds into Part 5 (Operations) or becomes its own Part 5b; awaiting the
-founder's call before it's built.
+**Flagged back to the founder, resolved:** the seller dashboard's own
+"Admin" nav group (Reports/Staff/Billing & Plan/Settings) had no assigned
+Part in the founder's 8-part sequence - "admin terminal re-skin" (Part 6)
+refers only to Module 25's separate platform-admin surface per Part B
+item 9's own text. Founder confirmed on Phase 1 review: this seller-
+facing group folds into Part 5 (Operations); Part 6 stays exactly
+Module 25's terminal, unchanged.
 
 **Payments and Reports** (real, already-built - Module 62 gateway
 connect, Module 24 data export) get real top-level routes in the new
