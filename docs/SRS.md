@@ -2678,10 +2678,14 @@ can actually be enforced against.
   and expected revenue this month (sum of `Plan.price` for every
   subscription renewing this calendar month, at its post-first-cycle
   price). All computed live against `Subscription`/`Plan` and (for
-  historical revenue figures) `LedgerEntry` rows of type
-  `wallet_plan_fee_debit`/`refund_adjustment` — the wallet ledger is
-  hidden from sellers (FR-6.50), not deleted; admin analytics reads it
-  exactly as it always could. Admin-only, on the existing admin analytics
+  historical revenue figures) verified `WalletTopUpRequest` rows with
+  `planFeePortion` set — the actual record of a real plan-fee payment
+  under FR-6.50's admin-verify flow, confirmed by that flow's own
+  documented behavior ("never posts a `wallet_plan_fee_debit` for the
+  plan-fee portion, since that money never entered the wallet") — plus
+  `refund_adjustment` `LedgerEntry` rows for FR-6.49's refunds. Admin
+  analytics reads seller wallet/payment data it always could; nothing new
+  is exposed to the seller. Admin-only, on the existing admin analytics
   surface, not a new page.
 - FR-6.41 (Module 64, revised v0.41): **14-day data-retention window,
   now with a real scheduled deletion job (founder-authorized scope
@@ -2811,8 +2815,8 @@ can actually be enforced against.
   the platform (plan fee only now; commission is 0%, FR-6.51) — a
   distinct document from Module 57's buyer-facing order invoices, built
   on the same `invoice-template.ts` rendering pipeline, scoped to the
-  seller's own `wallet_plan_fee_debit`/`refund_adjustment` ledger entries
-  for the period.
+  seller's own verified `WalletTopUpRequest` (`planFeePortion`) rows and
+  any `refund_adjustment` `LedgerEntry` rows for the period.
 - FR-6.48 (Module 71, revised v0.41 — widened from CNIC-only to a
   multi-signal match, reusing every relevant existing T&S signal, and
   updated for the global `billing.first_cycle_discount_percent` discount

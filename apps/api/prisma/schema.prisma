@@ -369,6 +369,7 @@ model Seller {
   // wallet balance cache and its append-only reconciliation-drift log.
   walletBalance               WalletBalance?
   walletReconciliationDrifts  WalletReconciliationDrift[]
+  subscriptionAbuseFlags      SubscriptionAbuseFlag[]
 
   @@map("sellers")
 }
@@ -475,6 +476,22 @@ model Store {
   // "never cleared once set" discipline as onboardingCompletedAt.
   publishedAt           DateTime?       @map("published_at") @db.Timestamptz
 
+  // Module 64 (SRS §5.6k, FR-6.41, v0.41) - set the moment
+  // WalletGraceLadderService.pauseActiveStores() pauses this store
+  // specifically for plan-fee non-payment (never for any other pause
+  // reason - overLimitPausedAt below is the separate Module 66 timer, and
+  // the two never share a clock). Cleared the instant
+  // restoreAfterPlanFeePayment() runs. This is the sole anchor the
+  // 14-day-retention scheduled deletion job checks - a store paused for
+  // any other reason is never eligible for deletion.
+  terminalPausedAt      DateTime?       @map("terminal_paused_at") @db.Timestamptz
+  // Module 66 (SRS §5.6k, FR-6.43, v0.41) - set when a downgrade pauses a
+  // store beyond the new tier's stores.max_per_seller limit. A 30-day
+  // reclaim window; after it elapses the store just stays orders_paused
+  // indefinitely (never deleted, never touched by FR-6.41's job, which
+  // only ever acts on terminalPausedAt above).
+  overLimitPausedAt     DateTime?       @map("over_limit_paused_at") @db.Timestamptz
+
   // Module 52 (SRS §5.59/FR-59.1) - the next human-readable Order.orderNumber
   // this store will assign, atomically incremented (via a plain UPDATE ...
   // increment, which Postgres serializes per-row) inside the same
@@ -552,6 +569,7 @@ model Store {
   emailCampaigns            EmailCampaign[]
   returnRequests            ReturnRequest[]
   milestoneEvents           MilestoneEvent[]
+  supportTickets            SupportTicket[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -834,6 +852,14 @@ model StorePaymentGatewayConnection {
   // never a DB-level default (Raast's priority is business logic, not a
   // schema constant).
   priorityOrder      Int                    @default(0) @map("priority_order")
+  // Module 67 (SRS §5.6k, FR-6.44, v0.41) - rolling counters, incremented
+  // by every real verifyPayment() call at checkout (never reset) plus the
+  // new 6-hourly health-check sweep. successRate is computed from these,
+  // never stored - avoids the two ever drifting out of sync.
+  verifiedCount      Int                    @default(0) @map("verified_count")
+  failedCount        Int                    @default(0) @map("failed_count")
+  lastVerifiedAt     DateTime?              @map("last_verified_at") @db.Timestamptz
+  lastCheckedAt      DateTime?              @map("last_checked_at") @db.Timestamptz
   connectedAt        DateTime               @default(now()) @map("connected_at") @db.Timestamptz
   updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -3044,4 +3070,95 @@ model MilestoneEvent {
   @@unique([storeId, metric, threshold])
   @@index([storeId, reachedAt], name: "idx_milestone_events_store_reached")
   @@map("milestone_events")
+}
+
+// SRS §5.6k (v0.41) - Subscription Business Readiness re-amended for the
+// subscription-only model. Every model below backs one of Modules 65/68/
+// 71/90.
+
+// Module 65 (FR-6.42) - admin-editable renewal-reminder/win-back email
+// copy. One row per trigger key (e.g. "renewal_reminder_7d",
+// "winback_14d"); EmailTemplatesService seeds every key this FR names on
+// first read (upsert-if-missing), so a template is never "not found" -
+// only ever "still the seeded default."
+model EmailTemplate {
+  key       String   @id
+  subject   String
+  body      String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
+// Module 90 (FR-8.18) - the minimal support-ticket system Module 68's SLA
+// hours are enforced against. Deliberately bare: a ticket is a subject, a
+// body, and a thread of plain-text replies - no rich text, attachments,
+// multi-department routing, or canned responses (disclosed scope, see
+// FR-8.18's own text).
+enum TicketStatus {
+  open
+  resolved
+}
+
+model SupportTicket {
+  id                   String       @id @default(uuid()) @db.Uuid
+  storeId              String       @map("store_id") @db.Uuid
+  subject              String
+  status               TicketStatus @default(open)
+  // Computed once, at creation, from the store's plan's support.sla_hours
+  // - never recomputed if the plan later changes, so a ticket's promised
+  // response time is fixed the moment it's opened.
+  slaDeadline          DateTime     @map("sla_deadline") @db.Timestamptz
+  // Set the first time the 80%-of-window sweep fires for this ticket, so
+  // it never re-fires the same near-breach notice on every subsequent
+  // sweep pass.
+  nearBreachNotifiedAt DateTime?    @map("near_breach_notified_at") @db.Timestamptz
+  resolvedAt           DateTime?    @map("resolved_at") @db.Timestamptz
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  store    Store           @relation(fields: [storeId], references: [id])
+  messages TicketMessage[]
+
+  @@index([storeId], name: "idx_support_tickets_store")
+  @@index([status, slaDeadline], name: "idx_support_tickets_status_deadline")
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id         String   @id @default(uuid()) @db.Uuid
+  ticketId   String   @map("ticket_id") @db.Uuid
+  // Denormalized from ticket.storeId - same "RLS policies stay single-
+  // level, never a join" convention OrderItem/ProductReview/etc. already
+  // establish, rather than a two-hop ticket_id -> support_tickets ->
+  // store_id RLS policy.
+  storeId    String   @map("store_id") @db.Uuid
+  // "seller" | "admin" - never a third party; authorId is the seller's
+  // userId or the admin's adminUserId depending on authorType.
+  authorType String   @map("author_type")
+  authorId   String?  @map("author_id") @db.Uuid
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId], name: "idx_ticket_messages_ticket")
+  @@map("ticket_messages")
+}
+
+// Module 71 (FR-6.48) - a durable record of a confirmed identity match
+// against a prior first-cycle-discount recipient. Append-only (a flag is
+// never cleared) - "the flag is durable, not one-time" per FR-6.48's own
+// text; a second confirmed cycle for the same identity is checked against
+// every existing flag, not just the most recent.
+model SubscriptionAbuseFlag {
+  id            String   @id @default(uuid()) @db.Uuid
+  sellerId      String   @map("seller_id") @db.Uuid
+  // "phone" | "device_cluster" | "cnic" | "payment_instrument"
+  matchedSignal String   @map("matched_signal")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId], name: "idx_subscription_abuse_flags_seller")
+  @@map("subscription_abuse_flags")
 }
