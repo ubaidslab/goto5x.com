@@ -24,6 +24,7 @@ export default function StoreDashboardLayout({
   const [stores, setStores] = useState<Store[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState("default");
   const [hasSuppliers, setHasSuppliers] = useState(false);
+  const [planName, setPlanName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     api
@@ -56,8 +57,18 @@ export default function StoreDashboardLayout({
       .catch(() => {});
   }, [params.storeId]);
 
+  // UI/UX Design Phase (Part B item 7) - "plan name shown as small text
+  // under Settings." Seller-scoped, not store-scoped (Module 61), same
+  // endpoint the Billing page already reads.
+  useEffect(() => {
+    api
+      .get<{ plan: { name: string } }>("/sellers/me/subscription")
+      .then((sub) => setPlanName(sub.plan?.name))
+      .catch(() => {});
+  }, []);
+
   return (
-    <div className="flex h-full flex-col" data-dashboard-theme={dashboardTheme}>
+    <div className="flex h-full flex-col">
       <SupportModeBanner />
       {store?.status === "orders_paused" && (
         <div className="px-6 pt-3">
@@ -70,9 +81,9 @@ export default function StoreDashboardLayout({
           </Alert>
         </div>
       )}
-      <div className="app-shell-surface flex flex-1">
-        <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} />
-        <main className="flex-1 overflow-y-auto px-10 py-8">
+      <div className="app-shell-surface flex flex-1 flex-col md:flex-row" data-dashboard-theme={dashboardTheme}>
+        <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} planName={planName} />
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8">
           <div className="mx-auto max-w-5xl">
             <PlatformMessages />
             {children}

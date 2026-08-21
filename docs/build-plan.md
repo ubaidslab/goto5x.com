@@ -2316,6 +2316,155 @@ screenshots use genuine incremental scroll (`page.mouse.wheel()`), not
 just reduced-motion emulation, since native image lazy-loading and
 ScrollTrigger reveals only fire on a real scroll.
 
+## Founder-directed re-sequencing: UI/UX Design Phase (post-Module-48)
+
+With every backend/feature module complete (Modules 1-80, including the
+Subscription Business Readiness batch), the founder issued a final,
+locked UI/UX mandate for the last pre-launch phase. This **supersedes**
+Module 19's original Phase 3-8 breakdown (auth/onboarding, dashboard
+core+remaining, buyer storefronts, admin terminal, final pass) with a
+narrower scope: **only** the seller dashboard and the admin terminal
+(Module 25) get a visual pass in this initiative. The storefront/
+marketing identity (Module 19 Phase 1-2) is explicitly excluded, stays
+locked. Auth/onboarding screens are not yet re-scoped - the founder may
+fold them into a later phase of this same initiative or handle them
+separately.
+
+Tracked as its own 8-part sequence (distinct from Module 19's internal
+phase numbers, to avoid confusing "Module 19 Phase 3" - the original,
+now-superseded auth/onboarding phase - with this mandate's own Part 1):
+tokens/component-kit → dashboard home → orders/products/inventory/
+customers → analytics/marketing/reviews/design-studio → operations
+(shipping/suppliers/payments) → admin terminal re-skin → mobile-
+responsive audit → final consistency audit. Founder checkpoint-gated,
+same discipline as every module before it.
+
+## UI/UX Design Phase, Part 1 of 8 — dashboard/admin tokens + component
+kit, checkpoint reported
+
+**Scoping decision (flagged and founder-approved before building):** the
+mandate's palette/card/accent direction can't simply overwrite the
+existing global `@theme` tokens in `apps/web/app/globals.css` - those are
+shared by 20+ marketing/storefront/shared-`components/ui/` files the
+mandate explicitly must not touch. Solution: a second token block scoped
+to `body:has(.app-shell-surface)` (the wrapping element both the seller
+dashboard's and, from Part 6, the admin terminal's layout render their
+content inside), overriding `--color-canvas`/`--color-surface`/
+`--color-accent`/etc. to white page / `#fafafa` tonal cards / indigo
+(`#5b5bf0`) only inside that scope - lower specificity than the existing
+per-seller cosmetic accent presets (Module 10/FR-28.4's emerald/amber/
+rose), so a seller who's chosen one still sees it; this only changes the
+default. **`:has()`, not a plain descendant selector**, after a real bug
+caught live via screenshot: Radix's Dialog/DropdownMenu/Tooltip/Toast all
+portal their content to a container appended directly to `<body>`,
+outside `.app-shell-surface`'s own DOM subtree - a descendant-only
+override never reached them, so the mobile nav drawer's focus ring
+rendered the OLD Apple-blue instead of indigo. `:has()` makes `<body>`
+itself the scope root (the true ancestor of both the normal render tree
+and every portal) while staying inert on any page that never renders
+`.app-shell-surface` (verified: the marketing `/pricing` page is
+unaffected). Fixed the same way for the pre-existing per-seller presets,
+which had the identical latent bug. Card radius (12-14px) is set directly
+on the new `DashCard` component rather than overriding `--radius-lg`,
+since that token is also read by buttons/inputs this phase doesn't touch.
+
+**Component kit** (`apps/web/components/dashboard/ui/`, new folder,
+never imported by marketing code):
+- `DashCard`/`DashCardHeader`/`DashCardFooter` - no border, `#fafafa`
+  tonal background, 14px radius. A genuinely separate component from
+  `components/ui/Card.tsx` (not a fork/variant): that component's
+  `CardHeader`/`CardFooter` hardcode `border-b`/`border-t` with no
+  `className` escape hatch, and it's shared by every marketing page.
+- `Gauge`/`GaugeCard` - the semicircle KPI-card pattern (Part A item 5),
+  built on recharts' `RadialBarChart` (the repo's one existing charting
+  library, already used by the Analytics page) rather than a new
+  dependency. `percent` is deliberately generic (0-100, clamped) - a true
+  rate (e.g. repeat-customer %) passes its real percentage; an absolute
+  metric (Sales/Revenue/AOV) will pass a real period-over-period
+  comparison ratio computed from already-fetched data in Part 2, never an
+  invented "% of a goal." A dedicated `isEmpty` state renders a dashed,
+  muted outline instead of a misleading `$0`/full arc (Part C item 5 -
+  day-1 empty states), with a real link to the action that fills it.
+- `AvatarInitials` - derives initials from a real linked `Customer.name`
+  when one exists, buyer-email fallback otherwise (confirmed via the
+  founder's own Phase 1 decision: `Order.customerId`/`Customer.name`
+  already exist in the schema; the orders-list query just doesn't
+  `include` the relation yet - a one-line Prisma change deferred to Part
+  2, not new schema).
+- Status pills, avatars, empty states: **no new component needed** -
+  `components/ui/Badge.tsx` (colored-bg + matching dark-tone text, never
+  black-on-color), `Avatar`/`AvatarFallback`, and `EmptyState` (icon +
+  title + description + real action) were already exactly right for this
+  direction and are reused as-is.
+
+**Navigation** (`apps/web/components/dashboard/nav-items.ts`,
+`Sidebar.tsx`, both rewritten) - the founder's locked four-group IA
+(Main menu: Home/Orders/Products/Inventory/Customers; Growth: Analytics/
+Marketing/Reviews/Design Studio; Operations: Shipping & tracking/
+Suppliers/Payments; Admin: Reports/Staff/Billing & plan/Settings - "no
+more, no less"), one lucide-react icon per item (kept - already the
+repo's single icon set, unused in the dashboard until now so no mixed-
+set cleanup needed, satisfies "Tabler or an equivalent already
+available" without a new dependency), a hairline divider before Admin
+(the one deliberate exception to the no-border rule, Shopify-style
+section break not a card border), plan name shown under Settings
+(`GET /sellers/me/subscription`, same endpoint Billing already reads),
+mobile hamburger top bar + slide-in drawer below 768px (Radix Dialog
+primitives directly, for a real focus trap/Escape-to-close/ARIA
+labeling rather than a hand-rolled drawer). Every OTHER page this
+product has built keeps working and is documented, in the file's own
+comment, against the hub-page tab it will be absorbed into in a later
+Part - Orders hub (Part 3) absorbs Returns & Refunds and Order
+Verification (Module 26 - the founder's "headline differentiator,"
+homed here per their own "under Orders or Settings" options); Products
+hub (Part 3) absorbs Collections; Analytics hub (Part 4) absorbs Profit
+& Loss; Marketing hub (Part 4) absorbs the existing Social-Media-SaaS
+hand-off page plus Campaigns/Customer Segments/Gift Cards/Discounts/
+WhatsApp recovery, and a **net-new** tab surfacing Module 48's Facebook/
+Instagram feed + WhatsApp product-share link (real backend, no frontend
+anywhere yet - new frontend-only work); Design Studio hub (Part 4)
+absorbs Customizer + the Navigation/nav-menu editor (FR-1.6's "coded
+mode" stays deliberately unbuilt, not part of this hub); Settings hub
+absorbs Domains/Store Health/Verified Store/Import & export.
+
+**Flagged back to the founder, not silently decided:** the seller
+dashboard's own "Admin" nav group (Reports/Staff/Billing & Plan/
+Settings) has no assigned Part in the founder's 8-part sequence - "admin
+terminal re-skin" (Part 6) refers to Module 25's separate platform-admin
+surface per Part B item 9's own text, not this group. Recommending it
+folds into Part 5 (Operations) or becomes its own Part 5b; awaiting the
+founder's call before it's built.
+
+**Payments and Reports** (real, already-built - Module 62 gateway
+connect, Module 24 data export) get real top-level routes in the new
+nav, but stay physically inside the still-single `settings/page.tsx`
+for now - `id="payments"`/`id="reports"` added to their existing `Card`
+wrappers so `/settings#payments`/`#reports` are real, working,
+non-404ing links. True extraction into standalone routed pages happens
+alongside their visual redesign (Payments in Part 5; Reports alongside
+the Admin-group Part above) rather than moving 900+ lines of
+interdependent state twice.
+
+**Also fixed, adjacent, one-line:** `layout.tsx`'s existing per-seller
+dashboard-accent-preset attribute (`data-dashboard-theme`) was set on a
+different DOM element than the `.app-shell-surface` class the CSS
+selector required, so the feature (Module 10/FR-28.4) silently never
+matched. Moved onto the same element while already touching this exact
+line for the responsive `flex-col`/`md:flex-row` change mobile needed.
+
+**Verification:** `tsc --noEmit` and `pnpm build` clean on `apps/web`.
+Stood up a real local dev stack (native Postgres 16 + Redis, migrations
+applied, `scripts/dev-seed.ts` for Settings Registry baseline, a real
+signed-up seller + store) rather than screenshotting a mock, and drove it
+with Playwright at 1440px desktop / 375px mobile: the new
+`/design-system` contract page, a pre-existing unmodified page (Orders -
+confirms the token-scoping approach re-skins already-built screens for
+free, zero page-level changes), the mobile drawer opening/closing, and a
+keyboard Tab pass confirming the focus-visible ring (this is what caught
+the portal-scoping bug above). Console-error-checked on every screenshot
+- one pre-existing, unrelated 404 (`/sellers/me/messages` for a seller
+with none) noted and left alone, not a regression this Part introduced.
+
 ## Module 25 (Admin Terminal Completion) — built (P0 + P1 + P2)
 
 Founder-directed, not an SRS-FR-driven module — triggered by a completeness

@@ -8,6 +8,41 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## UI/UX Design Phase, Part 1 of 8: Dashboard/Admin Tokens + Component Kit
+
+The founder's final, locked pre-launch UI/UX mandate begins - narrower
+than Module 19's original remaining-phase plan (auth/onboarding, buyer
+storefronts unaffected; only the seller dashboard and admin terminal get
+this pass). Part 1 lays the foundation every later part builds on: a
+white-canvas/`#fafafa`-tonal-card, no-border, indigo-accent visual
+language scoped to the dashboard/admin surfaces only (the marketing site
+keeps its own locked identity), a semicircle gauge KPI component with a
+real "no data yet" empty state, and the seller sidebar rebuilt into the
+founder's locked four-group navigation (Main menu/Growth/Operations/
+Admin) with icons, a mobile drawer, and every item routed to a real
+screen.
+
+### Added
+- Dashboard/admin-scoped design tokens (`apps/web/app/globals.css`),
+  applied via `body:has(.app-shell-surface)` so neither the token values
+  nor Radix-portaled overlay content (Dialog/DropdownMenu/Tooltip/Toast)
+  leak into the marketing site.
+- `Gauge`/`GaugeCard`, `DashCard` family, `AvatarInitials` -
+  `apps/web/components/dashboard/ui/` (new).
+- Rebuilt `Sidebar.tsx`/`nav-items.ts`: four-group IA, icons, mobile
+  hamburger drawer, plan name under Settings.
+- `/stores/:storeId/design-system` - the Part 1 contract page every later
+  part is checked against.
+- Real top-level Payments/Reports nav entries (bridged to
+  `/settings#payments`/`#reports` pending their Part 5/later extraction).
+
+### Fixed
+- A latent bug in the existing per-seller dashboard accent presets
+  (Module 10/FR-28.4): the `data-dashboard-theme` attribute and the
+  `.app-shell-surface` class it needed to co-occur with were on different
+  DOM elements, so the feature never actually applied. Caught and fixed
+  while building Part 1's own scoping on the same line.
+
 ## Module 48: Facebook/Instagram Shop Feed + WhatsApp Catalog Links
 
 Two Growth-tier-and-above capabilities, both extending existing machinery

@@ -733,7 +733,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
           </CardBody>
         </Card>
 
-        <Card>
+        <Card id="reports">
           <CardHeader
             title="Data export"
             description="A convenience copy of your products, orders, and customers for your own records - delivered to your connected Google Drive, or emailed if Drive isn't connected. Not a substitute for our own platform backups."
@@ -833,7 +833,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
           </Card>
         )}
 
-        <Card>
+        <Card id="payments">
           <CardHeader
             title="Payment gateway"
             description="Connect your own Raast, Easypaisa, JazzCash, or bank account so a buyer's payment auto-confirms the order - your money never passes through UZEYN. Raast is free and offered first at checkout. Sellers without a connection keep using the manual payment instructions above."

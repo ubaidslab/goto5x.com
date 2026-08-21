@@ -5829,6 +5829,42 @@ next module starts. Each item is written to be testable, not aspirational.
       via Playwright screenshots at 1440px desktop and 390px mobile, with
       `prefers-reduced-motion` emulation confirming the real, un-animated
       layout at every section
+- [x] **UI/UX Design Phase, Part 1 of 8 (dashboard/admin tokens + component
+      kit)** — founder-directed final pre-launch UI/UX mandate, superseding
+      Module 19's original Phase 3-8 breakdown (auth/onboarding, dashboard
+      core+remaining, buyer storefronts, admin terminal, final pass) with a
+      narrower, explicitly-scoped one: **only** the seller dashboard and
+      admin terminal (Module 25) get this pass; the storefront/marketing
+      identity (Module 19 Phase 1-2) stays locked and untouched, and
+      auth/onboarding screens are not yet re-scoped by this mandate. Part 1
+      built: dashboard/admin-scoped design tokens (white canvas/`#fafafa`
+      tonal cards, no card borders, restrained indigo accent `#5b5bf0` -
+      distinct from the marketing site's blue, scoped via `body:has(.app-
+      shell-surface)` so neither the token values nor any Radix-portaled
+      overlay content leaks outside the dashboard/admin surfaces); a new
+      `Gauge`/`GaugeCard` semicircle-KPI component (recharts, with a real
+      "no data yet" empty state, not a misleading `$0` fill); a dashboard-
+      scoped `DashCard` family (reusing the existing `Badge`/`Avatar`/
+      `EmptyState` primitives as-is - already correct for this direction);
+      `AvatarInitials` (real `Customer.name` when linked, buyer-email
+      fallback otherwise); the seller sidebar rebuilt into the founder's
+      locked four-group IA (Main menu/Growth/Operations/Admin, a hairline
+      divider before Admin, one icon per item, plan name under Settings,
+      a mobile hamburger-drawer replacing the desktop static sidebar below
+      768px). Every nav item routes to a real, already-built screen -
+      Payments and Reports (previously buried inside Settings) got real
+      top-level nav entries, bridged via `/settings#payments`/`#reports`
+      anchors pending their full extraction/redesign in a later phase
+      (avoids moving 900+ lines of interdependent Settings-page state
+      twice). New `/stores/:storeId/design-system` contract page (mirrors
+      the marketing site's own `/design-system` pattern) shows the gauge in
+      every fill state, the card, every status-pill color, and avatar
+      initials, so every later phase is checked against one page. Verified
+      against a real local Postgres/Redis/API/web stack (not a screenshot
+      of a mock) via Playwright at 1440px desktop and 375px mobile,
+      including a live mobile-drawer open + keyboard-focus pass that
+      caught and fixed the portal-scoping bug above before it could recur
+      across every future Dialog/DropdownMenu/Tooltip the later phases add
 - [ ] Mobile-responsive across the three most common breakpoints
 - [ ] Signup flow works end-to-end: create account → verify email → land in
       dashboard

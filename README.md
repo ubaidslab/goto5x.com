@@ -7,10 +7,14 @@ this README covers running the code.
 Design System) Phases 1-2 — foundation/tokens and the full marketing site
 (homepage, pricing, about, careers, legal, color A/B preview). See
 `CHANGELOG.md` for the full history and `docs/build-plan.md` for the
-per-module implementation detail and verification notes. Phases 3-8 of
-Module 19 (auth/onboarding, dashboard, buyer storefronts, admin terminal,
-final pass) are not yet started — those pages are still bare functional,
-no design pass applied yet.
+per-module implementation detail and verification notes. Module 19's
+original Phase 3-8 plan (auth/onboarding, dashboard, buyer storefronts,
+admin terminal, final pass) has been superseded by a founder-directed
+**UI/UX Design Phase**, scoped to the seller dashboard and admin terminal
+only (storefront/marketing stays as Module 19 Phase 1-2 left it). Part 1
+of 8 (tokens + component kit) is done — see `docs/build-plan.md`. Parts
+2-8 (actual dashboard/admin screens) are not yet built; those pages are
+still bare functional, no design pass applied yet.
 
 ---
 

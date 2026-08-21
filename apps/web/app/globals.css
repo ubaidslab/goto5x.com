@@ -219,24 +219,69 @@
    outside a seller's own dashboard is affected. "default" needs no rule -
    it's exactly the @theme accent above. Plan-gating is not enforced (see
    docs/database-schema.md's sellers.dashboard_theme note) - every preset is
-   available to every seller in v1.0. */
-.app-shell-surface[data-dashboard-theme="emerald"] {
+   available to every seller in v1.0.
+
+   Scoped via `body:has(...)`, not a plain descendant selector, for the
+   same reason as the UI/UX Design Phase block below: Radix portals
+   (Dialog/DropdownMenu/Tooltip/Toast) render outside .app-shell-surface's
+   own DOM subtree, so a descendant-only selector never reached them - a
+   seller who picked "emerald" would still see the default accent inside
+   any modal/dropdown. */
+body:has(.app-shell-surface[data-dashboard-theme="emerald"]) {
   --color-accent: #1f9254;
   --color-accent-hover: #197a46;
   --color-accent-active: #14613a;
   --color-accent-subtle: #e8f6ee;
 }
-.app-shell-surface[data-dashboard-theme="amber"] {
+body:has(.app-shell-surface[data-dashboard-theme="amber"]) {
   --color-accent: #b5750a;
   --color-accent-hover: #966209;
   --color-accent-active: #7a5008;
   --color-accent-subtle: #fdf1de;
 }
-.app-shell-surface[data-dashboard-theme="rose"] {
+body:has(.app-shell-surface[data-dashboard-theme="rose"]) {
   --color-accent: #c23b6b;
   --color-accent-hover: #a52f59;
   --color-accent-active: #872548;
   --color-accent-subtle: #fbe9f0;
+}
+
+/* UI/UX Design Phase (post-launch-features, founder mandate) - the seller
+   dashboard and admin terminal get their own visual language: white page /
+   #fafafa tonal cards (no borders on cards), a restrained indigo accent,
+   distinct from the marketing/storefront identity above (Module 19, which
+   stays untouched per the mandate's explicit "do not touch storefront"
+   scope boundary). Scoped to `.app-shell-surface` - the wrapping element
+   both the seller dashboard's layout.tsx and (from Phase 6) the admin
+   terminal's layout.tsx render their content inside - so nothing on the
+   marketing site or storefront templates is affected by this override.
+   Lower specificity than the per-seller cosmetic accent presets above
+   (`.app-shell-surface[data-dashboard-theme="emerald|amber|rose"]`), so a
+   seller who's chosen one of those still sees their own accent - this
+   block only changes the *default* ("blue"/unset) case from Apple-blue to
+   indigo and adds the tonal-card canvas/surface split. Card radius (12-
+   14px) is set directly on the new dashboard Card component instead of
+   overriding --radius-lg here, since that token is also read by buttons/
+   inputs/other rounded elements this phase isn't meant to touch.
+
+   Scoped via `body:has(.app-shell-surface)`, NOT `.app-shell-surface`
+   directly - discovered live while screenshot-testing Phase 1's mobile
+   nav drawer: Radix's Dialog/DropdownMenu/Tooltip/Toast all portal their
+   content to a container appended directly to <body>, outside
+   .app-shell-surface's own DOM subtree, so a plain descendant-selector
+   override never reached them (the drawer's focus ring rendered the OLD
+   Apple-blue, not indigo). `:has()` lets the override live on <body> -
+   the true ancestor of both the normal render tree AND every portal -
+   while still only ever being TRUE on a page that actually renders
+   .app-shell-surface (dashboard/admin), never on marketing/storefront. */
+body:has(.app-shell-surface) {
+  --color-canvas: #ffffff;
+  --color-surface: #fafafa;
+  --color-surface-raised: #ffffff;
+  --color-accent: #5b5bf0;
+  --color-accent-hover: #4a4ae0;
+  --color-accent-active: #3d3dc9;
+  --color-accent-subtle: #eeeefd;
 }
 
 /* Phase 2 checkpoint color A/B (founder-requested comparison, not shipped
