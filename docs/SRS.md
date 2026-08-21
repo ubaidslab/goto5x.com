@@ -4743,23 +4743,27 @@ dashboard badges)
 
 ### 5.47 Emotional & Retention Layer (new, v0.31 — celebratory onboarding,
 milestone celebrations, private dashboard achievement badges; reuses
-§5.46's Badge Evaluation Engine)
+§5.46's Badge Evaluation Engine. FR-47.2/47.3 built as part of the UI/UX
+Design Phase's Dashboard Home addendum — the dismissible milestone banner;
+FR-47.1/47.4/47.5 remain not yet built)
 - FR-47.1: **Celebratory onboarding.** The existing onboarding wizard
   (FR-20.1's progress tracking) is reframed presentation-wise as a
   guided, encouraging tour with a completion-celebration screen — a
   presentation-layer change over already-existing progress state, no new
   backend model.
-- FR-47.2: **Milestone celebrations.** Settings-Registry-driven
+- FR-47.2: **Milestone celebrations (built).** Settings-Registry-driven
   thresholds (`milestones.order_count_thresholds`,
-  `milestones.sales_amount_thresholds`, etc.) trigger an in-dashboard
+  `milestones.sales_amount_thresholds`) trigger an in-dashboard
   celebratory moment the first time a store crosses each one, computed
   from the same confirmed-sale data the Financial Truth Invariant
   already governs (§3.12) — only `confirmed`+ orders ever count toward
   any milestone.
-- FR-47.3: **Fires exactly once per threshold.** An append-only
-  milestone-event record (same immutable-history discipline as
-  `PlatformEvent`/`AdminAuditLog`) prevents a threshold from
-  re-celebrating on every subsequent qualifying order.
+- FR-47.3: **Fires exactly once per threshold (built).** An append-only
+  `MilestoneEvent` record (same immutable-history discipline as
+  `PlatformEvent`/`AdminAuditLog`, own dedicated table rather than reusing
+  `PlatformEvent` so a real `@@unique(storeId, metric, threshold)`
+  constraint can guarantee it) prevents a threshold from re-celebrating
+  on every subsequent qualifying order.
 - FR-47.4: **Private dashboard achievement badges.** Built on §5.46's
   `BadgeEvaluationService`, a distinct badge set from the public
   storefront badges, seller-facing only — never rendered on the public
@@ -7687,12 +7691,15 @@ going forward, per FR-6.28.
       shared-predicate-by-construction discipline as §14.38's bucket/
       list-filter proof (FR-46.5).
 
-### 14.47 Emotional & Retention Layer (new, v0.31, not yet built)
-- [ ] A milestone celebrates exactly once per store per threshold, even
+### 14.47 Emotional & Retention Layer (new, v0.31 — FR-47.2/47.3 milestone-celebrations slice built as part of the UI/UX Design Phase's Dashboard Home addendum; FR-47.1 celebratory-onboarding reframe, FR-47.4 achievement badges, and FR-47.5 personalization tie-in remain not yet built)
+- [x] A milestone celebrates exactly once per store per threshold, even
       across multiple subsequent qualifying orders — proven by an e2e
       test placing several orders past a threshold and asserting a
-      single celebration event (FR-47.3).
-- [ ] Only `confirmed`+ orders count toward any milestone threshold — a
+      single celebration event (FR-47.3). `MilestoneEvent`'s
+      `@@unique([storeId, metric, threshold])` constraint is what
+      guarantees this under concurrency, not just the application-layer
+      "crossed a threshold" check.
+- [x] Only `confirmed`+ orders count toward any milestone threshold — a
       pending/cancelled order contributes zero, same Financial Truth
       Invariant proof style as §14.37/§14.38/§14.42 (FR-47.2).
 - [ ] Private dashboard achievement badges never appear on any public

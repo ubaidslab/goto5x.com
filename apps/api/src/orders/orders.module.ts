@@ -7,6 +7,7 @@ import { InventoryModule } from "../inventory/inventory.module";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { OrderVerificationModule } from "../order-verification/order-verification.module";
+import { SellerNotificationsModule } from "../seller-notifications/seller-notifications.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { StorefrontModule } from "../storefront/storefront.module";
 import { StoreSettingsModule } from "../store-settings/store-settings.module";
@@ -38,6 +39,7 @@ import { OrdersService } from "./orders.service";
     OrderVerificationModule,
     GiftCardsModule,
     InventoryModule,
+    SellerNotificationsModule,
   ],
   controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
   providers: [

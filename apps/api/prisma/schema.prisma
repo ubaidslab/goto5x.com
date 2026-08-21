@@ -551,6 +551,7 @@ model Store {
   customerSegments          CustomerSegment[]
   emailCampaigns            EmailCampaign[]
   returnRequests            ReturnRequest[]
+  milestoneEvents           MilestoneEvent[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -3013,4 +3014,34 @@ model SupplierWalletEntry {
 
   @@index([supplierId, createdAt], name: "idx_supplier_wallet_entries_supplier_created")
   @@map("supplier_wallet_entries")
+}
+
+// Module 47 (SRS §5.47/FR-47.2, FR-47.3) - Emotional & Retention Layer,
+// milestone celebrations only (this scope's build does not include
+// FR-47.1's onboarding reframe, FR-47.4's achievement badges, or FR-47.5's
+// personalization tie-in). Deliberately its own table rather than reusing
+// PlatformEvent: FR-47.3 requires "fires exactly once per store per
+// threshold, even under concurrent qualifying orders" - a DB-level
+// @@unique constraint on (storeId, metric, threshold) is what actually
+// guarantees that under concurrency, not just careful application code.
+// Append-only by design, same immutable-history discipline as
+// PlatformEvent/AdminAuditLog - no update path exists anywhere in the
+// service layer once a row is inserted.
+enum MilestoneMetric {
+  order_count
+  sales_amount
+}
+
+model MilestoneEvent {
+  id        String          @id @default(uuid()) @db.Uuid
+  storeId   String          @map("store_id") @db.Uuid
+  metric    MilestoneMetric
+  threshold Decimal         @db.Decimal(14, 2)
+  reachedAt DateTime        @default(now()) @map("reached_at") @db.Timestamptz
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([storeId, metric, threshold])
+  @@index([storeId, reachedAt], name: "idx_milestone_events_store_reached")
+  @@map("milestone_events")
 }

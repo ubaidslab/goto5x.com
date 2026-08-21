@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Clock, RotateCcw, ShoppingBag, Users } from "lucide-react";
+import { BarChart3, Clock, Receipt, ShoppingBag, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { AvatarInitials } from "@/components/dashboard/ui/AvatarInitials";
 import { DashCard, DashCardFooter, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { GaugeCard } from "@/components/dashboard/ui/Gauge";
+import { Milestone, MilestoneBanner } from "@/components/dashboard/MilestoneBanner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -42,6 +43,7 @@ interface OnboardingProgress {
 interface AnalyticsOverview {
   repeatCustomerRate: number;
   returnRate: number;
+  aov: number;
 }
 interface SalesBucketPoint {
   bucketStart: string;
@@ -214,6 +216,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   const [store, setStore] = useState<StoreSummary | null>(null);
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [salesOverTime, setSalesOverTime] = useState<SalesBucketPoint[] | null>(null);
+  const [milestone, setMilestone] = useState<Milestone | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
@@ -240,7 +243,11 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
     api
       .get<AnalyticsOverview>(`/stores/${params.storeId}/analytics/overview`)
       .then(setOverview)
-      .catch(() => setOverview({ repeatCustomerRate: 0, returnRate: 0 }));
+      .catch(() => setOverview({ repeatCustomerRate: 0, returnRate: 0, aov: 0 }));
+    api
+      .get<{ milestone: Milestone | null }>(`/stores/${params.storeId}/milestones/recent`)
+      .then((res) => setMilestone(res.milestone))
+      .catch(() => setMilestone(null));
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
     api
@@ -345,6 +352,8 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   const salesPriorPeriod = priorWindow.reduce((sum, p) => sum + p.orderCount, 0);
   const revenueThisPeriod = currentWindow.reduce((sum, p) => sum + p.revenue, 0);
   const revenuePriorPeriod = priorWindow.reduce((sum, p) => sum + p.revenue, 0);
+  const aovThisPeriod = salesThisPeriod > 0 ? revenueThisPeriod / salesThisPeriod : 0;
+  const aovPriorPeriod = salesPriorPeriod > 0 ? revenuePriorPeriod / salesPriorPeriod : 0;
   const hasSalesHistory = salesOverTime.some((p) => p.orderCount > 0);
 
   const recentOrders = [...orders].sort((a, b) => new Date(b.placedAt).getTime() - new Date(a.placedAt).getTime()).slice(0, 5);
@@ -352,6 +361,8 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   return (
     <div>
       <PageHeader title="Dashboard" description="Here's what's happening in your store." />
+
+      <MilestoneBanner milestone={milestone} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <GaugeCard
@@ -382,13 +393,13 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
           emptyMessage="No data yet"
         />
         <GaugeCard
-          icon={RotateCcw}
-          label="Return rate"
-          value={`${overview.returnRate}%`}
-          percent={overview.returnRate}
-          hint="Of confirmed orders"
+          icon={Receipt}
+          label="Average order value"
+          value={`Rs ${Math.round(overview.aov).toLocaleString()}`}
+          percent={periodRatio(aovThisPeriod, aovPriorPeriod)}
+          hint={periodChangeHint(aovThisPeriod, aovPriorPeriod)}
           isEmpty={!hasSalesHistory}
-          emptyMessage="No data yet"
+          emptyMessage="No sales yet"
         />
       </div>
 

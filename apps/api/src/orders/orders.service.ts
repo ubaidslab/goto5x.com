@@ -8,6 +8,7 @@ import { EmailService } from "../notifications/email.service";
 import { OrderVerificationService } from "../order-verification/order-verification.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { MilestonesService } from "../seller-notifications/milestones.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { PrintifyAdapter } from "../suppliers/printify/printify.adapter";
 import { ChangeOrderStatusDto } from "./dto/change-order-status.dto";
@@ -54,6 +55,7 @@ export class OrdersService {
     private readonly customers: CustomersService,
     private readonly walletGraceLadder: WalletGraceLadderService,
     private readonly orderVerification: OrderVerificationService,
+    private readonly milestones: MilestonesService,
   ) {}
 
   /**
@@ -230,6 +232,12 @@ export class OrdersService {
 
     await this.notifyBuyer({ storeName, domains, storeSlug }, order, "confirmed");
     await this.forwardSupplierItems(order);
+
+    // FR-47.2 - non-blocking, best-effort, same discipline as every other
+    // call in this block: a milestone-detection hiccup must never affect
+    // the payment confirmation it followed. MilestonesService's own
+    // checkAndEmit() already wraps this in a try/catch internally.
+    await this.milestones.checkAndEmit(sellerId, storeId);
 
     // FR-6.26 (fix) - the commission debit that just landed above must
     // never be blocked by this, but a debit that pushes the seller's
