@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface ReturnRequest {
@@ -21,6 +22,7 @@ interface ReturnRequest {
  * pass yet), matching every other admin queue's own stated discipline.
  */
 export default function AdminReturnsPage() {
+  const confirm = useConfirm();
   const [requests, setRequests] = useState<ReturnRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refundAmounts, setRefundAmounts] = useState<Record<string, string>>({});
@@ -48,9 +50,17 @@ export default function AdminReturnsPage() {
     }
   }
 
-  async function complete(returnId: string, orderTotal: string) {
+  async function complete(returnId: string, orderTotal: string, currency: string) {
+    const refundAmount = Number(refundAmounts[returnId] ?? orderTotal);
+    const ok = await confirm({
+      title: "Complete this refund?",
+      description: "This issues the refund to the buyer and cannot be undone.",
+      changes: [{ label: "Refund amount", from: "-", to: `${currency} ${refundAmount.toFixed(2)}` }],
+      confirmLabel: "Complete refund",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
-      const refundAmount = Number(refundAmounts[returnId] ?? orderTotal);
       await adminApi.post(`/admin/returns/${returnId}/complete`, { refundAmount });
       load();
     } catch (err) {
@@ -110,7 +120,7 @@ export default function AdminReturnsPage() {
                       value={refundAmounts[r.id] ?? ""}
                       onChange={(e) => setRefundAmounts({ ...refundAmounts, [r.id]: e.target.value })}
                     />
-                    <button onClick={() => complete(r.id, r.order.totalAmount)}>Complete refund</button>
+                    <button onClick={() => complete(r.id, r.order.totalAmount, r.order.currency)}>Complete refund</button>
                   </>
                 )}
               </td>

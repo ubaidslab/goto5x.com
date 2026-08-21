@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 
 type ClientType = "template_store" | "social_media_saas";
 
@@ -19,6 +20,7 @@ interface ExternalApiClient {
  * same precedent as /admin/plans and /admin/sellers.
  */
 export default function AdminExternalApiClientsPage() {
+  const confirm = useConfirm();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [clients, setClients] = useState<ExternalApiClient[] | null>(null);
   const [clientType, setClientType] = useState<ClientType>("template_store");
@@ -68,7 +70,14 @@ export default function AdminExternalApiClientsPage() {
     load();
   }
 
-  async function regenerateSecret(id: string) {
+  async function regenerateSecret(id: string, displayName: string) {
+    const ok = await confirm({
+      title: `Regenerate the signing secret for "${displayName}"?`,
+      description: "The old secret stops working immediately - anything still using it (the external client's own integration) will fail until it's updated with the new one.",
+      confirmLabel: "Regenerate secret",
+      tone: "danger",
+    });
+    if (!ok) return;
     setRevealedSecret(null);
     const res = await fetch(`${apiBase}/admin/external-api-clients/${id}/regenerate-secret`, {
       method: "POST",
@@ -112,7 +121,7 @@ export default function AdminExternalApiClientsPage() {
               <td>{c.hasSigningSecret ? "yes" : "no"}</td>
               <td>
                 <button onClick={() => toggle(c.id, !c.isEnabled)}>{c.isEnabled ? "Disable" : "Enable"}</button>{" "}
-                <button onClick={() => regenerateSecret(c.id)}>Regenerate secret</button>
+                <button onClick={() => regenerateSecret(c.id, c.displayName)}>Regenerate secret</button>
               </td>
             </tr>
           ))}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface SupplierAdapter {
@@ -17,6 +18,7 @@ interface SupplierAdapter {
  * functional view (no design pass yet).
  */
 export default function AdminSupplierAdaptersPage() {
+  const confirm = useConfirm();
   const [adapters, setAdapters] = useState<SupplierAdapter[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adapterType, setAdapterType] = useState("");
@@ -48,6 +50,16 @@ export default function AdminSupplierAdaptersPage() {
   }
 
   async function toggleEnabled(adapter: SupplierAdapter) {
+    const ok = await confirm({
+      title: `${adapter.isEnabled ? "Disable" : "Enable"} "${adapter.displayName}"?`,
+      description: adapter.isEnabled
+        ? "Disabling this adapter stops all sync/order-routing traffic through it immediately."
+        : "Enabling this adapter resumes sync/order-routing traffic through it.",
+      changes: [{ label: "Enabled", from: adapter.isEnabled ? "yes" : "no", to: adapter.isEnabled ? "no" : "yes" }],
+      confirmLabel: adapter.isEnabled ? "Disable" : "Enable",
+      tone: adapter.isEnabled ? "danger" : "default",
+    });
+    if (!ok) return;
     await adminApi.patch(`/admin/supplier-adapters/${adapter.id}`, { isEnabled: !adapter.isEnabled });
     load();
   }

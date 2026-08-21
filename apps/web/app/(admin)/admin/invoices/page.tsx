@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 
 interface TopUpRequest {
   id: string;
@@ -23,6 +24,7 @@ interface TopUpRequest {
  * Bare view (no design pass yet), same precedent as every other new admin screen.
  */
 export default function AdminWalletTopUpsPage() {
+  const confirm = useConfirm();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [requests, setRequests] = useState<TopUpRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,16 @@ export default function AdminWalletTopUpsPage() {
   /** Module 25 P2 - bulk actions reuse the existing per-item verify/reject endpoints; no new bulk backend endpoint needed. */
   async function decideSelected(decision: "verify" | "reject") {
     setError(null);
+    const ok = await confirm({
+      title: `${decision === "verify" ? "Verify" : "Reject"} ${selected.size} top-up request${selected.size === 1 ? "" : "s"}?`,
+      description:
+        decision === "verify"
+          ? "This credits each selected seller/supplier's wallet by the requested amount."
+          : "This permanently rejects each selected top-up request - it will not credit any wallet.",
+      confirmLabel: decision === "verify" ? "Verify selected" : "Reject selected",
+      tone: decision === "reject" ? "danger" : "default",
+    });
+    if (!ok) return;
     const results = await Promise.all(
       [...selected].map((id) => fetch(`${apiBase}/admin/wallet-topups/${id}/${decision}`, { method: "POST", headers: authHeaders() })),
     );

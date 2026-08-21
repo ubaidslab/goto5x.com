@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 
 type LifecycleStatus = "active" | "warned" | "restricted" | "suspended" | "banned";
 
@@ -21,6 +22,7 @@ const LIFECYCLE_STATUSES: LifecycleStatus[] = ["active", "warned", "restricted",
  * always with a required reason (audited).
  */
 export default function AdminSellersPage() {
+  const confirm = useConfirm();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [filter, setFilter] = useState<LifecycleStatus>("active");
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -53,11 +55,19 @@ export default function AdminSellersPage() {
     load();
   }
 
-  async function setLifecycleStatus(sellerId: string, status: LifecycleStatus) {
+  async function setLifecycleStatus(sellerId: string, status: LifecycleStatus, businessName: string, currentStatus: LifecycleStatus) {
     if (!reason) {
       alert("A reason is required for every lifecycle action.");
       return;
     }
+    const ok = await confirm({
+      title: `Set ${businessName} to "${status}"?`,
+      description: `This changes the seller's lifecycle status and is visible to the seller. Reason: ${reason}`,
+      changes: [{ label: "Lifecycle status", from: currentStatus, to: status }],
+      confirmLabel: `Set ${status}`,
+      tone: status === "banned" || status === "suspended" ? "danger" : "default",
+    });
+    if (!ok) return;
     await fetch(`${apiBase}/admin/sellers/${sellerId}/lifecycle`, {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -136,7 +146,7 @@ export default function AdminSellersPage() {
                   <button onClick={() => approveActivation(seller.id)}>Approve activation</button>
                 )}{" "}
                 {LIFECYCLE_STATUSES.filter((s) => s !== seller.lifecycleStatus).map((s) => (
-                  <button key={s} onClick={() => setLifecycleStatus(seller.id, s)}>
+                  <button key={s} onClick={() => setLifecycleStatus(seller.id, s, seller.businessName, seller.lifecycleStatus)}>
                     Set {s}
                   </button>
                 ))}{" "}

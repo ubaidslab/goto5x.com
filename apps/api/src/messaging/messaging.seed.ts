@@ -15,8 +15,9 @@ export async function seedMessagingSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: false,
       description: "Global kill-switch (FR-8.7): non-allowlisted requests see a maintenance page instead of the real app.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -27,7 +28,8 @@ export async function seedMessagingSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: [],
       description: "IP addresses that still reach the app (incl. the admin terminal) while maintenance mode is enabled (FR-8.7).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 }

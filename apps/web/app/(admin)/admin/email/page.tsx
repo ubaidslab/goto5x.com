@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface LinkedAccount {
@@ -30,6 +31,7 @@ interface InboxMessage {
  * discipline as every other admin page.
  */
 export default function AdminEmailPage() {
+  const confirm = useConfirm();
   const [accounts, setAccounts] = useState<LinkedAccount[] | null>(null);
   const [inbox, setInbox] = useState<InboxMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,14 @@ export default function AdminEmailPage() {
     }
   }
 
-  async function handleUnlink(id: string) {
+  async function handleUnlink(id: string, emailAddress: string) {
+    const ok = await confirm({
+      title: `Unlink ${emailAddress}?`,
+      description: "This removes the account from UZEYN's unified inbox. Nothing on the mail server itself is affected, but it can only be reached from here again by re-linking it (and re-entering the IMAP/SMTP credentials).",
+      confirmLabel: "Unlink",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await adminApi.delete(`/admin/email/accounts/${id}`);
@@ -167,7 +176,7 @@ export default function AdminEmailPage() {
                 <td>{new Date(a.createdAt).toLocaleString()}</td>
                 <td>
                   <button onClick={() => handleTestConnection(a.id)}>Test connection</button>{" "}
-                  <button onClick={() => handleUnlink(a.id)}>Unlink</button>
+                  <button onClick={() => handleUnlink(a.id, a.emailAddress)}>Unlink</button>
                   {testResult[a.id] && <div>{testResult[a.id]}</div>}
                 </td>
               </tr>

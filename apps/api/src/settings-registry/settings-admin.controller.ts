@@ -105,6 +105,7 @@ export class SettingsAdminController {
       allowedScopes: definition.allowedScopes,
       defaultValue: definition.defaultValue,
       description: definition.description,
+      requiresConfirmation: definition.requiresConfirmation,
       effectiveValue,
       winningScope,
       chain,

@@ -32,8 +32,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 8,
       validation: { min: 0, max: 100 },
       description: "DORMANT since Module 79 (superseded by growth.ambassador_flat_commission_per_month_pkr) - the old Ambassador referral commission (%) of a referred seller's paid plan-subscription amount.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -45,8 +46,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 6,
       validation: { min: 1, max: 60 },
       description: "DORMANT since Module 79 (superseded by growth.ambassador_max_commission_months, a count of MONTHS rather than a time window) - how many months of a referred seller's plan-subscription payments used to earn Ambassador commission under the old model.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 79 (SRS §5.33, FR-33.6 pre-Module-78-numbering / "Ambassador
@@ -65,8 +67,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 499,
       validation: { min: 0, max: 1000000 },
       description: "Flat PKR commission paid to an Ambassador per renewed month of a referred seller's plan fee (FR-33.6 pre-Module-78-numbering).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -78,8 +81,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 3,
       validation: { min: 0, max: 60 },
       description: "Maximum total months of a referred seller's renewal payments that earn Ambassador commission (FR-33.6 pre-Module-78-numbering) - the referred seller's own FIRST/initial payment never counts; a renewal payment covering more months than remain under this cap is pro-rated down to what remains.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 79 - approved ambassadors gain this many of their OWN stores
@@ -145,8 +149,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 5,
       validation: { min: 0, max: 100 },
       description: "Creator program's referral commission (%) of a referred seller's paid plan-subscription amount (FR-33.7). Student Referral moved to its own flat-rate model in Module 78 (FR-33.5) - this key no longer applies to it.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -158,8 +163,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 3,
       validation: { min: 1, max: 60 },
       description: "How many months of a referred seller's plan-subscription payments earn Creator commission (FR-33.7) - locked in per-attribution. Student Referral moved to its own renewal-count cap in Module 78 (FR-33.5) - this key no longer applies to it.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 78 (SRS §5.33, FR-33.5) - Student Referral renamed "Commerce
@@ -189,8 +195,9 @@ export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
       defaultValue: 345,
       validation: { min: 0, max: 1000000 },
       description: "Flat PKR commission paid to a Student Referral participant per qualifying renewal of a referred seller's plan fee (FR-33.5).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({

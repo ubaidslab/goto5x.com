@@ -157,7 +157,9 @@ The `cancelled` disagreement above (danger vs. the real precedent's neutral) nee
 
 **Seller dashboard: zero confirm steps exist anywhere** — confirmed by grep across the whole dashboard tree for `window.confirm`/`confirm(`/any Dialog-based confirmation. Every `.delete(...)` call site fires immediately: bulk delete products (`products/page.tsx`, applied via `Promise.allSettled` across every selected product — no confirm even for multi-select bulk delete), discount code deletion, staff removal, and (by tree-wide absence of any confirm pattern) collections/customer-segments/domains/marketing/order-verification/orders/settings deletions too.
 
-**Admin terminal: exactly one real confirm gate exists, platform-wide.** `admin/settings/page.tsx`'s `isHighImpact()` check (`key.startsWith("billing.") || key.includes("commission") || key.startsWith("platform.maintenance")`) triggers a native `window.confirm()` showing old→new value before saving. This is a hardcoded frontend heuristic, not server-driven. Every other admin destructive action — ban/suspend a seller, retire a plan, delete a platform message, unlink an email account, regenerate an API secret, send a newsletter to the whole seller base — has **zero confirmation**. The two `window.prompt()` calls found (impersonation-start reason, growth-program suspend/terminate reason) are **not confirm gates** — they capture an audit-trail reason string; the action proceeds the instant *any* string (even empty, unconfirmed) is entered.
+**Admin terminal: fixed (FR-8.16, shipped post-audit).** At the time of this audit, exactly one real confirm gate existed platform-wide — `admin/settings/page.tsx`'s `isHighImpact()` check (`key.startsWith("billing.") || key.includes("commission") || key.startsWith("platform.maintenance")`), a hardcoded frontend heuristic triggering a native `window.confirm()`. That finding drove a dedicated fix batch, now shipped: a shared `useConfirm()` hook (`components/admin/ConfirmDialogProvider.tsx`, built on the existing Radix `Dialog` primitive, mounted once in `admin/layout.tsx`) that every admin screen now imports rather than copy-pasting its own confirm logic. Money/value-changing actions show an explicit old→new row (the same pattern the Settings Registry editor pioneered); irreversible/high-blast-radius actions use `tone: "danger"`; sending a newsletter — the single highest-blast-radius action in the terminal, a broadcast to every seller — additionally requires typing "SEND" before the button enables. The hardcoded `isHighImpact()` string-match is gone: `requiresConfirmation` is now a real boolean field on `SettingsDefinition` (seeded `true` on the same 29 keys the old heuristic covered), resolved through `GET /admin/settings/resolve` and read by *both* the standalone Settings Registry editor and Seller-360's settings-override mini-editor — closing the gap where the mini-editor bypassed high-impact protection entirely. The two `window.prompt()` calls that remain (impersonation-start reason, growth-program suspend/terminate reason) are still not confirm gates — they capture an audit-trail reason string; the action proceeds the instant *any* string is entered — but neither was in scope for this fix.
+
+**Seller dashboard: still zero confirm steps anywhere** (out of scope for FR-8.16, which covered only the admin terminal) — confirmed by grep across the whole dashboard tree for `window.confirm`/`confirm(`/any Dialog-based confirmation. Every `.delete(...)` call site fires immediately: bulk delete products (`products/page.tsx`, applied via `Promise.allSettled` across every selected product — no confirm even for multi-select bulk delete), discount code deletion, staff removal, and (by tree-wide absence of any confirm pattern) collections/customer-segments/domains/marketing/order-verification/orders/settings deletions too. This remains a real, open gap the founder should prioritize as a follow-up — the admin terminal is no longer the platform's weak point on this axis, the seller dashboard now is.
 
 | Action | Real confirm today? |
 |---|---|
@@ -168,15 +170,26 @@ The `cancelled` disagreement above (danger vs. the real precedent's neutral) nee
 | Campaign send (seller) | No |
 | Plan downgrade (seller) | **NOT FOUND — flag for founder to locate/verify** |
 | Refund/return approval (seller) | **NOT FOUND — flag for founder to locate/verify** |
-| Settings-registry high-impact key changes (admin) | **Yes** — the one real precedent platform-wide |
-| Seller ban/suspend (admin) | No |
-| Impersonation start (admin) | No true confirm — reason-prompt only |
-| Retire plan (admin) | No |
-| Delete platform message (admin) | No |
-| Unlink email account (admin) | No |
-| Send newsletter to whole platform (admin) | No |
+| Settings-registry high-impact key changes (admin, standalone editor) | **Yes** — `useConfirm()`, data-driven `requiresConfirmation` field |
+| Settings-registry high-impact key changes (admin, Seller-360 mini-editor) | **Yes** — same `requiresConfirmation` field, gap closed |
+| Wallet adjust (admin, Seller-360) | **Yes** — `useConfirm()`, shows old→new balance |
+| Clawback (admin, Seller-360) | **Yes** — `useConfirm()`, danger tone, shows old→new balance |
+| Seller ban/suspend/lifecycle change (admin, Sellers list + Seller-360) | **Yes** — `useConfirm()`, danger tone on suspended/banned |
+| Mark paid (admin, Commission invoices) | **Yes** — `useConfirm()` |
+| Waive commission (admin, Commission invoices) | **Yes** — `useConfirm()`, danger tone |
+| Complete refund (admin, Returns & Refunds) | **Yes** — `useConfirm()`, danger tone, shows refund amount |
+| Force remove product (admin, Moderation queue) | **Yes** — `useConfirm()`, danger tone |
+| Moderation bulk approve/reject (admin) | **Yes** — `useConfirm()` |
+| Wallet top-up bulk verify/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject |
+| Retire plan (admin) | **Yes** — `useConfirm()`, danger tone |
+| Regenerate API client secret (admin) | **Yes** — `useConfirm()`, danger tone |
+| Supplier adapter enable/disable (admin) | **Yes** — `useConfirm()`, danger tone on disable |
+| Impersonation start (admin) | No true confirm — reason-prompt only (unchanged, out of scope) |
+| Delete platform message (admin) | **Yes** — `useConfirm()`, danger tone |
+| Unlink email account (admin) | **Yes** — `useConfirm()`, danger tone |
+| Send newsletter to whole platform (admin) | **Yes** — `useConfirm()`, danger tone, **types "SEND" to enable** |
 
-**Bottom line:** the platform has exactly one real confirmation gate anywhere, styled as a raw browser dialog. A designed confirm-dialog component (and a policy for which actions require it) is entirely new design work — and given the blast radius of some of the unconfirmed actions above (ban a seller, send a platform-wide newsletter, delete a legal content page), this is one of the highest-leverage small additions available.
+**Bottom line:** the admin terminal's confirmation coverage is now systematic rather than accidental — every destructive/money-moving action the audit flagged goes through the same shared, data-driven mechanism, styled with `Dialog.tsx`'s current (intentionally minimal) look pending Phase 6's admin-terminal re-skin. The seller dashboard's near-total absence of confirm steps is the platform's next-highest-leverage gap on this axis.
 
 ### Onboarding/setup-progress strip (Module 16)
 
@@ -750,7 +763,7 @@ All 24 pages under `apps/web/app/(admin)/admin/**/page.tsx` (plus the top-level 
 
 ## Cross-cutting observations for the whole admin terminal
 
-- **No modal/dialog component exists anywhere.** Every "are you sure" moment uses native `window.confirm()` (exactly once, high-impact Settings Registry key saves — see below) or `window.prompt()` (impersonation reason, growth-program suspend/terminate reasons, re-review revoke reason). **Every other destructive action has zero confirmation** — ban a seller, retire a plan, delete a message, unlink an email account, regenerate an API secret, send a newsletter to the entire seller base.
+- **Fixed (FR-8.16):** a shared `useConfirm()` dialog component (`components/admin/ConfirmDialogProvider.tsx`, on the existing Radix `Dialog` primitive, mounted once in `admin/layout.tsx`) now gates ban/suspend a seller, wallet adjust/clawback, mark paid/waive commission, complete a refund, force-remove a product, moderation and wallet-topup bulk actions, retire a plan, regenerate an API secret, toggle a supplier adapter, delete a message, unlink an email account, and send a newsletter (the last with a typed "SEND" confirmation, being the single highest-blast-radius action in the terminal). High-impact Settings Registry key detection is now the data-driven `requiresConfirmation` field (was a hardcoded `window.confirm()` string-match), and the same field now also gates Seller-360's settings-override mini-editor, closing that inconsistency. The `window.prompt()` calls (impersonation reason, growth-program suspend/terminate reasons, re-review revoke reason) are unchanged — still reason-capture, not confirm gates. **Still open, out of scope for FR-8.16:** Verified Store approve/reject/revoke, Trust & Safety payment-instrument review + Seller Agreement publish, the three Growth-program queues, Careers status changes, "Grant a plan to a seller," and the Content pages/brand-asset save buttons have no confirm step.
 - **Error handling is wildly inconsistent** page to page — full-page replacement, silent `.catch(() => {})` swallowing, inline red-text banners, or (login only) a clean consistent inline pattern.
 - **Loading states are almost universally the literal string `"Loading..."`** — no skeletons, no spinners.
 - **No pagination anywhere** except Audit log's simple "last N" limit selector.
@@ -762,19 +775,19 @@ All 24 pages under `apps/web/app/(admin)/admin/**/page.tsx` (plus the top-level 
 
 **Search** — one query box across Sellers/Stores/Orders/Suppliers, 4 result sections. No result-count empty-state copy, no loading indicator during search, no error handling on failure.
 
-**Sellers (list)** — T&S lifecycle filter (single status) → table with per-row "Approve activation," "Set {status}" (×4, requires a shared page-level Reason field, **no per-action confirm beyond the reason requirement — including "Set banned"**), "Impersonate" (`window.prompt` for reason → opens `/impersonate` in a new tab). Duplicates seller-360's own lifecycle/impersonation logic independently.
+**Sellers (list)** — T&S lifecycle filter (single status) → table with per-row "Approve activation," "Set {status}" (×4, requires a shared page-level Reason field, **now also gated by `useConfirm()`** — danger tone on suspended/banned, shows old→new status), "Impersonate" (`window.prompt` for reason → opens `/impersonate` in a new tab). Duplicates seller-360's own lifecycle/impersonation logic independently.
 
-**Seller-360** — the single most complex page: Actions (lifecycle/activation/impersonate) → Wallet (balance + adjust form + ledger) → Stores → Invoices → Growth program participation (Suspend/Terminate via `window.prompt`, Clawback form) → **Settings overrides** (a seller-scoped mini-editor writing to the *same* endpoint as the standalone Settings Registry page — but **without** that page's high-impact-key confirm gate, a real inconsistency) → Trust & Safety flags (read-only) → Devices/sessions (read-only) → Timeline (read-only). Wallet adjust and Clawback both move real money with **no confirm dialog**.
+**Seller-360** — the single most complex page: Actions (lifecycle/activation/impersonate, lifecycle changes now `useConfirm()`-gated same as the Sellers list) → Wallet (balance + adjust form + ledger, **adjust now `useConfirm()`-gated**, shows old→new balance) → Stores → Invoices → Growth program participation (Suspend/Terminate via `window.prompt`, Clawback form **now `useConfirm()`-gated**, danger tone, shows old→new balance) → **Settings overrides** (a seller-scoped mini-editor writing to the *same* endpoint as the standalone Settings Registry page — **fixed**: now reads the same `requiresConfirmation` field and shows the same confirm gate on high-impact keys, closing the prior inconsistency) → Trust & Safety flags (read-only) → Devices/sessions (read-only) → Timeline (read-only).
 
-**Wallet top-ups** — legacy-named route (real invoices live at Commission invoices instead); bulk Verify/Reject (client-side `Promise.all` fan-out, no dedicated bulk endpoint), per-row Verify/Reject, **no confirm/reason on either.**
+**Wallet top-ups** — legacy-named route (real invoices live at Commission invoices instead); bulk Verify/Reject (client-side `Promise.all` fan-out, no dedicated bulk endpoint) **now `useConfirm()`-gated** (danger tone on reject), per-row Verify/Reject unchanged — **no confirm/reason on either** (only the bulk actions were in scope for FR-8.16).
 
-**Commission invoices** — table + "Mark paid" (no confirm) + a "Waive a commission line" form (Seller ID/Order ID/Amount, all raw free-text, **no confirm step despite being a direct revenue write**).
+**Commission invoices** — table + "Mark paid" (**now `useConfirm()`-gated**) + a "Waive a commission line" form (Seller ID/Order ID/Amount, all raw free-text, **now `useConfirm()`-gated**, danger tone, shows the waived amount).
 
-**Returns & Refunds (admin override)** — Approve (no confirm) / Reject (reason required) / "Complete refund" (amount input defaulting to order total, **no confirm despite moving real refund money**).
+**Returns & Refunds (admin override)** — Approve (no confirm) / Reject (reason required) / "Complete refund" (amount input defaulting to order total, **now `useConfirm()`-gated**, danger tone, shows the refund amount — Approve/Reject were not in scope for FR-8.16 and remain unconfirmed).
 
 **Verified Store** — Pending-applications cards (Approve / "Reject (refunds fee)" — label documents the side-effect, **neither has a confirm dialog**) + Re-review cards ("Clear - keep verified" / "Confirm - revoke," revoke requires a reason). One of the few pages with genuine, real empty-state copy for both lists.
 
-**Moderation queue** — REVIEWER-sub-role-accessible. "Force remove/restore" direct-lookup tool (raw product-ID text field, reaches *any* product, **no confirm despite being an instant takedown**) + bulk Approve/Reject (Reject requires shared notes, explicitly disclosed as buyer/seller-visible) + per-row queue table. Real empty-state copy: "The queue is empty."
+**Moderation queue** — REVIEWER-sub-role-accessible. "Force remove/restore" direct-lookup tool (raw product-ID text field, reaches *any* product; **Force remove now `useConfirm()`-gated**, danger tone — Restore is non-destructive and stayed ungated) + bulk Approve/Reject (Reject requires shared notes, explicitly disclosed as buyer/seller-visible; **both now `useConfirm()`-gated**) + per-row queue table (per-row Approve/Reject unchanged, not in scope). Real empty-state copy: "The queue is empty."
 
 **Trust & Safety** — Payment-instrument review queue (Approve/Reject, no reason field, no confirm) + 5 read-only risk-monitor tables (cancellation-rate, pending-forever-rate, signup-velocity, bypass-attempts, self-referral — none link through to Seller-360 despite showing seller IDs) + Seller Agreement version publish form (**no confirm despite being a legal-document publish affecting every seller**).
 
@@ -782,13 +795,13 @@ All 24 pages under `apps/web/app/(admin)/admin/**/page.tsx` (plus the top-level 
 
 **Careers** — postings table (draft/open/closed) + expandable per-posting applicant sub-table (status change via an **instant-commit dropdown**, no explicit Save button, no confirm) + create-posting form (always created as draft).
 
-**Plans** — 3 grouped tables (individual/team/supplier) → Create-tier form → **Grant a plan to a seller** (raw seller-ID text, bypasses billing/checkout entirely, no confirm) → Create promo code form. "Retire" button per active plan, **no confirm despite being effectively irreversible for that tier's future availability.** Widest table in the terminal (13 columns), zero responsive handling.
+**Plans** — 3 grouped tables (individual/team/supplier) → Create-tier form → **Grant a plan to a seller** (raw seller-ID text, bypasses billing/checkout entirely, no confirm — not in scope for FR-8.16) → Create promo code form. "Retire" button per active plan, **now `useConfirm()`-gated**, danger tone. Widest table in the terminal (13 columns), zero responsive handling.
 
 **Categories** — deliberately append-only (no rename/delete, disclosed in-page). Writes to `/categories`, not `/admin/categories` — a real backend-naming inconsistency worth flagging.
 
-**Supplier adapters** — per-adapter enable/disable toggle (**no confirm despite potentially taking a live integration offline**) + raw-JSON config textarea (validates "is it valid JSON," not schema-correctness) + register-new form (free-text adapter type, no dropdown of known types).
+**Supplier adapters** — per-adapter enable/disable toggle (**now `useConfirm()`-gated**, danger tone on disable) + raw-JSON config textarea (validates "is it valid JSON," not schema-correctness) + register-new form (free-text adapter type, no dropdown of known types).
 
-**Settings Registry editor** — the flagship write UI. Definitions table (unsorted/unsearchable at ~90 keys) → detail panel: precedence-chain table (winning scope bold), type-aware Save form with real client-side validation mirroring server rules. **High-impact confirm — confirmed real, not a gap:** any key prefixed `billing.`, containing `commission`, or prefixed `platform.maintenance` triggers a native `window.confirm()` showing old→new value before saving. This is a hardcoded frontend heuristic, not server-driven — a future equally-sensitive key that doesn't match those 3 patterns would silently skip it. (Seller-360's own settings-override mini-editor, above, writes the same endpoint without this gate.)
+**Settings Registry editor** — the flagship write UI. Definitions table (unsorted/unsearchable at ~90 keys) → detail panel: precedence-chain table (winning scope bold), type-aware Save form with real client-side validation mirroring server rules. **High-impact confirm — fixed (FR-8.16):** detection is now the data-driven `requiresConfirmation` boolean on `SettingsDefinition` (seeded `true` on the same 29 keys the old `billing.`/`commission`/`platform.maintenance` string-match covered), resolved via `GET /admin/settings/resolve` and shown through the shared `useConfirm()` dialog (old→new value) instead of a native `window.confirm()`. A future equally-sensitive key no longer needs to match a frontend string pattern — it just needs the field set true. Seller-360's own settings-override mini-editor now reads the same field and shows the same gate, closing the prior inconsistency.
 
 **Audit log** — genuinely read-only (DB-grant-enforced insert-only), single "last N" limit filter, no date/action/admin/target filters, no search. Before/after diffs in a native `<details>` disclosure. Impersonation-session column lets an admin trace exactly what happened during any support session.
 
@@ -796,15 +809,15 @@ All 24 pages under `apps/web/app/(admin)/admin/**/page.tsx` (plus the top-level 
 
 **Analytics** — real-time GMV/revenue table + top-sellers-by-commission table + unit-economics table (admin-entered infra cost, break-even calc). **No charts anywhere** — every figure is plain HTML text. **MRR/subscription analytics, seller health funnel, support SLA queue view, and payment-gateway health monitoring are all confirmed NOT built** — this whole cluster is the not-built Subscription Business Readiness batch (Modules 63–72); this page is the SRS's own designated future extension point for MRR specifically.
 
-**External API clients** — register/enable-disable/regenerate-secret for the two SaaS integration hooks. "Regenerate secret" **has no confirm despite immediately invalidating the existing credential** (the new one is at least shown once in a copy-now banner).
+**External API clients** — register/enable-disable/regenerate-secret for the two SaaS integration hooks. "Regenerate secret" **now `useConfirm()`-gated**, danger tone (the new one is still shown once in a copy-now banner after confirming).
 
 **Content pages & brand assets** — 5 fixed legal/info page editors (plain textarea, deliberately not WYSIWYG) + 3 fixed brand-asset URL-reference fields (no actual file-upload widget — URL-paste only). 8 independent save buttons, **zero confirm steps** despite being public-facing legal/brand content.
 
-**Messages** (seller-facing banners/popups/in-app) — target All/Plan/Seller (raw ID fields, no lookup), scheduled window — table + create form + Delete (**no confirm**). Not the same as the admin's own notification bell (see chrome, above).
+**Messages** (seller-facing banners/popups/in-app) — target All/Plan/Seller (raw ID fields, no lookup), scheduled window — table + create form + Delete (**now `useConfirm()`-gated**, danger tone). Not the same as the admin's own notification bell (see chrome, above).
 
-**Email** — UZEYN's own unified inbox: link IMAP+SMTP accounts (native `FormData` form, the only one built this way; plain-text password fields with **no masking toggle**) → merged inbox → reply (fixed "To," pre-filled subject). "Unlink" has **no confirm.** A failed reply-send blanks the *entire* inbox view rather than showing an inline error — a real UX gap.
+**Email** — UZEYN's own unified inbox: link IMAP+SMTP accounts (native `FormData` form, the only one built this way; plain-text password fields with **no masking toggle**) → merged inbox → reply (fixed "To," pre-filled subject). "Unlink" is **now `useConfirm()`-gated**, danger tone. A failed reply-send blanks the *entire* inbox view rather than showing an inline error — a real UX gap.
 
-**Newsletters** — compose (native form) → save as draft → **Send** (no confirm despite being an irreversible broadcast to every seller on the platform — arguably the single highest-blast-radius action in the whole admin terminal with zero protection). Live status tracking (sent/failed counts, failure reason).
+**Newsletters** — compose (native form) → save as draft → **Send** (an irreversible broadcast to every seller on the platform — the single highest-blast-radius action in the whole admin terminal, and now protected accordingly: `useConfirm()`, danger tone, **and a typed "SEND" confirmation** before the button enables — the strongest gate in the terminal). Live status tracking (sent/failed counts, failure reason).
 
 **Login** — credentials step → mandatory TOTP MFA step, including automatic first-time enrollment. **MFA setup shows the raw `otpauthUrl` as plain text, not a scannable QR code** — a real usability gap worth a design decision. The only page with a clean, consistent inline error pattern in the whole terminal.
 

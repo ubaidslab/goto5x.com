@@ -97,6 +97,31 @@ describe("Settings Registry admin API + cache (e2e) - SRS §14.8", () => {
     expect(entry.afterValue).toBe(60);
   });
 
+  it("requiresConfirmation is data-driven (FR-8.16) - true on a billing/commission/maintenance key, false elsewhere, exposed by both definitions and resolve", async () => {
+    const token = await fullyVerifiedAdminToken("settingsadmin4@example.com");
+
+    const definitions = await request(app.getHttpServer())
+      .get("/admin/settings/definitions")
+      .set("Authorization", `Bearer ${token}`);
+    expect(definitions.status).toBe(200);
+    const highImpact = definitions.body.find((d: any) => d.key === "billing.commission_rate_percent");
+    const ordinary = definitions.body.find((d: any) => d.key === "auth.password_reset_token_ttl_minutes");
+    expect(highImpact.requiresConfirmation).toBe(true);
+    expect(ordinary.requiresConfirmation).toBe(false);
+
+    const resolveHighImpact = await request(app.getHttpServer())
+      .get("/admin/settings/resolve")
+      .query({ key: "billing.commission_rate_percent" })
+      .set("Authorization", `Bearer ${token}`);
+    expect(resolveHighImpact.body.requiresConfirmation).toBe(true);
+
+    const resolveOrdinary = await request(app.getHttpServer())
+      .get("/admin/settings/resolve")
+      .query({ key: "auth.password_reset_token_ttl_minutes" })
+      .set("Authorization", `Bearer ${token}`);
+    expect(resolveOrdinary.body.requiresConfirmation).toBe(false);
+  });
+
   it("non-admin (seller) sessions cannot reach the settings admin API", async () => {
     await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "notanadmin@example.com",

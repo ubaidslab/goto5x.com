@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ConfirmDialogProvider } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi } from "@/lib/admin-api";
 
 interface NotificationItem {
@@ -69,6 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
+    <ConfirmDialogProvider>
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <nav style={{ width: 220, borderRight: "1px solid #ccc", padding: 12, flexShrink: 0 }}>
         <p style={{ fontWeight: "bold", marginBottom: 8 }}>Admin</p>
@@ -111,5 +113,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </nav>
       <div style={{ flex: 1, padding: 16 }}>{children}</div>
     </div>
+    </ConfirmDialogProvider>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface Newsletter {
@@ -22,6 +23,7 @@ interface Newsletter {
  * other admin page.
  */
 export default function AdminNewslettersPage() {
+  const confirm = useConfirm();
   const [newsletters, setNewsletters] = useState<Newsletter[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -55,7 +57,15 @@ export default function AdminNewslettersPage() {
     }
   }
 
-  async function handleSend(id: string) {
+  async function handleSend(id: string, subject: string, recipientCount: number) {
+    const ok = await confirm({
+      title: `Send "${subject}" to every seller?`,
+      description: `This broadcasts to all ${recipientCount} sellers who haven't opted out. This is the single highest-blast-radius action in the admin terminal and cannot be undone once sending starts.`,
+      confirmLabel: "Send now",
+      tone: "danger",
+      typedConfirmation: "SEND",
+    });
+    if (!ok) return;
     setError(null);
     setSendingId(id);
     try {
@@ -127,7 +137,7 @@ export default function AdminNewslettersPage() {
                 <td>{n.sentAt ? new Date(n.sentAt).toLocaleString() : "-"}</td>
                 <td>
                   {n.status === "draft" && (
-                    <button onClick={() => handleSend(n.id)} disabled={sendingId === n.id}>
+                    <button onClick={() => handleSend(n.id, n.subject, n.recipientCount)} disabled={sendingId === n.id}>
                       {sendingId === n.id ? "Sending..." : "Send"}
                     </button>
                   )}

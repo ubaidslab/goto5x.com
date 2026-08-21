@@ -2978,6 +2978,36 @@ requires the founder to ask an engineer for a deploy.
   scheduling). Maintenance mode (FR-8.7) remains the one global, non-targetable
   kill-switch — targeting only applies to the messaging channels, not to
   maintenance mode.
+- FR-8.16: **Confirmation-required destructive/money-moving actions (new, v0.40
+  — closes a gap the UI feature inventory audit found: near-zero confirm steps
+  existed anywhere in the admin terminal).** A shared, reusable confirmation
+  step — not a per-page reimplementation — that any admin control-plane action
+  can require before it fires. On trigger it shows, in plain language, what is
+  about to happen; for a money- or value-changing action, the exact amount or
+  the old value → new value (the same shape FR-8.1's Settings Registry editor
+  already used for a "high-impact key" before this FR, now generalized). At
+  minimum required on: wallet balance adjustment and growth-program clawback
+  (FR-8.4's Seller-360 view); invoice mark-paid and commission waive; return
+  refund completion (FR-8.8); any seller lifecycle status change including ban
+  (FR-8.4); moderation force-remove (FR-8.13); plan retirement (FR-8.2);
+  external API client secret regeneration (FR-8.14); unlinking an admin email
+  account; deleting an in-app message (FR-8.15); supplier/adapter enable-
+  disable toggling (FR-8.5); and every bulk-action variant of the above
+  (moderation bulk approve/reject, wallet-topup bulk verify/reject). **Sending
+  a platform-wide newsletter is the single highest-blast-radius action in the
+  terminal** (broadcasts to every seller with no per-recipient undo) and
+  requires the strongest variant — the admin must type an exact confirmation
+  word, not just click through a dialog. **High-impact-key detection is
+  data-driven, not a frontend guess:** a new `requiresConfirmation` boolean
+  field on each Settings Registry key definition (admin-settable per key,
+  seeded `true` on every `billing.*`, `*commission*`, and `platform.maintenance*`
+  key at launch) replaces the prior hardcoded frontend string-match, and every
+  write path for a Settings Registry value — including Seller-360's own
+  settings-override mini-editor, which previously bypassed this check entirely
+  — reads the same field. Styling is intentionally minimal at this checkpoint
+  (this FR is a safety-mechanism fix, not part of the UI/UX Design Phase); the
+  Phase 6 admin-terminal re-skin re-styles this component like every other
+  admin primitive, without changing its behavior.
 
 ### 5.9 Media Management
 - FR-9.1: Seller connects Google Drive via OAuth to bulk-import product
@@ -6502,6 +6532,24 @@ going forward, per FR-6.28.
         `/admin/commission-invoices` screen for `AdminInvoicesController`
         (mark-paid, waive-commission), which had a working backend but no
         frontend at all before this phase.
+- [ ] **Confirmation-required destructive/money-moving actions (FR-8.16,
+      v0.40 — UI feature inventory audit fix):** a single shared confirm
+      component/hook is used by every flagged action (wallet adjust,
+      clawback, mark-paid, waive commission, complete refund, seller
+      lifecycle change including ban, moderation force-remove, plan
+      retire, external-API secret regenerate, email-account unlink,
+      message delete, supplier-adapter toggle, and every bulk-action
+      variant) — proven by each calling the same `useConfirm()` hook, not
+      a page-local reimplementation. Send Newsletter requires the admin to
+      type an exact confirmation word before the Send button enables.
+      `SettingsDefinition.requiresConfirmation` (new column) replaces the
+      prior hardcoded `billing./commission/platform.maintenance` frontend
+      string-match — proven by an e2e test that a definition seeded
+      `requiresConfirmation: false` skips the confirm step, and one seeded
+      `true` requires it, from both the standalone Settings Registry
+      editor AND Seller-360's own settings-override mini-editor (closing
+      the inconsistency where the mini-editor previously bypassed this
+      check entirely).
 
 ### 14.9 Media Management
 - [ ] Google Drive import copies files into MinIO; the storefront still serves

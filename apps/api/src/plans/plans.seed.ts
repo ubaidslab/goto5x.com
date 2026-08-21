@@ -109,8 +109,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       defaultValue: 0,
       validation: { min: 0, max: 100 },
       description: "Launch-campaign discount off commission_rate_percent, active only while expiry/seller-limit conditions hold (FR-7.7).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -121,8 +122,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: "",
       description: "ISO timestamp after which the launch campaign no longer applies; empty string = no expiry condition set (FR-7.7).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -134,8 +136,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       defaultValue: 0,
       validation: { min: 0 },
       description: "First-N-sellers counter condition for the launch campaign; 0 = no counter condition set (FR-7.7).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -192,8 +195,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       defaultValue: 5.5,
       validation: { min: 0 },
       description: "A six-month subscription cycle bills this many times the active monthly price, for 6 months of service (FR-7.20).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -205,8 +209,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       defaultValue: 10,
       validation: { min: 0 },
       description: "A yearly subscription cycle bills this many times the active monthly price, for 12 months of service (FR-7.20).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 74 (v0.39, SRS §5.6j FR-7.22) - replaces the retired per-plan
@@ -224,8 +229,9 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       defaultValue: 50,
       validation: { min: 0, max: 100 },
       description: "Percentage off the active price for a seller's very first plan-fee payment, every tier alike (FR-7.22) - replaces the retired per-plan firstCyclePrice column.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 61 (FR-7.21) - the pricing page's headline benefit block,

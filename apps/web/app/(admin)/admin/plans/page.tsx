@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 
 type PlanGroup = "individual" | "team" | "supplier";
 
@@ -33,6 +34,7 @@ const GROUPS: PlanGroup[] = ["individual", "team", "supplier"];
  * precedent as /admin/sellers.
  */
 export default function AdminPlansPage() {
+  const confirm = useConfirm();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [plans, setPlans] = useState<{ individual: Plan[]; team: Plan[]; supplier: Plan[] } | null>(null);
   const [planGroup, setPlanGroup] = useState<PlanGroup>("individual");
@@ -97,8 +99,16 @@ export default function AdminPlansPage() {
     load();
   }
 
-  async function retire(planId: string) {
-    await fetch(`${apiBase}/admin/plans/${planId}/retire`, { method: "POST", headers: authHeaders() });
+  async function retire(plan: Plan) {
+    const ok = await confirm({
+      title: `Retire "${plan.name}" (${plan.planGroup})?`,
+      description: "Retired tiers can no longer be subscribed to by new sellers. Existing subscribers are unaffected.",
+      changes: [{ label: "Active", from: "yes", to: "no (retired)" }],
+      confirmLabel: "Retire",
+      tone: "danger",
+    });
+    if (!ok) return;
+    await fetch(`${apiBase}/admin/plans/${plan.id}/retire`, { method: "POST", headers: authHeaders() });
     load();
   }
 
@@ -192,7 +202,7 @@ export default function AdminPlansPage() {
                   <td>{plan.mostPopular ? "yes" : ""}</td>
                   <td>{plan.isActive ? "yes" : "no (retired)"}</td>
                   <td>
-                    {plan.isActive && <button onClick={() => retire(plan.id)}>Retire</button>}
+                    {plan.isActive && <button onClick={() => retire(plan)}>Retire</button>}
                   </td>
                 </tr>
               ))}

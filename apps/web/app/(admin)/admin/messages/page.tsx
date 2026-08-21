@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 
 type Channel = "banner" | "popup" | "in_app_notification";
 type TargetType = "all" | "plan" | "seller";
@@ -26,6 +27,7 @@ interface PlatformMessage {
  * separate screen here.
  */
 export default function AdminMessagesPage() {
+  const confirm = useConfirm();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [messages, setMessages] = useState<PlatformMessage[]>([]);
   const [channel, setChannel] = useState<Channel>("banner");
@@ -81,8 +83,15 @@ export default function AdminMessagesPage() {
     load();
   }
 
-  async function remove(id: string) {
-    await fetch(`${apiBase}/admin/messages/${id}`, { method: "DELETE", headers: authHeaders() });
+  async function remove(message: PlatformMessage) {
+    const ok = await confirm({
+      title: `Delete this ${message.channel.replace("_", " ")}?`,
+      description: message.title ? `"${message.title}" - ${message.body}` : message.body,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
+    await fetch(`${apiBase}/admin/messages/${message.id}`, { method: "DELETE", headers: authHeaders() });
     load();
   }
 
@@ -119,7 +128,7 @@ export default function AdminMessagesPage() {
                 {m.startsAt ?? "always"} &rarr; {m.endsAt ?? "forever"}
               </td>
               <td>
-                <button onClick={() => remove(m.id)}>Delete</button>
+                <button onClick={() => remove(m)}>Delete</button>
               </td>
             </tr>
           ))}

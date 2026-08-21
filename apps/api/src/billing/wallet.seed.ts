@@ -21,8 +21,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 500,
       validation: { min: 0 },
       description: "The minimum wallet top-up (PKR) required before a seller can publish a store and start accepting real orders (SRS FR-6.21).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -34,8 +35,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 200,
       validation: { min: 0 },
       description: "Wallet balance (PKR, positive) below which a seller sees a dashboard warning and receives a warning email - the START of the low-balance grace ladder (SRS FR-6.25). Distinct from the negative-float floor below.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -47,8 +49,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 3,
       validation: { min: 0, max: 30 },
       description: "Days after a low-balance warning before an unrestored store enters orders_paused (SRS FR-6.25).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -60,8 +63,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: -100,
       validation: { max: 0 },
       description: "The most negative (PKR) a wallet balance is allowed to run before its stores pause. The commission debit itself never fails or rolls back mid-transaction even if it crosses this line - but the moment balance is below it, active stores pause immediately, bypassing the grace ladder (SRS FR-6.26). Distinct from the low-balance warning threshold above: this is a hard floor, not a warning line.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -72,8 +76,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       allowedScopes: ["global"],
       defaultValue: [500, 1000, 2500, 5000],
       description: "Preset top-up amounts (PKR) shown on the seller wallet top-up screen, alongside a custom-amount option (SRS FR-6.23/FR-6.27).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -85,8 +90,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 24,
       validation: { min: 1, max: 168 },
       description: "How often the monthly-in-advance plan-fee/team-seat/device-slot wallet-debit sweep runs (idempotent - safe to run more often than monthly) (SRS FR-6.24).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -98,8 +104,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 24,
       validation: { min: 1, max: 168 },
       description: "How often the wallet low-balance grace-ladder sweep runs (SRS FR-6.25).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 47 (new FR-6.29) - the daily wallet-balance reconciliation
@@ -114,8 +121,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 24,
       validation: { min: 1, max: 168 },
       description: "How often the wallet-balance reconciliation sweep runs - recomputes each seller's true ledger sum and flags any drift from the cached WalletBalance column for admin review (SRS new FR-6.29).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 59 (SRS §5.6g, FR-6.33) - the wallet-credit portion of the
@@ -135,8 +143,9 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 699,
       validation: { min: 0 },
       description: "DORMANT (v0.38) - the wallet top-up (PKR) a combined signup payment used to bundle in, before Module 73 retired the combined-payment model in favor of a plan-fee-only payment. Unread.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 73 (v0.38, SRS §5.6g amended) - the subscription-only renewal
@@ -155,14 +164,16 @@ export async function seedWalletSettings(prisma: PrismaClient) {
       defaultValue: 3,
       validation: { min: 0, max: 30 },
       description: "Days past Subscription.currentPeriodEnd before a seller's stores pause for plan-fee non-payment (v0.38) - covers ordinary admin-verification lag on an already-submitted payment.",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   // Module 20 (FR-7.10 supplement) - the actual gate the Supplier Premium
   // Plan's fee gets checked against, resolved with the same plan-scope
   // mechanism every other plan-gated feature already uses (FR-8.1) - see
-  // Supplier.getPlanContext()/SupplierOrdersService.
+  // Supplier.getPlanContext()/SupplierOrdersService. Not a `billing.*` key,
+  // so unaffected by FR-8.16's confirm-step seeding.
   await prisma.settingsDefinition.upsert({
     where: { key: "suppliers.aggregated_dashboard_enabled" },
     create: {

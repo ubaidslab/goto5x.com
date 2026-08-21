@@ -17,15 +17,19 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       defaultValue: 1,
       validation: { min: 0, max: 2 },
       description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
+      requiresConfirmation: true,
     },
     // Unlike every other definition in these seed files, this one refreshes
     // `validation` on every boot (not just `update: {}`) - the 2% cap is a
     // launch-blocker guarantee (v0.33, FR-7.4) that must retroactively
     // tighten an already-seeded environment's old max:100, not just apply
-    // to fresh DBs.
+    // to fresh DBs. `requiresConfirmation` is refreshed the same way (FR-8.16,
+    // v0.40) so an already-seeded environment retroactively picks up the
+    // confirm-step protection, not just fresh DBs.
     update: {
       validation: { min: 0, max: 2 },
       description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
+      requiresConfirmation: true,
     },
   });
 
@@ -38,8 +42,9 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       defaultValue: 14,
       validation: { min: 1, max: 90 },
       description: "Days after an invoice's billing period ends before it's due, and before non-payment triggers automated store suspension (SRS FR-6.17/FR-6.18).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -51,8 +56,9 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       defaultValue: 24,
       validation: { min: 1, max: 168 },
       description: "How often the monthly invoice-generation sweep checks for sellers needing a new invoice (idempotent - safe to run more often than monthly).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -64,7 +70,8 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       defaultValue: 24,
       validation: { min: 1, max: 168 },
       description: "How often the grace-period sweep checks for overdue invoices to suspend (SRS FR-6.18).",
+      requiresConfirmation: true,
     },
-    update: {},
+    update: { requiresConfirmation: true },
   });
 }

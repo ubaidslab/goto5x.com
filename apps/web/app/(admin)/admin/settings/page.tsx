@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 type ScopeType = "global" | "plan" | "seller" | "category" | "store" | "supplier";
@@ -12,6 +13,7 @@ interface SettingsDefinition {
   defaultValue: unknown;
   description?: string;
   validation?: { min?: number; max?: number } | null;
+  requiresConfirmation: boolean;
 }
 
 interface ChainEntry {
@@ -31,12 +33,8 @@ interface ResolveResponse {
   defaultValue: unknown;
   effectiveValue: unknown;
   winningScope: ScopeType | "default";
+  requiresConfirmation: boolean;
   chain: ChainEntry[];
-}
-
-/** Keys where a bad edit does real financial/availability damage - a confirm step shows old -> new before applying. */
-function isHighImpact(key: string): boolean {
-  return key.startsWith("billing.") || key.includes("commission") || key.startsWith("platform.maintenance");
 }
 
 const SCOPE_QUERY_PARAM: Record<Exclude<ScopeType, "global">, string> = {
@@ -55,9 +53,13 @@ const SCOPE_QUERY_PARAM: Record<Exclude<ScopeType, "global">, string> = {
  * the request even fires; the precedence chain view reuses
  * SettingsService's own PRECEDENCE order (via the new
  * GET admin/settings/resolve endpoint) so "which scope wins" is never a
- * guess.
+ * guess. High-impact-key detection (FR-8.16, v0.40) is the data-driven
+ * `requiresConfirmation` field on the definition itself, resolved through
+ * to this page via GET admin/settings/resolve - no more frontend
+ * key.startsWith("billing.")-style guessing.
  */
 export default function AdminSettingsPage() {
+  const confirm = useConfirm();
   const [definitions, setDefinitions] = useState<SettingsDefinition[]>([]);
   const [selected, setSelected] = useState<SettingsDefinition | null>(null);
   const [scope, setScope] = useState<ScopeType>("global");
@@ -130,11 +132,15 @@ export default function AdminSettingsPage() {
       return;
     }
 
-    if (isHighImpact(selected.key)) {
-      const confirmed = window.confirm(
-        `This is a high-impact key.\n\nOld: ${JSON.stringify(resolved?.effectiveValue)}\nNew: ${JSON.stringify(validation.value)}\n\nApply this change?`,
-      );
-      if (!confirmed) return;
+    if (resolved?.requiresConfirmation) {
+      const ok = await confirm({
+        title: `Change "${selected.key}"?`,
+        description: "This is a high-impact settings key (FR-8.16) - a bad value here does real financial/availability damage.",
+        changes: [{ label: selected.key, from: JSON.stringify(resolved.effectiveValue), to: JSON.stringify(validation.value) }],
+        confirmLabel: "Apply change",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
 
     try {

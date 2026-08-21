@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 
 interface QueuedProduct {
   id: string;
@@ -19,6 +20,7 @@ interface QueuedProduct {
  * terminal (enforced server-side by AdminAuthGuard, not by anything here).
  */
 export default function AdminModerationPage() {
+  const confirm = useConfirm();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [queue, setQueue] = useState<QueuedProduct[] | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -74,6 +76,13 @@ export default function AdminModerationPage() {
       setError("A reason is required to reject (the field above) - it's shown to the seller.");
       return;
     }
+    const ok = await confirm({
+      title: `${decision === "approve" ? "Approve" : "Reject"} ${selected.size} product${selected.size === 1 ? "" : "s"}?`,
+      description: decision === "reject" ? `Reason: ${bulkNotes}` : "This applies to every currently selected product in the queue.",
+      confirmLabel: decision === "approve" ? "Approve selected" : "Reject selected",
+      tone: decision === "reject" ? "danger" : "default",
+    });
+    if (!ok) return;
     const results = await Promise.all(
       [...selected].map((productId) =>
         fetch(`${apiBase}/admin/moderation/queue/${productId}/${decision}`, {
@@ -103,6 +112,15 @@ export default function AdminModerationPage() {
     if (!lookupProductId.trim()) {
       setLookupResult("Enter a product id first.");
       return;
+    }
+    if (action === "remove") {
+      const ok = await confirm({
+        title: `Force remove product ${lookupProductId.trim()}?`,
+        description: `This is an instant takedown regardless of the product's current moderation status. Notes: ${lookupNotes || "(none)"}`,
+        confirmLabel: "Remove",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
     const res = await fetch(`${apiBase}/admin/products/${lookupProductId.trim()}/${action}`, {
       method: "POST",

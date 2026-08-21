@@ -1484,6 +1484,13 @@ model SettingsDefinition {
   defaultValue  Json                @map("default_value")
   validation    Json?
   description   String?
+  // FR-8.16 (v0.40) - data-driven replacement for the admin Settings
+  // Registry editor's prior hardcoded frontend high-impact-key heuristic
+  // (billing./commission/platform.maintenance string-match). When true,
+  // both the standalone Settings Registry editor and Seller-360's own
+  // settings-override mini-editor require the shared admin confirm
+  // dialog (old value -> new value) before a write to this key is sent.
+  requiresConfirmation Boolean @default(false) @map("requires_confirmation")
 
   values SettingsValue[]
 

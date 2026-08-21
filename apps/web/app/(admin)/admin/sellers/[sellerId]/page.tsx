@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 type LifecycleStatus = "active" | "warned" | "restricted" | "suspended" | "banned";
@@ -42,6 +43,7 @@ const LIFECYCLE_STATUSES: LifecycleStatus[] = ["active", "warned", "restricted",
  * discipline those endpoints already enforce server-side.
  */
 export default function AdminSellerOverviewPage({ params }: { params: { sellerId: string } }) {
+  const confirm = useConfirm();
   const [overview, setOverview] = useState<SellerOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -56,6 +58,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     valueType: string;
     effectiveValue: unknown;
     winningScope: string;
+    requiresConfirmation: boolean;
   } | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -73,6 +76,14 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       alert("A reason is required for every lifecycle action.");
       return;
     }
+    const ok = await confirm({
+      title: `Set ${seller.businessName} to "${status}"?`,
+      description: `This changes the seller's lifecycle status from "${seller.lifecycleStatus}" to "${status}" and is visible to the seller. Reason: ${reason}`,
+      changes: [{ label: "Lifecycle status", from: seller.lifecycleStatus, to: status }],
+      confirmLabel: `Set ${status}`,
+      tone: status === "banned" || status === "suspended" ? "danger" : "default",
+    });
+    if (!ok) return;
     await adminApi.post(`/admin/sellers/${params.sellerId}/lifecycle`, { status, reason });
     load();
   }
@@ -88,6 +99,21 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       alert("An amount and a reason are both required.");
       return;
     }
+    const newBalance = wallet.balance + amount;
+    const ok = await confirm({
+      title: `${amount > 0 ? "Credit" : "Debit"} ${seller.businessName}'s wallet?`,
+      description: `Reason: ${adjustReason}`,
+      changes: [
+        {
+          label: "Wallet balance",
+          from: `${wallet.currency} ${wallet.balance.toFixed(2)}`,
+          to: `${wallet.currency} ${newBalance.toFixed(2)}`,
+        },
+      ],
+      confirmLabel: "Adjust wallet",
+      tone: amount < 0 ? "danger" : "default",
+    });
+    if (!ok) return;
     try {
       await adminApi.post(`/admin/wallet-topups/sellers/${params.sellerId}/adjust`, { amount, reason: adjustReason });
       setAdjustAmount("");
@@ -142,7 +168,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     setSettingsLookup(null);
     if (!settingsKey.trim()) return;
     try {
-      const result = await adminApi.get<{ valueType: string; effectiveValue: unknown; winningScope: string }>(
+      const result = await adminApi.get<{ valueType: string; effectiveValue: unknown; winningScope: string; requiresConfirmation: boolean }>(
         `/admin/settings/resolve?key=${encodeURIComponent(settingsKey.trim())}&sellerId=${params.sellerId}`,
       );
       setSettingsLookup(result);
@@ -163,6 +189,16 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     } catch {
       // Not valid JSON - keep it as the raw string (e.g. a plain non-quoted string value).
     }
+    if (settingsLookup?.requiresConfirmation) {
+      const ok = await confirm({
+        title: `Override "${settingsKey.trim()}" for ${seller.businessName}?`,
+        description: "This is a high-impact settings key (FR-8.16) - it takes effect for this seller only, overriding any plan/global default.",
+        changes: [{ label: settingsKey.trim(), from: JSON.stringify(settingsLookup.effectiveValue), to: JSON.stringify(parsedValue) }],
+        confirmLabel: "Override",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     try {
       await adminApi.put("/admin/settings/values", { key: settingsKey.trim(), scopeType: "seller", scopeId: params.sellerId, value: parsedValue });
       setSettingsValue("");
@@ -178,6 +214,20 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       alert("An amount and a reason are both required for a clawback.");
       return;
     }
+    const ok = await confirm({
+      title: `Clawback ${wallet.currency} ${amount.toFixed(2)} from ${seller.businessName}?`,
+      description: `Reason: ${clawbackNotes}`,
+      changes: [
+        {
+          label: "Wallet balance",
+          from: `${wallet.currency} ${wallet.balance.toFixed(2)}`,
+          to: `${wallet.currency} ${(wallet.balance - amount).toFixed(2)}`,
+        },
+      ],
+      confirmLabel: "Clawback",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/sellers/${params.sellerId}/clawback`, { amount, notes: clawbackNotes });
       setClawbackAmount("");

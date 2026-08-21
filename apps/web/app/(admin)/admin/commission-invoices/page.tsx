@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface Invoice {
@@ -28,6 +29,7 @@ interface Invoice {
  * Bare functional view (no design pass yet).
  */
 export default function AdminCommissionInvoicesPage() {
+  const confirm = useConfirm();
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [waiveSellerId, setWaiveSellerId] = useState("");
@@ -43,9 +45,16 @@ export default function AdminCommissionInvoicesPage() {
 
   useEffect(load, []);
 
-  async function markPaid(invoiceId: string) {
+  async function markPaid(invoice: Invoice) {
+    const ok = await confirm({
+      title: `Mark this invoice paid?`,
+      description: `${invoice.seller?.businessName ?? invoice.sellerId} - ${invoice.invoiceType}, ${invoice.currency} ${invoice.totalAmount}. This records the invoice as manually verified paid.`,
+      changes: [{ label: "Status", from: invoice.status, to: "paid" }],
+      confirmLabel: "Mark paid",
+    });
+    if (!ok) return;
     try {
-      await adminApi.post(`/admin/invoices/${invoiceId}/mark-paid`);
+      await adminApi.post(`/admin/invoices/${invoice.id}/mark-paid`);
       load();
     } catch (err) {
       alert(err instanceof AdminApiError ? err.message : "Couldn't mark this invoice paid.");
@@ -54,6 +63,14 @@ export default function AdminCommissionInvoicesPage() {
 
   async function waiveCommission(e: React.FormEvent) {
     e.preventDefault();
+    const ok = await confirm({
+      title: "Waive this commission line?",
+      description: `Seller ${waiveSellerId}, order ${waiveOrderId}. This permanently removes the commission owed on this order.`,
+      changes: [{ label: "Commission owed", from: `PKR ${waiveAmount}`, to: "PKR 0.00 (waived)" }],
+      confirmLabel: "Waive",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await adminApi.post("/admin/invoices/waive-commission", {
         sellerId: waiveSellerId,
@@ -102,7 +119,7 @@ export default function AdminCommissionInvoicesPage() {
               </td>
               <td>{i.status}</td>
               <td>{new Date(i.dueDate).toLocaleDateString()}</td>
-              <td>{i.status !== "paid" && <button onClick={() => markPaid(i.id)}>Mark paid</button>}</td>
+              <td>{i.status !== "paid" && <button onClick={() => markPaid(i)}>Mark paid</button>}</td>
             </tr>
           ))}
         </tbody>
