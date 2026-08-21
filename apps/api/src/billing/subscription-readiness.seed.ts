@@ -35,6 +35,19 @@ export async function seedSubscriptionReadinessSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "billing.renewal_reminder_sweep_check_hours" },
+    create: {
+      key: "billing.renewal_reminder_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 12,
+      validation: { min: 1, max: 24 },
+      description: "How often the pre-expiry reminder / win-back email sweep runs (FR-6.42).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "billing.gateway_health_alert_threshold_percent" },
     create: {
       key: "billing.gateway_health_alert_threshold_percent",

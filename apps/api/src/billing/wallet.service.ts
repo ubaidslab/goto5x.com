@@ -399,7 +399,20 @@ export class WalletService {
         });
         const interval = subscription.billingInterval as "monthly" | "six_month" | "yearly";
         const nextPeriodEnd = isRenewal ? addInterval(subscription.currentPeriodEnd!, interval) : addInterval(new Date(), interval);
-        await tx.subscription.update({ where: { sellerId: request.ownerId }, data: { currentPeriodEnd: nextPeriodEnd } });
+        await tx.subscription.update({
+          where: { sellerId: request.ownerId },
+          data: {
+            currentPeriodEnd: nextPeriodEnd,
+            // Module 65 (FR-6.42) - the pre-expiry reminder ladder is
+            // per-cycle, not per-episode like Module 64's warnings; every
+            // verified payment that advances currentPeriodEnd must reset
+            // it, or the next cycle's reminders would never fire again.
+            renewalReminderDay7SentAt: null,
+            renewalReminderDay3SentAt: null,
+            renewalReminderDay1SentAt: null,
+            renewalReminderExpiryDaySentAt: null,
+          },
+        });
       }
     });
 

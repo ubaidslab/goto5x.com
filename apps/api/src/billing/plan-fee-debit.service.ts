@@ -164,7 +164,17 @@ export class PlanFeeDebitService {
       ) {
         await this.prismaAdmin.subscription.update({
           where: { id: subscription.id },
-          data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.billingInterval) },
+          // Module 65 (FR-6.42) - this advance is "exactly like a real
+          // verified renewal" per the comment above, so it resets the
+          // pre-expiry reminder ladder the same way WalletService.verifyTopUp()
+          // does, for the same reason: the ladder is per-cycle.
+          data: {
+            currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.billingInterval),
+            renewalReminderDay7SentAt: null,
+            renewalReminderDay3SentAt: null,
+            renewalReminderDay1SentAt: null,
+            renewalReminderExpiryDaySentAt: null,
+          },
         });
         continue;
       }

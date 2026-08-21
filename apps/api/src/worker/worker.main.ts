@@ -10,6 +10,8 @@ import { PlanFeeDebitService } from "../billing/plan-fee-debit.service";
 import { PLAN_FEE_DEBIT_QUEUE_NAME } from "../billing/plan-fee-debit.queue";
 import { RetentionService } from "../billing/retention.service";
 import { RETENTION_QUEUE_NAME } from "../billing/retention.queue";
+import { RenewalRemindersService } from "../billing/renewal-reminders.service";
+import { RENEWAL_REMINDERS_QUEUE_NAME } from "../billing/renewal-reminders.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
@@ -49,6 +51,7 @@ async function main() {
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const walletReconciliation = appContext.get(WalletReconciliationService);
   const retention = appContext.get(RetentionService);
+  const renewalReminders = appContext.get(RenewalRemindersService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
   const storeHealth = appContext.get(StoreHealthScoreService);
@@ -189,6 +192,17 @@ async function main() {
     console.error(`billing-retention-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 65 (SRS §5.6k, FR-6.42) - pre-expiry reminder / win-back email
+  // sweep.
+  const renewalRemindersWorker = new Worker(RENEWAL_REMINDERS_QUEUE_NAME, async () => renewalReminders.runSweep(), {
+    connection: { url: config.getOrThrow<string>("REDIS_URL") },
+  });
+
+  renewalRemindersWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`billing-renewal-reminders-sweep job ${job?.id} failed:`, err);
+  });
+
   // Module 15 (FR-18.1/18.2) - per-upload job, unlike the sweeps above.
   // ProductImportService itself never throws for a single bad row (a
   // per-row error is logged onto the job's own error_log instead); this
@@ -293,7 +307,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65).",
   );
 
   const shutdown = async () => {
@@ -305,6 +319,7 @@ async function main() {
     await walletReconciliationWorker.close();
     await dormantStoreWorker.close();
     await retentionWorker.close();
+    await renewalRemindersWorker.close();
     await productImportWorker.close();
     await storeHealthSweepWorker.close();
     await verificationReReviewSweepWorker.close();

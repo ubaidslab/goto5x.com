@@ -129,6 +129,11 @@ export class WalletGraceLadderService {
         retentionWarningDay0SentAt: null,
         retentionWarningDay7SentAt: null,
         retentionWarningDay13SentAt: null,
+        // Module 65 (FR-6.42) - same "clear alongside the pause episode
+        // it belongs to" discipline as the retention-warning flags above.
+        winbackDay3SentAt: null,
+        winbackDay7SentAt: null,
+        winbackDay14SentAt: null,
       },
     });
     if (restored.count > 0) {

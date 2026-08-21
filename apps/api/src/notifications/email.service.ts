@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { formatPaymentInstructions, PaymentInstructionsLike } from "../store-settings/payment-instructions.service";
+import { PrismaAdminService } from "../prisma/prisma-admin.service";
 
 /**
  * Minimal email sending for Module 1's auth flows only (verification,
@@ -12,7 +13,10 @@ import { formatPaymentInstructions, PaymentInstructionsLike } from "../store-set
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prismaAdmin: PrismaAdminService,
+  ) {}
 
   async send(to: string, subject: string, body: string, attachmentUrl?: string | null): Promise<void> {
     const provider = this.config.get<string>("EMAIL_PROVIDER", "console");
@@ -171,5 +175,24 @@ export class EmailService {
         `Your own seller account, billing history, and audit records are never deleted - you can always log back in and start a new store. But this store's data cannot be recovered once deleted.\n\n` +
         `If you haven't already, export your data now from Settings -> Data export (delivered to your own Google Drive) as a backup before it's gone.`,
     );
+  }
+
+  /**
+   * Module 65 (SRS §5.6k, FR-6.42) - the one send path that reads its
+   * copy from the admin-editable EmailTemplate table instead of a
+   * hardcoded string, substituting `{{key}}` placeholders. Logs and skips
+   * (never throws) when a template key is missing, since this is always
+   * called from an unattended scheduled sweep, not a user-facing action -
+   * one missing/renamed template must not crash the whole sweep for every
+   * other seller in it.
+   */
+  async sendTemplatedEmail(templateKey: string, to: string, placeholders: Record<string, string>): Promise<void> {
+    const template = await this.prismaAdmin.emailTemplate.findUnique({ where: { key: templateKey } });
+    if (!template) {
+      this.logger.error(`No EmailTemplate found for key "${templateKey}" - skipping send to ${to}.`);
+      return;
+    }
+    const fill = (text: string) => text.replace(/\{\{(\w+)\}\}/g, (_, name) => placeholders[name] ?? "");
+    await this.send(to, fill(template.subject), fill(template.body));
   }
 }

@@ -13,6 +13,7 @@ import { seedDataExportSettings } from "../../src/data-export/data-export.seed";
 import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
 import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedSubscriptionReadinessSettings } from "../../src/billing/subscription-readiness.seed";
+import { seedEmailTemplates } from "../../src/billing/email-templates.seed";
 import { seedWalletSettings } from "../../src/billing/wallet.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
@@ -155,6 +156,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedDataExportSettings(prisma);
   // SRS §5.6k (v0.41) - same paid-plan-row dependency, for support.sla_hours' per-tier values.
   await seedSubscriptionReadinessSettings(prisma);
+  await seedEmailTemplates(prisma);
   // Module 58 (SRS §5.65/FR-65.5) - same paid-plan-row dependency, for its Growth+ gate.
   await seedSeoAdvancedSettings(prisma);
   // Module 49 (SRS §5.56/FR-56.1) - same paid-plan-row dependency as staff above.

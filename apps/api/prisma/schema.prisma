@@ -499,6 +499,14 @@ model Store {
   retentionWarningDay0SentAt  DateTime? @map("retention_warning_day0_sent_at") @db.Timestamptz
   retentionWarningDay7SentAt  DateTime? @map("retention_warning_day7_sent_at") @db.Timestamptz
   retentionWarningDay13SentAt DateTime? @map("retention_warning_day13_sent_at") @db.Timestamptz
+  // Module 65 (SRS §5.6k, FR-6.42) - the win-back email ladder during the
+  // same terminalPausedAt-anchored window the three warnings above track;
+  // same milestone/reset discipline (cleared alongside terminalPausedAt by
+  // restoreAfterPlanFeePayment()), distinct sends with distinct copy from
+  // the day0/7/13 deletion warnings above.
+  winbackDay3SentAt  DateTime? @map("winback_day3_sent_at") @db.Timestamptz
+  winbackDay7SentAt  DateTime? @map("winback_day7_sent_at") @db.Timestamptz
+  winbackDay14SentAt DateTime? @map("winback_day14_sent_at") @db.Timestamptz
 
   // Module 52 (SRS §5.59/FR-59.1) - the next human-readable Order.orderNumber
   // this store will assign, atomically incremented (via a plain UPDATE ...
@@ -1415,6 +1423,18 @@ model Subscription {
   referralSource    String?             @map("referral_source")
   createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Module 65 (SRS §5.6k/FR-6.42) - sticky sent-at timestamps for the
+  // pre-expiry reminder ladder, same "never re-send" discipline as
+  // Store.dormantWarningSentAt. Cleared back to null every time
+  // currentPeriodEnd advances (WalletService.verifyTopUp()) so the next
+  // billing cycle's reminders fire fresh - unlike Store.terminalPausedAt's
+  // warnings, which track a single pause episode, these track ONE cycle
+  // and must reset every cycle or they'd only ever fire once, ever.
+  renewalReminderDay7SentAt       DateTime? @map("renewal_reminder_day7_sent_at") @db.Timestamptz
+  renewalReminderDay3SentAt       DateTime? @map("renewal_reminder_day3_sent_at") @db.Timestamptz
+  renewalReminderDay1SentAt       DateTime? @map("renewal_reminder_day1_sent_at") @db.Timestamptz
+  renewalReminderExpiryDaySentAt  DateTime? @map("renewal_reminder_expiry_day_sent_at") @db.Timestamptz
 
   seller          Seller?   @relation(fields: [sellerId], references: [id])
   supplier        Supplier? @relation(fields: [supplierId], references: [id])

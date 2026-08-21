@@ -2749,10 +2749,16 @@ can actually be enforced against.
   and 7 days after `terminalPausedAt`, plus a final one at day 14 (the
   window's close, immediately before the deletion job's warning-email-13
   overlaps it — the two are distinct sends with distinct copy, both
-  reusing the same admin-editable template mechanism). All six honor the
-  seller's existing Module 55 notification opt-out (unlike FR-6.41's
-  deletion warnings, these are ordinary reminders, not a final-notice
-  disclosure).
+  reusing the same admin-editable template mechanism). Correction to
+  §5.6i's original text: Module 55 (FR-62.3) only ever built an opt-out
+  for the admin-composed platform newsletter (`Seller.newsletterOptOut`)
+  — its own schema comment is explicit that transactional emails (FR-62.1)
+  are "never opt-outable," and no other transactional hook in the
+  codebase (dormant-store warning, wallet low-balance warning, FR-6.41's
+  retention warnings) checks it. These six are transactional, individually
+  triggered per-seller lifecycle notices in that same category, so — like
+  every other transactional hook, and consistent with FR-6.41's deletion
+  warnings — they are **not** gated by any opt-out.
 - FR-6.43 (Module 66, revised v0.41 — mechanically unchanged, confirmed
   wallet-independent): **Multi-store downgrade rule, 30-day pause
   window.** Extends FR-7.5's plan-change mechanism: when a downgrade's
@@ -8589,8 +8595,9 @@ v0.38 wording item-for-item, same FR/module numbers)
 - [ ] Pre-expiry reminders fire at 7/3/1 days before `currentPeriodEnd`,
       an expiry-day email fires the day it passes, and win-back emails
       fire at 3/7/14 days into the terminal-pause window — every template
-      admin-editable, every send honoring the seller's notification
-      opt-out (FR-6.42, Module 65).
+      admin-editable, none gated by an opt-out (transactional, same
+      category as every other triggered lifecycle email) (FR-6.42,
+      Module 65).
 - [ ] Downgrading below the new tier's `stores.max_per_seller` requires
       the seller to choose which stores to keep (oldest wins by default
       if unchosen); every unchosen store gets `overLimitPausedAt` set and

@@ -18,6 +18,9 @@ import { WalletReconciliationScheduler } from "./wallet-reconciliation.scheduler
 import { PlanFeeRenewalExportTrigger } from "./plan-fee-renewal-export.service";
 import { RetentionService } from "./retention.service";
 import { RetentionScheduler } from "./retention.scheduler";
+import { RenewalRemindersService } from "./renewal-reminders.service";
+import { RenewalRemindersScheduler } from "./renewal-reminders.scheduler";
+import { EmailTemplatesController } from "./email-templates.controller";
 import {
   AdminWalletController,
   SellerWalletController,
@@ -57,6 +60,7 @@ import {
     SupplierWalletController,
     AdminWalletController,
     StorePublishController,
+    EmailTemplatesController,
   ],
   providers: [
     LedgerService,
@@ -73,7 +77,9 @@ import {
     WalletReconciliationScheduler,
     RetentionService,
     RetentionScheduler,
+    RenewalRemindersService,
+    RenewalRemindersScheduler,
   ],
-  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService],
+  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService],
 })
 export class BillingModule {}
