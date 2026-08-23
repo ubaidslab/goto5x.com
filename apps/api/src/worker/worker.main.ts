@@ -12,6 +12,8 @@ import { RetentionService } from "../billing/retention.service";
 import { RETENTION_QUEUE_NAME } from "../billing/retention.queue";
 import { RenewalRemindersService } from "../billing/renewal-reminders.service";
 import { RENEWAL_REMINDERS_QUEUE_NAME } from "../billing/renewal-reminders.queue";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { PLAN_CYCLE_QUEUE_NAME } from "../plans/plan-cycle.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
@@ -52,6 +54,7 @@ async function main() {
   const walletReconciliation = appContext.get(WalletReconciliationService);
   const retention = appContext.get(RetentionService);
   const renewalReminders = appContext.get(RenewalRemindersService);
+  const subscriptionsForCycleSweep = appContext.get(SubscriptionsService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
   const storeHealth = appContext.get(StoreHealthScoreService);
@@ -203,6 +206,17 @@ async function main() {
     console.error(`billing-renewal-reminders-sweep job ${job?.id} failed:`, err);
   });
 
+  // FR-7.5 - the pending plan-cycle change sweep (Module 66's multi-store
+  // downgrade pause/reclaim now runs from inside this same sweep).
+  const planCycleWorker = new Worker(PLAN_CYCLE_QUEUE_NAME, async () => subscriptionsForCycleSweep.applyDueCycleChanges(), {
+    connection: { url: config.getOrThrow<string>("REDIS_URL") },
+  });
+
+  planCycleWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`plans-cycle-change-sweep job ${job?.id} failed:`, err);
+  });
+
   // Module 15 (FR-18.1/18.2) - per-upload job, unlike the sweeps above.
   // ProductImportService itself never throws for a single bad row (a
   // per-row error is logged onto the job's own error_log instead); this
@@ -307,7 +321,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim).",
   );
 
   const shutdown = async () => {
@@ -320,6 +334,7 @@ async function main() {
     await dormantStoreWorker.close();
     await retentionWorker.close();
     await renewalRemindersWorker.close();
+    await planCycleWorker.close();
     await productImportWorker.close();
     await storeHealthSweepWorker.close();
     await verificationReReviewSweepWorker.close();

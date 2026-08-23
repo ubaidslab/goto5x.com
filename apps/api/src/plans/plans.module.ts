@@ -10,6 +10,8 @@ import { PromoCodesService } from "./promo-codes.service";
 import { SubscriptionsController } from "./subscriptions.controller";
 import { SubscriptionsService } from "./subscriptions.service";
 import { SupplierSubscriptionsController } from "./supplier-subscriptions.controller";
+import { MultiStoreDowngradeService } from "./multi-store-downgrade.service";
+import { PlanCycleScheduler } from "./plan-cycle.scheduler";
 
 @Module({
   imports: [AdminModule, TrustSafetyModule, SettingsModule],
@@ -20,7 +22,7 @@ import { SupplierSubscriptionsController } from "./supplier-subscriptions.contro
     AdminSubscriptionsController,
     SupplierSubscriptionsController,
   ],
-  providers: [PlansService, SubscriptionsService, PromoCodesService],
-  exports: [PlansService, SubscriptionsService, PromoCodesService],
+  providers: [PlansService, SubscriptionsService, PromoCodesService, MultiStoreDowngradeService, PlanCycleScheduler],
+  exports: [PlansService, SubscriptionsService, PromoCodesService, MultiStoreDowngradeService],
 })
 export class PlansModule {}

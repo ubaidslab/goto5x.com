@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsUUID } from "class-validator";
+import { IsArray, IsIn, IsOptional, IsUUID } from "class-validator";
 
 export class ChangePlanDto {
   @IsUUID()
@@ -10,4 +10,14 @@ export class ChangePlanDto {
   @IsOptional()
   @IsIn(["monthly", "six_month", "yearly"])
   billingInterval?: "monthly" | "six_month" | "yearly";
+
+  // Module 66 (SRS §5.6k, FR-6.43) - which store(s) to keep active when
+  // this downgrade puts the seller over the new tier's store limit. Omit
+  // on the first request; if the response comes back with
+  // `requiresStoreChoice: true`, re-submit with this filled in from the
+  // confirmation step.
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  keepStoreIds?: string[];
 }

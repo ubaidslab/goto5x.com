@@ -35,6 +35,19 @@ export async function seedSubscriptionReadinessSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "billing.plan_cycle_sweep_check_hours" },
+    create: {
+      key: "billing.plan_cycle_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 6,
+      validation: { min: 1, max: 24 },
+      description: "How often the pending plan-cycle change sweep runs (FR-7.5, and the Module 66 multi-store downgrade pause it now triggers, FR-6.43).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "billing.renewal_reminder_sweep_check_hours" },
     create: {
       key: "billing.renewal_reminder_sweep_check_hours",

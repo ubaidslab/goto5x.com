@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
+import { MultiStoreDowngradeService } from "./multi-store-downgrade.service";
 import type { SettingsContext } from "../settings-registry/settings.types";
 
 /**
@@ -32,6 +33,7 @@ export class SubscriptionsService {
   constructor(
     private readonly prisma: PrismaRuntimeService,
     private readonly auditLog: AuditLogService,
+    private readonly multiStoreDowngrade: MultiStoreDowngradeService,
   ) {}
 
   /**
@@ -151,7 +153,12 @@ export class SubscriptionsService {
    * NEXT renewal's fee/multiplier and interval-advance, so unlike the tier
    * itself there is no mid-cycle proration concern to defer against.
    */
-  async requestPlanChange(sellerId: string, newPlanId: string, billingInterval?: "monthly" | "six_month" | "yearly") {
+  async requestPlanChange(
+    sellerId: string,
+    newPlanId: string,
+    billingInterval?: "monthly" | "six_month" | "yearly",
+    keepStoreIds?: string[],
+  ) {
     const subscription = await this.prisma.subscription.findUnique({ where: { sellerId } });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
     const newPlan = await this.prisma.plan.findUnique({ where: { id: newPlanId } });
@@ -160,21 +167,43 @@ export class SubscriptionsService {
       throw new BadRequestException("A seller may only self-select an individual-group plan.");
     }
 
+    // Module 66 (FR-6.43) - "the seller chooses ... via a new confirmation
+    // step ON THE DOWNGRADE FLOW": the check happens here, at request time,
+    // not deferred silently to whenever the change eventually applies. No
+    // keepStoreIds supplied and a choice IS needed -> hand back the choice
+    // itself instead of a Subscription row, so a caller can present the
+    // confirmation step and re-submit with keepStoreIds.
+    const choiceRequirement = await this.multiStoreDowngrade.determineChoiceRequirement(sellerId, newPlanId);
+    if (choiceRequirement) {
+      if (!keepStoreIds || keepStoreIds.length === 0) {
+        return {
+          requiresStoreChoice: true as const,
+          maxStores: choiceRequirement.maxStores,
+          activeStores: choiceRequirement.activeStores,
+        };
+      }
+      this.multiStoreDowngrade.validateKeepStoreIds(choiceRequirement.activeStores, choiceRequirement.maxStores, keepStoreIds);
+    }
+
     if (subscription.currentPeriodEnd === null) {
-      return this.prisma.subscription.update({
+      const updated = await this.prisma.subscription.update({
         where: { sellerId },
         data: {
           planId: newPlanId,
           pendingPlanId: null,
+          pendingKeepStoreIds: [],
           billingInterval,
           currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(new Date(), billingInterval ?? "monthly"),
         },
       });
+      await this.multiStoreDowngrade.applyDowngrade(sellerId, newPlanId, keepStoreIds ?? []);
+      await this.multiStoreDowngrade.reclaimOnUpgrade(sellerId, newPlanId);
+      return updated;
     }
 
     return this.prisma.subscription.update({
       where: { sellerId },
-      data: { pendingPlanId: newPlanId, billingInterval },
+      data: { pendingPlanId: newPlanId, pendingKeepStoreIds: keepStoreIds ?? [], billingInterval },
     });
   }
 
@@ -193,9 +222,18 @@ export class SubscriptionsService {
         data: {
           planId: newPlan.id,
           pendingPlanId: null,
+          pendingKeepStoreIds: [],
           currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(subscription.currentPeriodEnd!, newPlan.billingInterval),
         },
       });
+      // Module 66 (FR-6.43) - "at the moment the downgrade takes effect" IS
+      // this moment, not the earlier request. Seller-only (a sponsored
+      // team member/supplier subscription never reaches this branch with a
+      // sellerId to act on).
+      if (subscription.sellerId) {
+        await this.multiStoreDowngrade.applyDowngrade(subscription.sellerId, newPlan.id, subscription.pendingKeepStoreIds);
+        await this.multiStoreDowngrade.reclaimOnUpgrade(subscription.sellerId, newPlan.id);
+      }
       applied += 1;
     }
     return { applied };
@@ -223,6 +261,14 @@ export class SubscriptionsService {
       beforeValue: { planId: before.planId, planName: before.plan.name },
       afterValue: { planId: after.planId, planName: after.plan.name },
     });
+
+    // Module 66 (FR-6.43) - an admin-granted change bypasses the seller's
+    // own confirmation step entirely (there's no request/response round
+    // trip to stage a choice against), so a resulting over-limit downgrade
+    // always falls back to the founder's specified default: oldest store
+    // stays active.
+    await this.multiStoreDowngrade.applyDowngrade(sellerId, planId, []);
+    await this.multiStoreDowngrade.reclaimOnUpgrade(sellerId, planId);
 
     return after;
   }

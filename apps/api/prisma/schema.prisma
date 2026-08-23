@@ -1407,6 +1407,12 @@ model Subscription {
   // the one FR-7.5-consistent case where there is no cycle yet to wait for
   // (a Free-Plan seller with no currentPeriodEnd) - see SubscriptionsService.
   pendingPlanId     String?             @map("pending_plan_id") @db.Uuid
+  // Module 66 (SRS §5.6k, FR-6.43) - the seller's store-choice confirmation
+  // from the downgrade request, staged alongside pendingPlanId until the
+  // scheduled cycle job (or the immediate-application branch) actually
+  // applies it. Empty array means "seller didn't choose" - the default
+  // "oldest store stays active" rule applies at that point instead.
+  pendingKeepStoreIds String[]          @default([]) @map("pending_keep_store_ids")
   // Module 61 (SRS §5.7, FR-7.20) - which of the three cycles (monthly/
   // six_month/yearly) this subscription is on; drives both the multiplier
   // PlanFeeDebitService applies on renewal and the span it advances
