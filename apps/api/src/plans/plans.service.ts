@@ -56,15 +56,29 @@ export class PlansService {
 
   /** Module 61 (FR-7.21) - the pricing page's headline benefit block and Shopify comparison, entirely Settings Registry strings, never hard-coded in the frontend. */
   async getPricingCopy() {
-    const [benefit1, benefit2, benefit3, shopifyComparison, sixMonthMultiplier, yearlyMultiplier] = await Promise.all([
-      this.settings.resolve<string>("marketing.pricing_benefit_1"),
-      this.settings.resolve<string>("marketing.pricing_benefit_2"),
-      this.settings.resolve<string>("marketing.pricing_benefit_3"),
-      this.settings.resolve<string>("marketing.pricing_shopify_comparison"),
-      this.settings.resolve<number>("billing.six_month_price_multiplier"),
-      this.settings.resolve<number>("billing.yearly_price_multiplier"),
-    ]);
-    return { benefits: [benefit1, benefit2, benefit3], shopifyComparison, sixMonthMultiplier, yearlyMultiplier };
+    const [benefit1, benefit2, benefit3, shopifyComparison, sixMonthMultiplier, yearlyMultiplier, newSubscriptionsPaused, newSubscriptionsPausedMessage] =
+      await Promise.all([
+        this.settings.resolve<string>("marketing.pricing_benefit_1"),
+        this.settings.resolve<string>("marketing.pricing_benefit_2"),
+        this.settings.resolve<string>("marketing.pricing_benefit_3"),
+        this.settings.resolve<string>("marketing.pricing_shopify_comparison"),
+        this.settings.resolve<number>("billing.six_month_price_multiplier"),
+        this.settings.resolve<number>("billing.yearly_price_multiplier"),
+        // New (v0.41, founder request) - "pause new subscriptions" mode's
+        // pricing-page surface, resolved here since the pricing page
+        // already fetches this endpoint for its other Settings-Registry-
+        // driven copy.
+        this.settings.resolve<boolean>("billing.new_subscriptions_paused"),
+        this.settings.resolve<string>("billing.new_subscriptions_paused_message"),
+      ]);
+    return {
+      benefits: [benefit1, benefit2, benefit3],
+      shopifyComparison,
+      sixMonthMultiplier,
+      yearlyMultiplier,
+      newSubscriptionsPaused,
+      newSubscriptionsPausedMessage,
+    };
   }
 
   /**

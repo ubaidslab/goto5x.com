@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
@@ -67,6 +74,19 @@ export class AuthService {
     await this.rateLimit.enforcePerHour(`signup:${ip}`, limit);
 
     const role = dto.role ?? "seller";
+
+    // New (v0.41, founder request) - "pause new subscriptions" mode, a
+    // narrower kill-switch than platform-wide maintenance mode: blocks
+    // only a NEW seller signup, never a supplier (a supplier isn't a
+    // "new subscription" in the sense the founder means), and never an
+    // existing seller doing anything else.
+    if (role === "seller") {
+      const paused = await this.settings.resolve<boolean>("billing.new_subscriptions_paused");
+      if (paused) {
+        const message = await this.settings.resolve<string>("billing.new_subscriptions_paused_message");
+        throw new ServiceUnavailableException(message);
+      }
+    }
 
     // SRS §5.25/FR-25.5 - checked before anything else touches the `users`
     // table: a blocked country never learns whether dto.email already has

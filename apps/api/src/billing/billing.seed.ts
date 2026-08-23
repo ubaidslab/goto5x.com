@@ -47,6 +47,43 @@ export async function seedBillingSettings(prisma: PrismaClient) {
     },
   });
 
+  /**
+   * New (v0.41, founder request) - a narrower, admin-controlled pause than
+   * `platform.maintenance_mode_enabled` (MaintenanceModeMiddleware): that
+   * one blocks EVERY request platform-wide (existing sellers included).
+   * This one blocks only what actually creates a NEW subscription - a new
+   * seller's signup, and a first-cycle (never-yet-paid) plan-fee
+   * submission - while an EXISTING seller's dashboard, stores, and
+   * renewal payments continue completely normally. Use case: pausing new
+   * sellers temporarily (capacity, travel, infra work) without taking the
+   * whole platform down.
+   */
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.new_subscriptions_paused" },
+    create: {
+      key: "billing.new_subscriptions_paused",
+      valueType: "boolean",
+      allowedScopes: ["global"],
+      defaultValue: false,
+      description: "When on, blocks new seller signups and a first-cycle (never-yet-paid) plan-fee submission - shows billing.new_subscriptions_paused_message on the pricing page and to a blocked signup/payment attempt. Existing sellers' dashboards, stores, and renewal payments are completely unaffected.",
+      requiresConfirmation: true,
+    },
+    update: { requiresConfirmation: true },
+  });
+
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.new_subscriptions_paused_message" },
+    create: {
+      key: "billing.new_subscriptions_paused_message",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "We're not accepting new sellers right now - please check back soon.",
+      description: "The admin-editable message shown on the pricing page and to a blocked signup/first-cycle-payment attempt while billing.new_subscriptions_paused is on.",
+      requiresConfirmation: true,
+    },
+    update: { requiresConfirmation: true },
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "billing.invoice_grace_period_days" },
     create: {

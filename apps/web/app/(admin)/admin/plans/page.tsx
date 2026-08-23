@@ -51,6 +51,14 @@ export default function AdminPlansPage() {
   const [promoDiscountType, setPromoDiscountType] = useState<"percent" | "fixed">("percent");
   const [promoDiscountValue, setPromoDiscountValue] = useState("0");
 
+  // New (v0.41, founder request) - "pause new subscriptions" mode. A
+  // narrower, admin-controlled pause than platform-wide maintenance mode:
+  // blocks only a new seller signup and a first-cycle plan-fee submission,
+  // never an existing seller's renewal/dashboard/store.
+  const [paused, setPaused] = useState<boolean | null>(null);
+  const [pausedMessage, setPausedMessage] = useState("");
+  const [pauseSaving, setPauseSaving] = useState(false);
+
   function authHeaders(): Record<string, string> {
     const token = localStorage.getItem("adminAccessToken");
     return { Authorization: `Bearer ${token}` };
@@ -63,7 +71,47 @@ export default function AdminPlansPage() {
       .catch(() => {});
   }
 
+  function loadPauseState() {
+    fetch(`${apiBase}/admin/settings/resolve?key=billing.new_subscriptions_paused`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setPaused(Boolean(d.effectiveValue)))
+      .catch(() => {});
+    fetch(`${apiBase}/admin/settings/resolve?key=billing.new_subscriptions_paused_message`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setPausedMessage(String(d.effectiveValue ?? "")))
+      .catch(() => {});
+  }
+
   useEffect(load, [apiBase]);
+  useEffect(loadPauseState, [apiBase]);
+
+  async function savePauseState() {
+    const ok = await confirm({
+      title: paused ? "Pause new subscriptions?" : "Resume new subscriptions?",
+      description: paused
+        ? "Blocks new seller signups and any first-cycle plan-fee submission, showing the message below on the pricing page. Existing sellers are completely unaffected."
+        : "Resumes normal new-seller signup and first-cycle plan-fee payment.",
+      changes: [{ label: "billing.new_subscriptions_paused", from: String(!paused), to: String(paused) }],
+      confirmLabel: "Save",
+      tone: paused ? "danger" : "default",
+    });
+    if (!ok) return;
+    setPauseSaving(true);
+    try {
+      await fetch(`${apiBase}/admin/settings/values`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "billing.new_subscriptions_paused", scopeType: "global", value: paused }),
+      });
+      await fetch(`${apiBase}/admin/settings/values`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "billing.new_subscriptions_paused_message", scopeType: "global", value: pausedMessage }),
+      });
+    } finally {
+      setPauseSaving(false);
+    }
+  }
 
   async function createPlan(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +202,36 @@ export default function AdminPlansPage() {
     <main>
       <h1>Plans - groups &amp; tiers (bare view - no design pass yet)</h1>
       <p>Define the pricing tiers sellers, teams, and suppliers can subscribe to, and retire old ones.</p>
+
+      <section style={{ marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid #ccc" }}>
+        <h2>Pause new subscriptions</h2>
+        <p>
+          Blocks new seller signups and a first-cycle plan-fee submission - shown on the pricing page. Existing
+          sellers&apos; dashboards, stores, and renewal payments are completely unaffected. Distinct from platform-wide
+          maintenance mode (Settings Registry), which blocks everything.
+        </p>
+        {paused === null ? (
+          <p>Loading...</p>
+        ) : (
+          <>
+            <p>
+              <label>
+                <input type="checkbox" checked={paused} onChange={(e) => setPaused(e.target.checked)} /> Paused
+              </label>
+            </p>
+            <p>
+              <label>
+                Message shown to sellers:
+                <br />
+                <textarea rows={2} cols={60} value={pausedMessage} onChange={(e) => setPausedMessage(e.target.value)} />
+              </label>
+            </p>
+            <button onClick={savePauseState} disabled={pauseSaving}>
+              {pauseSaving ? "Saving..." : "Save"}
+            </button>
+          </>
+        )}
+      </section>
 
       {GROUPS.map((group) => (
         <div key={group}>

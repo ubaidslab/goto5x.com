@@ -31,6 +31,9 @@ interface PricingCopy {
   shopifyComparison: string;
   sixMonthMultiplier: number;
   yearlyMultiplier: number;
+  /** New (v0.41, founder request) - "pause new subscriptions" mode. */
+  newSubscriptionsPaused: boolean;
+  newSubscriptionsPausedMessage: string;
 }
 
 type Cycle = "monthly" | "six_month" | "yearly";
@@ -263,6 +266,14 @@ export default function PricingPage() {
               catalog.
             </p>
           </Reveal>
+
+          {copy?.newSubscriptionsPaused && (
+            <Reveal delay={0.02}>
+              <div className="mt-8 rounded-lg border border-border-strong bg-surface px-6 py-4 text-sm text-ink">
+                {copy.newSubscriptionsPausedMessage}
+              </div>
+            </Reveal>
+          )}
 
           {copy && (
             <Reveal delay={0.05} className="mt-10 flex flex-wrap justify-center gap-x-8 gap-y-3 text-sm text-ink-muted">

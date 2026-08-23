@@ -319,6 +319,19 @@ export class WalletService {
     }
 
     const preview = await this.getPlanFeePaymentPreview(sellerId, currency);
+
+    // New (v0.41, founder request) - "pause new subscriptions" mode blocks
+    // only a first-cycle (never-yet-paid) plan-fee submission, never a
+    // renewal - an existing seller's ability to pay to keep their store
+    // running must never be affected by a pause aimed at new sellers.
+    if (!preview.isRenewal) {
+      const paused = await this.settings.resolve<boolean>("billing.new_subscriptions_paused");
+      if (paused) {
+        const message = await this.settings.resolve<string>("billing.new_subscriptions_paused_message");
+        throw new BadRequestException(message);
+      }
+    }
+
     const request = await this.prismaAdmin.walletTopUpRequest.create({
       data: {
         ownerType: "seller",
