@@ -128,6 +128,19 @@ export async function seedSubscriptionReadinessSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "support.sla_sweep_check_hours" },
+    create: {
+      key: "support.sla_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 1,
+      validation: { min: 1, max: 24 },
+      description: "How often the support-ticket 80%-of-SLA-window near-breach sweep runs (FR-8.18).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "support.sla_hours" },
     create: {
       key: "support.sla_hours",

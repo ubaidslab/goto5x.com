@@ -192,6 +192,15 @@ export class EmailService {
     );
   }
 
+  /** SRS §5.6k/FR-8.18 (Module 90) - the near-breach sweep's one email to the admin queue (every admin account - no per-ticket routing exists). */
+  async sendTicketNearBreachEmail(to: string, ticketSubject: string, storeName: string): Promise<void> {
+    await this.send(
+      to,
+      `SLA near breach: "${ticketSubject}" (${storeName})`,
+      `Support ticket "${ticketSubject}" from ${storeName} has crossed 80% of its SLA response window and is still open. Respond soon to stay within the committed response time.`,
+    );
+  }
+
   /**
    * Module 65 (SRS §5.6k, FR-6.42) - the one send path that reads its
    * copy from the admin-editable EmailTemplate table instead of a

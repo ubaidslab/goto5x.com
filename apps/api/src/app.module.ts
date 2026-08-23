@@ -39,6 +39,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { OrderVerificationModule } from "./order-verification/order-verification.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PaymentGatewayModule } from "./payment-gateway/payment-gateway.module";
+import { SupportTicketsModule } from "./support-tickets/support-tickets.module";
 import { PlansModule } from "./plans/plans.module";
 import { PnLModule } from "./pnl/pnl.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -90,6 +91,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     OrdersModule,
     OrderVerificationModule,
     PaymentGatewayModule,
+    SupportTicketsModule,
     CustomersModule,
     ReviewsModule,
     DataPortabilityModule,
