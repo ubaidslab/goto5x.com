@@ -14,7 +14,17 @@ export async function seedBillingSettings(prisma: PrismaClient) {
       key: "billing.commission_rate_percent",
       valueType: "number",
       allowedScopes: ["global", "plan", "seller"],
-      defaultValue: 1,
+      // v0.39/v0.41 audit finding: every individual plan tier already sets
+      // this to 0 at plan scope (plans.seed.ts), which is the normal
+      // resolution path. But LedgerService.accrueCommission() resolves
+      // against `subscription?.planId` - if a seller's Subscription row is
+      // ever missing (not the normal path, but not impossible), scopeIdFor
+      // has no plan id to match and resolution falls through past plan and
+      // seller scope to this global default. Under the subscription-only,
+      // commission-deactivated model (§5.6j) that fallback must never be
+      // able to silently charge commission, so the default itself is 0, not
+      // the pre-v0.39 value of 1.
+      defaultValue: 0,
       validation: { min: 0, max: 2 },
       description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
       requiresConfirmation: true,
@@ -25,8 +35,12 @@ export async function seedBillingSettings(prisma: PrismaClient) {
     // tighten an already-seeded environment's old max:100, not just apply
     // to fresh DBs. `requiresConfirmation` is refreshed the same way (FR-8.16,
     // v0.40) so an already-seeded environment retroactively picks up the
-    // confirm-step protection, not just fresh DBs.
+    // confirm-step protection, not just fresh DBs. `defaultValue` is
+    // refreshed the same way now (v0.41 audit fix above) - an
+    // already-seeded environment's stale default of 1 must be corrected to
+    // 0 retroactively, not just for a fresh DB.
     update: {
+      defaultValue: 0,
       validation: { min: 0, max: 2 },
       description: "Commission rate (%) accrued on each confirmed order's post-discount product+shipping subtotal (SRS FR-6.16). Hard-capped at 2% platform-wide (v0.33, FR-7.4 amended) - no scope, including a seller-specific override, can exceed it.",
       requiresConfirmation: true,

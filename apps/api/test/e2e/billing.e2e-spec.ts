@@ -123,6 +123,43 @@ describe("Commission & Invoicing Engine (e2e) - SRS §5.6c/§14.6c", () => {
     expect(Number(entries[0].amount)).toBeCloseTo(20, 2);
   });
 
+  it("v0.41 audit fix: with no Subscription row at all (the fallback path LedgerService.accrueCommission() takes when planId can't be resolved), commission accrues at the global default - which must be 0, never the pre-v0.39 value of 1", async () => {
+    // Deliberately NOT signupLoginAndCreateStore() - that helper sets a
+    // seller-scoped override specifically so every other test in this file
+    // has a real nonzero rate to measure. This test proves the opposite: the
+    // one path with NO override of any kind (plan-scoped rate unreachable
+    // because there's no subscription row to read a planId from, no
+    // seller-scoped override either) resolves to the global default, and
+    // that default itself must be 0 under the commission-deactivated model.
+    const email = "commission-no-subscription@example.com";
+    await request(app.getHttpServer())
+      .post("/auth/signup")
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+    const login = await request(app.getHttpServer()).post("/auth/login").send({ email, password: "correct-horse-battery" });
+    const token = login.body.accessToken as string;
+    const store = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "No-Subscription Store", slug: "commission-no-subscription-store" });
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+    await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true, cnicHash: `test-cnic-hash-${user.id}` } });
+    await superuser.storePaymentInstructions.update({ where: { storeId: store.body.id }, data: { codEnabled: true } });
+    await superuser.store.update({ where: { id: store.body.id }, data: { publishedAt: new Date() } });
+
+    // The edge case itself: no Subscription row for this seller at all.
+    await superuser.subscription.deleteMany({ where: { sellerId: seller.id } });
+    expect(await superuser.subscription.findUnique({ where: { sellerId: seller.id } })).toBeNull();
+
+    const { orderId, markPaidStatus } = await createPaidOrder(token, store.body.id, 1000, 10);
+    expect(markPaidStatus).toBe(201);
+
+    const entries = await superuser.ledgerEntry.findMany({ where: { sellerId: seller.id, orderId } });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe("commission_accrued");
+    expect(Number(entries[0].amount)).toBe(0);
+  });
+
   it("Financial Truth Invariant (§3.12): a pending order accrues no commission_accrued entry", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreateStore("commission-pending@example.com", "commission-pending-store");
     const category = await superuser.category.create({ data: { name: "Pending Test", slug: "commission-pending-category" } });
