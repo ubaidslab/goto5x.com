@@ -8581,73 +8581,73 @@ Module 52, v0.34)
 ### 14.66 Subscription Business Readiness (re-amended v0.41 for the
 subscription-only model — see §5.6k; supersedes this checklist's original
 v0.38 wording item-for-item, same FR/module numbers)
-- [ ] MRR, active subscriptions per tier, 7/30-day upcoming renewals,
+- [x] MRR, active subscriptions per tier, 7/30-day upcoming renewals,
       expired-not-renewed count, churn rate, ARPS, an LTV estimate,
       first-cycle-to-full conversion rate, and expected revenue this
       month all render correctly on the admin analytics surface, computed
       live against `Subscription`/`Plan`/plan-fee `LedgerEntry` data
       (FR-6.40, Module 63).
-- [ ] A store paused for plan-fee non-payment gets `terminalPausedAt` set
+- [x] A store paused for plan-fee non-payment gets `terminalPausedAt` set
       and starts a real 14-day countdown; warning emails fire at day 0/7/13
       restating exactly what will be deleted; the scheduled deletion job
       deletes only the founder-specified data set (products, orders,
       store-specific settings, that store's analytics) and never touches
       the seller account, billing history, or audit/event records
       (FR-6.41, Module 64).
-- [ ] A verified renewal payment landing concurrently with the deletion
+- [x] A verified renewal payment landing concurrently with the deletion
       job running always wins — proven by an e2e test that verifies
       payment mid-job and asserts the store's data survives intact
       (FR-6.41, Module 64).
-- [ ] Pre-expiry reminders fire at 7/3/1 days before `currentPeriodEnd`,
+- [x] Pre-expiry reminders fire at 7/3/1 days before `currentPeriodEnd`,
       an expiry-day email fires the day it passes, and win-back emails
       fire at 3/7/14 days into the terminal-pause window — every template
       admin-editable, none gated by an opt-out (transactional, same
       category as every other triggered lifecycle email) (FR-6.42,
       Module 65).
-- [ ] Downgrading below the new tier's `stores.max_per_seller` requires
+- [x] Downgrading below the new tier's `stores.max_per_seller` requires
       the seller to choose which stores to keep (oldest wins by default
       if unchosen); every unchosen store gets `overLimitPausedAt` set and
       a 30-day pause window, then remains `orders_paused` indefinitely
       with no forced deletion — confirmed never touched by FR-6.41's
       deletion job, which only acts on `terminalPausedAt` (FR-6.43,
       Module 66).
-- [ ] A 6-hourly sweep and every real checkout-time `verifyPayment()`
+- [x] A 6-hourly sweep and every real checkout-time `verifyPayment()`
       call both feed the same per-provider health rollup on the admin
       System Status page; a provider dropping below the configured
       health threshold emails and dashboard-banners every seller
       connected to it, while checkout itself never blocks (Module 62's
       existing per-checkout fallback is unchanged) (FR-6.44, Module 67).
-- [ ] Per-plan support SLA hours are configurable via the Settings
+- [x] Per-plan support SLA hours are configurable via the Settings
       Registry, visibly stated on the seller dashboard and pricing page,
       and now enforced against a real ticket's computed deadline
       (FR-6.45, Module 68; see Module 90/FR-8.18).
-- [ ] The seller health funnel (signed up → store created → first product
+- [x] The seller health funnel (signed up → store created → first product
       → published → first sale) renders correct drop-off counts at each
       stage and a stuck-seller list, computed live from existing data,
       with no new tracking table (FR-6.46, Module 69).
-- [ ] A monthly summary email sends to each seller (unconditional, same
+- [x] A monthly summary email sends to each seller (unconditional, same
       as the existing daily one - no seller notification opt-out exists
       for this category), and a downloadable UZEYN subscription invoice
       PDF (distinct from a buyer-facing order invoice) renders the
       seller's own plan-fee ledger entries for the period —
       commission-free, per FR-6.51 (FR-6.47, Module 70).
-- [ ] A signup matching an existing discount-recipient's phone or device
+- [x] A signup matching an existing discount-recipient's phone or device
       cluster is denied the first-cycle discount and flagged for review
       at signup; a retroactive CNIC or payment-instrument match after the
       fact posts a one-time `wallet_plan_fee_debit` for the price
       difference and flags for review the same way (FR-6.48, Module 71).
-- [ ] A qualifying first-cycle cancellation posts a `refund_adjustment`
+- [x] A qualifying first-cycle cancellation posts a `refund_adjustment`
       wallet-ledger entry for the configured percentage of the actually-
       paid discounted price — a wallet credit, never an external gateway
       reversal, admin-actioned with a required reason and audit-logged
       (FR-6.49, Module 72).
-- [ ] A bulk moderation or wallet-topup admin action goes through a
+- [x] A bulk moderation or wallet-topup admin action goes through a
       single dedicated transactional endpoint, not client-side
       `Promise.all` fan-out, and reports real per-item partial failure
       rather than an approximation — proven by an e2e test with a
       deliberately-failing item inside a larger batch (FR-8.17,
       Module 89).
-- [ ] A support ticket's SLA deadline is computed from its store's plan
+- [x] A support ticket's SLA deadline is computed from its store's plan
       tier at creation, time-remaining is shown on both the seller and
       admin surfaces, and a ticket crossing 80% of its SLA window
       unresolved triggers the near-breach flag/email (FR-8.18, Module 90).
