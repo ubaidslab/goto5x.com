@@ -75,7 +75,7 @@ export default function AdminWalletTopUpsPage() {
     });
   }
 
-  /** Module 25 P2 - bulk actions reuse the existing per-item verify/reject endpoints; no new bulk backend endpoint needed. */
+  /** SRS FR-8.17 (Module 89) - one bulk-decide request instead of a per-item Promise.all fan-out; the API reports a real per-item {succeeded, failed} shape. */
   async function decideSelected(decision: "verify" | "reject") {
     setError(null);
     const ok = await confirm({
@@ -88,11 +88,19 @@ export default function AdminWalletTopUpsPage() {
       tone: decision === "reject" ? "danger" : "default",
     });
     if (!ok) return;
-    const results = await Promise.all(
-      [...selected].map((id) => fetch(`${apiBase}/admin/wallet-topups/${id}/${decision}`, { method: "POST", headers: authHeaders() })),
-    );
-    if (results.some((r) => !r.ok)) {
-      setError(`Some requests couldn't be ${decision === "verify" ? "verified" : "rejected"} - check their status below.`);
+    const res = await fetch(`${apiBase}/admin/wallet-topups/bulk-decide`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ topUpIds: [...selected], decision }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.message ?? `Some requests couldn't be ${decision === "verify" ? "verified" : "rejected"}.`);
+    } else {
+      const body = await res.json();
+      if (body.failed?.length) {
+        setError(`${body.failed.length} of ${selected.size} request${selected.size === 1 ? "" : "s"} couldn't be ${decision === "verify" ? "verified" : "rejected"} - check their status below.`);
+      }
     }
     setSelected(new Set());
     load();

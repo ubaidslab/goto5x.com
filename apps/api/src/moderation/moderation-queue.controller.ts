@@ -4,6 +4,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAccessPayload } from "../common/types";
 import { ApproveProductDto } from "./dto/approve-product.dto";
+import { BulkDecideProductsDto } from "./dto/bulk-decide-products.dto";
 import { RejectProductDto } from "./dto/reject-product.dto";
 import { ModerationService } from "./moderation.service";
 
@@ -41,6 +42,13 @@ export class ModerationQueueController {
   ) {
     this.assertAdminUserId(user);
     return this.moderation.reject(user.adminUserId, productId, dto.notes);
+  }
+
+  /** SRS FR-8.17 (Module 89) - replaces the admin terminal's client-side Promise.all fan-out. */
+  @Post("queue/bulk-decide")
+  bulkDecide(@CurrentUser() user: JwtAccessPayload, @Body() dto: BulkDecideProductsDto) {
+    this.assertAdminUserId(user);
+    return this.moderation.bulkDecide(user.adminUserId, dto.productIds, dto.decision, dto.notes);
   }
 
   private assertAdminUserId(user: JwtAccessPayload): asserts user is JwtAccessPayload & { adminUserId: string } {

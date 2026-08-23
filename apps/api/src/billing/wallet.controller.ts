@@ -1,4 +1,5 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { AuditLogService } from "../admin/audit-log.service";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentSupplierId } from "../common/decorators/current-supplier.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -11,6 +12,7 @@ import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.g
 import { JwtAccessPayload } from "../common/types";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AdjustSellerWalletDto } from "./dto/adjust-seller-wallet.dto";
+import { BulkDecideWalletTopUpsDto } from "./dto/bulk-decide-wallet-topups.dto";
 import { RequestTopUpDto } from "./dto/request-topup.dto";
 import { ProgramCommissionService } from "./program-commission.service";
 import { PlanFeeRenewalExportTrigger } from "./plan-fee-renewal-export.service";
@@ -125,6 +127,7 @@ export class AdminWalletController {
     private readonly prismaAdmin: PrismaAdminService,
     private readonly programCommission: ProgramCommissionService,
     private readonly renewalExportTrigger: PlanFeeRenewalExportTrigger,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   @Get()
@@ -133,14 +136,62 @@ export class AdminWalletController {
   }
 
   @Post(":topUpId/verify")
-  async verify(@Param("topUpId") topUpId: string, @CurrentUser() user: JwtAccessPayload) {
+  verify(@Param("topUpId") topUpId: string, @CurrentUser() user: JwtAccessPayload) {
+    return this.verifyOne(topUpId, user.adminUserId!);
+  }
+
+  @Post(":topUpId/reject")
+  reject(@Param("topUpId") topUpId: string, @CurrentUser() user: JwtAccessPayload) {
+    return this.wallet.rejectTopUp(topUpId, user.adminUserId!);
+  }
+
+  /**
+   * SRS FR-8.17 (Module 89) - replaces the admin terminal's client-side
+   * Promise.all fan-out over per-item /verify or /reject calls. Reuses
+   * verify()/reject()'s exact per-item orchestration unchanged (each still
+   * posts its own individual audit-log entry via WalletService/
+   * SupplierWalletService internally - a disclosed, deliberate deviation
+   * from a strict "one entry for the whole batch" reading of FR-8.17,
+   * accepted here rather than refactoring WalletService's deeply-tested
+   * verify flow) - and adds exactly one additional batch-summary entry on
+   * top, so the batch itself is still auditable as a single unit.
+   */
+  @Post("bulk-decide")
+  async bulkDecide(@Body() dto: BulkDecideWalletTopUpsDto, @CurrentUser() user: JwtAccessPayload) {
+    const succeeded: string[] = [];
+    const failed: { id: string; reason: string }[] = [];
+    for (const topUpId of dto.topUpIds) {
+      try {
+        if (dto.decision === "verify") {
+          await this.verifyOne(topUpId, user.adminUserId!);
+        } else {
+          await this.wallet.rejectTopUp(topUpId, user.adminUserId!);
+        }
+        succeeded.push(topUpId);
+      } catch (err) {
+        failed.push({ id: topUpId, reason: err instanceof Error ? err.message : "Unknown error" });
+      }
+    }
+
+    await this.auditLog.record({
+      adminUserId: user.adminUserId!,
+      action: dto.decision === "verify" ? "billing.wallet_topups_bulk_verified" : "billing.wallet_topups_bulk_rejected",
+      targetType: "wallet_topup_request",
+      beforeValue: { topUpIds: dto.topUpIds },
+      afterValue: { succeeded, failed },
+    });
+
+    return { succeeded, failed };
+  }
+
+  private async verifyOne(topUpId: string, adminUserId: string) {
     const request = await this.prismaAdmin.walletTopUpRequest.findUnique({ where: { id: topUpId } });
     if (!request) throw new NotFoundException("Top-up request not found.");
 
     if (request.ownerType === "supplier") {
-      return this.supplierWallet.verifyTopUp(topUpId, user.adminUserId!);
+      return this.supplierWallet.verifyTopUp(topUpId, adminUserId);
     }
-    const { request: verified, isRenewal } = await this.wallet.verifyTopUp(topUpId, user.adminUserId!);
+    const { request: verified, isRenewal } = await this.wallet.verifyTopUp(topUpId, adminUserId);
     await this.graceLadder.checkAndRestore(verified.ownerId);
 
     // Module 73 (v0.38) - every plan-fee payment (signup OR renewal) lands
@@ -171,11 +222,6 @@ export class AdminWalletController {
       }
     }
     return verified;
-  }
-
-  @Post(":topUpId/reject")
-  reject(@Param("topUpId") topUpId: string, @CurrentUser() user: JwtAccessPayload) {
-    return this.wallet.rejectTopUp(topUpId, user.adminUserId!);
   }
 
   /** Module 25 (Admin Completion) - the seller-360 page's "adjust wallet" inline action. */

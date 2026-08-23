@@ -162,15 +162,7 @@ export class ModerationService {
   }
 
   async approve(adminUserId: string, productId: string, notes: string | undefined) {
-    const before = await this.prismaAdmin.product.findUnique({ where: { id: productId } });
-    if (!before) throw new NotFoundException("Product not found.");
-    if (before.moderationStatus !== "pending") {
-      throw new BadRequestException("This product is not in the moderation queue.");
-    }
-    const after = await this.prismaAdmin.product.update({
-      where: { id: productId },
-      data: { moderationStatus: "approved", moderationNotes: notes ?? null },
-    });
+    const { before, after } = await this.applyDecision(productId, "approve", notes);
     await this.auditLog.record({
       adminUserId,
       action: "moderation.approve",
@@ -183,15 +175,7 @@ export class ModerationService {
   }
 
   async reject(adminUserId: string, productId: string, notes: string) {
-    const before = await this.prismaAdmin.product.findUnique({ where: { id: productId } });
-    if (!before) throw new NotFoundException("Product not found.");
-    if (before.moderationStatus !== "pending") {
-      throw new BadRequestException("This product is not in the moderation queue.");
-    }
-    const after = await this.prismaAdmin.product.update({
-      where: { id: productId },
-      data: { moderationStatus: "rejected", moderationNotes: notes },
-    });
+    const { before, after } = await this.applyDecision(productId, "reject", notes);
     await this.auditLog.record({
       adminUserId,
       action: "moderation.reject",
@@ -201,6 +185,75 @@ export class ModerationService {
       afterValue: { moderationStatus: "rejected", notes },
     });
     return after;
+  }
+
+  /**
+   * SRS FR-8.17 (Module 89) - the same precondition/update core approve()/
+   * reject() already use, extracted so a bulk operation can call it per
+   * item without ALSO posting the individual per-item audit entry those
+   * two post - bulkDecide() below posts exactly one entry for the whole
+   * batch instead, per FR-8.17's own text.
+   */
+  private async applyDecision(
+    productId: string,
+    decision: "approve" | "reject",
+    notes: string | undefined,
+  ): Promise<{ before: { moderationStatus: string }; after: unknown }> {
+    const before = await this.prismaAdmin.product.findUnique({ where: { id: productId } });
+    if (!before) throw new NotFoundException("Product not found.");
+    if (before.moderationStatus !== "pending") {
+      throw new BadRequestException("This product is not in the moderation queue.");
+    }
+    const after = await this.prismaAdmin.product.update({
+      where: { id: productId },
+      data: {
+        moderationStatus: decision === "approve" ? "approved" : "rejected",
+        moderationNotes: decision === "approve" ? (notes ?? null) : notes!,
+      },
+    });
+    return { before, after };
+  }
+
+  /**
+   * SRS FR-8.17 (Module 89) - replaces the admin terminal's client-side
+   * Promise.all fan-out (one HTTP round-trip per selected product) with a
+   * single request: one transactional pass per item (a failure on one
+   * product never blocks the rest - "a partial failure among 200 selected
+   * rows should be reported precisely, not approximated client-side"),
+   * one admin_audit_logs entry for the whole batch, and a real
+   * partial-failure shape instead of the frontend inferring failure from
+   * Promise.allSettled rejections.
+   */
+  async bulkDecide(
+    adminUserId: string,
+    productIds: string[],
+    decision: "approve" | "reject",
+    notes: string | undefined,
+  ): Promise<{ succeeded: string[]; failed: { id: string; reason: string }[] }> {
+    if (decision === "reject" && !notes?.trim()) {
+      throw new BadRequestException("A reason is required to reject.");
+    }
+
+    const succeeded: string[] = [];
+    const failed: { id: string; reason: string }[] = [];
+    for (const productId of productIds) {
+      try {
+        await this.applyDecision(productId, decision, notes);
+        succeeded.push(productId);
+      } catch (err) {
+        failed.push({ id: productId, reason: err instanceof Error ? err.message : "Unknown error" });
+      }
+    }
+
+    await this.auditLog.record({
+      adminUserId,
+      action: decision === "approve" ? "moderation.bulk_approve" : "moderation.bulk_reject",
+      targetType: "product",
+      beforeValue: { productIds },
+      afterValue: { succeeded, failed, notes: notes ?? null },
+    });
+
+    return { succeeded, failed };
   }
 
   /**

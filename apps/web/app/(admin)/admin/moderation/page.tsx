@@ -69,7 +69,7 @@ export default function AdminModerationPage() {
     });
   }
 
-  /** Module 25 P2 - bulk actions reuse the existing per-item decide endpoint (already idempotent, already audit-logged); no new bulk backend endpoint needed. */
+  /** SRS FR-8.17 (Module 89) - one bulk-decide request instead of a per-item Promise.all fan-out; the API reports a real per-item {succeeded, failed} shape. */
   async function decideSelected(decision: "approve" | "reject") {
     setError(null);
     if (decision === "reject" && !bulkNotes.trim()) {
@@ -83,17 +83,19 @@ export default function AdminModerationPage() {
       tone: decision === "reject" ? "danger" : "default",
     });
     if (!ok) return;
-    const results = await Promise.all(
-      [...selected].map((productId) =>
-        fetch(`${apiBase}/admin/moderation/queue/${productId}/${decision}`, {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify({ notes: bulkNotes }),
-        }),
-      ),
-    );
-    if (results.some((r) => !r.ok)) {
-      setError(`Some products couldn't be ${decision === "approve" ? "approved" : "rejected"} - check the queue below.`);
+    const res = await fetch(`${apiBase}/admin/moderation/queue/bulk-decide`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ productIds: [...selected], decision, notes: bulkNotes || undefined }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.message ?? `Some products couldn't be ${decision === "approve" ? "approved" : "rejected"}.`);
+    } else {
+      const body = await res.json();
+      if (body.failed?.length) {
+        setError(`${body.failed.length} of ${selected.size} product${selected.size === 1 ? "" : "s"} couldn't be ${decision === "approve" ? "approved" : "rejected"} - check the queue below.`);
+      }
     }
     setSelected(new Set());
     setBulkNotes("");
