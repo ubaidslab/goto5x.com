@@ -38,6 +38,8 @@ import { EmailCampaignsService } from "../campaigns/email-campaigns.service";
 import { EMAIL_CAMPAIGNS_QUEUE_NAME } from "../campaigns/campaigns.queue";
 import { DailySalesSummaryService } from "../seller-notifications/daily-sales-summary.service";
 import { DAILY_SALES_SUMMARY_QUEUE_NAME } from "../seller-notifications/daily-sales-summary.queue";
+import { MonthlySellerReportService } from "../seller-notifications/monthly-seller-report.service";
+import { MONTHLY_SELLER_REPORT_QUEUE_NAME } from "../seller-notifications/monthly-seller-report.queue";
 import { PlatformNewsletterService } from "../seller-notifications/platform-newsletter.service";
 import { PLATFORM_NEWSLETTER_QUEUE_NAME } from "../seller-notifications/platform-newsletter.queue";
 
@@ -68,6 +70,7 @@ async function main() {
   const dataExport = appContext.get(DataExportService);
   const emailCampaigns = appContext.get(EmailCampaignsService);
   const dailySalesSummary = appContext.get(DailySalesSummaryService);
+  const monthlySellerReport = appContext.get(MonthlySellerReportService);
   const platformNewsletter = appContext.get(PlatformNewsletterService);
 
   const domainWorker = new Worker(
@@ -329,6 +332,16 @@ async function main() {
     console.error(`daily-sales-summary job ${job?.id} failed:`, err);
   });
 
+  // Module 70a (SRS §5.6k, FR-6.47) - monthly seller report sweep.
+  const monthlySellerReportWorker = new Worker(MONTHLY_SELLER_REPORT_QUEUE_NAME, async () => monthlySellerReport.runSweep(), {
+    connection: { url: config.getOrThrow<string>("REDIS_URL") },
+  });
+
+  monthlySellerReportWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`monthly-seller-report-sweep job ${job?.id} failed:`, err);
+  });
+
   // Module 55 (SRS §5.62, FR-62.2) - per-newsletter send job, admin-
   // triggered (not a periodic sweep). PlatformNewsletterService.
   // processNewsletter() never throws (a send/seller failure is caught
@@ -347,7 +360,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70).",
   );
 
   const shutdown = async () => {
@@ -369,6 +382,7 @@ async function main() {
     await dataExportWorker.close();
     await emailCampaignsWorker.close();
     await dailySalesSummaryWorker.close();
+    await monthlySellerReportWorker.close();
     await platformNewsletterWorker.close();
     await appContext.close();
     process.exit(0);

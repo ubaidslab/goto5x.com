@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { AuthModule } from "../auth/auth.module";
 import { PlansModule } from "../plans/plans.module";
@@ -13,7 +13,13 @@ import { MediaUploadController } from "./media-upload.controller";
 import { ObjectStorageService } from "./object-storage.service";
 
 @Module({
-  imports: [JwtModule.register({}), AuthModule, PlansModule, SettingsModule], // for SecurityEventService (FR-9.1's connect/revoke audit trail) and JwtService (signed OAuth `state`)
+  // AuthModule wrapped in forwardRef() - Module 70 (FR-6.47) added
+  // BillingModule -> InvoicesModule -> MediaModule, closing a real cycle
+  // back through AuthModule -> GrowthProgramsModule -> BillingModule that
+  // didn't exist before (NestJS's scanner otherwise throws "imports array
+  // is undefined" at this exact module, since AuthModule's own binding
+  // isn't assigned yet mid-circular-load).
+  imports: [JwtModule.register({}), forwardRef(() => AuthModule), PlansModule, SettingsModule], // for SecurityEventService (FR-9.1's connect/revoke audit trail) and JwtService (signed OAuth `state`)
   controllers: [MediaUploadController, DriveController],
   providers: [
     ObjectStorageService,

@@ -192,6 +192,19 @@ export class EmailService {
     );
   }
 
+  /**
+   * SRS §5.6k/FR-6.47 (Module 70a) - the monthly summary email. Unconditional
+   * (see MonthlySellerReportService's own doc comment) - no seller
+   * notification opt-out gates it, same as `sendDailySalesSummaryEmail`.
+   */
+  async sendMonthlySellerReportEmail(to: string, monthLabel: string, orderCount: number, revenue: number, subscriptionPaid: number, currency: string): Promise<void> {
+    await this.send(
+      to,
+      `Your uzeyn.com summary for ${monthLabel}`,
+      `Here's your summary for ${monthLabel}: ${orderCount} order${orderCount === 1 ? "" : "s"} confirmed, totaling ${currency} ${revenue.toFixed(2)} in revenue. You paid ${currency} ${subscriptionPaid.toFixed(2)} in subscription plan fees this period (commission is 0% platform-wide). Download your UZEYN subscription invoice any time from Settings -> Billing.`,
+    );
+  }
+
   /** SRS §5.6k/FR-8.18 (Module 90) - the near-breach sweep's one email to the admin queue (every admin account - no per-ticket routing exists). */
   async sendTicketNearBreachEmail(to: string, ticketSubject: string, storeName: string): Promise<void> {
     await this.send(

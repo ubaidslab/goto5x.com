@@ -1,5 +1,6 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
+import { InvoicesModule } from "../invoices/invoices.module";
 import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
@@ -21,6 +22,8 @@ import { RetentionScheduler } from "./retention.scheduler";
 import { RenewalRemindersService } from "./renewal-reminders.service";
 import { RenewalRemindersScheduler } from "./renewal-reminders.scheduler";
 import { EmailTemplatesController } from "./email-templates.controller";
+import { SubscriptionInvoiceController } from "./subscription-invoice.controller";
+import { SubscriptionInvoiceService } from "./subscription-invoice.service";
 import {
   AdminWalletController,
   SellerWalletController,
@@ -52,7 +55,14 @@ import {
  * entirely by PlanFeeDebitService's grace-day sweep now.
  */
 @Module({
-  imports: [SettingsModule, AdminModule, PlansModule, TrustSafetyModule],
+  // InvoicesModule wrapped in forwardRef() - it imports MediaModule, which
+  // imports AuthModule, which (via GrowthProgramsModule) eventually imports
+  // BillingModule itself; a plain import here would create a real circular
+  // JS module-evaluation cycle (NestJS's scanner throws "imports array is
+  // undefined" at the MediaModule step - not a DI-instantiation-order
+  // issue forwardRef normally addresses, but the same fix defers module
+  // resolution past the cycle either way).
+  imports: [SettingsModule, AdminModule, PlansModule, TrustSafetyModule, forwardRef(() => InvoicesModule)],
   controllers: [
     SellerInvoicesController,
     AdminInvoicesController,
@@ -61,6 +71,7 @@ import {
     AdminWalletController,
     StorePublishController,
     EmailTemplatesController,
+    SubscriptionInvoiceController,
   ],
   providers: [
     LedgerService,
@@ -79,7 +90,8 @@ import {
     RetentionScheduler,
     RenewalRemindersService,
     RenewalRemindersScheduler,
+    SubscriptionInvoiceService,
   ],
-  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService],
+  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService, SubscriptionInvoiceService],
 })
 export class BillingModule {}

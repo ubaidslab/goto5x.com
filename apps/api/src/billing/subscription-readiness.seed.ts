@@ -100,6 +100,19 @@ export async function seedSubscriptionReadinessSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "notifications.monthly_seller_report_check_hours" },
+    create: {
+      key: "notifications.monthly_seller_report_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 24,
+      validation: { min: 1, max: 48 },
+      description: "How often the monthly seller report sweep checks whether it's the 1st of the month (FR-6.47) - it only actually sends then.",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "billing.subscription_refund_window_days" },
     create: {
       key: "billing.subscription_refund_window_days",

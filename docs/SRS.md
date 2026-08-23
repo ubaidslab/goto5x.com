@@ -2815,8 +2815,14 @@ can actually be enforced against.
   "subscription paid" under the 0%-commission model): **Monthly seller
   report + UZEYN subscription invoice.** (a) A monthly summary email per
   seller (orders, revenue, wallet-hidden-but-still-real subscription
-  payments for the trailing month), Module 55 infrastructure, opted out
-  via the same toggle FR-6.42 reuses; (b) a downloadable UZEYN
+  payments for the trailing month), Module 55 infrastructure. Correction
+  to §5.6i's original text, same correction as FR-6.42's: no general
+  seller notification opt-out exists for this category of email — Module
+  55's own `sendDailySalesSummaryEmail` (the closest existing precedent,
+  a periodic summary in the same style) checks no opt-out either, and
+  `Seller.newsletterOptOut` is scoped to the admin-composed platform
+  newsletter only. This monthly summary is unconditional, the same as the
+  daily one. (b) a downloadable UZEYN
   subscription invoice PDF — the seller's own record of what they paid to
   the platform (plan fee only now; commission is 0%, FR-6.51) — a
   distinct document from Module 57's buyer-facing order invoices, built
@@ -8619,11 +8625,12 @@ v0.38 wording item-for-item, same FR/module numbers)
       → published → first sale) renders correct drop-off counts at each
       stage and a stuck-seller list, computed live from existing data,
       with no new tracking table (FR-6.46, Module 69).
-- [ ] A monthly summary email sends to each opted-in seller, and a
-      downloadable UZEYN subscription invoice PDF (distinct from a
-      buyer-facing order invoice) renders the seller's own plan-fee
-      ledger entries for the period — commission-free, per FR-6.51
-      (FR-6.47, Module 70).
+- [ ] A monthly summary email sends to each seller (unconditional, same
+      as the existing daily one - no seller notification opt-out exists
+      for this category), and a downloadable UZEYN subscription invoice
+      PDF (distinct from a buyer-facing order invoice) renders the
+      seller's own plan-fee ledger entries for the period —
+      commission-free, per FR-6.51 (FR-6.47, Module 70).
 - [ ] A signup matching an existing discount-recipient's phone or device
       cluster is denied the first-cycle discount and flagged for review
       at signup; a retroactive CNIC or payment-instrument match after the

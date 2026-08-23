@@ -5,6 +5,8 @@ import { DailySalesSummaryScheduler } from "./daily-sales-summary.scheduler";
 import { DailySalesSummaryService } from "./daily-sales-summary.service";
 import { MilestonesController } from "./milestones.controller";
 import { MilestonesService } from "./milestones.service";
+import { MonthlySellerReportService } from "./monthly-seller-report.service";
+import { MonthlySellerReportScheduler } from "./monthly-seller-report.scheduler";
 import { NewsletterUnsubscribeController } from "./newsletter-unsubscribe.controller";
 import { PlatformNewsletterService } from "./platform-newsletter.service";
 
@@ -12,7 +14,7 @@ import { PlatformNewsletterService } from "./platform-newsletter.service";
 @Module({
   imports: [SettingsModule],
   controllers: [AdminNewsletterController, NewsletterUnsubscribeController, MilestonesController],
-  providers: [DailySalesSummaryService, DailySalesSummaryScheduler, PlatformNewsletterService, MilestonesService],
-  exports: [DailySalesSummaryService, PlatformNewsletterService, MilestonesService],
+  providers: [DailySalesSummaryService, DailySalesSummaryScheduler, PlatformNewsletterService, MilestonesService, MonthlySellerReportService, MonthlySellerReportScheduler],
+  exports: [DailySalesSummaryService, PlatformNewsletterService, MilestonesService, MonthlySellerReportService],
 })
 export class SellerNotificationsModule {}
