@@ -24,6 +24,8 @@ import { RenewalRemindersScheduler } from "./renewal-reminders.scheduler";
 import { EmailTemplatesController } from "./email-templates.controller";
 import { SubscriptionInvoiceController } from "./subscription-invoice.controller";
 import { SubscriptionInvoiceService } from "./subscription-invoice.service";
+import { AdminSubscriptionCancellationController } from "./admin-subscription-cancellation.controller";
+import { SubscriptionRefundService } from "./subscription-refund.service";
 import {
   AdminWalletController,
   SellerWalletController,
@@ -72,6 +74,7 @@ import {
     StorePublishController,
     EmailTemplatesController,
     SubscriptionInvoiceController,
+    AdminSubscriptionCancellationController,
   ],
   providers: [
     LedgerService,
@@ -91,7 +94,8 @@ import {
     RenewalRemindersService,
     RenewalRemindersScheduler,
     SubscriptionInvoiceService,
+    SubscriptionRefundService,
   ],
-  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService, SubscriptionInvoiceService],
+  exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService, SubscriptionInvoiceService, SubscriptionRefundService],
 })
 export class BillingModule {}
