@@ -37,6 +37,9 @@ export class MrrAnalyticsService {
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const quarterStartMonth = Math.floor(now.getUTCMonth() / 3) * 3;
+    const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth, 1));
+    const quarterEnd = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth + 3, 1));
 
     const [sixMonthMultiplier, yearlyMultiplier] = await Promise.all([
       this.settings.resolve<number>("billing.six_month_price_multiplier"),
@@ -90,6 +93,13 @@ export class MrrAnalyticsService {
     const arps = activeSubscriptions.length > 0 ? round2(trailing30dRevenue / activeSubscriptions.length) : 0;
     const ltvEstimate = churnRate > 0 ? round2(arps / churnRate) : null;
 
+    const realizedRevenueThisMonth = verifiedPlanFeePayments
+      .filter((p) => p.verifiedAt && p.verifiedAt >= monthStart && p.verifiedAt < monthEnd)
+      .reduce((sum, p) => sum + Number(p.planFeePortion), 0);
+    const realizedRevenueThisQuarter = verifiedPlanFeePayments
+      .filter((p) => p.verifiedAt && p.verifiedAt >= quarterStart && p.verifiedAt < quarterEnd)
+      .reduce((sum, p) => sum + Number(p.planFeePortion), 0);
+
     const renewingThisMonth = activeSubscriptions.filter(
       (s) => s.currentPeriodEnd! >= monthStart && s.currentPeriodEnd! < monthEnd,
     );
@@ -110,6 +120,8 @@ export class MrrAnalyticsService {
       ltvEstimate,
       firstCycleToFullConversionRatePercent: round2(firstCycleToFullConversionRate * 100),
       expectedRevenueThisMonth: round2(expectedRevenueThisMonth),
+      realizedRevenueThisMonth: round2(realizedRevenueThisMonth),
+      realizedRevenueThisQuarter: round2(realizedRevenueThisQuarter),
     };
   }
 

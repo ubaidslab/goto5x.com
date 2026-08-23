@@ -27,6 +27,7 @@ const NAV_LINKS: { href: string; label: string }[] = [
   { href: "/admin", label: "Home" },
   { href: "/admin/search", label: "Search" },
   { href: "/admin/sellers", label: "Sellers" },
+  { href: "/admin/finance", label: "Finance Terminal" },
   { href: "/admin/invoices", label: "Wallet top-ups" },
   { href: "/admin/payment-instructions", label: "Payment instructions" },
   { href: "/admin/commission-invoices", label: "Commission invoices" },

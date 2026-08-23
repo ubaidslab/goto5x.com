@@ -140,6 +140,33 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     expect(res.body.upcomingRenewals30d).toBe(1);
   });
 
+  it("realized revenue this month/quarter sums only verified plan-fee payments verified within the calendar window, unlike expectedRevenueThisMonth's projection", async () => {
+    const adminToken = await createAndLoginAdmin("mrr-admin6@example.com");
+    const seller = await signup("mrr-realized@example.com");
+    await payPlanFee(seller.token, adminToken);
+
+    const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
+
+    const res = await request(app.getHttpServer()).get("/admin/analytics/mrr").set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.realizedRevenueThisMonth).toBeCloseTo(Number(payment.planFeePortion), 1);
+    expect(res.body.realizedRevenueThisQuarter).toBeCloseTo(Number(payment.planFeePortion), 1);
+  });
+
+  it("a verified plan-fee payment from last calendar quarter does not count toward this quarter's realized revenue", async () => {
+    const adminToken = await createAndLoginAdmin("mrr-admin7@example.com");
+    const seller = await signup("mrr-old-quarter@example.com");
+    await payPlanFee(seller.token, adminToken);
+
+    const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
+    await superuser.walletTopUpRequest.update({ where: { id: payment.id }, data: { verifiedAt: new Date("2020-01-15T00:00:00Z") } });
+
+    const res = await request(app.getHttpServer()).get("/admin/analytics/mrr").set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.realizedRevenueThisMonth).toBe(0);
+    expect(res.body.realizedRevenueThisQuarter).toBe(0);
+  });
+
   it("no active subscriptions reports zero rates and a null LTV estimate, not a divide-by-zero error", async () => {
     const adminToken = await createAndLoginAdmin("mrr-admin5@example.com");
     const res = await request(app.getHttpServer()).get("/admin/analytics/mrr").set("Authorization", `Bearer ${adminToken}`);

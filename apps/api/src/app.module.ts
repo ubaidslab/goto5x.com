@@ -25,6 +25,7 @@ import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
 import { ExternalApiModule } from "./external-api/external-api.module";
+import { FinanceTerminalModule } from "./finance-terminal/finance-terminal.module";
 import { GiftCardsModule } from "./gift-cards/gift-cards.module";
 import { GrowthProgramsModule } from "./growth-programs/growth-programs.module";
 import { GuardrailsModule } from "./guardrails/guardrails.module";
@@ -124,6 +125,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     ReturnsModule,
     AnalyticsModule,
     SellerNotificationsModule,
+    FinanceTerminalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

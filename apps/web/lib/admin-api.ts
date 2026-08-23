@@ -47,10 +47,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * Same "an <a href> can't carry a Bearer header" gap dashboard-api.ts's own
+ * `download()` documents - fetches the bytes with the same auth header as
+ * every other admin request; the caller triggers the actual browser save
+ * via a short-lived blob object URL.
+ */
+async function download(path: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    throw new AdminApiError(res.statusText, res.status);
+  }
+  return res.blob();
+}
+
 export const adminApi = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  download,
 };
