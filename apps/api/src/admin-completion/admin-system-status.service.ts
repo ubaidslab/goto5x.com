@@ -17,6 +17,7 @@ import { CART_ABANDONMENT_QUEUE_NAME } from "../orders/cart-abandonment.queue";
 import { STORE_HEALTH_SWEEP_QUEUE_NAME } from "../store-health/store-health-sweep.queue";
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
+import { GatewayHealthService } from "../payment-gateway/gateway-health.service";
 
 const QUEUE_NAMES = [
   INVOICE_GENERATION_QUEUE_NAME,
@@ -60,6 +61,7 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaRuntimeService,
     private readonly redis: RedisService,
     private readonly objectStorage: ObjectStorageService,
+    private readonly gatewayHealth: GatewayHealthService,
   ) {}
 
   onModuleInit() {
@@ -72,7 +74,7 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getStatus() {
-    const [dbOk, redisOk, storageOk, queueStatuses] = await Promise.all([
+    const [dbOk, redisOk, storageOk, queueStatuses, gatewayHealthRollup] = await Promise.all([
       this.checkDb(),
       this.checkRedis(),
       this.objectStorage.checkReachable(),
@@ -82,6 +84,7 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
           return { name: q.name, ...counts };
         }),
       ),
+      this.gatewayHealth.getProviderRollup(),
     ]);
 
     return {
@@ -94,6 +97,9 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
         deliveryFailures: "not tracked - no real email provider integrated yet (console-only in this environment)",
       },
       backups: "not yet configured",
+      // Module 67 (SRS §5.6k, FR-6.44) - per-provider rollup aggregated
+      // across every seller's connection to that provider.
+      paymentGatewayHealth: gatewayHealthRollup,
     };
   }
 

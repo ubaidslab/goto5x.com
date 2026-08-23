@@ -3,6 +3,7 @@ import { AuthModule } from "../auth/auth.module";
 import { BillingModule } from "../billing/billing.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
 import { MediaModule } from "../media/media.module";
+import { PaymentGatewayModule } from "../payment-gateway/payment-gateway.module";
 import { StoreHealthModule } from "../store-health/store-health.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { AdminNotificationsController } from "./admin-notifications.controller";
@@ -25,7 +26,7 @@ import { AdminSystemStatusService } from "./admin-system-status.service";
  * needing to know it exists.
  */
 @Module({
-  imports: [TrustSafetyModule, GuardrailsModule, BillingModule, StoreHealthModule, AuthModule, MediaModule],
+  imports: [TrustSafetyModule, GuardrailsModule, BillingModule, StoreHealthModule, AuthModule, MediaModule, PaymentGatewayModule],
   controllers: [
     AdminOverviewController,
     AdminSearchController,

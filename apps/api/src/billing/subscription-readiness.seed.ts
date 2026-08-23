@@ -74,6 +74,19 @@ export async function seedSubscriptionReadinessSettings(prisma: PrismaClient) {
   });
 
   await prisma.settingsDefinition.upsert({
+    where: { key: "billing.gateway_health_sweep_check_hours" },
+    create: {
+      key: "billing.gateway_health_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 6,
+      validation: { min: 1, max: 24 },
+      description: "How often the payment gateway health-check sweep pings every active connection (FR-6.44).",
+    },
+    update: {},
+  });
+
+  await prisma.settingsDefinition.upsert({
     where: { key: "growth.funnel_stuck_days" },
     create: {
       key: "growth.funnel_stuck_days",

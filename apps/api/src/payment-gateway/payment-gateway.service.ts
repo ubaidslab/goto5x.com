@@ -12,6 +12,7 @@ import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
 import { decryptGatewayCredential, encryptGatewayCredential } from "./payment-gateway-credential-crypto.util";
 import { GatewayVerifyResult, SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
+import { GatewayHealthService } from "./gateway-health.service";
 
 /**
  * FR-6.36 - Raast is offered first (lowest priorityOrder), Easypaisa/
@@ -61,6 +62,7 @@ export class PaymentGatewayService {
     private readonly prismaAdmin: PrismaAdminService,
     private readonly orders: OrdersService,
     private readonly settings: SettingsService,
+    private readonly gatewayHealth: GatewayHealthService,
     config: ConfigService,
     raastAdapter: RaastGatewayAdapter,
     easypaisaAdapter: EasypaisaGatewayAdapter,
@@ -329,7 +331,7 @@ export class PaymentGatewayService {
     const adapter = this.adapters.get(provider);
     if (!adapter) throw new BadRequestException("This provider is not supported.");
 
-    return adapter.verifyPayment({
+    const result = await adapter.verifyPayment({
       connection: {
         merchantId: connection.merchantId,
         apiKey: decryptGatewayCredential(connection.apiKeyEncrypted, this.encryptionKey),
@@ -340,5 +342,10 @@ export class PaymentGatewayService {
       currency,
       reference,
     });
+    // Module 67 (FR-6.44) - "the instant it happens," not just the 6-hourly
+    // sweep: every real checkout verification updates this connection's
+    // rolling health stats immediately.
+    await this.gatewayHealth.recordResult(connection.id, result.verified);
+    return result;
   }
 }

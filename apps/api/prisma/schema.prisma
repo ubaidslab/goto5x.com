@@ -875,6 +875,10 @@ model StorePaymentGatewayConnection {
   verifiedCount      Int                    @default(0) @map("verified_count")
   failedCount        Int                    @default(0) @map("failed_count")
   lastVerifiedAt     DateTime?              @map("last_verified_at") @db.Timestamptz
+  // Module 67 (FR-6.44) - "last outage 2h ago"-style admin System Status
+  // copy needs a real timestamp to compute from; lastCheckedAt alone can't
+  // tell a recent success apart from a recent failure.
+  lastFailedAt       DateTime?              @map("last_failed_at") @db.Timestamptz
   lastCheckedAt      DateTime?              @map("last_checked_at") @db.Timestamptz
   connectedAt        DateTime               @default(now()) @map("connected_at") @db.Timestamptz
   updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz
@@ -3195,4 +3199,19 @@ model SubscriptionAbuseFlag {
 
   @@index([sellerId], name: "idx_subscription_abuse_flags_seller")
   @@map("subscription_abuse_flags")
+}
+
+// Module 67 (FR-6.44) - the "don't resend the same alert every 6-hourly
+// tick" gate, same sticky-flag discipline as every other warning mechanism
+// here (dormantWarningSentAt, retentionWarningDay0/7/13SentAt, etc), just
+// keyed by provider instead of by seller/store since the alert condition
+// is a per-provider aggregate. alertedAt cleared once the rollup recovers
+// above threshold, so a future re-degradation alerts again. Global,
+// admin-only, no RLS (mirrors EmailTemplate's own precedent).
+model PaymentGatewayHealthAlert {
+  provider  PaymentGatewayProvider @id
+  alertedAt DateTime?              @map("alerted_at") @db.Timestamptz
+  updatedAt DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("payment_gateway_health_alerts")
 }

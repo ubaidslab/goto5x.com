@@ -32,6 +32,21 @@ export class PlatformMessagesService {
     });
   }
 
+  /**
+   * SRS §5.6k/FR-6.44 (Module 67) - a system-triggered banner (no admin
+   * composed it - createdByAdminUserId stays null, same "system, not a
+   * human admin" convention AuditLogService.record() already uses for
+   * adminUserId). Given no start/end window here: the caller
+   * (GatewayHealthService) is the source of truth for whether the
+   * condition is still active, gated by PaymentGatewayHealthAlert's
+   * sticky flag rather than this message's own expiry.
+   */
+  async createSystemBanner(sellerId: string, title: string, body: string) {
+    return this.prisma.platformMessage.create({
+      data: { channel: "banner", targetType: "seller", targetSellerId: sellerId, title, body },
+    });
+  }
+
   async listAll() {
     return this.prisma.platformMessage.findMany({ orderBy: { createdAt: "desc" } });
   }

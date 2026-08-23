@@ -178,6 +178,21 @@ export class EmailService {
   }
 
   /**
+   * SRS §5.6k/FR-6.44 (Module 67) - fires from the 6-hourly health-check
+   * sweep only (never per-checkout-failure, which would spam a seller
+   * every time one buyer's payment failed to verify), gated by
+   * PaymentGatewayHealthAlert's sticky alertedAt so it never re-sends
+   * while a provider stays degraded.
+   */
+  async sendGatewayHealthAlertEmail(to: string, providerLabel: string): Promise<void> {
+    await this.send(
+      to,
+      `${providerLabel} payments are experiencing issues`,
+      `We're seeing a higher-than-normal verification failure rate for ${providerLabel} right now. Your store's checkout automatically falls back to manual/COD confirmation when this happens, so buyers can still order - you may just see more orders awaiting manual confirmation than usual until this clears. No action is needed on your end.`,
+    );
+  }
+
+  /**
    * Module 65 (SRS §5.6k, FR-6.42) - the one send path that reads its
    * copy from the admin-editable EmailTemplate table instead of a
    * hardcoded string, substituting `{{key}}` placeholders. Logs and skips

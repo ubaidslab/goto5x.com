@@ -14,6 +14,8 @@ import { RenewalRemindersService } from "../billing/renewal-reminders.service";
 import { RENEWAL_REMINDERS_QUEUE_NAME } from "../billing/renewal-reminders.queue";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { PLAN_CYCLE_QUEUE_NAME } from "../plans/plan-cycle.queue";
+import { GatewayHealthService } from "../payment-gateway/gateway-health.service";
+import { GATEWAY_HEALTH_QUEUE_NAME } from "../payment-gateway/gateway-health.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
@@ -55,6 +57,7 @@ async function main() {
   const retention = appContext.get(RetentionService);
   const renewalReminders = appContext.get(RenewalRemindersService);
   const subscriptionsForCycleSweep = appContext.get(SubscriptionsService);
+  const gatewayHealth = appContext.get(GatewayHealthService);
   const dormantStores = appContext.get(DormantStoreService);
   const productImport = appContext.get(ProductImportService);
   const storeHealth = appContext.get(StoreHealthScoreService);
@@ -217,6 +220,16 @@ async function main() {
     console.error(`plans-cycle-change-sweep job ${job?.id} failed:`, err);
   });
 
+  // Module 67 (SRS §5.6k, FR-6.44) - payment gateway health-check sweep.
+  const gatewayHealthWorker = new Worker(GATEWAY_HEALTH_QUEUE_NAME, async () => gatewayHealth.runHealthCheckSweep(), {
+    connection: { url: config.getOrThrow<string>("REDIS_URL") },
+  });
+
+  gatewayHealthWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`payment-gateway-health-sweep job ${job?.id} failed:`, err);
+  });
+
   // Module 15 (FR-18.1/18.2) - per-upload job, unlike the sweeps above.
   // ProductImportService itself never throws for a single bad row (a
   // per-row error is logged onto the job's own error_log instead); this
@@ -321,7 +334,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67).",
   );
 
   const shutdown = async () => {
@@ -335,6 +348,7 @@ async function main() {
     await retentionWorker.close();
     await renewalRemindersWorker.close();
     await planCycleWorker.close();
+    await gatewayHealthWorker.close();
     await productImportWorker.close();
     await storeHealthSweepWorker.close();
     await verificationReReviewSweepWorker.close();
