@@ -105,10 +105,12 @@ export function VariantsSection({
                   className="h-9 w-28 rounded-md border border-border px-2 text-sm transition-smooth-fast focus:border-accent"
                   aria-label={`Base cost for ${variant.sku}`}
                 />
-                {variant.baseCost === null && (
+                {variant.baseCost === null ? (
                   <span className="text-xs text-warning" title="Cost of goods and net profit are understated until this is set.">
                     no cost set
                   </span>
+                ) : (
+                  <span className="text-xs text-ink-faint">cost</span>
                 )}
               </div>
             ))}
