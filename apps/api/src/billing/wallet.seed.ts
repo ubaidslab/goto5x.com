@@ -81,6 +81,34 @@ export async function seedWalletSettings(prisma: PrismaClient) {
     update: { requiresConfirmation: true },
   });
 
+  /**
+   * v0.41 audit fix - ManualBankTransferTopUpAdapter.instructionsFor()
+   * previously returned a hardcoded placeholder sentence ("...the
+   * platform's business bank account...") with no real account details
+   * anywhere - a seller submitting a plan-fee payment had no way to
+   * actually know where to send it. This is the founder-facing fix: real
+   * receiving-account details, admin-editable without a deploy, each
+   * method independently toggleable (a method the founder hasn't set up
+   * yet, or has temporarily disabled, is simply omitted from what the
+   * seller sees - never a fabricated/blank value).
+   */
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.platform_payment_instructions" },
+    create: {
+      key: "billing.platform_payment_instructions",
+      valueType: "json",
+      allowedScopes: ["global"],
+      defaultValue: {
+        bank: { enabled: false, accountTitle: "", accountNumber: "", iban: "", bankName: "" },
+        easypaisa: { enabled: false, accountTitle: "", number: "" },
+        jazzcash: { enabled: false, accountTitle: "", number: "" },
+      },
+      description: "The platform's own receiving-account details for a seller's subscription/plan-fee payment (SRS FR-6.23) - distinct from a store's own StorePaymentInstructions, which is where a STORE receives ITS buyers' payments. Each method (bank/Easypaisa/JazzCash) is independently enabled/disabled; a disabled or unfilled method is simply omitted from what the seller sees, never shown blank.",
+      requiresConfirmation: true,
+    },
+    update: { requiresConfirmation: true },
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "billing.plan_fee_debit_check_hours" },
     create: {

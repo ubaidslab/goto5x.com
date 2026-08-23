@@ -100,7 +100,7 @@ export class SupplierWalletService {
     });
   }
 
-  topUpInstructions(amount: number, currency: string): string {
+  topUpInstructions(amount: number, currency: string): Promise<string> {
     return this.topUpAdapter.instructionsFor(amount, currency);
   }
 

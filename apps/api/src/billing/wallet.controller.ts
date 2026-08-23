@@ -52,7 +52,7 @@ export class SellerWalletController {
   async requestTopUp(@CurrentSellerId() sellerId: string, @Body() dto: RequestTopUpDto) {
     const currency = "PKR";
     const request = await this.wallet.requestTopUp(sellerId, dto.amount, currency);
-    return { request, instructions: this.wallet.topUpInstructions(dto.amount, currency) };
+    return { request, instructions: await this.wallet.topUpInstructions(dto.amount, currency) };
   }
 
   /**
@@ -107,7 +107,7 @@ export class SupplierWalletController {
   async requestTopUp(@CurrentSupplierId() supplierId: string, @Body() dto: RequestTopUpDto) {
     const currency = "PKR";
     const request = await this.supplierWallet.requestTopUp(supplierId, dto.amount, currency);
-    return { request, instructions: this.supplierWallet.topUpInstructions(dto.amount, currency) };
+    return { request, instructions: await this.supplierWallet.topUpInstructions(dto.amount, currency) };
   }
 }
 

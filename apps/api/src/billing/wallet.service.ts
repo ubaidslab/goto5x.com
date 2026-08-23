@@ -224,7 +224,7 @@ export class WalletService {
   }
 
   /** FR-6.23 - the instructions the seller sees before/while requesting a top-up. */
-  topUpInstructions(amount: number, currency: string): string {
+  topUpInstructions(amount: number, currency: string): Promise<string> {
     return this.topUpAdapter.instructionsFor(amount, currency);
   }
 
@@ -264,7 +264,7 @@ export class WalletService {
       amountDue,
       isRenewal,
       currency,
-      instructions: this.topUpAdapter.instructionsFor(amountDue, currency),
+      instructions: await this.topUpAdapter.instructionsFor(amountDue, currency),
     };
   }
 
