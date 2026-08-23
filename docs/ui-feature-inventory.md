@@ -599,6 +599,8 @@ Currently bridged via `/settings#payments` anchor (real Card inside the still-mo
 
 **Connection health / "gateway health monitoring": now built backend-side (Module 67)**, still confirmed NOT rendered on this page and correctly so — it's an **admin-facing, aggregate** rollup (`AdminSystemStatusService.paymentGatewayHealth`, sourced from `GatewayHealthService`), never seller-facing by design. The seller still only ever sees the one-off, non-persisted "Test" result here; the admin-facing System Status page itself has no UI consumer for the new rollup field yet either (see §18.21).
 
+**Locked founder directive for this page's Phase 5 redesign (recorded here so it isn't lost between phases):** the copy explaining *why* a seller connects their own Raast/Easypaisa/JazzCash account must frame it around order-verification, never commission — there isn't one under the subscription-only model. Exact intended framing: "so we can verify your buyer's payment was received and confirm the order automatically." Keep the actual connection steps as simple as possible (guided, minimal taps), with screenshots or a short video in the help content for each provider's connection flow.
+
 **Alert history: NOT FOUND** — no persisted test/alert log model exists.
 
 **Manual mark-as-paid fallback — real, confirmed to be the same "Mark as paid" button already documented on Order detail (§2b) and the Orders bulk-action bar (§2a) — not a separate toggle.** It's the built-in fallback for sellers using instructions-only (no gateway).

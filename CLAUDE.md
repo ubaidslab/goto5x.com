@@ -56,3 +56,12 @@ diffing against these project-authored versions before replacing them.
   content-page system (SRS FR-12.1/FR-12.3, built Module 17) should
   supply it instead — that system is the actual mechanism for a future
   rebrand to be a data change, not a code change.
+- **Plan tier names always carry their subtitle.** GO/RUN/RISE/FLY are
+  creative names, not self-explanatory ones — every surface that shows
+  one of these four individual-tier names (nav, billing/plan pages,
+  plan-gate upsell messaging in any future phase) must pair it with its
+  short "who this is for" subtitle via `apps/web/lib/plan-tier-copy.ts`'s
+  `planTierSubtitle()` (GO — for new sellers · RUN — for growing stores ·
+  RISE — for established sellers · FLY — for high-volume operations).
+  Team/Supplier plan names are unaffected — already self-explanatory, no
+  subtitle defined for them.

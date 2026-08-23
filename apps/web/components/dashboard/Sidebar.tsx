@@ -5,6 +5,7 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 import { NAV_GROUP_LABELS, NavGroup, navItems } from "./nav-items";
 
 /**
@@ -83,7 +84,12 @@ function NavLinks({ storeId, showSuppliers, planName, onNavigate }: { storeId: s
                   >
                     <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
                     {item.label}
-                    {item.label === "Settings" && planName && <span className="ml-auto text-xs font-normal text-ink-faint">{planName}</span>}
+                    {item.label === "Settings" && planName && (
+                      <span className="ml-auto truncate text-xs font-normal text-ink-faint" title={planTierSubtitle(planName) ? `${planName} — ${planTierSubtitle(planName)}` : planName}>
+                        {planName}
+                        {planTierSubtitle(planName) && <span className="hidden lg:inline"> &middot; {planTierSubtitle(planName)}</span>}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

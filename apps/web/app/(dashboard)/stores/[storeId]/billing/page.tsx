@@ -9,6 +9,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 interface Plan {
   id: string;
@@ -196,14 +197,18 @@ export default function BillingPage() {
             {subscription && (
               <div className="space-y-1 text-sm text-ink">
                 <p>
-                  <span className="font-medium">{subscription.plan.name}</span>{" "}
+                  <span className="font-medium">{subscription.plan.name}</span>
+                  {planTierSubtitle(subscription.plan.name) && (
+                    <span className="text-ink-muted"> — {planTierSubtitle(subscription.plan.name)}</span>
+                  )}{" "}
                   <span className="text-ink-muted">
                     ({subscription.plan.price === "0" ? "free" : `${subscription.plan.currency} ${subscription.plan.price}/${subscription.plan.billingInterval}`})
                   </span>
                 </p>
                 {subscription.pendingPlan && (
                   <p className="text-ink-muted">
-                    Changing to <span className="font-medium">{subscription.pendingPlan.name}</span> at the end of the
+                    Changing to <span className="font-medium">{subscription.pendingPlan.name}</span>
+                    {planTierSubtitle(subscription.pendingPlan.name) && ` (${planTierSubtitle(subscription.pendingPlan.name)})`} at the end of the
                     current period{subscription.currentPeriodEnd && ` (${new Date(subscription.currentPeriodEnd).toLocaleDateString()})`}.
                   </p>
                 )}
@@ -225,7 +230,7 @@ export default function BillingPage() {
             <Card>
               <CardHeader
                 title={paymentPreview.isRenewal ? "Plan fee due" : "Get started"}
-                description={`${paymentPreview.planName} - ${paymentPreview.isRenewal ? "renewal" : "first cycle (discounted)"}`}
+                description={`${paymentPreview.planName}${planTierSubtitle(paymentPreview.planName) ? ` (${planTierSubtitle(paymentPreview.planName)})` : ""} - ${paymentPreview.isRenewal ? "renewal" : "first cycle (discounted)"}`}
               />
               <CardBody className="space-y-4">
                 {paymentError && <Alert>{paymentError}</Alert>}
@@ -270,7 +275,10 @@ export default function BillingPage() {
                   const isPending = subscription?.pendingPlanId === plan.id;
                   return (
                     <div key={plan.id} className="flex flex-col gap-2 rounded-md border border-border p-4">
-                      <p className="font-medium text-ink">{plan.name}</p>
+                      <div>
+                        <p className="font-medium text-ink">{plan.name}</p>
+                        {planTierSubtitle(plan.name) && <p className="text-xs text-ink-faint">{planTierSubtitle(plan.name)}</p>}
+                      </div>
                       <p className="text-sm text-ink-muted">
                         {plan.price === "0" ? "Free" : `${plan.currency} ${plan.price}/${plan.billingInterval}`}
                       </p>
