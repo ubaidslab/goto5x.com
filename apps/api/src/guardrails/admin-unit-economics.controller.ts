@@ -1,6 +1,7 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { MrrAnalyticsService } from "./mrr-analytics.service";
+import { SellerHealthFunnelService } from "./seller-health-funnel.service";
 import { UnitEconomicsService } from "./unit-economics.service";
 
 /** SRS §5.23/FR-23.4 - unit-economics data (free-vs-paid split, break-even). */
@@ -22,6 +23,7 @@ export class AdminAnalyticsController {
   constructor(
     private readonly unitEconomics: UnitEconomicsService,
     private readonly mrrAnalytics: MrrAnalyticsService,
+    private readonly sellerHealthFunnel: SellerHealthFunnelService,
   ) {}
 
   @Get()
@@ -33,5 +35,11 @@ export class AdminAnalyticsController {
   @Get("mrr")
   getMrr() {
     return this.mrrAnalytics.compute();
+  }
+
+  /** SRS §5.6k/FR-6.46 (Module 69) - seller health funnel, on this same admin analytics surface. */
+  @Get("seller-funnel")
+  getSellerFunnel() {
+    return this.sellerHealthFunnel.compute();
   }
 }
