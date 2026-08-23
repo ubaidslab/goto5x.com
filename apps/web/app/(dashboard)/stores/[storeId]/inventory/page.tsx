@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface InventoryVariant {
@@ -18,6 +20,7 @@ interface InventoryVariant {
   sku: string;
   stockQuantity: number;
   isLowStock: boolean;
+  trackInventory: boolean;
 }
 
 interface InventoryResponse {
@@ -118,7 +121,7 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
         <>
           <div className="mb-4 flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={showLowStockOnly} onChange={(e) => setShowLowStockOnly(e.target.checked)} />
+              <Checkbox checked={showLowStockOnly} onCheckedChange={(v) => setShowLowStockOnly(v === true)} />
               Low stock only (at or below {data.lowStockThreshold})
             </label>
           </div>
@@ -129,7 +132,8 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
                 <EmptyState title="No variants match" description="Nothing at or below the low-stock threshold." />
               </div>
             ) : (
-              visibleVariants.map((variant) => (
+              <Reveal stagger={0.03}>
+              {visibleVariants.map((variant) => (
                 <div key={variant.variantId}>
                   <button
                     type="button"
@@ -143,6 +147,11 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
                     <div className="flex items-center gap-3">
                       <span className="text-sm text-ink">{variant.stockQuantity} in stock</span>
                       {variant.isLowStock && <Badge tone="warning">Low stock</Badge>}
+                      {!variant.trackInventory && (
+                        <span title="Stock protection is off for this variant - it will never trigger a low-stock alert or block a sale.">
+                          <Badge tone="neutral">Untracked</Badge>
+                        </span>
+                      )}
                     </div>
                   </button>
 
@@ -197,7 +206,8 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
                     </div>
                   )}
                 </div>
-              ))
+              ))}
+              </Reveal>
             )}
           </Card>
         </>

@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type ReviewStatus = "pending" | "approved" | "hidden";
@@ -80,6 +81,7 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
         </Card>
       ) : (
         <Card className="divide-y divide-border overflow-hidden">
+          <Reveal stagger={0.04}>
           {reviews.map((review) => (
             <div key={review.id} className="px-6 py-4">
               <div className="flex items-center justify-between gap-4">
@@ -118,6 +120,7 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
               <p className="mt-2 text-sm text-ink-muted">{review.body}</p>
             </div>
           ))}
+          </Reveal>
         </Card>
       )}
     </div>

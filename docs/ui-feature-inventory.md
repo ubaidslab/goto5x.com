@@ -330,8 +330,8 @@ Below the tiles: conditional "*N* supplier-fulfilled item(s) still awaiting fulf
 **Buttons:** "Send WhatsApp confirmation" / "Send shipping update" (conditional on buyerWhatsapp + status, opens `wa.me` deep link in new tab) · "Mark as paid" (status===pending only, no confirm, gated server-side on order-verification clearance) · per-item "Save tracking"/"Mark delivered" · "Save costs" · "Save tags" · "Add" note. **None show a toast** — every success path silently reloads.
 
 ### ⚠️ Confirmed gaps on this page
-1. **Verification status + resend action: NOT FOUND.** Real backend exists and is unused: `GET/POST .../verification`, `POST .../verification/resend`, `POST .../verification/mark-prepaid-received` (`seller-verification.controller.ts`). The order's `verification` relation isn't even fetched by `OrdersService.getOne()`.
-2. **Returns/refund initiation: NOT FOUND on this page.** Returns is a wholly separate, currently unlinked page (`/returns`) — real, working (approve/reject/complete with refund amount), not surfaced from order detail.
+1. ~~**Verification status + resend action: NOT FOUND.**~~ **Fixed in Phase 3.** A "Verification" card now renders between the status bar and the order timeline whenever `GET .../verification` returns a real gate (channel + status badge), with a "Resend" action for the OTP channels and "Mark deposit received" for `prepaid_confirmation` — the exact two seller-triggered actions `seller-verification.controller.ts` already exposed.
+2. **Returns/refund initiation: NOT FOUND on this page.** Returns is a wholly separate, currently unlinked page (`/returns`) — real, working (approve/reject/complete with refund amount), not surfaced from order detail. Still open — deferred out of this Phase 3 pass (a real cross-page linking decision, not a quick add).
 
 ### The tracking-upload paths, precisely named
 1. Seller manual, item-level (`POST .../items/:itemId/tracking`).
@@ -370,7 +370,7 @@ The page's `CHANNEL_LABEL` map has only **4** entries — `prepaid_partial_advan
 **File:** `apps/web/app/(dashboard)/stores/[storeId]/products/page.tsx`
 **Nav:** Main menu → Products (`Package` icon)
 
-**Plan gating:** real, on *create* only — `catalog.product_limit`, seeded **GO 100 / RUN 100 / RISE 500 / FLY 100,000**. Enforced server-side on `POST /products`; **no visible "N/100 used" indicator anywhere on this page** — a real gap, the limit is invisible until hit.
+**Plan gating:** real, on *create* only — `catalog.product_limit`, seeded **GO 100 / RUN 100 / RISE 500 / FLY 100,000**. Enforced server-side on `POST /products`; **no visible "N/100 used" indicator anywhere on this page** — a real gap, the limit is invisible until hit. **Deliberately deferred in Phase 3**, not fixed: no seller-facing endpoint currently resolves a plan-scoped Settings Registry value like `catalog.product_limit` (only `admin/settings/resolve` exists) — closing this properly needs a small new backend endpoint, not just a frontend change, so it's flagged here for a future small batch rather than bolted on ad hoc.
 
 **Sections:** Filter card (Search title/SKU, Tag, Stock status, Category, Moderation state, Min/Max price) → Bulk-action panel → Product list (card rows, select-all) → Pagination.
 
@@ -397,10 +397,10 @@ The page's `CHANNEL_LABEL` map has only **4** entries — `prepaid_partial_advan
 
 **ImagesSection — richer than "images only," confirmed real:** upload accepts `image/*,video/*` (`MediaAsset.type` is a real 2-value enum, image/video) — **video IS wired end-to-end**, not images-only. Reorder (↑/↓, persisted, optimistic w/ rollback), Set primary, Remove (detach not delete), attach unattached store media, Google Drive import (OAuth connect → browse → multi-select import). **No zoom/lightbox UI exists** in this component — upload/attach/reorder/primary only.
 
-**VariantsSection:** SKU/Price/Stock per variant, saves `onBlur`. Add-variant form: SKU/Price/Stock.
+**VariantsSection:** SKU/Price/Stock/**Base cost** per variant, saves `onBlur`. Add-variant form: SKU/Price/Stock/Base cost.
 
-### ⚠️ Most concrete, well-evidenced gap in the whole Products area
-`ProductVariant.baseCost` is a real, nullable schema column, and both create/update variant DTOs fully accept it — **the backend is 100% ready.** `VariantsSection.tsx`'s `Variant` interface has **no `baseCost` field anywhere** — not in the interface, the add-form, or per-row edit inputs. Sellers currently have **no way to enter base cost anywhere in this dashboard**, which directly explains the "incomplete" P&L warning already visible on Order Detail (§2b) and the P&L page (§6b).
+### ⚠️ Most concrete, well-evidenced gap in the whole Products area — fixed in Phase 3
+`ProductVariant.baseCost` is a real, nullable schema column, and both create/update variant DTOs fully accepted it already — the backend was 100% ready, only the frontend was missing. `VariantsSection.tsx`'s `Variant` interface now carries `baseCost`, with a per-row edit input (an inline "no cost set" warning when null) and a field on the add-variant form. Sellers can now enter base cost directly on the product edit screen, closing the root cause of the "incomplete" P&L warning on Order Detail (§2b) and the P&L page (§6b) — existing variants with no cost entered yet will still show that warning until a seller sets one, which is correct (never silently defaulted to 0).
 
 **Advanced SEO card** (Module 58, RISE/FLY-gated server-side): canonical URL, custom slug, 4 robots/OG/structured-data/sitemap checkboxes (all default `true`), social preview title/description. **Card renders unconditionally for every plan tier client-side** — a GO/RUN seller only discovers the block via a raw error on save, not a proactive lock/upsell.
 
@@ -422,7 +422,7 @@ The page's `CHANNEL_LABEL` map has only **4** entries — `prepaid_partial_advan
 
 **Real gaps confirmed:**
 - Low-stock threshold (`inventory.low_stock_threshold`, default 5) is **displayed but has no settings-UI to change it anywhere in the frontend** — DB/global-settings-level only.
-- `trackInventory` (the Module 46 self-fulfilled stock-protection flag) is fetched by the API but **never rendered** — no lock/protected/untracked indicator per row despite the data being available.
+- ~~`trackInventory` ... never rendered~~ **Fixed in Phase 3** — an "Untracked" badge (with a tooltip explaining it never triggers a low-stock alert or blocks a sale) now renders per row when `trackInventory` is false.
 - Bulk stock edit exists (real CSV endpoint) but lives on the separate **Import & export (Data)** page, not embedded here.
 
 - **Icons:** none. **Empty:** real `EmptyState` (two variants — "No variants yet" / "No variants match"). **Loading:** `PageSpinner`. **Error:** plain red text, not the shared `Alert`. **Modal:** none — accordion, not drawer. **Real-time:** none in-UI; a low-stock **email** (not toast) fires server-side, debounced via `lowStockAlertSentAt`.
@@ -436,7 +436,7 @@ The page's `CHANNEL_LABEL` map has only **4** entries — `prepaid_partial_advan
 **Plan gating:** none on Customers/Reviews themselves. (Adjacent: Customer *Segments* creation is RISE+FLY-gated — see §7.2.)
 
 ### 5a. Customers list
-Search (name/email, no debounce — fires every keystroke) + Sort (Total spent/Order count/Most recent order) → row-list (name-or-email, email/order-count/last-order, total spent) — no pagination, no bulk-select. Real fields include `unsubscribedAt`/`unsubscribeToken` (campaign suppression) that exist in the schema but **are not surfaced anywhere on either Customers page.**
+Search (name/email, **now 300ms-debounced, fixed in Phase 3** — was firing every keystroke) + Sort (Total spent/Order count/Most recent order) → row-list (name-or-email, email/order-count/last-order, total spent) — no pagination, no bulk-select. `unsubscribedAt` **now surfaced on both Customers pages** (an "Unsubscribed" badge next to the name in the list row, and a dedicated banner on the detail page) — `unsubscribeToken` itself is an internal campaign-link secret and correctly stays unrendered.
 
 ### 5b. Customer detail
 Stat strip (Orders/Total spent/First order/Last order, + Phone if set) → Order history list (status Badge, `pending` relabeled "awaiting payment" in the UI). **No pagination.** **Segment membership: NOT FOUND on this page** — Customer Segments only works in the opposite direction (browse a segment → see its members); there is no reverse lookup.

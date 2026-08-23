@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { api } from "@/lib/dashboard-api";
 
 interface Variant {
@@ -450,24 +452,22 @@ export default function ProductsListPage({ params }: { params: { storeId: string
         <>
           <Card className="overflow-hidden">
             <div className="flex items-center gap-4 border-b border-border px-6 py-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label="Select all products on this page"
                 checked={productPage.items.every((p) => selected.has(p.id))}
-                onChange={toggleSelectAll}
+                onCheckedChange={toggleSelectAll}
               />
               <span className="text-xs text-ink-muted">Select all on this page</span>
             </div>
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.03}>
               {productPage.items.map((product) => {
                 const priced = product.variants[0];
                 return (
-                  <div key={product.id} className="flex items-center gap-4 px-6 py-4">
-                    <input
-                      type="checkbox"
+                  <div key={product.id} className="flex items-center gap-4 px-6 py-4 transition-smooth-fast hover:bg-canvas/60">
+                    <Checkbox
                       aria-label={`Select ${product.title}`}
                       checked={selected.has(product.id)}
-                      onChange={() => toggleSelected(product.id)}
+                      onCheckedChange={() => toggleSelected(product.id)}
                     />
                     <Link
                       href={`/stores/${params.storeId}/products/${product.id}`}
@@ -486,7 +486,7 @@ export default function ProductsListPage({ params }: { params: { storeId: string
                   </div>
                 );
               })}
-            </div>
+            </Reveal>
           </Card>
 
           {productPage.totalPages > 1 && (

@@ -10,6 +10,7 @@ import { Disclosure } from "@/components/ui/Disclosure";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
@@ -90,6 +91,17 @@ interface ProductLookup {
   title: string;
   variants: { id: string; sku: string }[];
 }
+interface OrderVerification {
+  channel: "whatsapp_otp" | "email_otp" | "prepaid_confirmation" | "prepaid_partial_advance";
+  status: "pending" | "verified" | "failed" | "expired";
+}
+
+const VERIFICATION_CHANNEL_LABEL: Record<OrderVerification["channel"], string> = {
+  whatsapp_otp: "WhatsApp OTP",
+  email_otp: "Email OTP",
+  prepaid_confirmation: "Prepaid deposit confirmation",
+  prepaid_partial_advance: "Prepaid partial advance",
+};
 
 const statusTone: Record<OrderStatus, "neutral" | "success" | "warning" | "danger" | "info"> = {
   pending: "warning",
@@ -116,6 +128,8 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   const [handlingCostInput, setHandlingCostInput] = useState("");
   const [savingCosts, setSavingCosts] = useState(false);
   const [profit, setProfit] = useState<OrderProfit | null>(null);
+  const [verification, setVerification] = useState<OrderVerification | null | undefined>(undefined);
+  const [verifyActionLoading, setVerifyActionLoading] = useState(false);
 
   function load() {
     api
@@ -136,7 +150,15 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
       .catch(() => setProfit(null));
   }
 
+  function loadVerification() {
+    api
+      .get<OrderVerification | null>(`/stores/${params.storeId}/orders/${params.orderId}/verification`)
+      .then(setVerification)
+      .catch(() => setVerification(null));
+  }
+
   useEffect(load, [params.storeId, params.orderId]);
+  useEffect(loadVerification, [params.storeId, params.orderId]);
   useEffect(() => {
     if (order && ["confirmed", "shipped", "delivered", "completed"].includes(order.status)) loadProfit();
   }, [params.storeId, params.orderId, order?.status]);
@@ -248,6 +270,33 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
     }
   }
 
+  async function resendVerification() {
+    setError(null);
+    setVerifyActionLoading(true);
+    try {
+      const { deepLink } = await api.post<{ deepLink?: string }>(`/stores/${params.storeId}/orders/${params.orderId}/verification/resend`, {});
+      if (deepLink) window.open(deepLink, "_blank", "noopener,noreferrer");
+      loadVerification();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't resend verification.");
+    } finally {
+      setVerifyActionLoading(false);
+    }
+  }
+
+  async function markPrepaidReceived() {
+    setError(null);
+    setVerifyActionLoading(true);
+    try {
+      await api.post(`/stores/${params.storeId}/orders/${params.orderId}/verification/mark-prepaid-received`, {});
+      loadVerification();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't mark the deposit as received.");
+    } finally {
+      setVerifyActionLoading(false);
+    }
+  }
+
   async function markDelivered(itemId: string) {
     setError(null);
     try {
@@ -274,7 +323,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="max-w-3xl space-y-6">
+      <Reveal className="max-w-3xl space-y-6" stagger={0.05}>
         <Card>
           <CardBody className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -300,6 +349,42 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
             </div>
           </CardBody>
         </Card>
+
+        {verification && (
+          <Card>
+            <CardHeader title="Verification" description="This order's order-verification gate - the same status the buyer's confirmation depends on." />
+            <CardBody className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Badge
+                  tone={
+                    verification.status === "verified"
+                      ? "success"
+                      : verification.status === "failed" || verification.status === "expired"
+                        ? "danger"
+                        : "warning"
+                  }
+                >
+                  {verification.status}
+                </Badge>
+                <span className="text-sm text-ink-muted">{VERIFICATION_CHANNEL_LABEL[verification.channel]}</span>
+              </div>
+              {verification.status === "pending" && (
+                <div className="flex gap-2">
+                  {(verification.channel === "whatsapp_otp" || verification.channel === "email_otp") && (
+                    <Button variant="secondary" loading={verifyActionLoading} onClick={resendVerification}>
+                      Resend
+                    </Button>
+                  )}
+                  {verification.channel === "prepaid_confirmation" && (
+                    <Button variant="secondary" loading={verifyActionLoading} onClick={markPrepaidReceived}>
+                      Mark deposit received
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        )}
 
         <Card>
           <CardHeader title="Order timeline" description="The same timeline the buyer sees on their order-status page." />
@@ -514,7 +599,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
             </div>
           </Disclosure>
         </Card>
-      </div>
+      </Reveal>
     </div>
   );
 }

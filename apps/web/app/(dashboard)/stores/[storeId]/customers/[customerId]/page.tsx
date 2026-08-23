@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { api } from "@/lib/dashboard-api";
 
 type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
@@ -28,6 +29,7 @@ interface CustomerDetail {
   totalSpent: string;
   firstOrderAt: string | null;
   lastOrderAt: string | null;
+  unsubscribedAt: string | null;
   orders: Order[];
 }
 
@@ -65,8 +67,14 @@ export default function CustomerDetailPage({ params }: { params: { storeId: stri
         }
       />
 
-      <div className="max-w-3xl space-y-6">
+      <Reveal className="max-w-3xl space-y-6" stagger={0.08}>
         <Card>
+          {customer.unsubscribedAt && (
+            <div className="flex items-center gap-2 border-b border-border px-6 py-2">
+              <Badge tone="neutral">Unsubscribed</Badge>
+              <span className="text-xs text-ink-muted">Excluded from email campaigns since {new Date(customer.unsubscribedAt).toLocaleDateString()}.</span>
+            </div>
+          )}
           <CardBody className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <p className="text-xs text-ink-muted">Orders</p>
@@ -117,7 +125,7 @@ export default function CustomerDetailPage({ params }: { params: { storeId: stri
             </div>
           )}
         </Card>
-      </div>
+      </Reveal>
     </div>
   );
 }

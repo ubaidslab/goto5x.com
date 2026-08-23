@@ -12,6 +12,7 @@ export interface Variant {
   sku: string;
   price: string;
   stockQuantity: number;
+  baseCost: string | null;
 }
 
 /**
@@ -35,6 +36,7 @@ export function VariantsSection({
   const [sku, setSku] = useState("");
   const [price, setPrice] = useState("");
   const [stockQuantity, setStockQuantity] = useState("0");
+  const [baseCost, setBaseCost] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,11 +49,13 @@ export function VariantsSection({
         sku,
         price: Number(price),
         stockQuantity: Number(stockQuantity),
+        baseCost: baseCost === "" ? undefined : Number(baseCost),
       });
       onChange([...variants, created]);
       setSku("");
       setPrice("");
       setStockQuantity("0");
+      setBaseCost("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't add that variant.");
     } finally {
@@ -59,7 +63,7 @@ export function VariantsSection({
     }
   }
 
-  async function updateVariant(variantId: string, patch: { price?: number; stockQuantity?: number }) {
+  async function updateVariant(variantId: string, patch: { price?: number; stockQuantity?: number; baseCost?: number }) {
     const updated = await api.patch<Variant>(`/stores/${storeId}/products/${productId}/variants/${variantId}`, patch);
     onChange(variants.map((v) => (v.id === variantId ? updated : v)));
   }
@@ -91,6 +95,21 @@ export function VariantsSection({
                   aria-label={`Stock quantity for ${variant.sku}`}
                 />
                 <span className="text-xs text-ink-faint">qty</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={variant.baseCost ?? ""}
+                  placeholder="Base cost"
+                  onBlur={(e) => updateVariant(variant.id, { baseCost: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  className="h-9 w-28 rounded-md border border-border px-2 text-sm transition-smooth-fast focus:border-accent"
+                  aria-label={`Base cost for ${variant.sku}`}
+                />
+                {variant.baseCost === null && (
+                  <span className="text-xs text-warning" title="Cost of goods and net profit are understated until this is set.">
+                    no cost set
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -98,7 +117,7 @@ export function VariantsSection({
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
-        <form onSubmit={addVariant} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-3">
+        <form onSubmit={addVariant} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] items-end gap-3">
           <Field label="SKU">
             <Input value={sku} onChange={(e) => setSku(e.target.value)} required />
           </Field>
@@ -107,6 +126,9 @@ export function VariantsSection({
           </Field>
           <Field label="Stock quantity">
             <Input type="number" min="0" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} required />
+          </Field>
+          <Field label="Base cost" hint="What this unit costs you - powers P&L.">
+            <Input type="number" step="0.01" min="0" value={baseCost} onChange={(e) => setBaseCost(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={adding}>
             Add

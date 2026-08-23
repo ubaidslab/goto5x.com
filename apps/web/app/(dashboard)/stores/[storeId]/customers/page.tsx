@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { api } from "@/lib/dashboard-api";
 
 type CustomerSort = "total_spent" | "orders_count" | "last_order_at";
@@ -19,20 +21,32 @@ interface Customer {
   ordersCount: number;
   totalSpent: string;
   lastOrderAt: string | null;
+  unsubscribedAt: string | null;
+}
+
+/** 300ms debounce so search doesn't fire a request on every keystroke. */
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }
 
 export default function CustomersListPage({ params }: { params: { storeId: string } }) {
   const [customers, setCustomers] = useState<Customer[] | null>(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounced(search, 300);
   const [sort, setSort] = useState<CustomerSort>("total_spent");
 
   useEffect(() => {
-    const query = new URLSearchParams({ sort, ...(search ? { search } : {}) });
+    const query = new URLSearchParams({ sort, ...(debouncedSearch ? { search: debouncedSearch } : {}) });
     api
       .get<Customer[]>(`/stores/${params.storeId}/customers?${query.toString()}`)
       .then(setCustomers)
       .catch(() => setCustomers([]));
-  }, [params.storeId, search, sort]);
+  }, [params.storeId, debouncedSearch, sort]);
 
   return (
     <div>
@@ -66,22 +80,27 @@ export default function CustomersListPage({ params }: { params: { storeId: strin
         </Card>
       ) : (
         <Card className="divide-y divide-border overflow-hidden">
-          {customers.map((customer) => (
-            <Link
-              key={customer.id}
-              href={`/stores/${params.storeId}/customers/${customer.id}`}
-              className="flex items-center justify-between gap-4 px-6 py-4 transition-smooth-fast hover:bg-canvas"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink">{customer.name || customer.email}</p>
-                <p className="mt-0.5 text-xs text-ink-muted">
-                  {customer.email} · {customer.ordersCount} order{customer.ordersCount === 1 ? "" : "s"}
-                  {customer.lastOrderAt && ` · last order ${new Date(customer.lastOrderAt).toLocaleDateString()}`}
-                </p>
-              </div>
-              <p className="shrink-0 text-sm font-medium text-ink">{customer.totalSpent}</p>
-            </Link>
-          ))}
+          <Reveal stagger={0.03}>
+            {customers.map((customer) => (
+              <Link
+                key={customer.id}
+                href={`/stores/${params.storeId}/customers/${customer.id}`}
+                className="flex items-center justify-between gap-4 px-6 py-4 transition-smooth-fast hover:bg-canvas"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-medium text-ink">{customer.name || customer.email}</p>
+                    {customer.unsubscribedAt && <Badge tone="neutral">Unsubscribed</Badge>}
+                  </div>
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    {customer.email} · {customer.ordersCount} order{customer.ordersCount === 1 ? "" : "s"}
+                    {customer.lastOrderAt && ` · last order ${new Date(customer.lastOrderAt).toLocaleDateString()}`}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-medium text-ink">{customer.totalSpent}</p>
+              </Link>
+            ))}
+          </Reveal>
         </Card>
       )}
     </div>

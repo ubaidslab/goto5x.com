@@ -5,10 +5,12 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
@@ -299,17 +301,18 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
       <PageHeader title="Orders" description="What needs your attention, at a glance, plus every order placed on your store." />
 
       {overview && (
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Reveal className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4" stagger={0.06}>
           {BUCKET_LABELS.map(({ bucket: b, label }) => (
             <button
               key={b}
               type="button"
               onClick={() => selectBucket(b)}
-              className={`rounded-md border p-3 text-left transition-smooth-fast ${
+              aria-pressed={bucket === b}
+              className={`rounded-md border p-3 text-left transition-smooth-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
                 bucket === b ? "border-accent bg-accent/5" : "border-border bg-surface hover:border-border-strong"
               }`}
             >
-              <p className="text-2xl font-semibold text-ink">{overview.buckets[b]}</p>
+              <p className="text-2xl font-semibold tabular-nums text-ink">{overview.buckets[b]}</p>
               <p className="text-xs text-ink-muted">{label}</p>
             </button>
           ))}
@@ -318,7 +321,7 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
               {overview.supplierItemsAwaitingFulfillment} supplier-fulfilled item(s) still awaiting fulfillment.
             </p>
           )}
-        </div>
+        </Reveal>
       )}
 
       <Card className="mb-4 space-y-3 p-4">
@@ -488,25 +491,23 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
         <>
           <Card className="overflow-hidden">
             <div className="flex items-center gap-4 border-b border-border px-6 py-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label="Select all orders on this page"
                 checked={ordersPage.items.every((o) => selected.has(o.id))}
-                onChange={toggleSelectAll}
+                onCheckedChange={toggleSelectAll}
               />
               <span className="text-xs text-ink-muted">Select all on this page</span>
             </div>
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.03}>
               {ordersPage.items.map((order) => {
                 const draft = trackingDraft(order.id);
                 return (
-                  <div key={order.id} className="flex flex-col gap-2 px-6 py-4">
+                  <div key={order.id} className="flex flex-col gap-2 px-6 py-4 transition-smooth-fast hover:bg-canvas/60">
                     <div className="flex items-center gap-4">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={`Select order #${order.orderNumber}`}
                         checked={selected.has(order.id)}
-                        onChange={() => toggleSelected(order.id)}
+                        onCheckedChange={() => toggleSelected(order.id)}
                       />
                       <Link
                         href={`/stores/${params.storeId}/orders/${order.id}`}
@@ -553,7 +554,7 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
                   </div>
                 );
               })}
-            </div>
+            </Reveal>
           </Card>
 
           {ordersPage.totalPages > 1 && (
