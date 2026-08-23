@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { PaymentInstrumentIdentityService } from "../trust-safety/payment-instrument-identity.service";
 import { RiskScoreService } from "../trust-safety/risk-score.service";
+import { SubscriptionAbuseService } from "../trust-safety/subscription-abuse.service";
 import { UpdatePaymentInstructionsDto } from "./dto/update-payment-instructions.dto";
 
 /**
@@ -16,6 +18,7 @@ export class PaymentInstructionsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly identity: PaymentInstrumentIdentityService,
     private readonly riskScore: RiskScoreService,
+    private readonly subscriptionAbuse: SubscriptionAbuseService,
   ) {}
 
   async getForStore(sellerId: string, storeId: string) {
@@ -46,6 +49,16 @@ export class PaymentInstructionsService {
           data: { ...dto, ...identityFields },
         });
       } catch (err) {
+        // SRS §5.6k/FR-6.48 (Module 71) - trigger 3: the conflict itself
+        // (this exact hash already belongs to a different seller) IS the
+        // "strongest repeat-identity signal" FR-6.48 describes - a
+        // successful save could never match another seller's hash by
+        // construction, so this is the only place that signal can ever
+        // actually fire. Runs before the same user-facing error as
+        // before is re-thrown; never changes what the seller sees.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          await this.subscriptionAbuse.checkOnPaymentInstrumentConflict(sellerId);
+        }
         this.identity.translateFingerprintConflict(err);
       }
     });

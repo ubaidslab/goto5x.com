@@ -8,6 +8,7 @@ import { SettingsService } from "../settings-registry/settings.service";
 import { addInterval } from "../plans/subscriptions.service";
 import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { ManualBankTransferTopUpAdapter } from "./top-up-adapter.interface";
+import { SubscriptionAbuseService } from "../trust-safety/subscription-abuse.service";
 
 /**
  * Every debit type subtracts from balance, every credit type adds, and
@@ -82,6 +83,7 @@ export class WalletService {
     private readonly events: EventsService,
     private readonly topUpAdapter: ManualBankTransferTopUpAdapter,
     private readonly settings: SettingsService,
+    private readonly subscriptionAbuse: SubscriptionAbuseService,
   ) {}
 
   /**
@@ -255,7 +257,7 @@ export class WalletService {
     const isRenewal = await this.hasEverPaidPlanFee(sellerId);
     const amountDue = isRenewal
       ? await this.cyclePriceFor(subscription.plan, subscription.billingInterval)
-      : await this.firstCyclePriceFor(subscription.plan);
+      : await this.firstCyclePriceFor(sellerId, subscription.plan);
 
     return {
       planName: subscription.plan.name,
@@ -274,9 +276,19 @@ export class WalletService {
     return prior !== null;
   }
 
-  /** Module 74 (v0.39, FR-7.22) - campaign-aware active price, discounted by the global first-cycle percentage. Replaces reading the retired per-tier `firstCyclePrice` column. */
-  private async firstCyclePriceFor(plan: Plan): Promise<number> {
+  /**
+   * Module 74 (v0.39, FR-7.22) - campaign-aware active price, discounted by
+   * the global first-cycle percentage. Replaces reading the retired
+   * per-tier `firstCyclePrice` column. Module 71 (FR-6.48) - a seller with
+   * ANY confirmed SubscriptionAbuseFlag is shown the full standing price
+   * instead, silently (no accusatory messaging, per the FR's own UX
+   * principle) - the discount denial is durable, checked fresh on every
+   * preview/request, never a one-time decision cached anywhere.
+   */
+  private async firstCyclePriceFor(sellerId: string, plan: Plan): Promise<number> {
     const activePrice = resolveActivePlanPrice(plan);
+    const discountDenied = await this.subscriptionAbuse.isDiscountDenied(sellerId);
+    if (discountDenied) return activePrice;
     const discountPercent = await this.settings.resolve<number>("billing.first_cycle_discount_percent");
     return round2(activePrice * (1 - discountPercent / 100));
   }

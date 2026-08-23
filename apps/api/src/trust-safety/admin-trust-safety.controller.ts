@@ -49,6 +49,12 @@ export class AdminTrustSafetyController {
     return this.monitors.selfReferralFlags();
   }
 
+  /** SRS §5.6k/FR-6.48 (Module 71) - confirmed first-cycle discount abuse matches. */
+  @Get("monitors/subscription-abuse")
+  subscriptionAbuse() {
+    return this.monitors.subscriptionAbuseFlags();
+  }
+
   @Get("payment-review/queue")
   listPaymentReviewQueue() {
     return this.paymentReview.listQueue();

@@ -25,6 +25,13 @@ export interface SelfReferralFlag {
   matchedSignal: "cnic" | "payment_instrument" | "device_or_ip";
 }
 
+export interface SubscriptionAbuseFlagView {
+  sellerId: string;
+  businessName: string;
+  matchedSignal: string;
+  flaggedAt: Date;
+}
+
 /**
  * SRS §5.29 FR-29.3 / §5.6c FR-6.19 - read-side admin risk views, zero new
  * persistent "flags" infrastructure: every signal here is computed from
@@ -187,6 +194,26 @@ export class TrustSafetyMonitorsService {
       if (matchedSignal) flags.push({ referrerSellerId, referredSellerId, matchedSignal });
     }
     return flags;
+  }
+
+  /**
+   * SRS §5.6k/FR-6.48 (Module 71) - unlike selfReferralFlags() above, this
+   * reads a real persisted table (SubscriptionAbuseFlag - durable,
+   * append-only, written by SubscriptionAbuseService) rather than a live
+   * scan, but is surfaced the same way: a read-only list for a human to
+   * act on, same admin/trust-safety surface.
+   */
+  async subscriptionAbuseFlags(): Promise<SubscriptionAbuseFlagView[]> {
+    const flags = await this.prismaAdmin.subscriptionAbuseFlag.findMany({
+      include: { seller: { select: { businessName: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return flags.map((f) => ({
+      sellerId: f.sellerId,
+      businessName: f.seller.businessName,
+      matchedSignal: f.matchedSignal,
+      flaggedAt: f.createdAt,
+    }));
   }
 
   private async matchSelfReferralSignal(

@@ -5,6 +5,7 @@ import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { InvalidCnicError, maskCnic, normalizeAndValidateCnic } from "./cnic.util";
 import { decryptIdentityValue, encryptIdentityValue, fingerprintValue } from "./identity-crypto.util";
 import { RiskScoreService } from "./risk-score.service";
+import { SubscriptionAbuseService } from "./subscription-abuse.service";
 
 /**
  * SRS §5.30/FR-30.1 - CNIC capture, encryption, and the platform-wide
@@ -22,6 +23,7 @@ export class SellerIdentityService {
     private readonly prisma: PrismaRuntimeService,
     private readonly config: ConfigService,
     private readonly riskScore: RiskScoreService,
+    private readonly subscriptionAbuse: SubscriptionAbuseService,
   ) {
     this.encryptionKey = Buffer.from(this.config.getOrThrow<string>("IDENTITY_ENCRYPTION_KEY"), "base64");
     this.hmacSecret = this.config.getOrThrow<string>("IDENTITY_FINGERPRINT_HMAC_SECRET");
@@ -54,6 +56,8 @@ export class SellerIdentityService {
     }
 
     await this.riskScore.recompute(sellerId);
+    // SRS §5.6k/FR-6.48 (Module 71) - trigger 2.
+    await this.subscriptionAbuse.checkOnCnicSet(sellerId);
     return { cnicMasked: maskCnic(normalized) };
   }
 

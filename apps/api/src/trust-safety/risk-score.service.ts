@@ -149,7 +149,8 @@ export class RiskScoreService {
     return false;
   }
 
-  private async hasDeviceIpSignal(sellerId: string, ip: string | undefined, deviceFingerprint: string | undefined): Promise<boolean> {
+  /** Module 71 (FR-6.48) - reused directly by SubscriptionAbuseService, hence public (was private before that reuse existed). */
+  async hasDeviceIpSignal(sellerId: string, ip: string | undefined, deviceFingerprint: string | undefined): Promise<boolean> {
     if (!ip && !deviceFingerprint) return false;
     const seller = await this.prisma.seller.findUniqueOrThrow({ where: { id: sellerId }, select: { userId: true } });
     const match = await this.prisma.userSecurityEvent.findFirst({
@@ -175,7 +176,8 @@ export class RiskScoreService {
     return others.some((o) => similarityScore(seller.businessName, o.businessName) >= 0.9);
   }
 
-  private async matchesSuspendedSellerCluster(sellerId: string, ip: string | undefined, deviceFingerprint: string | undefined): Promise<boolean> {
+  /** Module 71 (FR-6.48) - reused directly by SubscriptionAbuseService, hence public (was private before that reuse existed). */
+  async matchesSuspendedSellerCluster(sellerId: string, ip: string | undefined, deviceFingerprint: string | undefined): Promise<boolean> {
     if (!ip && !deviceFingerprint) return false;
     const seller = await this.prisma.seller.findUniqueOrThrow({ where: { id: sellerId }, select: { userId: true } });
     const candidateEvents = await this.prisma.userSecurityEvent.findMany({

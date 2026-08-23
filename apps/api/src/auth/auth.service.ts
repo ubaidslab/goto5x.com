@@ -9,6 +9,7 @@ import { EmailService } from "../notifications/email.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { RiskScoreService } from "../trust-safety/risk-score.service";
+import { SubscriptionAbuseService } from "../trust-safety/subscription-abuse.service";
 import { SellerAgreementService } from "../trust-safety/seller-agreement.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { resolveReferralSource } from "../plans/referral-source.util";
@@ -56,6 +57,7 @@ export class AuthService {
     private readonly events: EventsService,
     private readonly sellerAgreement: SellerAgreementService,
     private readonly riskScore: RiskScoreService,
+    private readonly subscriptionAbuse: SubscriptionAbuseService,
     private readonly subscriptions: SubscriptionsService,
     private readonly referralAttribution: ReferralAttributionService,
   ) {}
@@ -144,6 +146,10 @@ export class AuthService {
       // later whenever a scored input changes (CNIC saved, a payment
       // instrument's name-consistency result).
       await this.riskScore.computeAtSignup(user.seller!.id, ip, dto.deviceFingerprint);
+      // SRS §5.6k/FR-6.48 (Module 71) - trigger 1: phone/device-cluster
+      // signals are available now, before the discounted first cycle is
+      // ever paid.
+      await this.subscriptionAbuse.checkAtSignup(user.seller!.id, ip, dto.deviceFingerprint);
       // SRS §5.7/FR-7.1/7.3 (v0.33) - every seller starts on First Month
       // (individual, tier 0): a real, paid first billing cycle, not a Free
       // Plan - see subscriptions.service.ts's own note.

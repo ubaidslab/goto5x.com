@@ -10,6 +10,7 @@ import { SellerAgreementGuard } from "./seller-agreement.guard";
 import { SellerAgreementService } from "./seller-agreement.service";
 import { SellerIdentityService } from "./seller-identity.service";
 import { SellerLifecycleService } from "./seller-lifecycle.service";
+import { SubscriptionAbuseService } from "./subscription-abuse.service";
 import { TrustSafetyMonitorsService } from "./trust-safety-monitors.service";
 
 /**
@@ -29,6 +30,7 @@ import { TrustSafetyMonitorsService } from "./trust-safety-monitors.service";
     PaymentReviewQueueService,
     SellerLifecycleService,
     TrustSafetyMonitorsService,
+    SubscriptionAbuseService,
   ],
   exports: [
     SellerAgreementService,
@@ -39,6 +41,7 @@ import { TrustSafetyMonitorsService } from "./trust-safety-monitors.service";
     PaymentReviewQueueService,
     SellerLifecycleService,
     TrustSafetyMonitorsService,
+    SubscriptionAbuseService,
   ],
 })
 export class TrustSafetyModule {}
