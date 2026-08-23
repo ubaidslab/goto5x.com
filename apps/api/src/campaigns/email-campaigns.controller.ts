@@ -19,6 +19,12 @@ export class EmailCampaignsController {
     return this.campaigns.list(sellerId, storeId);
   }
 
+  /** Phase 4 UI/UX audit fix (FR-51.2) - the monthly quota, previously only discoverable via a rejected-send error. Declared before :campaignId so "quota" doesn't get swallowed by the dynamic param route. */
+  @Get("quota")
+  getQuota(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
+    return this.campaigns.getQuota(sellerId, storeId);
+  }
+
   @Get(":campaignId")
   getOne(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Param("campaignId") campaignId: string) {
     return this.campaigns.getOne(sellerId, storeId, campaignId);

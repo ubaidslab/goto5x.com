@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { PublicProduct, PublicStore } from "@/lib/storefront-api";
 import { FaqItem, resolveThemeSettings, SectionId, ThemeSettings } from "@/lib/theme-presets";
 import { getTemplateSections } from "@/app/storefront/templates/registry";
+import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -232,7 +234,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
       {saved && <Alert tone="success">Saved.</Alert>}
 
       <div className="grid grid-cols-[360px_1fr] gap-6">
-        <div className="space-y-4">
+        <Reveal stagger={0.05} className="space-y-4">
           <Card>
             <CardBody>
               <Field label="Theme">
@@ -315,17 +317,19 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                       type="button"
                       onClick={() => moveSection(index, -1)}
                       disabled={index === 0}
-                      className="rounded px-1.5 py-0.5 text-xs text-ink-muted transition-smooth-fast hover:bg-surface-raised disabled:opacity-30"
+                      aria-label={`Move ${SECTION_LABELS[section.id]} up`}
+                      className="rounded p-1 text-ink-muted transition-smooth-fast hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-30"
                     >
-                      ↑
+                      <ChevronUp className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
                       onClick={() => moveSection(index, 1)}
                       disabled={index === resolved.sections.length - 1}
-                      className="rounded px-1.5 py-0.5 text-xs text-ink-muted transition-smooth-fast hover:bg-surface-raised disabled:opacity-30"
+                      aria-label={`Move ${SECTION_LABELS[section.id]} down`}
+                      className="rounded p-1 text-ink-muted transition-smooth-fast hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-30"
                     >
-                      ↓
+                      <ChevronDown className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
@@ -392,7 +396,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
           <Button loading={saving} onClick={onSave}>
             Save
           </Button>
-        </div>
+        </Reveal>
 
         <div className="rounded-md border border-border">
           {resolved.sections

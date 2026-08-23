@@ -442,15 +442,15 @@ Search (name/email, **now 300ms-debounced, fixed in Phase 3** — was firing eve
 Stat strip (Orders/Total spent/First order/Last order, + Phone if set) → Order history list (status Badge, `pending` relabeled "awaiting payment" in the UI). **No pagination.** **Segment membership: NOT FOUND on this page** — Customer Segments only works in the opposite direction (browse a segment → see its members); there is no reverse lookup.
 
 ### 5c. Reviews (moderation queue)
-Status filter (Awaiting moderation/Approved/Hidden/All) → row-list (product + star rating as literal ★/☆ characters, buyer name + date, "verified purchase" Badge if applicable, body text) → **Approve**/**Hide** buttons, single-click, **no confirm step**, no toast — row updates/disappears on filter mismatch.
+Status filter (Awaiting moderation/Approved/Hidden/All) → row-list (product + star rating, buyer name + date, "verified purchase" Badge if applicable, body text) → **Approve**/**Hide** buttons, single-click, **Fixed (Phase 4): a success toast now confirms the action** (the shared `Toaster`/`toast()` system was already mounted globally in the root layout but had zero call sites anywhere in the product until this pass) — no confirm step still, judged proportionate to the blast radius (reversible either direction, unlike a destructive delete).
 
 Verified-purchase logic: order must be `confirmed`-or-beyond AND contain the reviewed product (Financial Truth Invariant). Moderating instantly recomputes the product's `averageRating`/`reviewCount`.
 
-**Media (photo/video) support: NOT FOUND.** `ProductReview` has no media columns at all (`id, storeId, productId, orderId?, buyerName, buyerEmail, rating, body, isVerifiedPurchase, status, createdAt`). This buyer-experience-batch capability does not exist in the backend.
+**Media (photo/video) support: NOT FOUND.** `ProductReview` has no media columns at all (`id, storeId, productId, orderId?, buyerName, buyerEmail, rating, body, isVerifiedPurchase, status, createdAt`). This buyer-experience-batch capability does not exist in the backend — out of Phase 4's UI-only scope, flagged for a founder decision on whether to build it.
 
-**Wishlist-save counts: NOT FOUND anywhere** — zero matches for "wishlist" in the entire codebase, no model, no endpoint, nothing seller-visible.
+**Wishlist-save counts: NOT FOUND anywhere** — zero matches for "wishlist" in the entire codebase, no model, no endpoint, nothing seller-visible. Same as above - a real feature, not a UI gap.
 
-- **Icons:** none anywhere in this trio (star rating uses literal Unicode, not the lucide `Star` used at nav level). **Modals:** none on any of the three pages. **Loading:** `PageSpinner`. **Error:** inline text/`Alert` depending on page.
+- **Icons:** **Fixed: star rating now the lucide `Star` icon** (filled/outline per rating, `aria-label`'d), matching the icon used at nav level — was literal Unicode ★/☆. **Modals:** none on any of the three pages. **Loading:** `PageSpinner`. **Error:** inline text/`Alert` depending on page.
 
 ---
 
@@ -463,11 +463,11 @@ Real endpoints, all Financial-Truth-gated (confirmed+ orders only, except return
 - `GET .../analytics/top-products?by=revenue|units&limit=1-100`
 - `GET .../analytics/sales-over-time?bucket=day|week|month&start&end` (30-day rolling default if omitted)
 - `GET .../analytics/overview` → `{repeatCustomerRate, returnRate, aov, bestDayOfWeek, bestHourOfDay}`
-- `GET .../analytics/return-rate-by-product` — **real, exists, has no frontend consumer today.**
+- `GET .../analytics/return-rate-by-product` — **Fixed (Phase 4):** now consumed, as a "Return rate by product" horizontal-bar-chart card (same visual language as Top Products, keeping the page's own "charts, not spreadsheets" FR-61.6 discipline rather than a raw table).
 
-**Layout:** 4-tile stat row (Repeat customers %, Return rate %, AOV, "Best time to sell" from a hardcoded day-name array) → Sales-over-time card (Day/Week/Month toggle, recharts LineChart) → Top products card (revenue/units toggle, horizontal BarChart). **No date-range picker in the UI** despite the backend supporting `start`/`end`. No raw data table anywhere — charts only.
+**Layout:** 4-tile stat row (Repeat customers %, Return rate %, AOV, "Best time to sell" from a hardcoded day-name array, **each now with a lucide icon**) → Sales-over-time card (Day/Week/Month toggle, recharts LineChart, **Fixed: From/To date inputs now wired to the backend's own `start`/`end` params, with a "Reset to last 30 days" link**) → Top products card (revenue/units toggle, horizontal BarChart) → Return rate by product card (new). Reveal entrance motion applied throughout.
 
-- **Icons:** none directly (charts via recharts). **Modal:** none. **Empty (implicit):** "No confirmed sales..." copy per chart.
+- **Icons:** stat tiles now iconed (lucide); charts still via recharts. **Modal:** none. **Empty (implicit):** "No confirmed sales..." copy per chart.
 
 ### 6b. Profit & Loss
 **File:** `pnl/page.tsx` · **Nav: not in the sidebar at all today** — real, working, reachable only by direct URL (`nav-items.ts` roadmap comment confirms it's slated to become an Analytics-hub tab).
@@ -476,9 +476,9 @@ Real endpoints: `GET .../pnl/orders/:orderId` (unused by this page — meant for
 
 **Profit formula (exact):** `revenue = totalAmount − taxAmount`; `netProfit = revenue − commission − cogs − courierCost − handlingCost (− adSpend for periods)`. `cogs = Σ(baseCost ?? 0) × qty`; `incomplete: true` the instant any item's variant has `baseCost === null` (never silently treated as 0).
 
-**Layout:** Period picker (From/To dates + "View" button — **not auto-refetched on date change**) → incomplete-cost warning Alert (exact copy: *"...net profit is understated until you add it on that product's variant."*) → Revenue/Net-profit stat pair → Breakdown line list → Ad-spend card (manual entry form + CSV upload with a **fixed 1500ms `setTimeout`** before refresh — a genuinely fragile pattern, flagged for redesign — + entry list with Manual/CSV source Badge).
+**Layout:** Period picker (From/To dates + "View" button — not auto-refetched on date change, left as-is) → incomplete-cost warning Alert (exact copy: *"...net profit is understated until you add it on that product's variant."*) → Revenue/Net-profit stat pair → Breakdown line list → Ad-spend card (manual entry form + CSV upload, **Fixed (Phase 4): the fragile fixed-1500ms `setTimeout` guess replaced with a real poll against the import job's own status** (`GET .../import-jobs/:jobId`, ~600ms interval, up to 20 attempts) + toast on completion/failure + entry list with Manual/CSV source Badge, **Fixed: real `EmptyState` for zero entries** (was silently rendering nothing) + Reveal entrance motion.
 
-**Inconsistencies flagged:** period-view date inputs have no explicit server-side malformed-date guard (unlike Analytics' `sales-over-time`, which does guard). No `EmptyState` component for zero ad-spend entries (silently renders nothing, unlike the rest of the product).
+**Inconsistencies flagged:** period-view date inputs still have no explicit server-side malformed-date guard (unlike Analytics' `sales-over-time`, which does guard) — left as-is, out of Phase 4's UI-only scope.
 
 - **Icons:** none. **Loading:** `PageSpinner` only on first load. **Modal:** none — CSV upload uses a hidden native file input.
 
@@ -486,30 +486,30 @@ Real endpoints: `GET .../pnl/orders/:orderId` (unused by this page — meant for
 
 ## 7. Marketing hub
 
-Locked nav: **Growth → Marketing**, one item, internal tabs over 6 real currently-separate routes. **No page in this hub imports lucide-react** — every button/action is text-only. **No plan-tier lock/upsell UI exists anywhere in this hub** — gated actions 403 with a raw message only.
+Locked nav: **Growth → Marketing**, one item, internal tabs over 6 real currently-separate routes. **Fixed (Phase 4):** every destructive/financial-state action across this hub now goes through a real confirm dialog — a new seller-dashboard `ConfirmDialogProvider`/`useConfirm()` (`components/dashboard/ConfirmDialogProvider.tsx`, mounted in `stores/[storeId]/layout.tsx`), the same pattern FR-8.16 built for the admin terminal but its own separate provider tree (admin's copy is mid-Phase-6-pending re-skin; this one is free to evolve with the dashboard's own design pass). **No plan-tier lock/upsell UI exists anywhere in this hub** — gated actions 403 with a raw message only, left as-is (a bigger, separate IA piece).
 
 ### 7.1 Tab: Campaigns
-`campaigns/page.tsx` · Module 34. Gating: not feature-gated, only *volume*-gated via `email_campaigns.monthly_send_limit` (**GO 799/mo, RUN 2,499/mo, RISE 10,000/mo, FLY 1,000,000,000 sentinel**) — **quota never displayed on this page**, only discoverable via a rejected-send error message.
+`campaigns/page.tsx` · Module 34. Gating: not feature-gated, only *volume*-gated via `email_campaigns.monthly_send_limit` (**GO 799/mo, RUN 2,499/mo, RISE 10,000/mo, FLY 1,000,000,000 sentinel**) — **Fixed (Phase 4):** new `GET .../campaigns/quota` read (`EmailCampaignsService.getQuota()`, the exact same computation `create()` itself enforces, factored out) now shown as a progress bar + "X remaining" up front, previously only discoverable via a rejected-send error message.
 
-Compose form: Segment (select), Send from (select, connected sender emails), Subject (≤200), Message (textarea, ≤20,000) → "Send campaign" (**no confirm step** despite being an irreversible send-to-many action). Campaign list: subject, segment/sender/date, sent/failed counts, status Badge. **Unsubscribe stats: NOT FOUND** — never aggregated/displayed anywhere, even though unsubscribed customers are excluded at send time.
+Compose form: Segment (select), Send from (select, connected sender emails), Subject (≤200), Message (textarea, ≤20,000) → "Send campaign" (still no confirm step - an irreversible send-to-many action, left as-is this pass; the quota bar above is the more actionable fix). Campaign list: subject, segment/sender/date, sent/failed counts, status Badge, Reveal entrance motion. **Unsubscribe stats: NOT FOUND** — still never aggregated/displayed anywhere (out of scope), even though unsubscribed customers are excluded at send time.
 
 ### 7.2 Tab: Customer Segments
 `customer-segments/page.tsx` · Module 33. **Create** is real-gated: `customer_segments.enabled`, off by default, **RISE+FLY**. Read (list/view/preview) is explicitly ungated.
 
-Filter-builder form: Name, Min/Max orders, Min/Max total spent, Last-order after/before, City, Country — all 8 criteria optional. **No live member-count preview while building** despite a real `POST .../preview` endpoint existing unused. Segment list: name, computed criteria summary, live member-count Badge, expand-to-view-members, **Delete with no confirm step.**
+Filter-builder form: Name, Min/Max orders, Min/Max total spent, Last-order after/before, City, Country — all 8 criteria optional. **Fixed (Phase 4): live member-count preview** while building (form converted to controlled state, 400ms-debounced call to the previously-unused `POST .../preview` endpoint, "N customers currently match" readout). Segment list: name, computed criteria summary, live member-count Badge, expand-to-view-members, **Fixed: Delete now confirm-gated** (danger tone, names the segment).
 
 ### 7.3 Tab: Gift Cards
 `gift-cards/page.tsx` · Module 32. **Seller-issue** is real-gated (`gift_cards.enabled`, off default, **RISE+FLY**); buyer-purchase path is ungated.
 
-Issue form: Amount (required, positive), Code (optional, auto-generated if blank), Note (optional). List: code, source, balance/initial-value, status Badge, "Confirm payment received" (pending_payment rows only, **no confirm dialog** despite being a financial-state change). **Redemption history: NOT FOUND in the UI** despite the backend already `include`-ing it on the detail fetch — no "view redemptions" action exists. Error UI is a plain `<p>`, inconsistent with the `Alert`-based pattern elsewhere in this hub.
+Issue form: Amount (required, positive), Code (optional, auto-generated if blank), Note (optional) — **Fixed: now the shared `Field`/`Input` kit** (was hand-rolled `<input>` elements). List: code, source, balance/initial-value, status Badge, "Confirm payment received" (pending_payment rows only, **Fixed: now confirm-gated**, names the code, explains the activation effect). **Fixed: Redemption history** — "View redemptions" expand-in-place action (same pattern as Customer Segments' member view) now surfaces the `redemptions` array the detail fetch already included. **Fixed: error UI now `Alert`-based**, consistent with the rest of this hub (was a plain `<p>`).
 
 ### 7.4 Tab: Discounts
-`discounts/page.tsx` (lives in the `store-settings` backend module, not a dedicated `discounts` module). **Fully ungated across every plan tier** — confirm this is intentional.
+`discounts/page.tsx` (lives in the `store-settings` backend module, not a dedicated `discounts` module). **Fully ungated across every plan tier** — confirm this is intentional (unchanged, flagged for founder confirmation).
 
-Create form: Code (uppercased client-side), Type (%/fixed), Value (positive; % capped at 100 server-side), Usage limit (optional), Expires (optional). Code/type immutable after creation by design. List: code, summary, usage, expiry, active/inactive toggle, **Delete with no confirm step.**
+Create form: Code (uppercased client-side), Type (%/fixed), Value (positive; % capped at 100 server-side), Usage limit (optional), Expires (optional). Code/type immutable after creation by design. List: code, summary, usage, expiry, active/inactive toggle, **Fixed: Delete now confirm-gated** (danger tone, names the code), Reveal entrance motion.
 
 ### 7.5 Tab: WhatsApp recovery
-`whatsapp/page.tsx`. Ungated. Abandoned-cart list → "Send recovery message" (disabled if no WhatsApp number captured) opens a pre-filled `wa.me` deep link in a new tab — **nothing is sent automatically by the platform**, the seller taps send themselves. Template (`whatsapp.cart_recovery_template`) has **no editing UI anywhere.** (Order-confirmation/shipping-update WhatsApp links live on Order detail instead, per this page's own doc comment — not independently re-verified in this pass, flagged for confirmation.)
+`whatsapp/page.tsx`. Ungated. Abandoned-cart list → "Send recovery message" (disabled if no WhatsApp number captured) opens a pre-filled `wa.me` deep link in a new tab — **nothing is sent automatically by the platform**, the seller taps send themselves. **Fixed: error UI now `Alert`-based**, Reveal entrance motion. Template (`whatsapp.cart_recovery_template`) editing UI remains **NOT FOUND** — would need a new backend write endpoint, a founder-scoped decision left for a later pass, not built here. (Order-confirmation/shipping-update WhatsApp links live on Order detail instead, per this page's own doc comment — not independently re-verified in this pass, flagged for confirmation.)
 
 ### 7.6 Tab: FB/IG Shop feed + WhatsApp product-share link — confirmed zero frontend
 Two real, distinct, differently-authenticated backend capabilities, **neither has any page anywhere:**
@@ -532,7 +532,7 @@ Locked nav: **Growth → Design Studio**, tabs: Customizer, Navigation. "Coded m
 - Theme selection: `marketplace`-tier themes need a purchased `TemplateEntitlement` (never plan-gated); `premium`-tier themes need `theme.premium_tier_enabled`, **RISE+FLY**.
 - Branding removal ("Managed by UZEYN" mark): `branding.powered_by_removable`, real only on individual **FLY** (or any team tier). A downgrade off the qualifying tier always reverts the mark to visible regardless of the seller's stored preference.
 
-**Layout (two-column, controls | live preview using the *actual production* storefront section components):** Theme select → Premium-templates card (conditionally rendered only if a showcase URL is configured — **does not render at all in v1.0**) → Storefront branding checkbox → Colors (3 native color swatches: primary/background/text) → Sections (checkbox + ↑/↓ reorder, **fixed 5-item bounded set**: hero/featured_products/about/newsletter/faq — no add/remove beyond this) → Announcement bar → WhatsApp button → FAQ (repeating Q&A rows) → Save.
+**Layout (two-column, controls | live preview using the *actual production* storefront section components):** Theme select → Premium-templates card (conditionally rendered only if a showcase URL is configured — **does not render at all in v1.0**) → Storefront branding checkbox → Colors (3 native color swatches: primary/background/text) → Sections (checkbox + reorder, **Fixed (Phase 4): lucide `ChevronUp`/`ChevronDown` icons** with `aria-label`s, was ↑/↓ text glyphs — **fixed 5-item bounded set**: hero/featured_products/about/newsletter/faq — no add/remove beyond this) → Announcement bar → WhatsApp button → FAQ (repeating Q&A rows) → Save. Controls column now has a one-time Reveal entrance on load (re-renders from typing don't re-trigger it).
 
 **4 built-in themes + "Start from blank," confirmed exact defaults:**
 
@@ -548,10 +548,10 @@ Locked nav: **Growth → Design Studio**, tabs: Customizer, Navigation. "Coded m
 
 **Store branding/logo upload — real gap:** `ThemeSettings.logoUrl`/`.bannerUrl` exist in the data model and are read at render time, but **the Customizer has no upload control for either field**, and no dedicated logo-upload backend endpoint was confirmed. (Note: §16 Settings' "Store branding" card *does* have a real logo upload/remove flow via `POST/DELETE /stores/:id/logo` — separate from this `ThemeSettings.logoUrl` field; worth reconciling which is canonical.)
 
-- **Empty state:** not handled distinctly. **Loading:** `PageSpinner`. **Icons:** none (↑/↓ text glyphs, not lucide). **Modal:** none.
+- **Empty state:** not handled distinctly. **Loading:** `PageSpinner`. **Icons:** section reorder now lucide (see above). **Modal:** none.
 
 ### 8.2 Tab: Navigation
-`navigation/page.tsx`. Header/Footer toggle → repeating item editors (Link/Text block/Social links — the last a fixed 4-platform set: facebook/instagram/tiktok/twitter) → Add item / Save (whole-array replace, no per-item endpoint). **No loading state, no empty-state copy** — a genuine inconsistency vs. the rest of the product. Plan-gating not independently confirmed in this pass — flagged for a follow-up read before finalizing.
+`navigation/page.tsx`. Header/Footer toggle → repeating item editors (Link/Text block/Social links — the last a fixed 4-platform set: facebook/instagram/tiktok/twitter) → Add item / Save (whole-array replace, no per-item endpoint). **Fixed (Phase 4): real loading state** (`items` starts `null`, `PageSpinner` while fetching, re-triggered on location switch) **and real empty-state copy** (`EmptyState`, "No header/footer items yet") — was previously indistinguishable from "loaded, genuinely empty." Item list now has Reveal entrance motion. Plan-gating not independently confirmed in this pass — flagged for a follow-up read before finalizing.
 
 ---
 

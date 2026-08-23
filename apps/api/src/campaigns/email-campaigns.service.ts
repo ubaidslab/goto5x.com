@@ -68,15 +68,7 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
     if (!sender || sender.sellerId !== sellerId) throw new NotFoundException("Sender email not found.");
     if (sender.status !== "active") throw new BadRequestException("That sender email is not active.");
 
-    const planContext = await this.subscriptions.getPlanContext(sellerId);
-    const monthlyLimit = await this.settings.resolve<number>("email_campaigns.monthly_send_limit", planContext);
-    const startOfMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-
-    const usedThisMonth = await this.tenantPrisma.run(sellerId, async (tx) => {
-      const agg = await tx.emailCampaign.aggregate({ where: { sentAt: { gte: startOfMonth } }, _sum: { sentCount: true } });
-      return agg._sum.sentCount ?? 0;
-    });
-    const remaining = monthlyLimit - usedThisMonth;
+    const { monthlyLimit, remaining } = await this.getQuota(sellerId, storeId);
     if (eligibleCount > remaining) {
       throw new BadRequestException(
         `This campaign would send to ${eligibleCount} customers, exceeding your plan's remaining monthly email campaign quota (${remaining} of ${monthlyLimit} left this month). No emails were sent.`,
@@ -99,6 +91,29 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
 
     await this.queue!.add(EMAIL_CAMPAIGNS_JOB_NAME, { campaignId: created.id });
     return created;
+  }
+
+  /**
+   * Phase 4 UI/UX audit fix - previously computed only internally at
+   * send time inside create(), so the quota was discoverable exclusively
+   * via a rejected-send error message. Same computation (seller-plan-wide
+   * across every store the seller owns, matching create()'s own
+   * unfiltered-by-store aggregate - the quota is per subscription, not
+   * per store), now also a standalone read the Campaigns page can show
+   * up front. `storeId` is accepted only for route-shape consistency with
+   * every other store-scoped campaigns endpoint; the quota itself doesn't
+   * vary by which of the seller's stores is asking.
+   */
+  async getQuota(sellerId: string, _storeId: string) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const monthlyLimit = await this.settings.resolve<number>("email_campaigns.monthly_send_limit", planContext);
+    const startOfMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+
+    const usedThisMonth = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const agg = await tx.emailCampaign.aggregate({ where: { sentAt: { gte: startOfMonth } }, _sum: { sentCount: true } });
+      return agg._sum.sentCount ?? 0;
+    });
+    return { monthlyLimit, usedThisMonth, remaining: monthlyLimit - usedThisMonth };
   }
 
   async list(sellerId: string, storeId: string) {

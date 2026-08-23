@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -9,7 +10,45 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
+
+interface FilterState {
+  name: string;
+  minOrders: string;
+  maxOrders: string;
+  minTotalSpent: string;
+  maxTotalSpent: string;
+  lastOrderAfter: string;
+  lastOrderBefore: string;
+  locationCity: string;
+  locationCountry: string;
+}
+
+const EMPTY_FILTERS: FilterState = {
+  name: "",
+  minOrders: "",
+  maxOrders: "",
+  minTotalSpent: "",
+  maxTotalSpent: "",
+  lastOrderAfter: "",
+  lastOrderBefore: "",
+  locationCity: "",
+  locationCountry: "",
+};
+
+function toPreviewPayload(filters: FilterState) {
+  return {
+    minOrders: filters.minOrders ? Number(filters.minOrders) : undefined,
+    maxOrders: filters.maxOrders ? Number(filters.maxOrders) : undefined,
+    minTotalSpent: filters.minTotalSpent ? Number(filters.minTotalSpent) : undefined,
+    maxTotalSpent: filters.maxTotalSpent ? Number(filters.maxTotalSpent) : undefined,
+    lastOrderAfter: filters.lastOrderAfter ? new Date(filters.lastOrderAfter).toISOString() : undefined,
+    lastOrderBefore: filters.lastOrderBefore ? new Date(filters.lastOrderBefore).toISOString() : undefined,
+    locationCity: filters.locationCity || undefined,
+    locationCountry: filters.locationCountry || undefined,
+  };
+}
 
 interface CustomerSegment {
   id: string;
@@ -47,11 +86,15 @@ function criteriaSummary(segment: CustomerSegment): string {
 }
 
 export default function CustomerSegmentsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [segments, setSegments] = useState<CustomerSegment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [members, setMembers] = useState<SegmentMember[] | null>(null);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   function load() {
     api
@@ -62,34 +105,40 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
 
   useEffect(load, [params.storeId]);
 
+  // Live member-count preview (FR-50.4's own preview endpoint, previously
+  // built but never called from this form) - debounced so typing a number
+  // doesn't fire a request per keystroke.
+  useEffect(() => {
+    const hasAnyFilter = Object.entries(filters).some(([key, value]) => key !== "name" && value !== "");
+    if (!hasAnyFilter) {
+      setPreviewCount(null);
+      return;
+    }
+    setPreviewing(true);
+    const timeout = setTimeout(() => {
+      api
+        .post<{ count: number }>(`/stores/${params.storeId}/customer-segments/preview`, toPreviewPayload(filters))
+        .then((res) => setPreviewCount(res.count))
+        .catch(() => setPreviewCount(null))
+        .finally(() => setPreviewing(false));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [params.storeId, filters]);
+
   if (!segments) return <PageSpinner />;
+
+  function updateFilter(key: keyof FilterState, value: string) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setCreating(true);
-    const form = new FormData(e.currentTarget);
-    const minOrders = form.get("minOrders") as string;
-    const maxOrders = form.get("maxOrders") as string;
-    const minTotalSpent = form.get("minTotalSpent") as string;
-    const maxTotalSpent = form.get("maxTotalSpent") as string;
-    const lastOrderAfter = form.get("lastOrderAfter") as string;
-    const lastOrderBefore = form.get("lastOrderBefore") as string;
-    const locationCity = form.get("locationCity") as string;
-    const locationCountry = form.get("locationCountry") as string;
     try {
-      await api.post(`/stores/${params.storeId}/customer-segments`, {
-        name: form.get("name"),
-        minOrders: minOrders ? Number(minOrders) : undefined,
-        maxOrders: maxOrders ? Number(maxOrders) : undefined,
-        minTotalSpent: minTotalSpent ? Number(minTotalSpent) : undefined,
-        maxTotalSpent: maxTotalSpent ? Number(maxTotalSpent) : undefined,
-        lastOrderAfter: lastOrderAfter ? new Date(lastOrderAfter).toISOString() : undefined,
-        lastOrderBefore: lastOrderBefore ? new Date(lastOrderBefore).toISOString() : undefined,
-        locationCity: locationCity || undefined,
-        locationCountry: locationCountry || undefined,
-      });
-      (e.target as HTMLFormElement).reset();
+      await api.post(`/stores/${params.storeId}/customer-segments`, { name: filters.name, ...toPreviewPayload(filters) });
+      setFilters(EMPTY_FILTERS);
+      setPreviewCount(null);
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create that segment.");
@@ -98,7 +147,14 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id: string, name: string) {
+    const ok = await confirm({
+      title: `Delete "${name}"?`,
+      description: "This segment will no longer be available for campaigns. This can't be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/stores/${params.storeId}/customer-segments/${id}`);
@@ -140,40 +196,51 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
           <CardBody>
             <form onSubmit={handleCreate} className="space-y-4">
               <Field label="Name">
-                <Input name="name" maxLength={80} required placeholder="e.g. Repeat buyers" />
+                <Input value={filters.name} onChange={(e) => updateFilter("name", e.target.value)} maxLength={80} required placeholder="e.g. Repeat buyers" />
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Min orders" hint="Leave blank for no minimum.">
-                  <Input name="minOrders" type="number" min="0" />
+                  <Input value={filters.minOrders} onChange={(e) => updateFilter("minOrders", e.target.value)} type="number" min="0" />
                 </Field>
                 <Field label="Max orders" hint="Leave blank for no maximum.">
-                  <Input name="maxOrders" type="number" min="0" />
+                  <Input value={filters.maxOrders} onChange={(e) => updateFilter("maxOrders", e.target.value)} type="number" min="0" />
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Min total spent (Rs)">
-                  <Input name="minTotalSpent" type="number" step="0.01" min="0" />
+                  <Input value={filters.minTotalSpent} onChange={(e) => updateFilter("minTotalSpent", e.target.value)} type="number" step="0.01" min="0" />
                 </Field>
                 <Field label="Max total spent (Rs)">
-                  <Input name="maxTotalSpent" type="number" step="0.01" min="0" />
+                  <Input value={filters.maxTotalSpent} onChange={(e) => updateFilter("maxTotalSpent", e.target.value)} type="number" step="0.01" min="0" />
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Last order after">
-                  <Input name="lastOrderAfter" type="date" />
+                  <Input value={filters.lastOrderAfter} onChange={(e) => updateFilter("lastOrderAfter", e.target.value)} type="date" />
                 </Field>
                 <Field label="Last order before">
-                  <Input name="lastOrderBefore" type="date" />
+                  <Input value={filters.lastOrderBefore} onChange={(e) => updateFilter("lastOrderBefore", e.target.value)} type="date" />
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="City" hint="Matches each customer's most recent order.">
-                  <Input name="locationCity" maxLength={120} placeholder="e.g. Lahore" />
+                  <Input value={filters.locationCity} onChange={(e) => updateFilter("locationCity", e.target.value)} maxLength={120} placeholder="e.g. Lahore" />
                 </Field>
                 <Field label="Country">
-                  <Input name="locationCountry" maxLength={120} placeholder="e.g. PK" />
+                  <Input value={filters.locationCountry} onChange={(e) => updateFilter("locationCountry", e.target.value)} maxLength={120} placeholder="e.g. PK" />
                 </Field>
               </div>
+
+              <div className="rounded-md border border-border bg-canvas px-3 py-2 text-sm">
+                {previewCount === null ? (
+                  <span className="text-ink-muted">{previewing ? "Counting matching customers..." : "Add a filter above to preview how many customers would match."}</span>
+                ) : (
+                  <span className="text-ink">
+                    <span className="font-semibold">{previewCount}</span> customer{previewCount === 1 ? "" : "s"} currently match{previewing && " (updating...)"}
+                  </span>
+                )}
+              </div>
+
               <Button type="submit" loading={creating}>
                 Create segment
               </Button>
@@ -190,6 +257,7 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
           </Card>
         ) : (
           <Card className="divide-y divide-border overflow-hidden">
+            <Reveal stagger={0.04}>
             {segments.map((segment) => (
               <div key={segment.id} className="px-6 py-4">
                 <div className="flex items-center justify-between gap-4">
@@ -202,7 +270,7 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
                     <Button variant="ghost" size="sm" onClick={() => toggleMembers(segment.id)}>
                       {expandedId === segment.id ? "Hide" : "View"} customers
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => remove(segment.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => remove(segment.id, segment.name)}>
                       Delete
                     </Button>
                   </div>
@@ -230,6 +298,7 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
                 )}
               </div>
             ))}
+            </Reveal>
           </Card>
         )}
       </div>

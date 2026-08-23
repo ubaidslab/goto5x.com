@@ -237,6 +237,32 @@ describe("Email Campaigns (e2e) - SRS §5.51, §14.51", () => {
     expect(unsubAgain.status).toBe(201);
   });
 
+  it("Phase 4 UI/UX audit fix: GET .../campaigns/quota reports the same monthlyLimit/usedThisMonth/remaining create() itself enforces", async () => {
+    const { token, storeId, hostname, sellerId } = await signupLoginAndCreateStore("camp-quota@example.com", "camp-quota-store");
+    const { productId, variantId } = await createSelfProduct(token, storeId, 500);
+    await checkoutAndPay(token, storeId, hostname, productId, variantId, "quota-preview-buyer1@example.com");
+    await checkoutAndPay(token, storeId, hostname, productId, variantId, "quota-preview-buyer2@example.com");
+    await app.get(SettingsService).setValue("email_campaigns.monthly_send_limit", "seller", sellerId, 5, ADMIN_ID);
+
+    const before = await request(app.getHttpServer()).get(`/stores/${storeId}/campaigns/quota`).set("Authorization", `Bearer ${token}`);
+    expect(before.status).toBe(200);
+    expect(before.body).toEqual({ monthlyLimit: 5, usedThisMonth: 0, remaining: 5 });
+
+    const senderEmailId = await connectSender(token, "campaigns-quota@seller-example.com");
+    const segment = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/customer-segments`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "All buyers", minOrders: 1 });
+    const created = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/campaigns`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ segmentId: segment.body.id, senderEmailId, subject: "Quota check", body: "..." });
+    await app.get(EmailCampaignsService).processCampaign(created.body.id);
+
+    const after = await request(app.getHttpServer()).get(`/stores/${storeId}/campaigns/quota`).set("Authorization", `Bearer ${token}`);
+    expect(after.body).toEqual({ monthlyLimit: 5, usedThisMonth: 2, remaining: 3 });
+  });
+
   it("FR-51.5 tenant isolation: RLS denies cross-tenant access to another store's campaigns", async () => {
     const a = await signupLoginAndCreateStore("camp-tenant-a@example.com", "camp-tenant-a-store");
     const b = await signupLoginAndCreateStore("camp-tenant-b@example.com", "camp-tenant-b-store");

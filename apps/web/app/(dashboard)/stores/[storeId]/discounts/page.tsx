@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
+import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -23,6 +25,7 @@ interface DiscountCode {
 }
 
 export default function DiscountsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [codes, setCodes] = useState<DiscountCode[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -74,7 +77,14 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id: string, code: string) {
+    const ok = await confirm({
+      title: `Delete "${code}"?`,
+      description: "Buyers will no longer be able to enter this code at checkout. This can't be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/stores/${params.storeId}/discount-codes/${id}`);
@@ -130,6 +140,7 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
           </Card>
         ) : (
           <Card className="divide-y divide-border overflow-hidden">
+            <Reveal stagger={0.04}>
             {codes.map((discountCode) => (
               <div key={discountCode.id} className="flex items-center justify-between gap-4 px-6 py-4">
                 <div className="min-w-0">
@@ -146,12 +157,13 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
                   <Button variant="ghost" size="sm" onClick={() => toggleActive(discountCode)}>
                     {discountCode.isActive ? "Deactivate" : "Activate"}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => remove(discountCode.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => remove(discountCode.id, discountCode.code)}>
                     Delete
                   </Button>
                 </div>
               </div>
             ))}
+            </Reveal>
           </Card>
         )}
       </div>

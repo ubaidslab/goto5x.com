@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ConfirmDialogProvider } from "@/components/dashboard/ConfirmDialogProvider";
 import { PlatformMessages } from "@/components/dashboard/PlatformMessages";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { SupportModeBanner } from "@/components/dashboard/SupportModeBanner";
@@ -68,28 +69,30 @@ export default function StoreDashboardLayout({
   }, []);
 
   return (
-    <div className="flex h-full flex-col">
-      <SupportModeBanner />
-      {store?.status === "orders_paused" && (
-        <div className="px-6 pt-3">
-          <Alert tone="warning">
-            This store isn&apos;t accepting new orders right now - your plan fee is overdue.{" "}
-            <a href={`/stores/${params.storeId}/billing`} className="font-semibold underline">
-              Pay your plan fee
-            </a>{" "}
-            to resume as soon as it&apos;s verified.
-          </Alert>
-        </div>
-      )}
-      <div className="app-shell-surface flex flex-1 flex-col md:flex-row" data-dashboard-theme={dashboardTheme}>
-        <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} planName={planName} />
-        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8">
-          <div className="mx-auto max-w-5xl">
-            <PlatformMessages />
-            {children}
+    <ConfirmDialogProvider>
+      <div className="flex h-full flex-col">
+        <SupportModeBanner />
+        {store?.status === "orders_paused" && (
+          <div className="px-6 pt-3">
+            <Alert tone="warning">
+              This store isn&apos;t accepting new orders right now - your plan fee is overdue.{" "}
+              <a href={`/stores/${params.storeId}/billing`} className="font-semibold underline">
+                Pay your plan fee
+              </a>{" "}
+              to resume as soon as it&apos;s verified.
+            </Alert>
           </div>
-        </main>
+        )}
+        <div className="app-shell-surface flex flex-1 flex-col md:flex-row" data-dashboard-theme={dashboardTheme}>
+          <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} planName={planName} />
+          <main className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8">
+            <div className="mx-auto max-w-5xl">
+              <PlatformMessages />
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </ConfirmDialogProvider>
   );
 }

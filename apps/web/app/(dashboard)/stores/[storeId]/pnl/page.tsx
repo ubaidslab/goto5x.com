@@ -5,10 +5,18 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
+import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
+
+interface ImportJob {
+  id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+}
 
 interface PeriodProfit {
   periodStart: string;
@@ -40,6 +48,22 @@ function todayIso(): string {
 function firstOfMonthIso(): string {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Replaces a fixed setTimeout(1500) guess at "the background queue is
+ * probably done by now" with a real poll against the job's own status -
+ * the queue can legitimately take longer under load, and a fixed delay
+ * either refreshes too early (stale data) or wastes time waiting when the
+ * job already finished fast.
+ */
+async function pollImportJob(storeId: string, jobId: string): Promise<"completed" | "failed"> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const job = await api.get<ImportJob>(`/stores/${storeId}/import-jobs/${jobId}`);
+    if (job.status === "completed" || job.status === "failed") return job.status;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  }
+  return "failed";
 }
 
 /**
@@ -119,13 +143,15 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
     try {
       const formData = new FormData();
       formData.append("file", file);
-      await api.upload(`/stores/${params.storeId}/ad-spend-import-jobs`, formData);
-      // Import processing happens in the background (Module 15's queue) -
-      // give it a moment before refreshing the list.
-      setTimeout(() => {
-        loadAdSpend();
-        loadPeriod();
-      }, 1500);
+      const job = await api.upload<ImportJob>(`/stores/${params.storeId}/ad-spend-import-jobs`, formData);
+      const finalStatus = await pollImportJob(params.storeId, job.id);
+      loadAdSpend();
+      loadPeriod();
+      if (finalStatus === "failed") {
+        toast({ tone: "danger", title: "Ad-spend import failed", description: "Check the CSV's PeriodStart/PeriodEnd/Amount columns and try again." });
+      } else {
+        toast({ tone: "success", title: "Ad-spend CSV imported" });
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't upload that CSV.");
     } finally {
@@ -170,7 +196,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
               </Alert>
             )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-2">
               <Card>
                 <CardBody>
                   <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Revenue</p>
@@ -187,8 +213,9 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                   <p className="mt-1 text-xs text-ink-muted">What Shopify doesn't show you</p>
                 </CardBody>
               </Card>
-            </div>
+            </Reveal>
 
+            <Reveal>
             <Card>
               <CardHeader title="Breakdown" />
               <CardBody className="space-y-1.5 text-sm">
@@ -222,6 +249,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                 </div>
               </CardBody>
             </Card>
+            </Reveal>
           </>
         ) : null}
 
@@ -253,8 +281,12 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
               </Button>
             </div>
 
-            {adSpend.length > 0 && (
-              <div className="mt-5 divide-y divide-border border-t border-border">
+            {adSpend.length === 0 ? (
+              <div className="mt-5 border-t border-border pt-5">
+                <EmptyState title="No ad-spend entries yet" description="Add one above, or upload a CSV, to see it counted against net profit." />
+              </div>
+            ) : (
+              <Reveal stagger={0.04} className="mt-5 divide-y divide-border border-t border-border">
                 {adSpend.map((entry) => (
                   <div key={entry.id} className="flex items-center justify-between gap-4 py-3 text-sm">
                     <div>
@@ -269,7 +301,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                     </div>
                   </div>
                 ))}
-              </div>
+              </Reveal>
             )}
           </CardBody>
         </Card>

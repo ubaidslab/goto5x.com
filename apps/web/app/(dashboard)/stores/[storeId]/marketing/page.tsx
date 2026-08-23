@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface ApiToken {
@@ -22,6 +25,7 @@ interface ApiToken {
  * hosted under the store URL, same convention as Plans & Billing.
  */
 export default function MarketingPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [handingOff, setHandingOff] = useState(false);
@@ -56,7 +60,14 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
     }
   }
 
-  async function revoke(id: string) {
+  async function revoke(id: string, displayName: string) {
+    const ok = await confirm({
+      title: "Revoke this connection?",
+      description: `${displayName} will immediately lose access to your store's catalog. This can't be undone - reconnecting issues a new token.`,
+      confirmLabel: "Revoke",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/sellers/me/api-tokens/${id}`);
@@ -107,21 +118,21 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
               </Alert>
             )}
             {active.length === 0 ? (
-              <p className="text-sm text-ink-muted">No apps connected yet.</p>
+              <EmptyState title="No apps connected yet" description="Connect below to start posting your catalog to social media." />
             ) : (
-              <ul className="space-y-2">
+              <Reveal stagger={0.05} className="space-y-2">
                 {active.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+                  <div key={t.id} className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
                     <div>
                       <p className="text-sm text-ink">{t.client.displayName}</p>
                       <p className="text-xs text-ink-muted">Connected {new Date(t.createdAt).toLocaleString()}</p>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => revoke(t.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => revoke(t.id, t.client.displayName)}>
                       Revoke
                     </Button>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </Reveal>
             )}
             <div className="mt-3">
               <Button variant="secondary" size="sm" onClick={connect} loading={connecting}>

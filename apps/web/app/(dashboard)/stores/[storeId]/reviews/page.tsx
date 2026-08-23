@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Star } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -9,7 +10,18 @@ import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
+import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
+
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5 align-text-bottom" aria-label={`${rating} out of 5 stars`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <Star key={i} className={`h-3.5 w-3.5 ${i < rating ? "fill-accent text-accent" : "text-border-strong"}`} />
+      ))}
+    </span>
+  );
+}
 
 type ReviewStatus = "pending" | "approved" | "hidden";
 
@@ -45,6 +57,7 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
     setBusyId(reviewId);
     try {
       await api.patch(`/stores/${params.storeId}/reviews/${reviewId}`, { status: next });
+      toast({ tone: "success", title: next === "approved" ? "Review approved" : "Review hidden" });
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't update that review.");
@@ -86,9 +99,8 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
             <div key={review.id} className="px-6 py-4">
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {review.product.title} · {"★".repeat(review.rating)}
-                    {"☆".repeat(5 - review.rating)}
+                  <p className="flex items-center gap-1.5 truncate text-sm font-medium text-ink">
+                    <span className="truncate">{review.product.title}</span> · <StarRating rating={review.rating} />
                   </p>
                   <p className="mt-0.5 text-xs text-ink-muted">
                     {review.buyerName} · {new Date(review.createdAt).toLocaleDateString()}

@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { NavigationItem } from "@/lib/storefront-api";
+import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type Location = "header" | "footer";
@@ -21,12 +24,13 @@ const EMPTY_ITEM: NavigationItem = { type: "link", label: "", targetType: "exter
  */
 export default function NavigationEditorPage({ params }: { params: { storeId: string } }) {
   const [location, setLocation] = useState<Location>("header");
-  const [items, setItems] = useState<NavigationItem[]>([]);
+  const [items, setItems] = useState<NavigationItem[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
+    setItems(null);
     api
       .get<{ items?: NavigationItem[] }>(`/stores/${params.storeId}/navigation/${location}`)
       .then((menu) => setItems(menu.items ?? []))
@@ -34,17 +38,17 @@ export default function NavigationEditorPage({ params }: { params: { storeId: st
   }, [params.storeId, location]);
 
   function updateItem(index: number, patch: Partial<NavigationItem>) {
-    const next = items.slice();
+    const next = (items ?? []).slice();
     next[index] = { ...next[index], ...patch };
     setItems(next);
   }
 
   function addItem() {
-    setItems([...items, { ...EMPTY_ITEM }]);
+    setItems([...(items ?? []), { ...EMPTY_ITEM }]);
   }
 
   function removeItem(index: number) {
-    setItems(items.filter((_, i) => i !== index));
+    setItems((items ?? []).filter((_, i) => i !== index));
   }
 
   async function onSave() {
@@ -52,7 +56,7 @@ export default function NavigationEditorPage({ params }: { params: { storeId: st
     setSaved(false);
     setSaving(true);
     try {
-      await api.put(`/stores/${params.storeId}/navigation/${location}`, { items });
+      await api.put(`/stores/${params.storeId}/navigation/${location}`, { items: items ?? [] });
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save the navigation menu.");
@@ -80,7 +84,14 @@ export default function NavigationEditorPage({ params }: { params: { storeId: st
           </label>
         </div>
 
-        <div className="space-y-3">
+        {items === null ? (
+          <PageSpinner />
+        ) : items.length === 0 ? (
+          <Card>
+            <EmptyState title={`No ${location} items yet`} description="Add one below to start building this menu." />
+          </Card>
+        ) : (
+        <Reveal stagger={0.05} className="space-y-3">
           {items.map((item, index) => (
             <Card key={index}>
               <CardBody className="space-y-3">
@@ -152,7 +163,8 @@ export default function NavigationEditorPage({ params }: { params: { storeId: st
               </CardBody>
             </Card>
           ))}
-        </div>
+        </Reveal>
+        )}
 
         <div className="flex items-center gap-3">
           <Button variant="secondary" onClick={addItem}>

@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
+import { Reveal } from "@/components/motion/Reveal";
+import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
@@ -26,6 +29,13 @@ interface GiftCard {
   createdAt: string;
 }
 
+interface GiftCardRedemption {
+  id: string;
+  orderId: string;
+  amount: string;
+  createdAt: string;
+}
+
 const statusTone: Record<GiftCardStatus, "neutral" | "success" | "warning" | "danger"> = {
   pending_payment: "warning",
   active: "success",
@@ -35,6 +45,7 @@ const statusTone: Record<GiftCardStatus, "neutral" | "success" | "warning" | "da
 };
 
 export default function GiftCardsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [cards, setCards] = useState<GiftCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
@@ -42,6 +53,8 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [redemptions, setRedemptions] = useState<GiftCardRedemption[] | null>(null);
 
   function load() {
     api
@@ -51,6 +64,22 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
   }
 
   useEffect(load, [params.storeId]);
+
+  async function toggleRedemptions(id: string) {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setRedemptions(null);
+      return;
+    }
+    setExpandedId(id);
+    setRedemptions(null);
+    try {
+      const detail = await api.get<{ redemptions: GiftCardRedemption[] }>(`/stores/${params.storeId}/gift-cards/${id}`);
+      setRedemptions(detail.redemptions);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't load redemption history.");
+    }
+  }
 
   async function issue() {
     setError(null);
@@ -77,7 +106,13 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
     }
   }
 
-  async function confirmPaid(giftCardId: string) {
+  async function confirmPaid(giftCardId: string, cardCode: string) {
+    const ok = await confirm({
+      title: `Confirm payment received for "${cardCode}"?`,
+      description: "This activates the gift card immediately, making its full balance redeemable at checkout. Only confirm once you've actually received the payment.",
+      confirmLabel: "Confirm payment received",
+    });
+    if (!ok) return;
     setError(null);
     setConfirmingId(giftCardId);
     try {
@@ -97,37 +132,19 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
         description="Store gift cards - purchased by buyers or issued directly by you (e.g. goodwill credit) - redeemable at checkout."
       />
 
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <Card className="mb-6 p-6">
         <p className="mb-3 text-sm font-medium text-ink">Issue a gift card</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Amount">
-            <input
-              type="number"
-              min={0}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+            <Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Field label="Code (optional)">
-            <input
-              type="text"
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Auto-generated if left blank"
-            />
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Auto-generated if left blank" />
           </Field>
           <Field label="Note (optional)">
-            <input
-              type="text"
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Goodwill credit"
-            />
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Goodwill credit" />
           </Field>
         </div>
         <Button className="mt-3" loading={submitting} onClick={issue}>
@@ -143,29 +160,56 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
         </Card>
       ) : (
         <Card className="divide-y divide-border overflow-hidden">
+          <Reveal stagger={0.04}>
           {cards.map((card) => (
-            <div key={card.id} className="flex items-center justify-between gap-4 px-6 py-4">
-              <div className="min-w-0">
-                <p className="font-mono text-sm font-medium text-ink">{card.code}</p>
-                <p className="mt-0.5 text-xs text-ink-muted">
-                  {card.source === "buyer_purchase" ? `Purchased by ${card.purchaserEmail ?? "unknown"}` : card.issuedNote || "Seller-issued"}
-                  {" · "}
-                  {new Date(card.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-ink">
-                  {card.currency} {card.remainingBalance} / {card.initialValue}
-                </span>
-                <Badge tone={statusTone[card.status]}>{card.status.replace("_", " ")}</Badge>
-                {card.status === "pending_payment" && (
-                  <Button size="sm" loading={confirmingId === card.id} onClick={() => confirmPaid(card.id)}>
-                    Confirm payment received
+            <div key={card.id} className="px-6 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-mono text-sm font-medium text-ink">{card.code}</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    {card.source === "buyer_purchase" ? `Purchased by ${card.purchaserEmail ?? "unknown"}` : card.issuedNote || "Seller-issued"}
+                    {" · "}
+                    {new Date(card.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-ink">
+                    {card.currency} {card.remainingBalance} / {card.initialValue}
+                  </span>
+                  <Badge tone={statusTone[card.status]}>{card.status.replace("_", " ")}</Badge>
+                  <Button variant="ghost" size="sm" onClick={() => toggleRedemptions(card.id)}>
+                    {expandedId === card.id ? "Hide" : "View"} redemptions
                   </Button>
-                )}
+                  {card.status === "pending_payment" && (
+                    <Button size="sm" loading={confirmingId === card.id} onClick={() => confirmPaid(card.id, card.code)}>
+                      Confirm payment received
+                    </Button>
+                  )}
+                </div>
               </div>
+              {expandedId === card.id && (
+                <div className="mt-3 rounded-md border border-border bg-canvas p-3">
+                  {redemptions === null ? (
+                    <p className="text-xs text-ink-muted">Loading...</p>
+                  ) : redemptions.length === 0 ? (
+                    <p className="text-xs text-ink-muted">Never redeemed against an order yet.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {redemptions.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between text-xs text-ink">
+                          <span>Order {r.orderId.slice(0, 8)}</span>
+                          <span className="text-ink-muted">
+                            {card.currency} {r.amount} · {new Date(r.createdAt).toLocaleDateString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           ))}
+          </Reveal>
         </Card>
       )}
     </div>

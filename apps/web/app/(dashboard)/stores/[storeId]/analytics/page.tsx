@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Clock4, RotateCcw, Users, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface TopProductRow {
@@ -29,6 +32,12 @@ interface Overview {
   bestHourOfDay: number | null;
 }
 
+interface ReturnRateByProductRow {
+  productId: string;
+  productTitle: string;
+  returnRate: number;
+}
+
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function formatHour(hour: number): string {
@@ -37,11 +46,24 @@ function formatHour(hour: number): string {
   return `${twelveHour}:00 ${period}`;
 }
 
-function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <Card>
       <CardBody>
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
+        <div className="flex items-center gap-2 text-ink-muted">
+          <Icon className="h-4 w-4" />
+          <p className="text-xs font-medium uppercase tracking-wide">{label}</p>
+        </div>
         <p className="mt-1 text-3xl font-semibold text-ink">{value}</p>
         {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
       </CardBody>
@@ -60,7 +82,10 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
   const [topProductsBy, setTopProductsBy] = useState<"revenue" | "units">("revenue");
   const [salesOverTime, setSalesOverTime] = useState<SalesBucketPoint[] | null>(null);
   const [bucket, setBucket] = useState<"day" | "week" | "month">("day");
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [returnRateByProduct, setReturnRateByProduct] = useState<ReturnRateByProductRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,11 +96,12 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
   }, [params.storeId, topProductsBy]);
 
   useEffect(() => {
+    const range = rangeStart && rangeEnd ? `&start=${rangeStart}&end=${rangeEnd}` : "";
     api
-      .get<SalesBucketPoint[]>(`/stores/${params.storeId}/analytics/sales-over-time?bucket=${bucket}`)
+      .get<SalesBucketPoint[]>(`/stores/${params.storeId}/analytics/sales-over-time?bucket=${bucket}${range}`)
       .then(setSalesOverTime)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load sales over time."));
-  }, [params.storeId, bucket]);
+  }, [params.storeId, bucket, rangeStart, rangeEnd]);
 
   useEffect(() => {
     api
@@ -84,7 +110,14 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
       .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load the analytics overview."));
   }, [params.storeId]);
 
-  const loading = topProducts === null || salesOverTime === null || overview === null;
+  useEffect(() => {
+    api
+      .get<ReturnRateByProductRow[]>(`/stores/${params.storeId}/analytics/return-rate-by-product`)
+      .then(setReturnRateByProduct)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load return rate by product."));
+  }, [params.storeId]);
+
+  const loading = topProducts === null || salesOverTime === null || overview === null || returnRateByProduct === null;
 
   return (
     <div>
@@ -99,33 +132,54 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
         <PageSpinner />
       ) : (
         <div className="max-w-5xl space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile label="Repeat customers" value={`${overview!.repeatCustomerRate}%`} hint="Ordered more than once" />
-            <StatTile label="Return rate" value={`${overview!.returnRate}%`} hint="Of confirmed orders" />
-            <StatTile label="Average order value" value={`Rs ${overview!.aov.toLocaleString()}`} />
+          <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile icon={Users} label="Repeat customers" value={`${overview!.repeatCustomerRate}%`} hint="Ordered more than once" />
+            <StatTile icon={RotateCcw} label="Return rate" value={`${overview!.returnRate}%`} hint="Of confirmed orders" />
+            <StatTile icon={Wallet} label="Average order value" value={`Rs ${overview!.aov.toLocaleString()}`} />
             <StatTile
+              icon={Clock4}
               label="Best time to sell"
               value={overview!.bestDayOfWeek !== null ? DAY_NAMES[overview!.bestDayOfWeek] : "No data yet"}
               hint={overview!.bestHourOfDay !== null ? `Around ${formatHour(overview!.bestHourOfDay)}` : undefined}
             />
-          </div>
+          </Reveal>
 
+          <Reveal>
           <Card>
             <CardHeader
               title="Sales over time"
               action={
-                <div className="flex gap-1">
-                  {(["day", "week", "month"] as const).map((b) => (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Field label="From">
+                    <Input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} max={rangeEnd || undefined} />
+                  </Field>
+                  <Field label="To">
+                    <Input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} min={rangeStart || undefined} />
+                  </Field>
+                  {(rangeStart || rangeEnd) && (
                     <button
-                      key={b}
-                      onClick={() => setBucket(b)}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
-                        bucket === b ? "bg-accent text-white" : "text-ink-muted hover:bg-canvas"
-                      }`}
+                      onClick={() => {
+                        setRangeStart("");
+                        setRangeEnd("");
+                      }}
+                      className="text-xs text-ink-muted underline hover:text-ink"
                     >
-                      {b}
+                      Reset to last 30 days
                     </button>
-                  ))}
+                  )}
+                  <div className="flex gap-1">
+                    {(["day", "week", "month"] as const).map((b) => (
+                      <button
+                        key={b}
+                        onClick={() => setBucket(b)}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-smooth-fast ${
+                          bucket === b ? "bg-accent text-white" : "text-ink-muted hover:bg-canvas"
+                        }`}
+                      >
+                        {b}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               }
             />
@@ -148,7 +202,9 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
               )}
             </CardBody>
           </Card>
+          </Reveal>
 
+          <Reveal>
           <Card>
             <CardHeader
               title="Top products"
@@ -158,7 +214,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                     <button
                       key={m}
                       onClick={() => setTopProductsBy(m)}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-smooth-fast ${
                         topProductsBy === m ? "bg-accent text-white" : "text-ink-muted hover:bg-canvas"
                       }`}
                     >
@@ -196,6 +252,36 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
               )}
             </CardBody>
           </Card>
+          </Reveal>
+
+          <Reveal>
+          <Card>
+            <CardHeader title="Return rate by product" description="Of orders eligible for return, per product - a breakdown behind the headline Return rate tile above." />
+            <CardBody>
+              {returnRateByProduct!.length === 0 ? (
+                <p className="py-8 text-center text-sm text-ink-muted">No return-eligible orders yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(200, returnRateByProduct!.length * 36)}>
+                  <BarChart data={returnRateByProduct!} layout="vertical" margin={{ left: 24 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+                    <XAxis type="number" unit="%" tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                    <YAxis
+                      type="category"
+                      dataKey="productTitle"
+                      width={140}
+                      tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }}
+                    />
+                    <Tooltip
+                      formatter={(value: unknown) => [`${Number(value ?? 0)}%`, "Return rate"]}
+                      contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
+                    />
+                    <Bar dataKey="returnRate" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardBody>
+          </Card>
+          </Reveal>
         </div>
       )}
     </div>

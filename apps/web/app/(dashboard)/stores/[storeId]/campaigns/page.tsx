@@ -9,6 +9,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Progress } from "@/components/ui/Progress";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type CampaignStatus = "queued" | "sending" | "sent" | "failed";
@@ -39,6 +41,12 @@ interface SenderEmail {
   status: string;
 }
 
+interface CampaignQuota {
+  monthlyLimit: number;
+  usedThisMonth: number;
+  remaining: number;
+}
+
 const statusTone: Record<CampaignStatus, "neutral" | "success" | "warning" | "danger"> = {
   queued: "neutral",
   sending: "warning",
@@ -50,6 +58,7 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [senders, setSenders] = useState<SenderEmail[]>([]);
+  const [quota, setQuota] = useState<CampaignQuota | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -58,6 +67,10 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
       .get<Campaign[]>(`/stores/${params.storeId}/campaigns`)
       .then(setCampaigns)
       .catch(() => setCampaigns([]));
+    api
+      .get<CampaignQuota>(`/stores/${params.storeId}/campaigns/quota`)
+      .then(setQuota)
+      .catch(() => setQuota(null));
   }
 
   useEffect(() => {
@@ -105,6 +118,23 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
+        {quota && (
+          <Reveal>
+          <Card>
+            <CardBody>
+              <div className="flex items-center justify-between text-sm">
+                <p className="font-medium text-ink">Monthly send quota</p>
+                <p className="text-ink-muted">
+                  {quota.usedThisMonth.toLocaleString()} / {quota.monthlyLimit.toLocaleString()} sent this month
+                </p>
+              </div>
+              <Progress className="mt-2" value={Math.min(100, (quota.usedThisMonth / Math.max(1, quota.monthlyLimit)) * 100)} />
+              <p className="mt-1.5 text-xs text-ink-muted">{quota.remaining.toLocaleString()} remaining</p>
+            </CardBody>
+          </Card>
+          </Reveal>
+        )}
+
         {segments.length === 0 || senders.length === 0 ? (
           <Alert tone="warning">
             {segments.length === 0 && "You need at least one customer segment before you can send a campaign. "}
@@ -160,6 +190,7 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
           </Card>
         ) : (
           <Card className="divide-y divide-border overflow-hidden">
+            <Reveal stagger={0.04}>
             {campaigns.map((campaign) => (
               <div key={campaign.id} className="px-6 py-4">
                 <div className="flex items-center justify-between gap-4">
@@ -183,6 +214,7 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
                 )}
               </div>
             ))}
+            </Reveal>
           </Card>
         )}
       </div>

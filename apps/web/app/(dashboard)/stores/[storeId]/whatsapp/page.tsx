@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Reveal } from "@/components/motion/Reveal";
+import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -57,7 +59,7 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
         description="Abandoned carts you can nudge with a one-click WhatsApp message. Order confirmations and shipping updates live on each order's own page."
       />
 
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {carts === null ? (
         <PageSpinner />
@@ -67,6 +69,7 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
         </Card>
       ) : (
         <Card className="divide-y divide-border overflow-hidden">
+          <Reveal stagger={0.04}>
           {carts.map((cart) => (
             <div key={cart.id} className="flex items-center justify-between gap-4 px-6 py-4">
               <div className="min-w-0">
@@ -88,6 +91,7 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
               </div>
             </div>
           ))}
+          </Reveal>
         </Card>
       )}
     </div>
