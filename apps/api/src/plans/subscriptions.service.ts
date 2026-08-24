@@ -82,6 +82,22 @@ export class SubscriptionsService {
   }
 
   /**
+   * D-Studio v1 - a direct tierOrder comparison (same established precedent
+   * as FinanceTerminalService.commissionStatusByTier()), used for the
+   * section/animation/variant tier-floor gates in section-catalog.ts. A
+   * seller with no subscription row yet (should not happen post-signup,
+   * Module 20/FR-7.1) resolves to GO (0), never a thrown error - gating
+   * checks should fail closed to the lowest tier, not 500.
+   */
+  async getSellerTierOrder(sellerId: string): Promise<number> {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { sellerId },
+      include: { plan: true },
+    });
+    return subscription?.plan?.tierOrder ?? 0;
+  }
+
+  /**
    * Module 20 (SRS FR-7.10 supplement) - the supplier-side equivalent,
    * closing the gap build-plan.md flagged since Module 14 ("Subscription
    * is seller-only... for the same reason [no supplier portal]").

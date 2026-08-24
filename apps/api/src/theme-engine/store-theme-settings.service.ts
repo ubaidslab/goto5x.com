@@ -3,6 +3,7 @@ import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { UpdateStoreThemeSettingsDto } from "./dto/update-store-theme-settings.dto";
+import { validateSections } from "./section-validation";
 
 /**
  * Every method verifies `storeId` belongs to the calling seller before
@@ -53,6 +54,15 @@ export class StoreThemeSettingsService {
       if (!codedModeEnabled) {
         throw new ForbiddenException("Custom theme code is not enabled for your plan.");
       }
+    }
+
+    // D-Studio v1 - real server-side enforcement of the section/variant/
+    // animation-preset tier gates (section-catalog.ts), not just a
+    // client-hidden UpgradeLockedCard. Runs before the transaction below so
+    // a rejected write never partially persists.
+    if (dto.settings && typeof dto.settings === "object" && "sections" in dto.settings) {
+      const sellerTierOrder = await this.subscriptions.getSellerTierOrder(sellerId);
+      validateSections((dto.settings as Record<string, unknown>).sections, sellerTierOrder);
     }
 
     return this.tenantPrisma.run(sellerId, async (tx) => {

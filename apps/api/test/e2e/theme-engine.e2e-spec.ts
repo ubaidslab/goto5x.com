@@ -49,6 +49,11 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
     return { token, storeId: store.body.id as string };
   }
 
+  async function upgradeToTier(sellerId: string, tierOrder: number) {
+    const plan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: plan.id } });
+  }
+
   async function fullyVerifiedAdminToken(email: string): Promise<string> {
     const passwordHash = await bcrypt.hash("admin-password", 10);
     const user = await superuser.user.create({
@@ -215,5 +220,116 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
     expect(noContext).toEqual([]); // fail-closed
 
     await runtime.$disconnect();
+  });
+
+  /**
+   * D-Studio v1 - the real server-side gate the prototype's own "known
+   * engineering gaps" note flagged as missing: settings.sections was, and
+   * without this, would remain, unvalidated JSON. Founder-approved tier
+   * reallocation: GO ships 8 core sections + Fade Up only; RUN adds 6 more
+   * plus 6 animation presets; RISE unlocks the full 22-section/14-preset
+   * library. FLY shares RISE's ceiling exactly (see section-catalog.ts).
+   */
+  describe("D-Studio v1 - section/variant/animation tier gating (server-side, not just client-hidden)", () => {
+    async function sellerIdFor(email: string) {
+      const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+      const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+      return seller.id;
+    }
+
+    it("a GO seller (default tier) cannot save a RISE-only section", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-go-section@example.com", "dstudio-go-section-store");
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }] } });
+      expect(res.status).toBe(403);
+      expect(res.body.message.message).toMatch(/"team".*RISE/);
+    });
+
+    it("a GO seller cannot use a layout variant beyond what GO allows for that section", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-go-variant@example.com", "dstudio-go-variant-store");
+      // "about" has maxVariantIndexByTier [0, 1] - GO is capped at index 0.
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "about", visible: true, variant: 1 }] } });
+      expect(res.status).toBe(403);
+    });
+
+    it("a GO seller cannot assign a RISE-tier animation preset to an element", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-go-anim@example.com", "dstudio-go-anim-store");
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "hero", visible: true, elementAnimations: { heading: "ken-burns" } }] } });
+      expect(res.status).toBe(403);
+      expect(res.body.message.message).toMatch(/"ken-burns".*RISE/);
+    });
+
+    it("a GO seller CAN save a GO-tier section with its allowed variant and Fade Up", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-go-happy@example.com", "dstudio-go-happy-store");
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "hero", visible: true, variant: 0, elementAnimations: { heading: "fade-up" } }] } });
+      expect(res.status).toBe(200);
+    });
+
+    it("a RISE seller can save the full library: a RISE-only section, its top variant, and a RISE-only animation preset", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-rise-happy@example.com", "dstudio-rise-happy-store");
+      await upgradeToTier(await sellerIdFor("dstudio-rise-happy@example.com"), 2);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          settings: {
+            sections: [
+              { id: "team", visible: true, variant: 1, elementAnimations: { heading: "ken-burns", image: "glass-reveal" } },
+            ],
+          },
+        });
+      expect(res.status).toBe(200);
+
+      const readBack = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(readBack.body.settings.sections[0].id).toBe("team");
+    });
+
+    it("rejects an unknown section id (400, malformed shape) and an unknown animation preset id (400)", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-malformed@example.com", "dstudio-malformed-store");
+      const badSection = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "not_a_real_section", visible: true }] } });
+      expect(badSection.status).toBe(400);
+
+      const badAnimation = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "hero", visible: true, elementAnimations: { heading: "not-a-real-preset" } }] } });
+      expect(badAnimation.status).toBe(400);
+    });
+
+    it("a rejected write never partially persists (the earlier-valid sections stay untouched)", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-atomic@example.com", "dstudio-atomic-store");
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "hero", visible: true }] } });
+
+      const rejected = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "hero", visible: true }, { id: "team", visible: true }] } });
+      expect(rejected.status).toBe(403);
+
+      const readBack = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(readBack.body.settings.sections).toEqual([{ id: "hero", visible: true }]);
+    });
   });
 });
