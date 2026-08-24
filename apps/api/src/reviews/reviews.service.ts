@@ -1,13 +1,19 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ReviewStatus } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { ObjectStorageService } from "../media/object-storage.service";
+import { mediaTypeFromMimetype, sanitizeFilename } from "../media/media.util";
 
 function round1(n: number): number {
   return Math.round((n + Number.EPSILON) * 10) / 10;
 }
+
+/** Phase 4 close-out (FR-14.1 buyer-experience batch) - a review's own attachment cap, independent of any product's media limit. */
+const MAX_REVIEW_MEDIA_FILES = 5;
 
 /**
  * FR-14.1-14.4. Buyer submission is public/pre-auth (same BYPASSRLS reasoning
@@ -22,6 +28,7 @@ export class ReviewsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   /** FR-14.1/14.2 - identified via the order-status link (FR-5.4) rather than an account. */
@@ -65,6 +72,57 @@ export class ReviewsService {
     });
   }
 
+  /**
+   * Phase 4 close-out (FR-14.1) - a second, small write path alongside
+   * submit() rather than folding media into that endpoint: submit() stays
+   * exactly the JSON-only contract it already is (and already has e2e
+   * coverage for), and a review's photos/video are optional and can be
+   * added right after in the same buyer flow. Ownership is checked via the
+   * SAME order-status token used to create the review in the first place -
+   * a token only ever resolves to one order, and a review can only be
+   * added to here if it belongs to that exact order (never "any review at
+   * this store").
+   */
+  async addMedia(token: string, reviewId: string, files: Express.Multer.File[], ip: string) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files uploaded (expected multipart field "media").');
+    }
+
+    const submissionLimit = await this.settings.resolve<number>("reviews.submission_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`review-media-token:${token}`, submissionLimit);
+    await this.rateLimit.enforcePerHour(`review-media-ip:${ip}`, submissionLimit);
+
+    const order = await this.prismaAdmin.order.findUnique({ where: { statusLookupToken: token } });
+    if (!order) throw new NotFoundException("Order not found.");
+
+    const review = await this.prismaAdmin.productReview.findUnique({
+      where: { id: reviewId },
+      include: { media: true },
+    });
+    if (!review || review.orderId !== order.id) throw new NotFoundException("Review not found.");
+
+    if (review.media.length + files.length > MAX_REVIEW_MEDIA_FILES) {
+      throw new BadRequestException(`A review can have at most ${MAX_REVIEW_MEDIA_FILES} photos/videos - this one already has ${review.media.length}.`);
+    }
+
+    // Validate every file's type before uploading any of them - a rejection
+    // on file 3 of 5 must never leave files 1-2 orphaned in object storage
+    // with nothing pointing at them.
+    const types = files.map((file) => mediaTypeFromMimetype(file.mimetype));
+
+    let sortOrder = review.media.length;
+    const rows = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const key = `reviews/${review.id}/${randomUUID()}-${sanitizeFilename(file.originalname)}`;
+      const url = await this.objectStorage.putObject(key, file.buffer, file.mimetype);
+      rows.push({ storeId: review.storeId, reviewId: review.id, type: types[i], url, sortOrder: sortOrder++ });
+    }
+
+    await this.prismaAdmin.reviewMedia.createMany({ data: rows });
+    return this.prismaAdmin.reviewMedia.findMany({ where: { reviewId: review.id }, orderBy: { sortOrder: "asc" } });
+  }
+
   /** FR-14.3 - seller's own moderation queue. */
   async listForModeration(sellerId: string, storeId: string, status?: ReviewStatus) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
@@ -72,7 +130,7 @@ export class ReviewsService {
       if (!store) throw new NotFoundException("Store not found.");
       return tx.productReview.findMany({
         where: { storeId, ...(status ? { status } : {}) },
-        include: { product: { select: { title: true } } },
+        include: { product: { select: { title: true } }, media: { orderBy: { sortOrder: "asc" } } },
         orderBy: { createdAt: "desc" },
       });
     });

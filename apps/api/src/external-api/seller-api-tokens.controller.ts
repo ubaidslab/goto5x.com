@@ -14,6 +14,12 @@ export class SellerApiTokensController {
     return this.tokens.list(sellerId);
   }
 
+  /** Phase 4 close-out - lets the Marketing hub's FB/IG Shop feed tab render a real locked-vs-unlocked state. */
+  @Get("social-media-feed-status")
+  getSocialMediaFeedStatus(@CurrentSellerId() sellerId: string) {
+    return this.tokens.getSocialMediaFeedStatus(sellerId);
+  }
+
   @Post()
   create(@CurrentSellerId() sellerId: string) {
     return this.tokens.create(sellerId);

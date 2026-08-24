@@ -3,6 +3,8 @@ import { ExternalApiClientType } from "@prisma/client";
 import { generateToken } from "../auth/token.util";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
+import { SettingsService } from "../settings-registry/settings.service";
 
 /**
  * FR-24.10 - the seller-facing half of the Product Feed API's auth: create,
@@ -16,7 +18,27 @@ export class SellerApiTokensService {
   constructor(
     private readonly prisma: PrismaRuntimeService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
+
+  /**
+   * Phase 4 close-out - lets the Marketing hub's FB/IG Shop feed tab render
+   * a real locked-vs-unlocked state without guessing: both gates
+   * (`social_media.meta_catalog_feed_enabled`, FR-55.2's
+   * `whatsapp.product_share_enabled`) resolve through the same plan
+   * context ProductFeedService/WhatsAppMessagingService already check
+   * server-side at call time - this is a read of the same truth, not a
+   * separate one.
+   */
+  async getSocialMediaFeedStatus(sellerId: string) {
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const [metaCatalogFeedEnabled, whatsappProductShareEnabled] = await Promise.all([
+      this.settings.resolve<boolean>("social_media.meta_catalog_feed_enabled", planContext),
+      this.settings.resolve<boolean>("whatsapp.product_share_enabled", planContext),
+    ]);
+    return { metaCatalogFeedEnabled, whatsappProductShareEnabled, metaCatalogFeedPath: "/external/social-media/meta-catalog-feed" };
+  }
 
   /** The plaintext token is returned exactly once, here, and never again - only its hash is ever persisted. */
   async create(sellerId: string) {

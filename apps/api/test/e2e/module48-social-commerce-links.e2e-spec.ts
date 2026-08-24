@@ -95,6 +95,27 @@ describe("Facebook/Instagram Shop Feed & WhatsApp Catalog Links (e2e) - SRS §5.
     return res.body.id as string;
   }
 
+  describe("Phase 4 close-out: GET sellers/me/api-tokens/social-media-feed-status", () => {
+    it("reports both gates false for a GO seller and true for a RISE seller, resolved through the same plan context the real endpoints check", async () => {
+      const seller = await signupLoginAndCreateStore("feed-status@example.com", "feed-status-store");
+
+      const before = await request(app.getHttpServer())
+        .get("/sellers/me/api-tokens/social-media-feed-status")
+        .set("Authorization", `Bearer ${seller.token}`);
+      expect(before.status).toBe(200);
+      expect(before.body.metaCatalogFeedEnabled).toBe(false);
+      expect(before.body.whatsappProductShareEnabled).toBe(false);
+      expect(before.body.metaCatalogFeedPath).toBe("/external/social-media/meta-catalog-feed");
+
+      await upgradeToTier(seller.sellerId, 2); // RISE
+      const after = await request(app.getHttpServer())
+        .get("/sellers/me/api-tokens/social-media-feed-status")
+        .set("Authorization", `Bearer ${seller.token}`);
+      expect(after.body.metaCatalogFeedEnabled).toBe(true);
+      expect(after.body.whatsappProductShareEnabled).toBe(true);
+    });
+  });
+
   describe("Meta Commerce Catalog feed (FR-55.1-55.3)", () => {
     it("a RISE seller gets a Meta-format feed with the extra fields, isolated to their own products only", async () => {
       const adminToken = await fullyVerifiedAdminToken("meta-feed-admin@example.com");

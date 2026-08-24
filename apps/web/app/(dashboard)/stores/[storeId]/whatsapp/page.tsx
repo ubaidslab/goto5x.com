@@ -5,10 +5,12 @@ import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface AbandonedCart {
@@ -31,13 +33,33 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
   const [carts, setCarts] = useState<AbandonedCart[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [template, setTemplate] = useState<string | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   useEffect(() => {
     api
       .get<AbandonedCart[]>(`/stores/${params.storeId}/whatsapp/carts/abandoned`)
       .then(setCarts)
       .catch(() => setCarts([]));
+    api
+      .get<{ template: string }>(`/stores/${params.storeId}/whatsapp/settings/cart-recovery-template`)
+      .then((r) => setTemplate(r.template))
+      .catch(() => setTemplate(""));
   }, [params.storeId]);
+
+  async function saveTemplate() {
+    if (template === null) return;
+    setError(null);
+    setSavingTemplate(true);
+    try {
+      await api.put(`/stores/${params.storeId}/whatsapp/settings/cart-recovery-template`, { template });
+      toast({ tone: "success", title: "Cart-recovery message template saved" });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save that template.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
 
   async function sendRecovery(cartId: string) {
     setError(null);
@@ -60,6 +82,27 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
       />
 
       {error && <Alert tone="danger">{error}</Alert>}
+
+      <Reveal>
+      <Card className="mb-6">
+        <CardHeader
+          title="Cart-recovery message template"
+          description="What the recovery link's pre-filled message says. Placeholders {{item_summary}}, {{store_name}}, and {{store_link}} are filled in per cart."
+        />
+        <CardBody>
+          {template === null ? (
+            <PageSpinner />
+          ) : (
+            <>
+              <Textarea rows={3} value={template} onChange={(e) => setTemplate(e.target.value)} maxLength={2000} />
+              <Button className="mt-3" loading={savingTemplate} onClick={saveTemplate}>
+                Save template
+              </Button>
+            </>
+          )}
+        </CardBody>
+      </Card>
+      </Reveal>
 
       {carts === null ? (
         <PageSpinner />

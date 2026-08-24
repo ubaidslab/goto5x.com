@@ -1,14 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
+import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface ApiToken {
@@ -17,6 +21,18 @@ interface ApiToken {
   createdAt: string;
   revokedAt: string | null;
   client: { displayName: string };
+}
+
+interface SocialMediaFeedStatus {
+  metaCatalogFeedEnabled: boolean;
+  whatsappProductShareEnabled: boolean;
+  metaCatalogFeedPath: string;
+}
+
+interface ProductOption {
+  id: string;
+  title: string;
+  status: string;
 }
 
 /**
@@ -31,6 +47,10 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
   const [handingOff, setHandingOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [feedStatus, setFeedStatus] = useState<SocialMediaFeedStatus | null>(null);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [shareProductId, setShareProductId] = useState("");
+  const [generatingShareLink, setGeneratingShareLink] = useState(false);
 
   function load() {
     api
@@ -41,7 +61,40 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
 
   useEffect(() => {
     load();
-  }, []);
+    api
+      .get<SocialMediaFeedStatus>("/sellers/me/api-tokens/social-media-feed-status")
+      .then(setFeedStatus)
+      .catch(() => setFeedStatus(null));
+    api
+      .get<{ items: ProductOption[] }>(`/stores/${params.storeId}/products?limit=100`)
+      .then((res) => setProducts(res.items.filter((p) => p.status === "active")))
+      .catch(() => setProducts([]));
+  }, [params.storeId]);
+
+  async function generateShareLink() {
+    if (!shareProductId) return;
+    setError(null);
+    setGeneratingShareLink(true);
+    try {
+      const { deepLink } = await api.get<{ deepLink: string }>(`/stores/${params.storeId}/whatsapp/products/${shareProductId}/share-link`);
+      window.open(deepLink, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't generate that share link.");
+    } finally {
+      setGeneratingShareLink(false);
+    }
+  }
+
+  async function copyFeedUrl() {
+    if (!feedStatus) return;
+    const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}${feedStatus.metaCatalogFeedPath}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ tone: "success", title: "Feed URL copied" });
+    } catch {
+      toast({ tone: "danger", title: "Couldn't copy - select and copy the URL manually" });
+    }
+  }
 
   if (!tokens) return <PageSpinner />;
 
@@ -142,6 +195,88 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
           </div>
         </CardBody>
       </Card>
+
+      <Reveal>
+      <Card className="mt-6">
+        <CardHeader title="Facebook & Instagram Shop feed" description="A product catalog feed for Meta Commerce Manager - same connected token as above." />
+        {feedStatus === null ? (
+          <CardBody>
+            <PageSpinner />
+          </CardBody>
+        ) : feedStatus.metaCatalogFeedEnabled ? (
+          <CardBody className="space-y-3">
+            <p className="text-sm text-ink-muted">
+              In Meta Commerce Manager, add this as a data feed URL, authenticated with a Bearer token from your connected app above (create one
+              if you haven&apos;t yet).
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-md border border-border bg-canvas px-3 py-2 text-xs text-ink">
+                {process.env.NEXT_PUBLIC_API_BASE_URL}
+                {feedStatus.metaCatalogFeedPath}
+              </code>
+              <Button variant="secondary" size="sm" onClick={copyFeedUrl}>
+                Copy
+              </Button>
+            </div>
+          </CardBody>
+        ) : (
+          <UpgradeLockedCard
+            requiredTier="RISE"
+            title="The Meta catalog feed is a RISE+ feature"
+            description="Sync your active products straight into Facebook & Instagram Shop, once you're on RISE or FLY."
+            action={
+              <Link href={`/stores/${params.storeId}/billing`}>
+                <Button size="sm" variant="secondary">
+                  View plans
+                </Button>
+              </Link>
+            }
+          />
+        )}
+      </Card>
+      </Reveal>
+
+      <Reveal>
+      <Card className="mt-6">
+        <CardHeader title="WhatsApp product-share link" description="A share link for one product, opening WhatsApp's own contact picker." />
+        {feedStatus === null ? (
+          <CardBody>
+            <PageSpinner />
+          </CardBody>
+        ) : feedStatus.whatsappProductShareEnabled ? (
+          <CardBody className="flex flex-wrap items-end gap-3">
+            <div className="min-w-64">
+              <Field label="Product">
+                <Select value={shareProductId} onChange={(e) => setShareProductId(e.target.value)} disabled={products.length === 0}>
+                  <option value="">Select a published product...</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Button loading={generatingShareLink} disabled={!shareProductId} onClick={generateShareLink}>
+              Generate share link
+            </Button>
+          </CardBody>
+        ) : (
+          <UpgradeLockedCard
+            requiredTier="RISE"
+            title="WhatsApp product sharing is a RISE+ feature"
+            description="Generate a one-tap share link for any published product, once you're on RISE or FLY."
+            action={
+              <Link href={`/stores/${params.storeId}/billing`}>
+                <Button size="sm" variant="secondary">
+                  View plans
+                </Button>
+              </Link>
+            }
+          />
+        )}
+      </Card>
+      </Reveal>
     </div>
   );
 }

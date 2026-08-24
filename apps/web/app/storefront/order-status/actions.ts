@@ -12,11 +12,24 @@
 export async function submitReview(
   token: string,
   input: { productId: string; buyerName: string; rating: number; body: string },
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; id?: string }> {
   const res = await fetch(`${process.env.API_BASE_URL}/storefront/order-status/${token}/reviews`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+  if (!res.ok) return { ok: false };
+  const created = await res.json();
+  return { ok: true, id: created.id };
+}
+
+/** Phase 4 close-out (FR-14.1) - a second step right after submitReview(), same Server Action reasoning (never a cross-origin browser upload straight to the API). */
+export async function addReviewMedia(token: string, reviewId: string, files: File[]): Promise<{ ok: boolean }> {
+  const formData = new FormData();
+  for (const file of files) formData.append("media", file);
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/order-status/${token}/reviews/${reviewId}/media`, {
+    method: "POST",
+    body: formData,
   });
   return { ok: res.ok };
 }

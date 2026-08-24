@@ -196,6 +196,61 @@ describe("WhatsApp Semi-Automation (e2e) - SRS §5.41, §14.41", () => {
     expect(sellerId).toBeTruthy();
   });
 
+  it("Phase 4 close-out: the cart-recovery template is seller-editable per store, and an edit is reflected in the next generated recovery link", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("wa-template@example.com", "wa-template-store");
+    const hostname = "wa-template-store.uzeyn.com";
+    const { productId, variantId } = await createProductWithVariant(token, storeId, "WA-SKU-5");
+
+    const initial = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/whatsapp/settings/cart-recovery-template`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(initial.status).toBe(200);
+    expect(initial.body.template).toContain("{{item_summary}}");
+
+    const update = await request(app.getHttpServer())
+      .put(`/stores/${storeId}/whatsapp/settings/cart-recovery-template`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ template: "Come back! {{item_summary}} is waiting at {{store_name}} - {{store_link}}" });
+    expect(update.status).toBe(200);
+    expect(update.body.template).toBe("Come back! {{item_summary}} is waiting at {{store_name}} - {{store_link}}");
+
+    const reread = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/whatsapp/settings/cart-recovery-template`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(reread.body.template).toBe("Come back! {{item_summary}} is waiting at {{store_name}} - {{store_link}}");
+
+    const cartCreate = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({ hostname, buyerEmail: "template-buyer@example.com", buyerWhatsapp: "03005556666", items: [{ productId, variantId, quantity: 1 }] });
+    const stored = await superuser.cart.findUniqueOrThrow({ where: { sessionToken: cartCreate.body.sessionToken } });
+    await superuser.cart.update({ where: { id: stored.id }, data: { status: "abandoned" } });
+
+    const link = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/whatsapp/carts/${stored.id}/recovery-link`)
+      .set("Authorization", `Bearer ${token}`);
+    const decoded = decodeURIComponent(link.body.deepLink.split("?text=")[1]);
+    expect(decoded).toContain("Come back!");
+    expect(decoded).toContain("is waiting at");
+
+    // Tenant isolation - a different seller can't read or write this store's template.
+    const other = await signupLoginAndCreateStore("wa-template-other@example.com", "wa-template-other-store");
+    const crossRead = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/whatsapp/settings/cart-recovery-template`)
+      .set("Authorization", `Bearer ${other.token}`);
+    expect(crossRead.status).toBe(404);
+    const crossWrite = await request(app.getHttpServer())
+      .put(`/stores/${storeId}/whatsapp/settings/cart-recovery-template`)
+      .set("Authorization", `Bearer ${other.token}`)
+      .send({ template: "Malicious override" });
+    expect(crossWrite.status).toBe(404);
+
+    // The other seller's OWN store still has the untouched default - proves the write above was correctly store-scoped, not global.
+    const otherDefault = await request(app.getHttpServer())
+      .get(`/stores/${other.storeId}/whatsapp/settings/cart-recovery-template`)
+      .set("Authorization", `Bearer ${other.token}`);
+    expect(otherDefault.body.template).toContain("{{item_summary}}");
+  });
+
   it("a cart still shows in the abandoned list with hasWhatsapp: false when no number was captured, and its recovery link 400s", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("wa-cart-nonumber@example.com", "wa-cart-nonumber-store");
     const hostname = "wa-cart-nonumber-store.uzeyn.com";

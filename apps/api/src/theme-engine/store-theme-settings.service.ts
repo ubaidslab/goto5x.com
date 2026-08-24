@@ -19,7 +19,7 @@ export class StoreThemeSettingsService {
   ) {}
 
   async getForStore(sellerId: string, storeId: string) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    const themeSettings = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
       const themeSettings = await tx.storeThemeSettings.findUnique({
@@ -31,6 +31,13 @@ export class StoreThemeSettingsService {
       }
       return themeSettings;
     });
+
+    // Phase 4 close-out - lets the Customizer render the real coded-mode
+    // editor vs. a locked upsell card in one round-trip, same gate
+    // update() itself enforces server-side (FR-1.6).
+    const context = await this.subscriptions.getPlanContext(sellerId);
+    const codedModeEnabled = await this.settings.resolve<boolean>("theme.coded_mode_enabled", context);
+    return { ...themeSettings, codedModeEnabled };
   }
 
   async update(sellerId: string, storeId: string, dto: UpdateStoreThemeSettingsDto) {

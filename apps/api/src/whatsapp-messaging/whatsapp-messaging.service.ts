@@ -156,6 +156,35 @@ export class WhatsAppMessagingService {
     return { deepLink: buildWhatsAppDeepLink(null, message) };
   }
 
+  /**
+   * Phase 4 close-out - the seller-editable side of `whatsapp.cart_recovery_
+   * template` (Module 30 seeded this key `store`-scoped from the start, see
+   * whatsapp-messaging.seed.ts's own "seller-editable" doc comment, but no
+   * seller-facing read/write ever shipped until now). Ownership of `storeId`
+   * is verified the same way generateCartRecoveryLink() above does - via a
+   * tenant-scoped lookup - since SettingsService itself has no seller/store
+   * ownership concept and would otherwise let any seller write another
+   * seller's store-scoped value just by guessing the storeId.
+   */
+  async getCartRecoveryTemplate(sellerId: string, storeId: string) {
+    await this.assertOwnsStore(sellerId, storeId);
+    const template = await this.settings.resolve<string>("whatsapp.cart_recovery_template", { storeId });
+    return { template };
+  }
+
+  async updateCartRecoveryTemplate(sellerId: string, storeId: string, template: string) {
+    await this.assertOwnsStore(sellerId, storeId);
+    await this.settings.setValue("whatsapp.cart_recovery_template", "store", storeId, template, sellerId);
+    return { template };
+  }
+
+  private async assertOwnsStore(sellerId: string, storeId: string): Promise<void> {
+    await this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+    });
+  }
+
   /** Backs the seller-facing abandoned-cart list (FR-41.1c) - `hasWhatsapp` tells the UI which rows can actually generate a recovery link. */
   async listAbandonedCarts(sellerId: string, storeId: string) {
     const carts = await this.tenantPrisma.run(sellerId, async (tx) =>

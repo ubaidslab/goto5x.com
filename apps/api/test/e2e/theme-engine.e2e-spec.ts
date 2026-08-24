@@ -134,6 +134,26 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
     expect(res.status).toBe(403);
   });
 
+  it("Phase 4 close-out: GET .../theme-settings reports codedModeEnabled so the Customizer can render the real editor vs. a locked upsell card in one round-trip", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("themes-coded-flag@example.com", "themes-coded-flag-store");
+    const adminToken = await fullyVerifiedAdminToken("themes-coded-flag-admin@example.com");
+
+    const before = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/theme-settings`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(before.body.codedModeEnabled).toBe(false);
+
+    await request(app.getHttpServer())
+      .put("/admin/settings/values")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ key: "theme.coded_mode_enabled", scopeType: "global", value: true });
+
+    const after = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/theme-settings`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(after.body.codedModeEnabled).toBe(true);
+  });
+
   it("allows setting customCode once an admin enables theme.coded_mode_enabled globally", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("themes-coded-on@example.com", "themes-coded-on-store");
     const adminToken = await fullyVerifiedAdminToken("themes-coded-admin@example.com");

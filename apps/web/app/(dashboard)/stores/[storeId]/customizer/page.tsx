@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { PublicProduct, PublicStore } from "@/lib/storefront-api";
@@ -9,9 +10,11 @@ import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Field, Input, Select } from "@/components/ui/Field";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
+import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface Theme {
@@ -54,6 +57,9 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
   const [showcaseUrl, setShowcaseUrl] = useState<string | null>(null);
   const [branding, setBranding] = useState<{ removable: boolean; hidden: boolean; visible: boolean } | null>(null);
   const [savingBranding, setSavingBranding] = useState(false);
+  const [customCode, setCustomCode] = useState("");
+  const [codedModeEnabled, setCodedModeEnabled] = useState<boolean | null>(null);
+  const [savingCode, setSavingCode] = useState(false);
 
   function loadBranding() {
     api
@@ -89,10 +95,14 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
       .catch(() => {});
 
     api
-      .get<{ themeId: string; settings: ThemeSettings }>(`/stores/${params.storeId}/theme-settings`)
+      .get<{ themeId: string; settings: ThemeSettings; customCode: string | null; codedModeEnabled: boolean }>(
+        `/stores/${params.storeId}/theme-settings`,
+      )
       .then((ts) => {
         setThemeId(ts.themeId);
         setSettings(ts.settings ?? {});
+        setCustomCode(ts.customCode ?? "");
+        setCodedModeEnabled(ts.codedModeEnabled);
       })
       .catch(() => {});
 
@@ -196,6 +206,19 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
       setError(err instanceof ApiError ? err.message : "Couldn't save theme settings.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveCustomCode() {
+    setError(null);
+    setSavingCode(true);
+    try {
+      await api.patch(`/stores/${params.storeId}/theme-settings`, { customCode });
+      toast({ tone: "success", title: "Custom code saved" });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save your custom code.");
+    } finally {
+      setSavingCode(false);
     }
   }
 
@@ -373,6 +396,45 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                 onChange={(e) => setWhatsapp(resolved.whatsapp?.enabled ?? false, e.target.value)}
               />
             </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Coded mode" description="A raw-code escape hatch beyond what the controls above can express." />
+            {codedModeEnabled === null ? (
+              <CardBody>
+                <PageSpinner />
+              </CardBody>
+            ) : codedModeEnabled ? (
+              <CardBody className="space-y-3">
+                <Alert tone="warning">
+                  Saved here, but not yet rendered on your live storefront in this release - there is no execution path for it yet.
+                  Use this as a staging area; nothing you write here is visible to buyers today.
+                </Alert>
+                <Textarea
+                  rows={8}
+                  value={customCode}
+                  onChange={(e) => setCustomCode(e.target.value)}
+                  placeholder="<style>/* or <script> - not yet executed on your storefront */</style>"
+                  className="font-mono text-xs"
+                />
+                <Button variant="secondary" loading={savingCode} onClick={saveCustomCode}>
+                  Save code
+                </Button>
+              </CardBody>
+            ) : (
+              <UpgradeLockedCard
+                requiredTier="RISE"
+                title="Coded mode is a RISE+ feature"
+                description="Write raw HTML/CSS/JS beyond what the theme controls above can express, once you're on RISE or FLY."
+                action={
+                  <Link href={`/stores/${params.storeId}/billing`}>
+                    <Button size="sm" variant="secondary">
+                      View plans
+                    </Button>
+                  </Link>
+                }
+              />
+            )}
           </Card>
 
           <Card>

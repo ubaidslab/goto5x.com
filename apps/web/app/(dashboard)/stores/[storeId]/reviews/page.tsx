@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Star } from "lucide-react";
+import { Play, Star } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Dialog, DialogContent } from "@/components/ui/Dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -25,6 +26,12 @@ function StarRating({ rating }: { rating: number }) {
 
 type ReviewStatus = "pending" | "approved" | "hidden";
 
+interface ReviewMediaItem {
+  id: string;
+  type: "image" | "video";
+  url: string;
+}
+
 interface Review {
   id: string;
   buyerName: string;
@@ -34,6 +41,7 @@ interface Review {
   status: ReviewStatus;
   createdAt: string;
   product: { title: string };
+  media: ReviewMediaItem[];
 }
 
 export default function ReviewsModerationPage({ params }: { params: { storeId: string } }) {
@@ -41,6 +49,7 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
   const [status, setStatus] = useState<ReviewStatus | "">("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxMedia, setLightboxMedia] = useState<ReviewMediaItem | null>(null);
 
   function load() {
     const query = status ? `?status=${status}` : "";
@@ -130,11 +139,46 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
                 </div>
               </div>
               <p className="mt-2 text-sm text-ink-muted">{review.body}</p>
+              {review.media.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {review.media.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setLightboxMedia(item)}
+                      className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border transition-smooth-fast hover:border-border-strong"
+                    >
+                      {item.type === "image" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.url} alt={`Attachment from ${review.buyerName}'s review`} className="h-full w-full object-cover" />
+                      ) : (
+                        <>
+                          <video src={item.url} className="h-full w-full object-cover" muted />
+                          <span className="absolute inset-0 flex items-center justify-center bg-ink/30">
+                            <Play className="h-5 w-5 fill-white text-white" />
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           </Reveal>
         </Card>
       )}
+
+      <Dialog open={lightboxMedia !== null} onOpenChange={(open) => !open && setLightboxMedia(null)}>
+        <DialogContent className="max-w-2xl">
+          {lightboxMedia?.type === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={lightboxMedia.url} alt="Review attachment, full view" className="w-full rounded-md" />
+          ) : lightboxMedia ? (
+            <video src={lightboxMedia.url} controls autoPlay className="w-full rounded-md" />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
