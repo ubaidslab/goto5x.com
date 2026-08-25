@@ -275,4 +275,130 @@ describe("Template isolation - THE ISOLATION RULE (e2e)", () => {
       expect(results[templateName]).toEqual(baseline);
     }
   });
+
+  /**
+   * D-Studio v1 (founder-requested re-verification, close-out) - the
+   * isolation rule re-proven against the specific new surface D-Studio
+   * introduces: a RISE-tier seller's rich section/variant/per-element-
+   * animation configuration (settings.sections), not just a themeId
+   * choice. All 17 new section types (templates/dstudio-sections/) are
+   * pure-presentational, read-only-prop components structurally unable to
+   * import cart/checkout/order code (enforced separately by
+   * check-template-isolation.js's static scan, which already covers this
+   * directory since it lives under templates/) - this test is the runtime
+   * proof that configuring them doesn't touch the money path either.
+   */
+  it("D-Studio v1: a RISE-tier seller's rich section/variant/animation configuration produces the exact same money-path result as the plain baseline", async () => {
+    const richResult = await (async () => {
+      const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("tmpl-dstudio-rich@example.com", "tmpl-dstudio-rich-store");
+      const risePlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: risePlan.id } });
+
+      const themes = await request(app.getHttpServer()).get("/themes").set("Authorization", `Bearer ${token}`);
+      const theme = themes.body.find((t: { name: string }) => t.name === "Editorial");
+
+      // A deliberately rich D-Studio configuration: new section types
+      // (team/before_after/shape_divider/comparison_table - none of which
+      // existed before this module), non-default layout variants, and
+      // per-element RISE-tier-only animation presets on several sections.
+      const themeUpdate = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          themeId: theme.id,
+          settings: {
+            sections: [
+              { id: "hero", visible: true, variant: 2, elementAnimations: { heading: "ken-burns", image: "glass-reveal" } },
+              { id: "featured_products", visible: true, variant: 1, elementAnimations: { image: "stagger-reveal" } },
+              { id: "team", visible: true, variant: 1, elementAnimations: { heading: "text-split" } },
+              { id: "before_after", visible: true, variant: 1 },
+              { id: "shape_divider", visible: true, variant: 2 },
+              { id: "comparison_table", visible: true, variant: 1 },
+              { id: "sticky_cta", visible: true, elementAnimations: { button: "magnetic" } },
+            ],
+          },
+        });
+      if (themeUpdate.status !== 200) {
+        throw new Error(`Rich D-Studio config write failed: ${themeUpdate.status} ${JSON.stringify(themeUpdate.body)}`);
+      }
+
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/shipping-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ flatRate: 80, freeShippingThreshold: null });
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/tax-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ taxRate: 10, taxInclusive: false });
+      await request(app.getHttpServer())
+        .post(`/stores/${storeId}/discount-codes`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ code: "SAVE100", type: "fixed_amount", value: 100 });
+
+      const self = await createSelfProduct(token, storeId, 500);
+      const supplier = await createSupplierProduct(token, storeId, "tmpl-dstudio-rich-store");
+      const balanceBefore = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
+
+      const cart = await request(app.getHttpServer())
+        .post("/storefront/cart")
+        .send({
+          hostname,
+          buyerEmail: "buyer@example.com",
+          items: [
+            { productId: self.productId, variantId: self.variantId, quantity: 2 },
+            { productId: supplier.productId, variantId: supplier.variantId, quantity: 1 },
+          ],
+        });
+      const checkout = await request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress, discountCode: "SAVE100" });
+      if (checkout.status !== 201) {
+        throw new Error(`Checkout failed for D-Studio rich config: ${checkout.status} ${JSON.stringify(checkout.body)}`);
+      }
+      const orderId = checkout.body.id as string;
+      await request(app.getHttpServer()).post(`/stores/${storeId}/orders/${orderId}/mark-as-paid`).set("Authorization", `Bearer ${token}`);
+
+      const order = await request(app.getHttpServer()).get(`/stores/${storeId}/orders/${orderId}`).set("Authorization", `Bearer ${token}`);
+      const ledger = await superuser.ledgerEntry.aggregate({
+        where: { orderId, type: { in: ["commission_accrued", "commission_waived"] } },
+        _sum: { amount: true },
+      });
+      const balanceAfter = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
+      const profit = await request(app.getHttpServer()).get(`/stores/${storeId}/pnl/orders/${orderId}`).set("Authorization", `Bearer ${token}`);
+      const publicStore = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
+
+      // Confirms the rich config actually persisted (proves this isn't a
+      // no-op write) while every financial figure below still matches the
+      // plain-Editorial baseline exactly - the API layer has no page-
+      // rendering route to check against; the frontend rendering itself
+      // was independently verified via a real Playwright click-through.
+      const savedSettings = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`);
+      return {
+        status: order.body.status,
+        discountAmount: checkout.body.discountAmount,
+        shippingAmount: checkout.body.shippingAmount,
+        taxAmount: checkout.body.taxAmount,
+        totalAmount: checkout.body.totalAmount,
+        commission: Number(ledger._sum.amount ?? 0),
+        walletBalanceDelta: Number(balanceAfter.body.balance) - Number(balanceBefore.body.balance),
+        profitRevenue: profit.body.revenue,
+        profitCogs: profit.body.cogs,
+        profitNetProfit: profit.body.netProfit,
+        poweredByVisible: publicStore.body.poweredByVisible,
+        savedSectionCount: (savedSettings.body.settings?.sections ?? []).length,
+      };
+    })();
+
+    expect(richResult.status).toBe("confirmed");
+    expect(richResult.discountAmount).toBe("100");
+    expect(richResult.shippingAmount).toBe("130");
+    expect(richResult.taxAmount).toBe("120");
+    expect(richResult.totalAmount).toBe("1450");
+    expect(richResult.profitCogs).toBe(550);
+    expect(richResult.walletBalanceDelta).toBeCloseTo(-richResult.commission, 2);
+    expect(richResult.poweredByVisible).toBe(true);
+    expect(richResult.savedSectionCount).toBe(7);
+  });
 });

@@ -167,6 +167,7 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
   const [sellerTierOrder, setSellerTierOrder] = useState<number | null>(null);
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [selected, setSelected] = useState(0);
+  const [openAnimSlot, setOpenAnimSlot] = useState<ElementSlot | null>(null);
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("mobile");
   const [leftTab, setLeftTab] = useState<"sections" | "style" | "code">("sections");
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -228,6 +229,8 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
       .catch(() => {});
   }, [params.storeId]);
 
+  useEffect(() => setOpenAnimSlot(null), [selected]);
+
   const themeName = themes.find((t) => t.id === themeId)?.name ?? "Editorial";
   const resolved = useMemo(() => resolveThemeSettings(themeName, settings), [themeName, settings]);
   const sectionComponents = useMemo(() => getTemplateSections(themeName), [themeName]);
@@ -285,6 +288,15 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
     const next = resolved.sections.slice();
     next[index] = { ...next[index], elementAnimations: { ...next[index].elementAnimations, [slot]: animationId } };
     updateSections(next);
+  }
+
+  // D-Studio close-out - the locked-not-disabled pattern: a gated item
+  // always shows its full label/name and stays clickable, never dims or
+  // disables. Clicking one surfaces exactly what tier it needs instead of
+  // silently doing nothing (the founder-flagged failure mode of a plain
+  // `disabled` attribute).
+  function notifyLocked(name: string, requiredTier: number) {
+    toast({ tone: "default", title: `${name} requires ${tierName(requiredTier)}`, description: `Upgrade to ${tierName(requiredTier)} or above to use it.` });
   }
 
   function applyTemplate(newThemeId: string) {
@@ -581,29 +593,35 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                   </p>
                   <div className="mb-4 flex flex-wrap gap-1.5">
                     {selectedCatalog.variants.map((label, vi) => {
+                      const requiredTier = vi <= selectedCatalog.maxVariantIndexByTier[0] ? 0 : vi <= selectedCatalog.maxVariantIndexByTier[1] ? 1 : 2;
                       const locked = vi > maxAllowedVariantIndex(selectedSection.id, tierOrder);
+                      const activeVariant = (selectedSection.variant ?? 0) === vi;
                       return (
                         <button
                           key={label}
-                          disabled={locked}
-                          onClick={() => setVariant(selected, vi)}
-                          className="rounded-full px-2.5 py-1 text-[10px] font-mono"
+                          onClick={() => (locked ? notifyLocked(`${label}`, requiredTier) : setVariant(selected, vi))}
+                          className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-mono"
                           style={{
-                            background: (selectedSection.variant ?? 0) === vi ? CHROME.accent : CHROME.surfaceRaised,
-                            color: (selectedSection.variant ?? 0) === vi ? "#0d1420" : locked ? CHROME.inkFaint : CHROME.inkMuted,
+                            background: activeVariant ? CHROME.accent : CHROME.surfaceRaised,
+                            color: activeVariant ? "#0d1420" : CHROME.inkMuted,
                             border: `1px solid ${CHROME.borderStrong}`,
-                            opacity: locked ? 0.5 : 1,
                           }}
-                          title={locked ? `Requires a higher plan tier` : undefined}
+                          title={locked ? `Requires ${tierName(requiredTier)} - click for details` : undefined}
                         >
+                          {locked && <Lock size={10} style={{ color: CHROME.tierRise }} />}
                           {label}
                         </button>
                       );
                     })}
                     {selectedCatalog.flyExclusiveVariant && (
-                      <span className="rounded-full px-2.5 py-1 text-[10px] font-mono" style={{ opacity: 0.5, border: `1px solid ${CHROME.borderStrong}`, color: CHROME.inkFaint }}>
-                        {selectedCatalog.flyExclusiveVariant} (FLY)
-                      </span>
+                      <button
+                        onClick={() => notifyLocked(selectedCatalog.flyExclusiveVariant!, 3)}
+                        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-mono"
+                        style={{ border: `1px solid ${CHROME.borderStrong}`, color: CHROME.inkMuted, background: CHROME.surfaceRaised }}
+                      >
+                        <Lock size={10} style={{ color: CHROME.tierRise }} />
+                        {selectedCatalog.flyExclusiveVariant}
+                      </button>
                     )}
                   </div>
                 </>
@@ -616,27 +634,53 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                   </p>
                   {selectedCatalog.elements.map((slot) => {
                     const current = selectedSection.elementAnimations?.[slot] ?? "none";
+                    const isOpen = openAnimSlot === slot;
                     return (
-                      <div key={slot} className="mb-2 rounded-md p-2" style={{ background: CHROME.surfaceRaised, border: `1px solid ${CHROME.border}` }}>
+                      <div key={slot} className="relative mb-2 rounded-md p-2" style={{ background: CHROME.surfaceRaised, border: `1px solid ${CHROME.border}` }}>
                         <p className="mb-1 text-[11px] capitalize" style={{ color: CHROME.ink }}>
                           {slot}
                         </p>
-                        <select
-                          value={current}
-                          onChange={(e) => setElementAnimation(selected, slot, e.target.value as AnimationId)}
-                          className="w-full rounded p-1.5 text-[11px] font-mono"
+                        <button
+                          onClick={() => setOpenAnimSlot(isOpen ? null : slot)}
+                          className="flex w-full items-center justify-between rounded p-1.5 text-left text-[11px] font-mono"
                           style={{ background: CHROME.bg, border: `1px solid ${CHROME.borderStrong}`, color: CHROME.ink }}
                         >
-                          {ALL_ANIMATION_IDS.map((id) => {
-                            const locked = ANIMATION_CATALOG[id].tierFloor > tierOrder;
-                            return (
-                              <option key={id} value={id} disabled={locked}>
-                                {ANIMATION_CATALOG[id].label}
-                                {locked ? ` (requires ${tierName(ANIMATION_CATALOG[id].tierFloor)})` : ""}
-                              </option>
-                            );
-                          })}
-                        </select>
+                          {ANIMATION_CATALOG[current as AnimationId].label}
+                          <span style={{ color: CHROME.inkFaint }}>{isOpen ? "▲" : "▼"}</span>
+                        </button>
+                        {isOpen && (
+                          <div
+                            className="absolute left-2 right-2 z-20 mt-1 max-h-56 overflow-y-auto rounded-md"
+                            style={{ background: CHROME.bg, border: `1px solid ${CHROME.borderStrong}`, boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}
+                          >
+                            {ALL_ANIMATION_IDS.map((id) => {
+                              const locked = ANIMATION_CATALOG[id].tierFloor > tierOrder;
+                              const active = id === current;
+                              return (
+                                <button
+                                  key={id}
+                                  onClick={() => {
+                                    if (locked) {
+                                      notifyLocked(ANIMATION_CATALOG[id].label, ANIMATION_CATALOG[id].tierFloor);
+                                      return;
+                                    }
+                                    setElementAnimation(selected, slot, id);
+                                    setOpenAnimSlot(null);
+                                  }}
+                                  className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[11px] font-mono"
+                                  style={{ background: active ? CHROME.accentDim : "transparent", color: active ? CHROME.accent : CHROME.ink }}
+                                >
+                                  <span>{ANIMATION_CATALOG[id].label}</span>
+                                  {locked && (
+                                    <span className="flex items-center gap-1" style={{ color: CHROME.tierRise }}>
+                                      <Lock size={9} /> {tierName(ANIMATION_CATALOG[id].tierFloor)}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -679,13 +723,17 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                 return (
                   <button
                     key={id}
-                    disabled={locked}
-                    onClick={() => addSection(id as SectionId)}
+                    onClick={() => (locked ? notifyLocked(catalog.name, catalog.tierFloor) : addSection(id as SectionId))}
                     className="rounded-lg p-3 text-left"
-                    style={{ background: CHROME.surfaceRaised, border: `1px solid ${CHROME.border}`, opacity: locked ? 0.55 : 1, cursor: locked ? "not-allowed" : "pointer" }}
+                    style={{ background: CHROME.surfaceRaised, border: `1px solid ${CHROME.border}` }}
                   >
-                    <div className="mb-2 flex h-16 items-center justify-center rounded" style={{ background: CHROME.bg }}>
-                      {locked ? <Lock size={16} style={{ color: CHROME.inkFaint }} /> : <div className="h-8 w-14 rounded" style={{ background: CHROME.borderStrong }} />}
+                    <div className="relative mb-2 flex h-16 items-center justify-center rounded" style={{ background: CHROME.bg }}>
+                      <div className="h-8 w-14 rounded" style={{ background: CHROME.borderStrong, opacity: locked ? 0.35 : 1 }} />
+                      {locked && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded" style={{ background: "rgba(10,10,14,0.45)" }}>
+                          <Lock size={18} style={{ color: CHROME.ink }} />
+                        </div>
+                      )}
                     </div>
                     <p className="text-xs font-semibold">{catalog.name}</p>
                     <div className="mt-1 flex items-center justify-between">
@@ -723,12 +771,25 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
               {themes.map((t) => (
                 <button
                   key={t.id}
-                  disabled={!t.entitled}
-                  onClick={() => applyTemplate(t.id)}
+                  onClick={() =>
+                    t.entitled
+                      ? applyTemplate(t.id)
+                      : toast({
+                          tone: "default",
+                          title: `${t.name} requires ${t.tier === "marketplace" ? "a purchased license" : "RISE or above"}`,
+                          description: t.tier === "marketplace" ? "Available in the Template Store." : "Upgrade your plan to unlock this template.",
+                        })
+                  }
                   className="rounded-lg p-3 text-left"
-                  style={{ background: CHROME.surfaceRaised, border: `1px solid ${t.id === themeId ? CHROME.accent : CHROME.border}`, opacity: t.entitled ? 1 : 0.5 }}
+                  style={{ background: CHROME.surfaceRaised, border: `1px solid ${t.id === themeId ? CHROME.accent : CHROME.border}` }}
                 >
-                  <div className="mb-2 h-20 rounded" style={{ background: CHROME.bg }} />
+                  <div className="relative mb-2 h-20 rounded" style={{ background: CHROME.bg }}>
+                    {!t.entitled && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded" style={{ background: "rgba(10,10,14,0.45)" }}>
+                        <Lock size={18} style={{ color: CHROME.ink }} />
+                      </div>
+                    )}
+                  </div>
                   <p className="text-xs font-semibold">{t.name}</p>
                   <p className="mt-1 text-[10px] uppercase" style={{ color: CHROME.inkFaint, fontFamily: "monospace" }}>
                     {t.tier}
