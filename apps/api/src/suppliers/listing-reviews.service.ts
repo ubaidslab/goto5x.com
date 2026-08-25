@@ -20,7 +20,15 @@ export class ListingReviewsService {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.listingReview.findMany({ where: { storeId }, orderBy: { createdAt: "asc" } });
+      return tx.listingReview.findMany({
+        where: { storeId },
+        orderBy: { createdAt: "asc" },
+        include: {
+          supplierListing: {
+            select: { title: true, price: true, shippingCost: true, supplier: { select: { businessName: true } } },
+          },
+        },
+      });
     });
   }
 

@@ -18,6 +18,8 @@ import { CartController } from "./cart.controller";
 import { CartService } from "./cart.service";
 import { CheckoutController } from "./checkout.controller";
 import { CheckoutService } from "./checkout.service";
+import { MissingTrackingAlertScheduler } from "./missing-tracking-alert.scheduler";
+import { MissingTrackingAlertService } from "./missing-tracking-alert.service";
 import { OrderPricingService } from "./order-pricing.service";
 import { OrderStatusLookupController } from "./order-status-lookup.controller";
 import { OrderStatusLookupService } from "./order-status-lookup.service";
@@ -51,7 +53,9 @@ import { OrdersService } from "./orders.service";
     OrdersOverviewService,
     CartAbandonmentScheduler,
     RateLimitService,
+    MissingTrackingAlertService,
+    MissingTrackingAlertScheduler,
   ],
-  exports: [CartService, CheckoutService, OrdersService],
+  exports: [CartService, CheckoutService, OrdersService, MissingTrackingAlertService],
 })
 export class OrdersModule {}

@@ -26,6 +26,8 @@ import { DormantStoreService } from "../guardrails/dormant-store.service";
 import { DORMANT_STORE_QUEUE_NAME } from "../guardrails/dormant-store.queue";
 import { CartService } from "../orders/cart.service";
 import { CART_ABANDONMENT_QUEUE_NAME } from "../orders/cart-abandonment.queue";
+import { MissingTrackingAlertService } from "../orders/missing-tracking-alert.service";
+import { MISSING_TRACKING_ALERT_QUEUE_NAME } from "../orders/missing-tracking-alert.queue";
 import { SupplierSyncService } from "../suppliers/supplier-sync.service";
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 import { StoreHealthScoreService } from "../store-health/store-health-score.service";
@@ -56,6 +58,7 @@ async function main() {
   const domainVerification = appContext.get(DomainVerificationService);
   const supplierSync = appContext.get(SupplierSyncService);
   const cart = appContext.get(CartService);
+  const missingTrackingAlert = appContext.get(MissingTrackingAlertService);
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const walletReconciliation = appContext.get(WalletReconciliationService);
   const retention = appContext.get(RetentionService);
@@ -117,6 +120,20 @@ async function main() {
   cartAbandonmentWorker.on("failed", (job, err) => {
     // eslint-disable-next-line no-console
     console.error(`cart-abandonment job ${job?.id} failed:`, err);
+  });
+
+  // Phase 5 (founder-requested "missing tracking" alert) - runSweep()
+  // never throws for the whole batch (each order's own email send is
+  // caught individually), same discipline as every other sweep above.
+  const missingTrackingAlertWorker = new Worker(
+    MISSING_TRACKING_ALERT_QUEUE_NAME,
+    async () => missingTrackingAlert.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  missingTrackingAlertWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`missing-tracking-alert-sweep job ${job?.id} failed:`, err);
   });
 
   // Module 20 (SRS §5.6e, FR-6.24, revised FR-7.2) - replaces Module 11's
@@ -360,13 +377,14 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70).",
   );
 
   const shutdown = async () => {
     await domainWorker.close();
     await supplierSyncWorker.close();
     await cartAbandonmentWorker.close();
+    await missingTrackingAlertWorker.close();
     await planFeeDebitWorker.close();
     await planFeeRenewalExportWorker.close();
     await walletReconciliationWorker.close();

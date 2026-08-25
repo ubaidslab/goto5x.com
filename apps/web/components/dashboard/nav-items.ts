@@ -56,13 +56,13 @@ import {
  *
  * Payments and Reports are real, already-built features (Module 62 gateway
  * connect; Module 24 data export) that lived only inside Settings until
- * now. They get real top-level routes here, but as of Phase 1 those routes
- * are `/settings#payments` / `/settings#reports` anchor links into the
+ * now. Payments was extracted into its own routed page (`/payments`)
+ * alongside its Phase 5 visual redesign - see `payments/page.tsx`'s own doc
+ * comment. Reports is still `/settings#reports`, an anchor link into the
  * still-single Settings page (real, working, no 404 - just not yet
- * extracted into their own page) - true extraction into standalone routed
- * pages happens alongside their visual redesign (Payments in Phase 5;
- * Reports alongside the Settings-hub phase above) rather than moving 900+
- * lines of interdependent state twice.
+ * extracted into its own page) - that extraction happens alongside the
+ * Settings-hub phase above rather than moving 900+ lines of interdependent
+ * state twice.
  */
 export type NavGroup = "main" | "growth" | "operations" | "admin";
 
@@ -103,7 +103,7 @@ export const navItems: NavItem[] = [
 
   { label: "Shipping & tracking", href: (id) => `/stores/${id}/shipping-tax`, icon: Truck, group: "operations" },
   { label: "Suppliers", href: (id) => `/stores/${id}/suppliers`, icon: Handshake, group: "operations", conditional: true },
-  { label: "Payments", href: (id) => `/stores/${id}/settings#payments`, icon: CreditCard, group: "operations" },
+  { label: "Payments", href: (id) => `/stores/${id}/payments`, icon: CreditCard, group: "operations" },
 
   { label: "Reports", href: (id) => `/stores/${id}/settings#reports`, icon: FileText, group: "admin" },
   { label: "Staff", href: (id) => `/stores/${id}/staff-accounts`, icon: UserCog, group: "admin" },

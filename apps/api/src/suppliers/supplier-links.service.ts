@@ -62,7 +62,11 @@ export class SupplierLinksService {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.storeSupplierLink.findMany({ where: { storeId }, orderBy: { createdAt: "desc" } });
+      return tx.storeSupplierLink.findMany({
+        where: { storeId },
+        orderBy: { createdAt: "desc" },
+        include: { supplier: { select: { businessName: true, verificationStatus: true } } },
+      });
     });
   }
 

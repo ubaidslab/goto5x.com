@@ -156,6 +156,31 @@ export class EmailService {
   }
 
   /**
+   * Phase 5 (founder-requested "missing tracking" alert) - fires once per
+   * order from MissingTrackingAlertService's sweep (Order.
+   * missingTrackingAlertedAt dedupes it), never per-sweep-run. Two near-
+   * identical variants for the two possible responsible parties (self-
+   * fulfilled seller vs. supplier-fulfilled item) - same reasoning as
+   * sendOrderStatusEmail's own separate buyer/seller copy, not a shared
+   * template with branching inside it.
+   */
+  async sendMissingTrackingAlertToSellerEmail(to: string, storeName: string, orderNumber: number, orderUrl: string, hoursOverdue: number): Promise<void> {
+    await this.send(
+      to,
+      `Order #${orderNumber} on ${storeName} still has no tracking`,
+      `Order #${orderNumber} on ${storeName} was confirmed ${hoursOverdue} hour${hoursOverdue === 1 ? "" : "s"} ago and still has no tracking uploaded. Add tracking (or mark it shipped) here: ${orderUrl}`,
+    );
+  }
+
+  async sendMissingTrackingAlertToSupplierEmail(to: string, storeName: string, orderNumber: number, hoursOverdue: number): Promise<void> {
+    await this.send(
+      to,
+      `Order #${orderNumber} for ${storeName} still has no tracking`,
+      `An order (#${orderNumber}) you're fulfilling for ${storeName} was confirmed ${hoursOverdue} hour${hoursOverdue === 1 ? "" : "s"} ago and still has no tracking uploaded. Upload tracking from your supplier portal as soon as it ships.`,
+    );
+  }
+
+  /**
    * SRS §5.6k/FR-6.41 (Module 64) - the 14-day retention window's three
    * warning emails (day 0/7/13, `daysRemaining` computed by the caller).
    * Deliberately hardcoded copy, not the admin-editable EmailTemplate

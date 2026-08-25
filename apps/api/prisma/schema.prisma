@@ -1900,6 +1900,12 @@ model Order {
   // confirmation email already sends) and reused on every subsequent view.
   invoicePdfUrl     String?     @map("invoice_pdf_url")
   placedAt          DateTime    @default(now()) @map("placed_at") @db.Timestamptz
+  // Phase 5 (founder-requested "missing tracking" alert) - set once this
+  // order has been alerted on by MissingTrackingAlertService's sweep, so a
+  // repeat sweep run never re-alerts the same order. Naturally stops
+  // mattering once the order leaves the "awaitingTracking" bucket (moves
+  // to shipped/cancelled/etc.) - no reset needed, this is a one-time flag.
+  missingTrackingAlertedAt DateTime? @map("missing_tracking_alerted_at") @db.Timestamptz
 
   store               Store                @relation(fields: [storeId], references: [id])
   customer            Customer?            @relation(fields: [customerId], references: [id])

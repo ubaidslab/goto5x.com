@@ -445,14 +445,27 @@ export class OrderVerificationService {
     return this.regenerateAndSend(verification, order.storeName, order.buyerEmail, order.buyerWhatsapp);
   }
 
-  /** FR-37.1/FR-37.6 - the seller's own store-level channel + message-template choice (Settings Registry, `store` scope). */
+  /**
+   * FR-37.1/FR-37.6 - the seller's own store-level channel + message-
+   * template choice (Settings Registry, `store` scope). Also reports
+   * whether this seller's PLAN includes the two gated channels (RUN+) and
+   * the configured partial-advance percentage - the Order Verification
+   * page's own "locked, not just a 403 on save" treatment reads these
+   * rather than letting a GO seller pick a gated channel blind and
+   * discover the rejection only after clicking Save.
+   */
   async getSettingsForStore(sellerId: string, storeId: string) {
     await this.assertOwnsStore(sellerId, storeId);
-    const [channel, messageTemplate] = await Promise.all([
-      this.settings.resolve<string>("orders.verification_channel", { storeId }),
-      this.settings.resolve<string>("orders.verification_message_template", { storeId }),
-    ]);
-    return { channel, messageTemplate };
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const [channel, messageTemplate, prepaidPartialAdvanceEnabled, whatsappVerificationEnabled, prepaidPartialAdvancePercent] =
+      await Promise.all([
+        this.settings.resolve<string>("orders.verification_channel", { storeId }),
+        this.settings.resolve<string>("orders.verification_message_template", { storeId }),
+        this.settings.resolve<boolean>("orders.prepaid_partial_advance_enabled", planContext),
+        this.settings.resolve<boolean>("orders.whatsapp_verification_enabled", planContext),
+        this.settings.resolve<number>("orders.prepaid_partial_advance_percent", { storeId }),
+      ]);
+    return { channel, messageTemplate, prepaidPartialAdvanceEnabled, whatsappVerificationEnabled, prepaidPartialAdvancePercent };
   }
 
   async updateSettingsForStore(

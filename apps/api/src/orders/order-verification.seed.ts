@@ -126,6 +126,42 @@ export async function seedOrderVerificationSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // Phase 5 (founder-requested "missing tracking" alert) - the threshold
+  // MissingTrackingAlertService's sweep uses to flag an order that's been
+  // in the "awaitingTracking" bucket (orders-overview.service.ts) too long
+  // with no tracking uploaded on any item. Global-only (no per-store
+  // override asked for) - matches the precedent of other operational
+  // thresholds like storefront.unlock_rate_limit_per_hour.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.missing_tracking_alert_hours" },
+    create: {
+      key: "orders.missing_tracking_alert_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 24,
+      validation: { min: 1, max: 720 },
+      description: "Hours after an order enters the awaiting-tracking bucket before it's flagged and the responsible party (seller or supplier) is alerted.",
+    },
+    update: {},
+  });
+
+  // Same "check-interval Settings key, separate from the alert threshold"
+  // idiom every other sweep scheduler in this codebase uses (see e.g.
+  // lifecycle.dormant_sweep_check_hours) - how OFTEN the sweep runs, not
+  // how overdue an order must be to get flagged.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "orders.missing_tracking_sweep_check_hours" },
+    create: {
+      key: "orders.missing_tracking_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 1,
+      validation: { min: 1, max: 24 },
+      description: "How often the missing-tracking alert sweep runs, in hours.",
+    },
+    update: {},
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "orders.verification_message_template" },
     create: {

@@ -12,6 +12,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type LinkStatus = "pending_seller_review" | "active" | "revoked";
+type ReviewStatus = "pending" | "approved" | "rejected";
 
 interface SupplierLink {
   id: string;
@@ -19,6 +20,13 @@ interface SupplierLink {
   status: LinkStatus;
   invitedBy: "seller" | "supplier";
   createdAt: string;
+  supplier: { businessName: string; verificationStatus: string } | null;
+}
+interface ListingReview {
+  id: string;
+  status: ReviewStatus;
+  createdAt: string;
+  supplierListing: { title: string; price: string; shippingCost: string; supplier: { businessName: string } } | null;
 }
 
 const statusTone: Record<LinkStatus, "neutral" | "success" | "warning"> = {
@@ -31,6 +39,11 @@ const statusLabel: Record<LinkStatus, string> = {
   active: "active",
   revoked: "revoked",
 };
+const reviewStatusTone: Record<ReviewStatus, "neutral" | "success" | "warning" | "danger"> = {
+  pending: "warning",
+  approved: "success",
+  rejected: "danger",
+};
 
 /**
  * Optional by design (SIMPLICITY INVARIANT): a self-fulfilled seller with no
@@ -39,9 +52,11 @@ const statusLabel: Record<LinkStatus, string> = {
  */
 export default function SupplierLinksPage({ params }: { params: { storeId: string } }) {
   const [links, setLinks] = useState<SupplierLink[] | null>(null);
+  const [reviews, setReviews] = useState<ListingReview[] | null>(null);
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [decidingReview, setDecidingReview] = useState<string | null>(null);
 
   function load() {
     api
@@ -50,9 +65,33 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
       .catch(() => setLinks([]));
   }
 
-  useEffect(load, [params.storeId]);
+  function loadReviews() {
+    api
+      .get<ListingReview[]>(`/stores/${params.storeId}/listing-reviews`)
+      .then(setReviews)
+      .catch(() => setReviews([]));
+  }
 
-  if (!links) return <PageSpinner />;
+  useEffect(load, [params.storeId]);
+  useEffect(loadReviews, [params.storeId]);
+
+  if (!links || !reviews) return <PageSpinner />;
+
+  async function decideReview(reviewId: string, decision: "approve" | "reject") {
+    setError(null);
+    setDecidingReview(reviewId);
+    try {
+      await api.patch(`/stores/${params.storeId}/listing-reviews/${reviewId}/${decision}`);
+      loadReviews();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Couldn't ${decision} that listing.`);
+    } finally {
+      setDecidingReview(null);
+    }
+  }
+
+  const pendingReviews = reviews.filter((r) => r.status === "pending");
+  const decidedReviews = reviews.filter((r) => r.status !== "pending").slice(0, 10);
 
   async function invite(e: React.FormEvent) {
     e.preventDefault();
@@ -124,7 +163,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
             {links.map((link) => (
               <div key={link.id} className="flex items-center justify-between gap-4 px-6 py-4">
                 <div>
-                  <p className="text-sm font-medium text-ink">Supplier {link.supplierId.slice(0, 8)}</p>
+                  <p className="text-sm font-medium text-ink">{link.supplier?.businessName ?? `Supplier ${link.supplierId.slice(0, 8)}`}</p>
                   <p className="mt-0.5 text-xs text-ink-muted">
                     {link.invitedBy === "seller" ? "You invited this supplier" : "This supplier requested to connect"} ·{" "}
                     {new Date(link.createdAt).toLocaleDateString()}
@@ -147,6 +186,69 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
             ))}
           </Card>
         )}
+
+        <div>
+          <h2 className="mb-1 text-sm font-semibold text-ink">Listing reviews</h2>
+          <p className="mb-3 text-xs text-ink-muted">
+            A connected supplier submits their products here before they go live on your store - nothing lists without your approval.
+          </p>
+
+          {pendingReviews.length === 0 && decidedReviews.length === 0 ? (
+            <Card>
+              <EmptyState title="No listings submitted yet" description="Once a connected supplier submits a product, it'll show up here for your approval." />
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {pendingReviews.length > 0 && (
+                <Card className="divide-y divide-border overflow-hidden">
+                  {pendingReviews.map((review) => (
+                    <div key={review.id} className="flex items-center justify-between gap-4 px-6 py-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{review.supplierListing?.title ?? "Untitled listing"}</p>
+                        <p className="mt-0.5 text-xs text-ink-muted">
+                          {review.supplierListing?.supplier.businessName ?? "Unknown supplier"} · Rs {review.supplierListing?.price}
+                          {review.supplierListing && Number(review.supplierListing.shippingCost) > 0 && ` + Rs ${review.supplierListing.shippingCost} shipping`}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          loading={decidingReview === review.id}
+                          onClick={() => decideReview(review.id, "approve")}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          disabled={decidingReview === review.id}
+                          onClick={() => decideReview(review.id, "reject")}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+
+              {decidedReviews.length > 0 && (
+                <Card className="divide-y divide-border overflow-hidden">
+                  {decidedReviews.map((review) => (
+                    <div key={review.id} className="flex items-center justify-between gap-4 px-6 py-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-ink">{review.supplierListing?.title ?? "Untitled listing"}</p>
+                        <p className="mt-0.5 text-xs text-ink-muted">{review.supplierListing?.supplier.businessName ?? "Unknown supplier"}</p>
+                      </div>
+                      <Badge tone={reviewStatusTone[review.status]}>{review.status}</Badge>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

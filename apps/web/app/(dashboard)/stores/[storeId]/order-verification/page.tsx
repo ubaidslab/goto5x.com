@@ -9,13 +9,21 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
 
-type Channel = "none" | "whatsapp_otp" | "email_otp" | "prepaid_confirmation";
+type Channel = "none" | "whatsapp_otp" | "email_otp" | "prepaid_confirmation" | "prepaid_partial_advance";
 
 interface VerificationSettings {
   channel: Channel;
   messageTemplate: string;
+  // D-Studio-close-out-era "locked, not just a 403 on save" pattern applied
+  // here too - whatsapp_otp and prepaid_partial_advance are both RUN+ gated
+  // (FR-6.52/FR-6.53); this page shouldn't let a GO seller pick either
+  // blind and discover the rejection only after clicking Save.
+  prepaidPartialAdvanceEnabled: boolean;
+  whatsappVerificationEnabled: boolean;
+  prepaidPartialAdvancePercent: number;
 }
 
 interface VerificationEmail {
@@ -33,6 +41,7 @@ const CHANNEL_LABEL: Record<Channel, string> = {
   whatsapp_otp: "WhatsApp OTP (manual/link-assisted)",
   email_otp: "Email OTP (your own SMTP account)",
   prepaid_confirmation: "Prepaid confirmation (mark deposit received)",
+  prepaid_partial_advance: "Prepaid partial-advance (buyer pays a deposit via your payment gateway)",
 };
 
 /**
@@ -49,9 +58,16 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
   const [error, setError] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
 
   function load() {
-    api.get<VerificationSettings>(`/stores/${params.storeId}/verification-settings`).then(setSettings).catch(() => setSettings(null));
+    api
+      .get<VerificationSettings>(`/stores/${params.storeId}/verification-settings`)
+      .then((s) => {
+        setSettings(s);
+        setSelectedChannel(s.channel);
+      })
+      .catch(() => setSettings(null));
     api.get<VerificationEmail[]>("/sellers/me/verification-emails").then(setEmails).catch(() => setEmails([]));
   }
 
@@ -125,15 +141,42 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
           />
           <CardBody>
             <form onSubmit={saveSettings} className="space-y-4">
-              <Field label="Channel" hint="Applies to every new order placed from now on.">
-                <Select name="channel" defaultValue={settings.channel} required>
-                  {(Object.keys(CHANNEL_LABEL) as Channel[]).map((channel) => (
-                    <option key={channel} value={channel}>
-                      {CHANNEL_LABEL[channel]}
-                    </option>
-                  ))}
+              <Field label="Channel" hint="Applies to every new order placed from now on. Every channel is listed even if your plan doesn't include it yet.">
+                <Select
+                  name="channel"
+                  value={selectedChannel ?? settings.channel}
+                  onChange={(e) => setSelectedChannel(e.target.value as Channel)}
+                  required
+                >
+                  {(Object.keys(CHANNEL_LABEL) as Channel[]).map((channel) => {
+                    const locked =
+                      (channel === "whatsapp_otp" && !settings.whatsappVerificationEnabled) ||
+                      (channel === "prepaid_partial_advance" && !settings.prepaidPartialAdvanceEnabled);
+                    return (
+                      <option key={channel} value={channel}>
+                        {CHANNEL_LABEL[channel]}
+                        {locked ? " (requires RUN or above)" : ""}
+                      </option>
+                    );
+                  })}
                 </Select>
               </Field>
+
+              {selectedChannel === "prepaid_partial_advance" && !settings.prepaidPartialAdvanceEnabled && (
+                <UpgradeLockedCard
+                  requiredTier="RUN"
+                  title="Prepaid partial-advance"
+                  description={`A buyer pays ${settings.prepaidPartialAdvancePercent}% of the order total via your connected payment gateway before the order confirms - the rest stays cash/payment on delivery. One of our strongest defenses against fake COD orders.`}
+                />
+              )}
+              {selectedChannel === "whatsapp_otp" && !settings.whatsappVerificationEnabled && (
+                <UpgradeLockedCard
+                  requiredTier="RUN"
+                  title="WhatsApp OTP verification"
+                  description="Send a one-time code to the buyer's WhatsApp before their order confirms."
+                />
+              )}
+
               <Field
                 label="OTP message template"
                 hint="Only used for WhatsApp OTP and Email OTP. {{otp}} is replaced with the buyer's code."
