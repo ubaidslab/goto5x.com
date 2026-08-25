@@ -25,7 +25,11 @@ function StudioHero({ store, theme, variant = 0, elementAnimations }: { store: P
         <AnimatedElement as="div" preset={elementAnimations?.image} className="aspect-square flex-1" style={{ background: `${theme.colors.primary}22` }} />
         <div className="flex-1">
           {heading}
-          {store.seoDescription && <p className="mt-6 max-w-lg text-lg opacity-80">{store.seoDescription}</p>}
+          {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mt-6 max-w-lg text-lg opacity-80">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
         </div>
       </section>
     );
@@ -35,7 +39,11 @@ function StudioHero({ store, theme, variant = 0, elementAnimations }: { store: P
       <section className={`${grotesk.variable} px-6 py-40`} style={{ background: "#0a0a0a", color: "#fff" }}>
         <div className="mx-auto max-w-5xl">
           {heading}
-          {store.seoDescription && <p className="mt-6 max-w-lg text-lg opacity-80">{store.seoDescription}</p>}
+          {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mt-6 max-w-lg text-lg opacity-80">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
         </div>
       </section>
     );
@@ -51,7 +59,11 @@ function StudioHero({ store, theme, variant = 0, elementAnimations }: { store: P
           <img src={theme.logoUrl} alt={store.name} className="mb-8 max-h-14" />
         )}
         {heading}
-        {store.seoDescription && <p className="mt-6 max-w-lg text-lg opacity-80">{store.seoDescription}</p>}
+        {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mt-6 max-w-lg text-lg opacity-80">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
       </div>
     </section>
   );
@@ -107,7 +119,9 @@ function StudioAbout({ store, theme, variant = 0, elementAnimations }: { store: 
           <h2 className={`${grotesk.variable} mb-4 text-3xl font-bold uppercase tracking-tight`} style={{ fontFamily: "var(--font-studio-display)" }}>
             About {store.name}
           </h2>
-          <p className="text-lg opacity-90">{body}</p>
+          <AnimatedElement as="p" preset={elementAnimations?.text} className="text-lg opacity-90">
+            {body}
+          </AnimatedElement>
         </div>
       </section>
     );
@@ -118,18 +132,20 @@ function StudioAbout({ store, theme, variant = 0, elementAnimations }: { store: 
         <AnimatedElement as="h2" preset={elementAnimations?.heading} className={`${grotesk.variable} mb-4 text-3xl font-bold uppercase tracking-tight`}>
           <span style={{ fontFamily: "var(--font-studio-display)" }}>About {store.name}</span>
         </AnimatedElement>
-        <p className="text-lg opacity-90">{body}</p>
+        <AnimatedElement as="p" preset={elementAnimations?.text} className="text-lg opacity-90">
+          {body}
+        </AnimatedElement>
       </div>
     </section>
   );
 }
 
-function StudioNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
+function StudioNewsletter({ theme, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
   const inner = (
     <>
-      <h2 className={`${grotesk.variable} text-3xl font-bold uppercase tracking-tight`} style={{ fontFamily: "var(--font-studio-display)" }}>
+      <AnimatedElement as="h2" preset={elementAnimations?.heading} className={`${grotesk.variable} text-3xl font-bold uppercase tracking-tight`} style={{ fontFamily: "var(--font-studio-display)" }}>
         Stay updated
-      </h2>
+      </AnimatedElement>
       <p className="mt-3 opacity-70">Newsletter signup is coming in a later module.</p>
     </>
   );
@@ -154,12 +170,12 @@ function StudioNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSettings
   );
 }
 
-function StudioFaq({ theme, items, variant = 0 }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
+function StudioFaq({ theme, items, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
   if (items.length === 0) return null;
   const heading = (
-    <h2 className={`${grotesk.variable} mb-8 text-3xl font-bold uppercase tracking-tight`} style={{ fontFamily: "var(--font-studio-display)" }}>
+    <AnimatedElement as="h2" preset={elementAnimations?.heading} className={`${grotesk.variable} mb-8 text-3xl font-bold uppercase tracking-tight`} style={{ fontFamily: "var(--font-studio-display)" }}>
       FAQ
-    </h2>
+    </AnimatedElement>
   );
   if (variant === 1) {
     return (

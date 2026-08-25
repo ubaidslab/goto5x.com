@@ -38,7 +38,11 @@ function EditorialHero({ store, theme, variant = 0, elementAnimations }: { store
         <div className="flex-1">{media}</div>
         <div className="flex-1 text-center sm:text-left">
           {heading}
-          {store.seoDescription && <p className="mt-6 max-w-xl text-lg opacity-80">{store.seoDescription}</p>}
+          {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mt-6 max-w-xl text-lg opacity-80">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
         </div>
       </section>
     );
@@ -53,7 +57,11 @@ function EditorialHero({ store, theme, variant = 0, elementAnimations }: { store
           <AnimatedElement as="h1" preset={elementAnimations?.heading} className="mx-auto max-w-3xl text-5xl leading-tight tracking-tight sm:text-6xl">
             <span style={{ fontFamily: "var(--font-editorial-display)" }}>{store.name}</span>
           </AnimatedElement>
-          {store.seoDescription && <p className="mx-auto mt-6 max-w-xl text-lg opacity-80">{store.seoDescription}</p>}
+          {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto mt-6 max-w-xl text-lg opacity-80">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
         </div>
       </section>
     );
@@ -70,7 +78,11 @@ function EditorialHero({ store, theme, variant = 0, elementAnimations }: { store
       <AnimatedElement as="h1" preset={elementAnimations?.heading} className="mx-auto max-w-3xl text-5xl leading-tight tracking-tight sm:text-6xl">
         <span style={{ fontFamily: "var(--font-editorial-display)", color: theme.colors.primary }}>{store.name}</span>
       </AnimatedElement>
-      {store.seoDescription && <p className="mx-auto mt-6 max-w-xl text-lg opacity-80">{store.seoDescription}</p>}
+      {store.seoDescription && (
+        <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto mt-6 max-w-xl text-lg opacity-80">
+          {store.seoDescription}
+        </AnimatedElement>
+      )}
     </section>
   );
 }
@@ -129,7 +141,9 @@ function EditorialAbout({ store, theme, variant = 0, elementAnimations }: { stor
           <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-4 text-3xl">
             <span style={{ fontFamily: "var(--font-editorial-display)", color: theme.colors.primary }}>About {store.name}</span>
           </AnimatedElement>
-          <p className="text-lg opacity-80">{body}</p>
+          <AnimatedElement as="p" preset={elementAnimations?.text} className="text-lg opacity-80">
+            {body}
+          </AnimatedElement>
         </div>
       </section>
     );
@@ -139,7 +153,9 @@ function EditorialAbout({ store, theme, variant = 0, elementAnimations }: { stor
       <AnimatedElement as="h2" preset={elementAnimations?.heading} className={`${playfair.variable} mb-4 text-3xl`}>
         <span style={{ fontFamily: "var(--font-editorial-display)", color: theme.colors.primary }}>About {store.name}</span>
       </AnimatedElement>
-      <p className="mx-auto max-w-2xl text-lg opacity-80">{body}</p>
+      <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto max-w-2xl text-lg opacity-80">
+        {body}
+      </AnimatedElement>
     </section>
   );
 }

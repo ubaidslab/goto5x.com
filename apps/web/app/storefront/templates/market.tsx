@@ -19,7 +19,11 @@ function MarketHero({ store, theme, variant = 0, elementAnimations }: { store: P
           <AnimatedElement as="h1" preset={elementAnimations?.heading} className="text-2xl font-semibold tracking-tight">
             {store.name}
           </AnimatedElement>
-          {store.seoDescription && <p className="mt-2 text-sm opacity-70">{store.seoDescription}</p>}
+          {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mt-2 text-sm opacity-70">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
         </div>
       </section>
     );
@@ -30,7 +34,11 @@ function MarketHero({ store, theme, variant = 0, elementAnimations }: { store: P
         <AnimatedElement as="h1" preset={elementAnimations?.heading} className="text-2xl font-semibold tracking-tight">
           {store.name}
         </AnimatedElement>
-        {store.seoDescription && <p className="mx-auto mt-2 max-w-sm text-sm opacity-70">{store.seoDescription}</p>}
+        {store.seoDescription && (
+          <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto mt-2 max-w-sm text-sm opacity-70">
+            {store.seoDescription}
+          </AnimatedElement>
+        )}
       </section>
     );
   }
@@ -45,7 +53,11 @@ function MarketHero({ store, theme, variant = 0, elementAnimations }: { store: P
           {store.name}
         </AnimatedElement>
       </div>
-      {store.seoDescription && <p className="hidden max-w-sm text-sm opacity-70 sm:block">{store.seoDescription}</p>}
+      {store.seoDescription && (
+        <AnimatedElement as="p" preset={elementAnimations?.text} className="hidden max-w-sm text-sm opacity-70 sm:block">
+          {store.seoDescription}
+        </AnimatedElement>
+      )}
     </section>
   );
 }
@@ -97,8 +109,12 @@ function MarketAbout({ store, theme, variant = 0, elementAnimations }: { store: 
       <section className={`flex flex-col items-center gap-8 border-t px-6 py-10 sm:flex-row ${variant === 2 ? "sm:flex-row-reverse" : ""}`} style={{ background: theme.colors.background, color: theme.colors.text, borderColor: `${theme.colors.text}1a` }}>
         <AnimatedElement as="div" preset={elementAnimations?.image} className="aspect-video flex-1" style={{ background: `${theme.colors.text}0d` }} />
         <div className="flex-1">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">About {store.name}</h2>
-          <p className="text-sm opacity-80">{body}</p>
+          <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+            About {store.name}
+          </AnimatedElement>
+          <AnimatedElement as="p" preset={elementAnimations?.text} className="text-sm opacity-80">
+            {body}
+          </AnimatedElement>
         </div>
       </section>
     );
@@ -108,15 +124,19 @@ function MarketAbout({ store, theme, variant = 0, elementAnimations }: { store: 
       <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">
         About {store.name}
       </AnimatedElement>
-      <p className="text-sm opacity-80">{body}</p>
+      <AnimatedElement as="p" preset={elementAnimations?.text} className="text-sm opacity-80">
+        {body}
+      </AnimatedElement>
     </section>
   );
 }
 
-function MarketNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
+function MarketNewsletter({ theme, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
   const inner = (
     <>
-      <h2 className="text-sm font-semibold uppercase tracking-wide opacity-60">Stay updated</h2>
+      <AnimatedElement as="h2" preset={elementAnimations?.heading} className="text-sm font-semibold uppercase tracking-wide opacity-60">
+        Stay updated
+      </AnimatedElement>
       <p className="mt-2 text-sm opacity-70">Newsletter signup is coming in a later module.</p>
     </>
   );
@@ -141,9 +161,13 @@ function MarketNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSettings
   );
 }
 
-function MarketFaq({ theme, items, variant = 0 }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
+function MarketFaq({ theme, items, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
   if (items.length === 0) return null;
-  const heading = <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">FAQ</h2>;
+  const heading = (
+    <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">
+      FAQ
+    </AnimatedElement>
+  );
   if (variant === 1) {
     return (
       <section className="border-t px-6 py-10" style={{ background: theme.colors.background, color: theme.colors.text, borderColor: `${theme.colors.text}1a` }}>

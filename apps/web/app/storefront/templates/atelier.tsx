@@ -25,7 +25,11 @@ function AtelierHero({ store, theme, variant = 0, elementAnimations }: { store: 
         <AnimatedElement as="div" preset={elementAnimations?.image} className="aspect-[4/3] flex-1 bg-black/5" />
         <div className="flex-1 text-center sm:text-left">
           {heading}
-          {store.seoDescription && <p className="mt-4 max-w-md text-base opacity-60">{store.seoDescription}</p>}
+          {store.seoDescription && (
+            <AnimatedElement as="p" preset={elementAnimations?.text} className="mt-4 max-w-md text-base opacity-60">
+              {store.seoDescription}
+            </AnimatedElement>
+          )}
         </div>
       </section>
     );
@@ -36,7 +40,11 @@ function AtelierHero({ store, theme, variant = 0, elementAnimations }: { store: 
         <AnimatedElement as="h1" preset={elementAnimations?.heading} className="text-4xl font-medium tracking-tight sm:text-5xl">
           {store.name}
         </AnimatedElement>
-        {store.seoDescription && <p className="mx-auto mt-4 max-w-md text-base opacity-60">{store.seoDescription}</p>}
+        {store.seoDescription && (
+          <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto mt-4 max-w-md text-base opacity-60">
+            {store.seoDescription}
+          </AnimatedElement>
+        )}
       </section>
     );
   }
@@ -50,7 +58,11 @@ function AtelierHero({ store, theme, variant = 0, elementAnimations }: { store: 
         <img src={theme.logoUrl} alt={store.name} className="mx-auto mb-10 max-h-12" />
       )}
       {heading}
-      {store.seoDescription && <p className="mx-auto mt-4 max-w-md text-base opacity-60">{store.seoDescription}</p>}
+      {store.seoDescription && (
+        <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto mt-4 max-w-md text-base opacity-60">
+          {store.seoDescription}
+        </AnimatedElement>
+      )}
     </section>
   );
 }
@@ -64,6 +76,9 @@ function AtelierFeaturedProducts({ products, theme, variant = 0, elementAnimatio
         : "mx-auto grid max-w-5xl grid-cols-2 gap-x-8 gap-y-16 sm:grid-cols-3";
   return (
     <section className="px-6 py-24 [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
+      <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mx-auto mb-8 max-w-5xl text-sm font-medium uppercase tracking-widest opacity-50">
+        Shop
+      </AnimatedElement>
       {products.length === 0 ? (
         <p className="text-center opacity-60">No products yet.</p>
       ) : (
@@ -95,8 +110,12 @@ function AtelierAbout({ store, theme, variant = 0, elementAnimations }: { store:
       >
         <AnimatedElement as="div" preset={elementAnimations?.image} className="aspect-[4/3] flex-1 bg-black/5" />
         <div className="flex-1 text-center sm:text-left">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">About</h2>
-          <p className="text-lg">{body}</p>
+          <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">
+            About
+          </AnimatedElement>
+          <AnimatedElement as="p" preset={elementAnimations?.text} className="text-lg">
+            {body}
+          </AnimatedElement>
         </div>
       </section>
     );
@@ -106,15 +125,19 @@ function AtelierAbout({ store, theme, variant = 0, elementAnimations }: { store:
       <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">
         About
       </AnimatedElement>
-      <p className="mx-auto max-w-xl text-lg">{body}</p>
+      <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto max-w-xl text-lg">
+        {body}
+      </AnimatedElement>
     </section>
   );
 }
 
-function AtelierNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
+function AtelierNewsletter({ theme, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
   const inner = (
     <>
-      <h2 className="text-sm font-medium uppercase tracking-widest opacity-50">Stay updated</h2>
+      <AnimatedElement as="h2" preset={elementAnimations?.heading} className="text-sm font-medium uppercase tracking-widest opacity-50">
+        Stay updated
+      </AnimatedElement>
       <p className="mt-3 text-sm opacity-60">Newsletter signup is coming in a later module.</p>
     </>
   );
@@ -139,9 +162,13 @@ function AtelierNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSetting
   );
 }
 
-function AtelierFaq({ theme, items, variant = 0 }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
+function AtelierFaq({ theme, items, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
   if (items.length === 0) return null;
-  const heading = <h2 className="mb-8 text-center text-sm font-medium uppercase tracking-widest opacity-50">Questions</h2>;
+  const heading = (
+    <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-8 text-center text-sm font-medium uppercase tracking-widest opacity-50">
+      Questions
+    </AnimatedElement>
+  );
   if (variant === 1) {
     return (
       <section className="mx-auto max-w-4xl px-6 py-24 [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>

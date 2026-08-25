@@ -38,7 +38,12 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     tierFloor: 0,
     maxVariantIndexByTier: [0, 1],
     flyExclusiveVariant: "Diagonal split",
-    elements: ["heading", "text", "button", "image"],
+    // No template's Hero renders an actual CTA button today (heading +
+    // description + optional image only) - "button" was removed from
+    // here after the functional-completeness audit found it as a
+    // control with nothing to animate. Add it back only alongside a
+    // real Hero CTA button.
+    elements: ["heading", "text", "image"],
   },
   featured_products: {
     name: "Product grid",
@@ -92,7 +97,10 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     variants: ["Inline bar", "Card", "Full bleed"],
     tierFloor: 0,
     maxVariantIndexByTier: [0, 1],
-    elements: ["heading", "button"],
+    // "button" removed after the functional-completeness audit - every
+    // template's Newsletter is still placeholder copy only ("coming in a
+    // later module"), no real signup form/button exists to animate yet.
+    elements: ["heading"],
   },
   spacer: {
     name: "Spacer / divider",
@@ -116,7 +124,8 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     variants: ["Grid", "Masonry", "Carousel"],
     tierFloor: 1,
     maxVariantIndexByTier: [0, 1],
-    elements: ["heading", "image"],
+    // "heading" removed - Gallery has no heading text in any variant today.
+    elements: ["image"],
   },
   video_banner: {
     name: "Video banner",
@@ -124,7 +133,9 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     variants: ["Full bleed", "Split"],
     tierFloor: 1,
     maxVariantIndexByTier: [0, 1],
-    elements: ["heading", "text"],
+    // The video/thumbnail placeholder is the "image" slot, not "text" -
+    // corrected after the functional-completeness audit.
+    elements: ["heading", "image"],
   },
   countdown: {
     name: "Countdown",
@@ -132,7 +143,8 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     variants: ["Banner", "Hero overlay"],
     tierFloor: 1,
     maxVariantIndexByTier: [0, 1],
-    elements: ["heading", "text"],
+    // "heading" removed - Countdown has no heading text, only the digit row (text).
+    elements: ["text"],
   },
   stats_counter: {
     name: "Stats / counter",
@@ -164,7 +176,8 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     variants: ["Slider", "Side by side"],
     tierFloor: 2,
     maxVariantIndexByTier: [0, 1],
-    elements: ["heading", "image"],
+    // "heading" removed - Before/After has no heading text in either variant.
+    elements: ["image"],
   },
   map_location: {
     name: "Map / location",
@@ -172,7 +185,8 @@ export const SECTION_CATALOG: Record<SectionId, SectionCatalogEntry> = {
     variants: ["Embed map", "Address card"],
     tierFloor: 2,
     maxVariantIndexByTier: [0, 1],
-    elements: ["heading", "text"],
+    // "heading" removed - neither variant has a heading text element.
+    elements: ["text"],
   },
   social_feed: {
     name: "Social feed",

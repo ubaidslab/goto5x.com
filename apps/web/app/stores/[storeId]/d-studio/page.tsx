@@ -534,6 +534,11 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                   </div>
                 ) : (
                   <>
+                    <div className="mb-2 rounded-md p-2 text-[10.5px] leading-relaxed" style={{ background: "rgba(214,169,74,0.12)", border: `1px solid ${CHROME.tierRise}55`, color: CHROME.inkMuted }}>
+                      Saved here, but not yet rendered on your live storefront in this release - there
+                      is no execution path for it yet. Use this as a staging area; nothing you write
+                      here is visible to buyers today.
+                    </div>
                     <p className="mb-2 text-[11px]" style={{ color: CHROME.inkFaint }}>
                       Scoped, presentation-only CSS. Never touches cart/checkout/account.
                     </p>

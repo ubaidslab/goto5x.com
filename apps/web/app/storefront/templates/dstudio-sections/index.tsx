@@ -73,11 +73,17 @@ export function TestimonialsSection({ theme, variant, fontVar, ...p }: BaseProps
   );
 }
 
-export function FooterContactSection({ theme, fontVar, store }: BaseProps & { store: PublicStore }) {
+export function FooterContactSection({ theme, fontVar, store, elementAnimations }: BaseProps & { store: PublicStore }) {
   return (
     <footer className="px-6 py-14 text-center text-sm" style={{ background: theme.colors.text, color: theme.colors.background }}>
-      <p className="text-base font-semibold" style={{ fontFamily: fontVar || undefined }}>{store.name}</p>
-      {store.seoDescription && <p className="mx-auto mt-2 max-w-md opacity-70">{store.seoDescription}</p>}
+      <AnimatedElement as="p" preset={elementAnimations?.heading} className="text-base font-semibold" style={{ fontFamily: fontVar || undefined }}>
+        {store.name}
+      </AnimatedElement>
+      {store.seoDescription && (
+        <AnimatedElement as="p" preset={elementAnimations?.text} className="mx-auto mt-2 max-w-md opacity-70">
+          {store.seoDescription}
+        </AnimatedElement>
+      )}
       <p className="mt-4 opacity-60">&copy; {new Date().getFullYear()} {store.name}. All rights reserved.</p>
     </footer>
   );
@@ -273,23 +279,28 @@ export function MapLocationSection({ theme, variant, store, elementAnimations }:
   }
   return (
     <section className="px-6 py-16" style={{ background: theme.colors.background }}>
-      <div className="mx-auto flex aspect-[16/7] max-w-3xl items-center justify-center rounded-md" style={{ background: `${theme.colors.text}0d` }}>
+      <AnimatedElement
+        as="div"
+        preset={elementAnimations?.text}
+        className="mx-auto flex aspect-[16/7] max-w-3xl items-center justify-center rounded-md"
+        style={{ background: `${theme.colors.text}0d` }}
+      >
         <p className="text-sm opacity-50">Map embed</p>
-      </div>
+      </AnimatedElement>
     </section>
   );
 }
 
-export function SocialFeedSection({ theme }: BaseProps) {
+export function SocialFeedSection({ theme, elementAnimations }: BaseProps) {
   // Placeholder grid only - no live Instagram/Meta API integration in v1
   // (see this file's top-of-file note).
   return (
     <section className="px-6 py-16" style={{ background: theme.colors.background }}>
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+      <AnimatedElement as="div" preset={elementAnimations?.heading} className="grid grid-cols-3 gap-2 sm:grid-cols-6" options={{ staggerChildren: true }}>
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="aspect-square rounded-sm" style={{ background: `${theme.colors.text}14` }} />
         ))}
-      </div>
+      </AnimatedElement>
       <p className="mt-3 text-center text-xs opacity-50">Social feed - connect an account to show real posts here</p>
     </section>
   );
@@ -367,7 +378,7 @@ export function BlogHighlightSection({ theme, variant, elementAnimations }: Base
       >
         {posts.map((post) => (
           <div key={post.title}>
-            <div className="mb-3 aspect-video rounded-md" style={{ background: `${theme.colors.primary}14` }} />
+            <AnimatedElement as="div" preset={elementAnimations?.image} className="mb-3 aspect-video rounded-md" style={{ background: `${theme.colors.primary}14` }} />
             <p className="font-medium">{post.title}</p>
             <p className="mt-1 text-sm opacity-70">{post.excerpt}</p>
           </div>

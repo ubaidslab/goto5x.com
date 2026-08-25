@@ -24,7 +24,11 @@ export function HeroSection({ store, theme, variant = 0, elementAnimations }: { 
         <AnimatedElement as="div" preset={elementAnimations?.image} style={{ flex: 1, aspectRatio: "4/3", background: "#eee" }} />
         <div style={{ flex: 1 }}>
           {heading}
-          {store.seoDescription && <p>{store.seoDescription}</p>}
+          {store.seoDescription && (
+        <AnimatedElement as="p" preset={elementAnimations?.text}>
+          {store.seoDescription}
+        </AnimatedElement>
+      )}
         </div>
       </section>
     );
@@ -36,7 +40,11 @@ export function HeroSection({ store, theme, variant = 0, elementAnimations }: { 
         <img src={theme.logoUrl} alt={store.name} style={{ maxHeight: 64 }} />
       )}
       {heading}
-      {store.seoDescription && <p>{store.seoDescription}</p>}
+      {store.seoDescription && (
+        <AnimatedElement as="p" preset={elementAnimations?.text}>
+          {store.seoDescription}
+        </AnimatedElement>
+      )}
     </section>
   );
 }
@@ -99,7 +107,9 @@ export function AboutSection({ store, theme, variant = 0, elementAnimations }: {
         <AnimatedElement as="div" preset={elementAnimations?.image} style={{ flex: 1, aspectRatio: "4/3", background: "#eee" }} />
         <div style={{ flex: 1 }}>
           <h2 style={{ color: theme.colors.primary }}>About {store.name}</h2>
-          <p>{body}</p>
+          <AnimatedElement as="p" preset={elementAnimations?.text}>
+        {body}
+      </AnimatedElement>
         </div>
       </section>
     );
@@ -109,15 +119,19 @@ export function AboutSection({ store, theme, variant = 0, elementAnimations }: {
       <AnimatedElement as="h2" preset={elementAnimations?.heading} style={{ color: theme.colors.primary }}>
         About {store.name}
       </AnimatedElement>
-      <p>{body}</p>
+      <AnimatedElement as="p" preset={elementAnimations?.text}>
+        {body}
+      </AnimatedElement>
     </section>
   );
 }
 
-export function NewsletterSection({ theme, variant = 0 }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
+export function NewsletterSection({ theme, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
   const inner = (
     <>
-      <h2 style={{ color: theme.colors.primary }}>Stay updated</h2>
+      <AnimatedElement as="h2" preset={elementAnimations?.heading} style={{ color: theme.colors.primary }}>
+        Stay updated
+      </AnimatedElement>
       <p>Newsletter signup is coming in a later module.</p>
     </>
   );
@@ -146,9 +160,13 @@ export function NewsletterSection({ theme, variant = 0 }: { theme: ResolvedTheme
 // collapse. Uses the browser's native <details>/<summary> - a real,
 // functioning accordion with zero JS, consistent with "bare functional, no
 // design pass yet."
-export function FaqSection({ theme, items, variant = 0 }: { theme: ResolvedThemeSettings; items: { question: string; answer: string }[] } & DStudioSectionProps) {
+export function FaqSection({ theme, items, variant = 0, elementAnimations }: { theme: ResolvedThemeSettings; items: { question: string; answer: string }[] } & DStudioSectionProps) {
   if (items.length === 0) return null;
-  const heading = <h2 style={{ color: theme.colors.primary }}>Frequently asked questions</h2>;
+  const heading = (
+    <AnimatedElement as="h2" preset={elementAnimations?.heading} style={{ color: theme.colors.primary }}>
+      Frequently asked questions
+    </AnimatedElement>
+  );
   if (variant === 1) {
     return (
       <section style={{ padding: "32px 24px", background: theme.colors.background, color: theme.colors.text }}>
