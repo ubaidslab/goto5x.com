@@ -351,11 +351,11 @@ Below the tiles: conditional "*N* supplier-fulfilled item(s) still awaiting fulf
 - `prepaid_partial_advance` → `orders.prepaid_partial_advance_enabled`, off by default, **RUN+**
 - `email_otp`, `prepaid_confirmation` → never gated, free every tier
 
-### ⚠️ Confirmed real gap
-The page's `CHANNEL_LABEL` map has only **4** entries — `prepaid_partial_advance` (Module 76, real, RUN+, backend-complete with a dedicated adapter and gateway-connection check) **is not selectable anywhere in this dashboard.** It does not live "elsewhere under Payments" — it has no UI at all. Design target: 5th option on this page, with plan-upsell messaging and a dependency on an active gateway connection.
+### Fixed (Phase 5c) - was a confirmed real gap
+`CHANNEL_LABEL` now has all **5** entries — `prepaid_partial_advance` is selectable, with its configured percentage shown in the description text and an `UpgradeLockedCard` (locked-not-disabled: the option stays in the select with a "(requires RUN or above)" suffix, never removed) rendered below the select whenever the currently-chosen channel isn't enabled for the seller's plan - the same treatment `whatsapp_otp` already got. The Save button stays fully clickable regardless (a real 403 would surface via the page's existing error Alert).
 
 **Sections:**
-1. "Verification channel" card — Channel select (4 real options today) + OTP message template textarea (`{{otp}}` placeholder, `maxLength=1000`) + Save.
+1. "Verification channel" card — Channel select (all 5 real options now) + OTP message template textarea (`{{otp}}` placeholder, `maxLength=1000`) + Save.
 2. "Connected sender emails" card — list (email, `host:port`, sends-today, active/revoked Badge, Revoke) + connect form (email, SMTP host/port/username/password). Copy claims "up to 5 connected" — **not independently confirmed as a hard-enforced limit in the service read; flag for verification before treating as enforced.**
 
 - **Empty state:** real — "No sender emails connected yet."
@@ -589,11 +589,11 @@ Section-library modal: category-tabbed (Marketing/Catalog/Content/Social proof/S
 
 **File:** `shipping-tax/page.tsx` · **Nav:** Operations → Shipping & tracking (`Truck`) · **Gating:** none.
 
-Two cards: **Shipping** (Flat rate required; Free-shipping threshold optional, blank disables it) → **Tax** (Rate %, Label, "Prices already include tax" checkbox). No filters/tables/icons.
+**Redesigned (Phase 5b) into a real two-part hub, matching what the nav label always promised:** a **Tracking** tab (default) — bucket-count tiles for all 7 buckets (read-only summaries; full filter/bulk-action/CSV-import stays on the Orders page, linked out via "View all orders" rather than duplicated) → an **Awaiting tracking** list, each row with inline tracking-ID/carrier entry (same action as the Orders page's per-order tracking form) and a "Flagged - missing tracking" badge driven directly by `Order.missingTrackingAlertedAt` (see below) → a **Shipping & tax** tab holding the pre-existing two settings cards unchanged.
 
-**"Orders Command Center" is not a separate screen** — it *is* the Orders list's bucket-tile strip (§2a). Do not design it twice.
+**"Orders Command Center" is still not a separate screen** — it *is* the Orders list's bucket-tile strip (§2a). This hub's tiles are a second read-only rendering of the same `orders/overview` data, not a third source of truth.
 
-**Missing-tracking alerts: NOT FOUND** — confirmed as genuinely unbuilt (Module 88, Buyer Experience Batch, `[ ]` in SRS §14.68). When built, spec calls for surfacing as an overdue state on the existing "Awaiting tracking" bucket tile, not a new page.
+**Missing-tracking alerts: now built (Phase 5a, this SRS §14.68/Module 88 item).** `MissingTrackingAlertService.runSweep()` (hourly BullMQ sweep, check-interval and alert-threshold both Settings-Registry-driven — `orders.missing_tracking_sweep_check_hours`/`orders.missing_tracking_alert_hours`, global-only, default 1h/24h) flags any order still in the `awaitingTracking` bucket (reusing `orderBucketWhereClause` exactly, so this can never drift from what the bucket tile counts) whose most recent `status_changed` event is older than the threshold, emails the responsible party — the seller for a self-fulfilled item, the fulfilling supplier for a supplier-fulfilled one, both for a mixed order — and sets `missingTrackingAlertedAt` once, ever, per order (no reset/expiry logic needed: leaving the bucket, e.g. by shipping, naturally stops it matching the sweep's query again). Surfaced on this page as the badge above, per the founder's own framing ("surfacing as an overdue state on the existing bucket," not a new page).
 
 **Delivery-time badges (Module 29): no seller-facing settings section anywhere.** The feature is entirely buyer-facing (storefront `DeliveryBadge` component), sourced from **admin-configured platform-wide Settings Registry defaults** for the Printify adapter (not real per-shipment data, not seller-editable at any tier).
 
@@ -605,13 +605,13 @@ Two cards: **Shipping** (Flat rate required; Free-shipping threshold optional, b
 
 **File:** `suppliers/page.tsx` · **Nav:** Operations → Suppliers (`Handshake`), **conditional** — sidebar item only appears once ≥1 supplier link exists (explicit "SIMPLICITY INVARIANT" comment).
 
-Invite form (email) → list (Card rows, no supplier name/logo — just a truncated ID) with status Badge (`pending_seller_review`/`active`/`revoked`) → **Approve** (pending only) / **Revoke** (active only), both **no confirm step.** Empty state real: *"No suppliers connected — Selling entirely your own products? You can ignore this screen..."*
+Invite form (email) → list (Card rows) with status Badge (`pending_seller_review`/`active`/`revoked`) → **Approve** (pending only) / **Revoke** (active only), both **no confirm step.** Empty state real: *"No suppliers connected — Selling entirely your own products? You can ignore this screen..."* **Fixed (Phase 5e):** each row now shows the supplier's real `businessName` (`supplier-links.service.ts`'s `list()` now `include`s it) instead of a truncated UUID.
 
 **Supplier portal connection flow:** the supplier-side login is a wholly separate app surface (`supplier-portal.controller.ts`), out of scope for the seller dashboard beyond the invite-by-email above.
 
 **Printify adapter status: not seller-facing at all** — adapter registration/health is **admin-only** (`admin/supplier-adapters`); the seller's own row is fully adapter-agnostic, showing nothing about which adapter or its health.
 
-**Listing review/approval queue — real backend, zero frontend, confirmed gap.** `GET/PATCH .../listing-reviews[/approve|reject]` is real and seller-facing (creates the real Product + Variant on approve, runs the same moderation check self-fulfilled products go through) — but `suppliers/page.tsx` has no UI for it at all: no listing preview, no approve/reject buttons, no nav link.
+**Listing review/approval queue — built (Phase 5e), closing the confirmed gap.** New "Listing reviews" section on this same page: pending queue (listing title, supplier business name, price + shipping cost, Approve/Reject) → a recent-decided history (approved/rejected Badge). `listing-reviews.service.ts`'s `list()` now `include`s the listing/supplier so a seller can actually see what they're deciding on, rather than an opaque review ID. Verified live end-to-end: a real supplier submission approved into a real live storefront product.
 
 **Delivery-badge data source:** traced end to end — Printify adapter → platform Settings Registry defaults → `SupplierListing` rows → storefront `DeliveryBadge`. No seller UI anywhere in this chain.
 
@@ -619,23 +619,23 @@ Invite form (email) → list (Card rows, no supplier name/logo — just a trunca
 
 ## 11. Payments
 
-Currently bridged via `/settings#payments` anchor (real Card inside the still-monolithic Settings page, not yet its own route). **Nav:** Operations → Payments (`CreditCard`).
+**Extracted (Phase 5f) into its own route, `payments/page.tsx`** — no longer a `/settings#payments` anchor. **Nav:** Operations → Payments (`CreditCard`), now a real link.
 
-**Two cards, real, in page order:**
+**Two cards, real, reordered so the gateway (the thing this redesign is actually about) leads:**
 
-**A — "Payment instructions"** (manual/COD path): Bank title/number/name, JazzCash number/title, Easypaisa number/title, "registered in my own legal name" checkbox (triggers admin review if inconsistent), "Accept Cash on Delivery" checkbox. `PATCH .../payment-instructions`.
+**A — "Payment gateway"** (Module 62, auto-confirm path, ungated on every plan): connections list (provider, merchant ID, Active toggle, Test button — result not persisted, lost on reload, Remove **no confirm**) → connect form (Provider select, Merchant ID optional, API key required/password-masked, API secret optional/password-masked). **Copy reframed per the founder's locked directive** (previously recorded here, now applied verbatim): *"so we can verify your buyer's payment was received and confirm the order automatically"* — order-verification framing, no mention of commission (there isn't one under the subscription-only model). **Fixed (Phase 5e):** a per-provider hint line under the form (`GATEWAY_PROVIDER_HINT`) now tells a seller which real-world credential to go find for their selected provider — still not a provider-accurate field set (the connect DTO is still one generic shape for all 4 providers; a real JazzCash hash-key field etc. would need backend DTO work, out of scope here) — flagged, not silently left as before.
 
-**B — id="payments" "Payment gateway"** (Module 62, auto-confirm path, ungated on every plan): connections list (provider, merchant ID, Active toggle, Test button — result not persisted, lost on reload, Remove **no confirm**) → connect form (Provider select, Merchant ID optional, API key required/password-masked, API secret optional/password-masked). **All 4 providers share one generic field set** — the DTO does not differentiate real per-provider requirements (e.g. JazzCash's typical hash key) — flag as a placeholder shape, not provider-accurate, if real integrations need more fields.
+**B — "Payment instructions"** (manual/COD path): Bank title/number/name, JazzCash number/title, Easypaisa number/title, "registered in my own legal name" checkbox (triggers admin review if inconsistent), "Accept Cash on Delivery" checkbox. `PATCH .../payment-instructions`.
 
-**Connection health / "gateway health monitoring": now built backend-side (Module 67)**, still confirmed NOT rendered on this page and correctly so — it's an **admin-facing, aggregate** rollup (`AdminSystemStatusService.paymentGatewayHealth`, sourced from `GatewayHealthService`), never seller-facing by design. The seller still only ever sees the one-off, non-persisted "Test" result here; the admin-facing System Status page itself has no UI consumer for the new rollup field yet either (see §18.21).
+**Connection health / "gateway health monitoring": built backend-side (Module 67)**, still correctly NOT rendered on this page — it's an **admin-facing, aggregate** rollup (`AdminSystemStatusService.paymentGatewayHealth`), never seller-facing by design. The seller still only ever sees the one-off, non-persisted "Test" result here.
 
-**Locked founder directive for this page's Phase 5 redesign (recorded here so it isn't lost between phases):** the copy explaining *why* a seller connects their own Raast/Easypaisa/JazzCash account must frame it around order-verification, never commission — there isn't one under the subscription-only model. Exact intended framing: "so we can verify your buyer's payment was received and confirm the order automatically." Keep the actual connection steps as simple as possible (guided, minimal taps), with screenshots or a short video in the help content for each provider's connection flow.
+**Screenshots/video help content for each provider's connection flow — still not built.** The founder's directive also asked for this; out of scope for this pass (content, not code) - flagged for whoever owns help-content authoring.
 
 **Alert history: NOT FOUND** — no persisted test/alert log model exists.
 
 **Manual mark-as-paid fallback — real, confirmed to be the same "Mark as paid" button already documented on Order detail (§2b) and the Orders bulk-action bar (§2a) — not a separate toggle.** It's the built-in fallback for sellers using instructions-only (no gateway).
 
-**Module 76 Prepaid Partial-Advance — confirmed absent from both this card and Order Verification settings.** Backend fully real: `orders.prepaid_partial_advance_percent` (default **5**, store-scoped) and `_enabled` (RUN+ plan-gated). Natural home: a 5th option on the Order Verification channel dropdown (§2c) with a conditional percent field, not this Payments card.
+**Module 76 Prepaid Partial-Advance — built (Phase 5c/5d), correctly NOT on this card.** Now a real 5th option on the Order Verification channel dropdown (§2c), RUN+ gated via the standing `UpgradeLockedCard` pattern (locked-not-disabled: stays in the select with a "(requires RUN or above)" suffix, never hidden), with the buyer-facing deposit-payment flow built on the order-status page. This card was always the wrong home for it (order-verification channel choice is store-level, not gateway-connection-level) - confirmed correct by not building it here.
 
 ---
 
@@ -753,19 +753,19 @@ Strict 2-step wizard: **Step 1 collects only email (required) + optional WhatsAp
 
 **Payment method selection on checkout: NOT FOUND.** No dynamic gateway list/radio/icons anywhere on the checkout form — the order is always placed `pending` first; "how to pay" instructions only appear *after* placement, as static text on order-confirmation/order-status.
 
-**Prepaid-advance flow (Module 76): backend fully real (4 dedicated buyer-facing routes exist), zero frontend anywhere** — confirmed by a repo-wide grep of `apps/web` for every relevant endpoint name, zero matches. Same for the OTP-based order-verification submission flow (buyer-side) — only the seller-side settings page exists in the frontend.
+**Fixed - launch blocker, treated as such rather than ordinary Phase 5 scope.** Found while building the Module 76 checkout UI above: **the buyer-facing verification flow didn't exist for ANY channel**, not just partial-advance - no OTP entry, no resend, nothing, anywhere on the storefront, for `whatsapp_otp`/`email_otp` either. Any seller already using those two channels had every order permanently stuck "awaiting verification" with no way for a buyer to ever clear it. New `OrderVerificationPanel` (mounted on both order-confirmation and order-status, below) now handles all four channels: OTP code entry + resend (respecting the existing cooldown) for `whatsapp_otp`/`email_otp`, a status-only message for `prepaid_confirmation`, and the prepaid partial-advance deposit-payment flow (gateway options → provider pick → real charge via the existing `verifyPartialAdvanceByToken()`) for `prepaid_partial_advance`. `OrderStatusLookupService.lookup()` now includes `verification: {channel, status}` in its buyer-facing response (previously omitted entirely) to drive it. Verified live end-to-end: a real OTP requested, a wrong code rejected with the real error, the correct code accepted into a real "Verified" state.
 
 **Shipping-cost calculator: NOT FOUND** on checkout either — same static disclaimer sentence, no live recompute.
 
 ## Order-status / tracking page
 
-Status line (`pending` relabeled "Awaiting payment") → real order timeline (5-stage dot list, Module 27) → items/tracking → totals → conditional invoice-PDF link → **static** "how to pay" block (only place payment info ever surfaces to a buyer) → shipping address → **Return & refund form** (real, textarea + submit, or a read-only status view once a request exists) → **Review form** (see below).
+Status line (`pending` relabeled "Awaiting payment") → **new `OrderVerificationPanel`** (see the fixed launch-blocker note under Checkout, above) → real order timeline (5-stage dot list, Module 27) → items/tracking → totals → conditional invoice-PDF link → **static** "how to pay" block (only place payment info ever surfaces to a buyer) → shipping address → **Return & refund form** (real, textarea + submit, or a read-only status view once a request exists) → **Review form** (see below).
 
 **UZEYN brand disclosure: present, but only via the shared footer mark**, gated by the same plan-based `poweredByVisible` flag as every other page — no additional disclosure specific to this page beyond that.
 
 ## Order confirmation page
 
-Reuses the same order-status fetch. Explicit banner: "Thank you for your order! Your order is **awaiting payment** — it isn't confirmed yet." (Financial Truth Invariant enforced in copy, not just data.)
+Reuses the same order-status fetch. Explicit banner: "Thank you for your order! Your order is **awaiting payment** — it isn't confirmed yet." (Financial Truth Invariant enforced in copy, not just data.) Also mounts `OrderVerificationPanel` (the buyer's first touch with it, right after checkout) - same component, same fix as the order-status page above.
 
 ## Buyer account / order history — confirmed does not exist
 
