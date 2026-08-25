@@ -8,7 +8,7 @@ import { TemplateSectionSet } from "./types";
  * visual identity of its own. Also the fallback for any theme name this
  * registry doesn't otherwise recognize.
  */
-export const baseSections: TemplateSectionSet = {
+export const baseSections: Pick<TemplateSectionSet, "Hero" | "FeaturedProducts" | "About" | "Newsletter" | "Faq"> = {
   Hero: HeroSection,
   FeaturedProducts: FeaturedProductsSection,
   About: AboutSection,

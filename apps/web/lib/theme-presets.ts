@@ -15,11 +15,65 @@
  * A bounded token set only (SRS Risk Register #10): colors + a fixed list
  * of section ids or a customizer would become an open-ended visual builder.
  */
-export type SectionId = "hero" | "featured_products" | "about" | "newsletter" | "faq";
+/**
+ * D-Studio v1 - grown from the original 5 to the full 22-section library
+ * (docs/ui-feature-inventory.md §8.1's own "coded-mode" note is the
+ * closest prior forward-reference; the concrete catalog is new). The
+ * original 5 ids are unchanged (existing stored ThemeSection rows must
+ * keep resolving) - see lib/section-catalog.ts for names/categories/tier
+ * floors/variant labels, kept in sync by hand with the backend's own copy.
+ */
+export type SectionId =
+  | "hero"
+  | "featured_products"
+  | "about"
+  | "testimonials"
+  | "faq"
+  | "footer_contact"
+  | "newsletter"
+  | "spacer"
+  | "featured_collection"
+  | "gallery"
+  | "video_banner"
+  | "countdown"
+  | "stats_counter"
+  | "logo_cloud"
+  | "team"
+  | "before_after"
+  | "map_location"
+  | "social_feed"
+  | "sticky_cta"
+  | "shape_divider"
+  | "comparison_table"
+  | "blog_highlight";
+
+/** The 14-preset GSAP-backed animation library (components/motion/dstudio-presets.ts). */
+export type AnimationId =
+  | "none"
+  | "fade-up"
+  | "fade-in"
+  | "slide-in"
+  | "scale-in"
+  | "stagger-reveal"
+  | "hover-lift"
+  | "ken-burns"
+  | "text-split"
+  | "parallax"
+  | "magnetic"
+  | "glass-reveal"
+  | "gradient-shift"
+  | "sticky-pin"
+  | "lottie";
+
+export type ElementSlot = "heading" | "text" | "button" | "image";
 
 export interface ThemeSection {
   id: SectionId;
   visible: boolean;
+  /** Layout variant index (lib/section-catalog.ts); omitted/undefined means 0. */
+  variant?: number;
+  /** Per-element animation preset, D-Studio v1's per-element (not per-section) control. */
+  elementAnimations?: Partial<Record<ElementSlot, AnimationId>>;
 }
 
 export interface ThemeColors {
@@ -120,7 +174,38 @@ const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSectio
   },
 };
 
-export const ALL_SECTION_IDS: SectionId[] = ["hero", "featured_products", "about", "newsletter", "faq"];
+/**
+ * The full D-Studio v1 catalog (22) - used by the section library gallery/
+ * picker. THEME_PRESETS' own default section lists above deliberately stay
+ * unchanged (still the original 5) since every built-in template's
+ * TemplateSectionSet only implements renderers for those until they're
+ * threaded through (templates/dstudio-sections/) - a default preset
+ * referencing an unrendered id would break, not gracefully no-op.
+ */
+export const ALL_SECTION_IDS: SectionId[] = [
+  "hero",
+  "featured_products",
+  "about",
+  "testimonials",
+  "faq",
+  "footer_contact",
+  "newsletter",
+  "spacer",
+  "featured_collection",
+  "gallery",
+  "video_banner",
+  "countdown",
+  "stats_counter",
+  "logo_cloud",
+  "team",
+  "before_after",
+  "map_location",
+  "social_feed",
+  "sticky_cta",
+  "shape_divider",
+  "comparison_table",
+  "blog_highlight",
+];
 
 export function resolveThemeSettings(themeName: string, overrides: ThemeSettings | null | undefined): ResolvedThemeSettings {
   const preset = THEME_PRESETS[themeName] ?? THEME_PRESETS.Editorial;

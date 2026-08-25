@@ -1,16 +1,45 @@
+import { AnimatedElement } from "../../../components/motion/AnimatedElement";
 import { PublicProduct, PublicStore } from "../../../lib/storefront-api";
 import { FaqItem, ResolvedThemeSettings } from "../../../lib/theme-presets";
 import { DeliveryBadge } from "../delivery-badge";
-import { TemplateSectionSet } from "./types";
+import { DStudioSectionProps, TemplateSectionSet } from "./types";
 
 /**
  * Atelier - monochrome, minimal, restrained single accent (apple.com
- * discipline - docs/architecture.md's Template Package Spec). Reuses the
- * platform's own Geist display face (already loaded app-wide), the same
- * "confident, no personality tax" reasoning the dashboard/marketing pages
- * use it for. Free built-in template.
+ * discipline - docs/architecture.md's Template Package Spec). Free built-in
+ * template. D-Studio v1 variant/animation support follows the same
+ * "variant 0 = pre-existing rendering, unchanged" rule as editorial.tsx.
  */
-function AtelierHero({ store, theme }: { store: PublicStore; theme: ResolvedThemeSettings }) {
+function AtelierHero({ store, theme, variant = 0, elementAnimations }: { store: PublicStore; theme: ResolvedThemeSettings } & DStudioSectionProps) {
+  const heading = (
+    <AnimatedElement as="h1" preset={elementAnimations?.heading} className="text-4xl font-medium tracking-tight sm:text-5xl">
+      {store.name}
+    </AnimatedElement>
+  );
+  if (variant === 1 || variant === 2) {
+    return (
+      <section
+        className={`flex flex-col items-center gap-10 px-6 py-24 [font-family:var(--font-geist-sans)] sm:flex-row ${variant === 2 ? "sm:flex-row-reverse" : ""}`}
+        style={{ background: theme.colors.background, color: theme.colors.text }}
+      >
+        <AnimatedElement as="div" preset={elementAnimations?.image} className="aspect-[4/3] flex-1 bg-black/5" />
+        <div className="flex-1 text-center sm:text-left">
+          {heading}
+          {store.seoDescription && <p className="mt-4 max-w-md text-base opacity-60">{store.seoDescription}</p>}
+        </div>
+      </section>
+    );
+  }
+  if (variant === 3) {
+    return (
+      <section className="px-6 py-40 text-center [font-family:var(--font-geist-sans)]" style={{ background: "#0a0a0a", color: "#fff" }}>
+        <AnimatedElement as="h1" preset={elementAnimations?.heading} className="text-4xl font-medium tracking-tight sm:text-5xl">
+          {store.name}
+        </AnimatedElement>
+        {store.seoDescription && <p className="mx-auto mt-4 max-w-md text-base opacity-60">{store.seoDescription}</p>}
+      </section>
+    );
+  }
   return (
     <section
       className="px-6 py-40 text-center [font-family:var(--font-geist-sans)]"
@@ -20,21 +49,27 @@ function AtelierHero({ store, theme }: { store: PublicStore; theme: ResolvedThem
         // eslint-disable-next-line @next/next/no-img-element
         <img src={theme.logoUrl} alt={store.name} className="mx-auto mb-10 max-h-12" />
       )}
-      <h1 className="text-4xl font-medium tracking-tight sm:text-5xl">{store.name}</h1>
+      {heading}
       {store.seoDescription && <p className="mx-auto mt-4 max-w-md text-base opacity-60">{store.seoDescription}</p>}
     </section>
   );
 }
 
-function AtelierFeaturedProducts({ products, theme }: { products: PublicProduct[]; theme: ResolvedThemeSettings }) {
+function AtelierFeaturedProducts({ products, theme, variant = 0, elementAnimations }: { products: PublicProduct[]; theme: ResolvedThemeSettings } & DStudioSectionProps) {
+  const gridClass =
+    variant === 1
+      ? "mx-auto grid max-w-5xl grid-cols-2 gap-x-8 gap-y-16 sm:grid-cols-4"
+      : variant === 2
+        ? "mx-auto flex max-w-5xl gap-8 overflow-x-auto pb-2"
+        : "mx-auto grid max-w-5xl grid-cols-2 gap-x-8 gap-y-16 sm:grid-cols-3";
   return (
     <section className="px-6 py-24 [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
       {products.length === 0 ? (
         <p className="text-center opacity-60">No products yet.</p>
       ) : (
-        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-8 gap-y-16 sm:grid-cols-3">
+        <AnimatedElement as="div" preset={elementAnimations?.image} className={gridClass} options={{ staggerChildren: true }}>
           {products.map((product) => (
-            <a key={product.id} href={`/products/${product.id}`} className="block" style={{ color: theme.colors.text, textDecoration: "none" }}>
+            <a key={product.id} href={`/products/${product.id}`} className={`block ${variant === 2 ? "min-w-[45%] sm:min-w-[28%]" : ""}`} style={{ color: theme.colors.text, textDecoration: "none" }}>
               {product.media[0] && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={product.media[0].url} alt={product.title} className="mb-4 aspect-square w-full object-cover" />
@@ -44,35 +79,87 @@ function AtelierFeaturedProducts({ products, theme }: { products: PublicProduct[
               <DeliveryBadge supplierShipping={product.supplierShipping} theme={theme} />
             </a>
           ))}
-        </div>
+        </AnimatedElement>
       )}
     </section>
   );
 }
 
-function AtelierAbout({ store, theme }: { store: PublicStore; theme: ResolvedThemeSettings }) {
+function AtelierAbout({ store, theme, variant = 0, elementAnimations }: { store: PublicStore; theme: ResolvedThemeSettings } & DStudioSectionProps) {
+  const body = store.seoDescription ?? `${store.name} is a store on UZEYN.`;
+  if (variant === 1 || variant === 2) {
+    return (
+      <section
+        className={`flex flex-col items-center gap-10 px-6 py-24 [font-family:var(--font-geist-sans)] sm:flex-row ${variant === 2 ? "sm:flex-row-reverse" : ""}`}
+        style={{ background: theme.colors.background, color: theme.colors.text }}
+      >
+        <AnimatedElement as="div" preset={elementAnimations?.image} className="aspect-[4/3] flex-1 bg-black/5" />
+        <div className="flex-1 text-center sm:text-left">
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">About</h2>
+          <p className="text-lg">{body}</p>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="px-6 py-24 text-center [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
-      <h2 className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">About</h2>
-      <p className="mx-auto max-w-xl text-lg">{store.seoDescription ?? `${store.name} is a store on UZEYN.`}</p>
+      <AnimatedElement as="h2" preset={elementAnimations?.heading} className="mb-3 text-sm font-medium uppercase tracking-widest opacity-50">
+        About
+      </AnimatedElement>
+      <p className="mx-auto max-w-xl text-lg">{body}</p>
     </section>
   );
 }
 
-function AtelierNewsletter({ theme }: { theme: ResolvedThemeSettings }) {
-  return (
-    <section className="px-6 py-24 text-center [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
+function AtelierNewsletter({ theme, variant = 0 }: { theme: ResolvedThemeSettings } & DStudioSectionProps) {
+  const inner = (
+    <>
       <h2 className="text-sm font-medium uppercase tracking-widest opacity-50">Stay updated</h2>
       <p className="mt-3 text-sm opacity-60">Newsletter signup is coming in a later module.</p>
+    </>
+  );
+  if (variant === 1) {
+    return (
+      <section className="px-6 py-24 [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
+        <div className="mx-auto max-w-sm border p-10 text-center" style={{ borderColor: `${theme.colors.text}1a` }}>{inner}</div>
+      </section>
+    );
+  }
+  if (variant === 2) {
+    return (
+      <section className="px-6 py-32 text-center [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.text, color: theme.colors.background }}>
+        {inner}
+      </section>
+    );
+  }
+  return (
+    <section className="px-6 py-24 text-center [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
+      {inner}
     </section>
   );
 }
 
-function AtelierFaq({ theme, items }: { theme: ResolvedThemeSettings; items: FaqItem[] }) {
+function AtelierFaq({ theme, items, variant = 0 }: { theme: ResolvedThemeSettings; items: FaqItem[] } & DStudioSectionProps) {
   if (items.length === 0) return null;
+  const heading = <h2 className="mb-8 text-center text-sm font-medium uppercase tracking-widest opacity-50">Questions</h2>;
+  if (variant === 1) {
+    return (
+      <section className="mx-auto max-w-4xl px-6 py-24 [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
+        {heading}
+        <div className="grid gap-6 sm:grid-cols-2">
+          {items.map((item, index) => (
+            <details key={index} className="border-b pb-4" style={{ borderColor: `${theme.colors.text}1a` }}>
+              <summary className="cursor-pointer text-sm font-medium">{item.question}</summary>
+              <p className="mt-2 text-sm opacity-70">{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="mx-auto max-w-xl px-6 py-24 [font-family:var(--font-geist-sans)]" style={{ background: theme.colors.background, color: theme.colors.text }}>
-      <h2 className="mb-8 text-center text-sm font-medium uppercase tracking-widest opacity-50">Questions</h2>
+      {heading}
       {items.map((item, index) => (
         <details key={index} className="mb-4 border-b pb-4" style={{ borderColor: `${theme.colors.text}1a` }}>
           <summary className="cursor-pointer text-sm font-medium">{item.question}</summary>
@@ -83,7 +170,7 @@ function AtelierFaq({ theme, items }: { theme: ResolvedThemeSettings; items: Faq
   );
 }
 
-export const atelierSections: TemplateSectionSet = {
+export const atelierSections: Pick<TemplateSectionSet, "Hero" | "FeaturedProducts" | "About" | "Newsletter" | "Faq"> = {
   Hero: AtelierHero,
   FeaturedProducts: AtelierFeaturedProducts,
   About: AtelierAbout,

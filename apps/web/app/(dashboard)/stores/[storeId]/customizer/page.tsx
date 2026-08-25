@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { PublicProduct, PublicStore } from "@/lib/storefront-api";
 import { FaqItem, resolveThemeSettings, SectionId, ThemeSettings } from "@/lib/theme-presets";
+import { SECTION_CATALOG } from "@/lib/section-catalog";
 import { getTemplateSections } from "@/app/storefront/templates/registry";
 import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
@@ -24,13 +25,14 @@ interface Theme {
   entitled: boolean;
 }
 
-const SECTION_LABELS: Record<SectionId, string> = {
-  hero: "Hero banner",
-  featured_products: "Featured products",
-  about: "About",
-  newsletter: "Newsletter signup",
-  faq: "FAQ",
-};
+// This page still only edits the original 5 sections - D-Studio v1's full
+// 22-section catalog is edited from the new fullscreen /d-studio route
+// instead (stores/[storeId]/d-studio/), which replaces this page as the
+// Design Studio nav destination. Deriving from SECTION_CATALOG (rather
+// than a second hand-maintained label map) keeps the two from drifting.
+const SECTION_LABELS: Record<SectionId, string> = Object.fromEntries(
+  Object.entries(SECTION_CATALOG).map(([id, entry]) => [id, entry.name]),
+) as Record<SectionId, string>;
 
 /**
  * SRS FR-1.2 (v1.0 bounded token set)/FR-1.3 (live preview). Colors + a
