@@ -29,6 +29,13 @@ export class OrderStatusLookupService {
         // Module 53 (SRS §5.60/FR-60.2/60.6) - so the buyer sees an existing
         // request's state instead of the submission form once one exists.
         returnRequests: { orderBy: { requestedAt: "desc" } },
+        // Launch-blocker fix (found while building Module 76's buyer UI) -
+        // this page never surfaced verification.channel/status at all, so
+        // there was nowhere for the buyer-facing OTP/partial-advance UI to
+        // even mount. Absent entirely (null) means "this order never needed
+        // verification" - same convention the schema's own comment on
+        // Order.verification documents.
+        verification: true,
       },
     });
     if (!order) throw new NotFoundException("Order not found.");
@@ -58,6 +65,7 @@ export class OrderStatusLookupService {
       taxAmount: order.taxAmount,
       discountAmount: order.discountAmount,
       shippingAddress: order.shippingAddress,
+      verification: order.verification ? { channel: order.verification.channel, status: order.verification.status } : null,
       paymentInstructions: paymentInstructions
         ? {
             bankAccountTitle: paymentInstructions.bankAccountTitle,

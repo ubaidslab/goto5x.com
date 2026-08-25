@@ -43,3 +43,56 @@ export async function submitReturnRequest(token: string, input: { reason: string
   });
   return { ok: res.ok };
 }
+
+/**
+ * Launch-blocker fix (found while building Module 76's buyer UI, see
+ * OrderVerificationPanel) - the OTP entry/resend actions for whatsapp_otp
+ * and email_otp had no frontend anywhere at all; these three actions are
+ * the missing bridge to OrderVerificationService's already-working
+ * verifyByToken()/resendByToken() (via BuyerOrderVerificationController),
+ * same Server Action reasoning as every other storefront mutation above.
+ */
+export async function submitVerificationCode(token: string, code: string): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/order-verification/${token}/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { message?: string });
+    return { ok: false, message: typeof body.message === "string" ? body.message : "Incorrect or expired code." };
+  }
+  return { ok: true };
+}
+
+export async function resendVerificationCode(token: string): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/order-verification/${token}/resend`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { message?: string });
+    return { ok: false, message: typeof body.message === "string" ? body.message : "Couldn't resend a code right now." };
+  }
+  return { ok: true };
+}
+
+/** Module 76 (FR-6.52) - the partial-advance deposit amount + this store's active gateway options, bridging PaymentGatewayService.getPartialAdvanceOptionsByToken(). */
+export async function getPartialAdvanceOptions(
+  token: string,
+): Promise<{ amount: number; currency: string; providers: string[] } | null> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/gateway-payment/${token}/partial-advance`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Module 76 (FR-6.52) - charges the deposit via the chosen provider and, on a verified match, auto-confirms the order (PaymentGatewayService.verifyPartialAdvanceByToken()). */
+export async function chargePartialAdvance(token: string, provider: string): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/gateway-payment/${token}/partial-advance/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { message?: string });
+    return { ok: false, message: typeof body.message === "string" ? body.message : "Payment could not be verified yet." };
+  }
+  return { ok: true };
+}

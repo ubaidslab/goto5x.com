@@ -254,6 +254,14 @@ export interface PublicOrderStatus {
   taxAmount: string;
   discountAmount: string;
   shippingAddress: { fullName: string; line1: string; line2?: string; city: string; country: string; postalCode?: string; phone: string };
+  // Launch-blocker fix (found while building Module 76's buyer UI) - this
+  // was never exposed here at all, so there was nowhere for a buyer-facing
+  // verification UI to even mount for ANY channel (not just Module 76's).
+  // null means this order never needed verification.
+  verification: {
+    channel: "whatsapp_otp" | "email_otp" | "prepaid_confirmation" | "prepaid_partial_advance";
+    status: "pending" | "verified" | "failed" | "expired";
+  } | null;
   paymentInstructions: {
     bankAccountTitle: string | null;
     bankAccountNumber: string | null;
