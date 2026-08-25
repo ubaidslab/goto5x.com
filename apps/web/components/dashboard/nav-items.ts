@@ -91,7 +91,15 @@ export const navItems: NavItem[] = [
   { label: "Analytics", href: (id) => `/stores/${id}/analytics`, icon: BarChart3, group: "growth" },
   { label: "Marketing", href: (id) => `/stores/${id}/marketing`, icon: Megaphone, group: "growth" },
   { label: "Reviews", href: (id) => `/stores/${id}/reviews`, icon: Star, group: "growth" },
-  { label: "Design Studio", href: (id) => `/stores/${id}/customizer`, icon: Palette, group: "growth" },
+  // D-Studio v1 - a real standalone, fullscreen design workspace (no
+  // Sidebar/topbar chrome), so this deliberately points outside the
+  // (dashboard) route group's layout tree (app/stores/[storeId]/d-studio/,
+  // not app/(dashboard)/stores/[storeId]/...) - see that route's own
+  // layout.tsx note. The old bare /customizer page still exists (kept for
+  // its still-real coded-mode/branding/announcement-bar/WhatsApp-button
+  // controls the new shell doesn't cover in v1) but is no longer the nav
+  // destination.
+  { label: "Design Studio", href: (id) => `/stores/${id}/d-studio`, icon: Palette, group: "growth" },
 
   { label: "Shipping & tracking", href: (id) => `/stores/${id}/shipping-tax`, icon: Truck, group: "operations" },
   { label: "Suppliers", href: (id) => `/stores/${id}/suppliers`, icon: Handshake, group: "operations", conditional: true },
