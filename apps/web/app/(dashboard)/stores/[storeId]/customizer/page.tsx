@@ -305,7 +305,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                   </label>
                   {!branding.removable && (
                     <p className="text-xs text-ink-muted">
-                      Only removable on the Pro plan (or any Team plan). Upgrade to remove it.
+                      Only removable on the FLY plan (or any Team plan). Upgrade to remove it.
                     </p>
                   )}
                 </>

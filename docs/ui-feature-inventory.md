@@ -523,9 +523,39 @@ This route is the seller-scoped API-token hand-off to the founder's *separate* S
 
 ## 8. Design Studio hub
 
-Locked nav: **Growth → Design Studio**, tabs: Customizer, Navigation. "Coded mode" is confirmed **not** a third tab.
+Locked nav: **Growth → Design Studio** → **now `/stores/:id/d-studio`** (Fixed, D-Studio v1 — was `/customizer`). "Coded mode" is confirmed **not** a third tab of the old two-tab (Customizer/Navigation) structure — it's absorbed into D-Studio's own Custom CSS panel instead.
 
-### 8.1 Tab: Customizer
+### 8.0 D-Studio v1 — the flagship animated-store design tool (built this pass, replacing the bare Customizer as the nav destination)
+
+**File:** `app/stores/[storeId]/d-studio/page.tsx` — deliberately lives **outside** the `(dashboard)` route group (not `app/(dashboard)/stores/[storeId]/...`), so navigating here renders **zero Sidebar/topbar chrome** — confirmed via a real click-through (`hasSidebar: false`). Only the root layout's fonts/Toaster apply. A real, standalone, Figma/Webflow-style fullscreen workspace: slim top bar (store name, device-size toggle, save-state indicator, exit-to-dashboard), left rail (Sections/Style/Custom CSS tabs), centered device-frame live preview, right contextual inspector. Deliberately distinct dark "creative-tool chrome" from the rest of the (light monochrome) dashboard — same reasoning Figma/Photoshop use a dark workspace so canvas colors read clearly.
+
+**Section library — 22 real section types, founder-approved GO/RUN/RISE reallocation** (backend-enforced, not just UI-hidden — `apps/api/src/theme-engine/section-catalog.ts` + `section-validation.ts`):
+- **GO (8, free):** Hero, Product grid, Story/About, Testimonials, FAQ, Footer/Contact, Newsletter signup, Spacer/divider — a genuinely complete, professional store, single layout variant, one animation preset (Fade Up). GO was deliberately reallocated mid-build once the founder flagged the original split as "crippled" — Testimonials and Footer/Contact moved up from RUN/new into GO for exactly this reason.
+- **RUN (+6, 14 total):** Featured collection, Gallery, Video banner, Countdown, Stats/counter, Trust badges — 2 layout variants per section, 6 animation presets. RUN's real upgrade case is motion, not section count.
+- **RISE (+8, full 22):** Team, Before/after, Map/location, Social feed (placeholder grid only — no live Instagram/Meta API in v1), Sticky CTA, Shape divider, Comparison table, Blog/press — every layout variant, all 14 animation presets, Custom CSS unlocked.
+- **FLY:** shares RISE's ceiling exactly (nothing withheld to upsell FLY) — instead gets a handful of FLY-exclusive premium variants (e.g. Hero's "Diagonal split", Product grid's "Editorial grid") and is positioned for 30-day early access to future sections/presets.
+
+Section-library modal: category-tabbed (Marketing/Catalog/Content/Social proof/Structural) grid, tier badges, locked sections show a lock icon + "Upgrade to X to unlock" — same visual contract as `UpgradeLockedCard` used elsewhere. Real drag-to-reorder (`@dnd-kit/core`/`@dnd-kit/sortable` — this codebase's first dnd library; the old Customizer's up/down-arrow reorder is untouched for its own simpler list).
+
+**Per-element animation — 14 real, GSAP-backed presets** (`lib/dstudio-animations.ts`, `components/motion/AnimatedElement.tsx`): entrance/scroll reveals (Fade Up/In, Slide In, Scale In, Stagger Reveal), micro-interactions (Hover Lift, Magnetic Button), image/text (Ken Burns, Text Split Reveal), scroll (Parallax Drift), glass/gradient (Glass/Blur Reveal, Gradient Shift), section transition (Sticky Pin), and Lottie Playback. **Runs for real on the live storefront**, not just the Studio preview — a seller's chosen preset is a genuinely shipped feature the moment they save, unlike Coded Mode's stored-but-inert `customCode`. **Honest gap:** "Lottie Playback" has no real `.json` asset upload anywhere in v1 (no per-section Lottie-asset field was built), so it's implemented as a clearly-commented placeholder (a scale+fade entrance) rather than silently faking real Lottie playback — flagged in-code and here, not hidden.
+
+**Layout variants — real, not just accepted-and-ignored props:** the original 5 sections (Hero/Product grid/About/Newsletter/FAQ) keep their own bespoke per-template look across all 4 templates + blank-start, now with real distinct variants added (variant index 0 is always each template's pre-existing rendering — verified this matters: the catalog's first draft put "Image left" at index 0 for About, which would have silently changed every already-published store's About section layout the moment this shipped, since a pre-D-Studio row has no `variant` field and defaults to 0; caught before it landed and reordered so index 0 stays "Text only"). The 17 new section types are a shared, theme-token-driven component library (`templates/dstudio-sections/`) used identically across all templates — the only tractable way to ship 22 sections × 5 templates without ~90 bespoke components; documented tradeoff, not an oversight.
+
+**Template gallery:** the same 4 built-ins + "Start from blank," tier/category-tagged, in a modal — swaps `themeId` directly.
+
+**Visual customization:** a Style tab with a native color-swatch picker for primary/background/text (same 3-color model the old Customizer already had). **Real gap, not built this pass:** a font-pairing/typography selector and logo/media upload — both still only live on the old `/customizer` page (linked from within D-Studio's Style tab for now), since no seller-facing typography-choice system exists in the theme model yet.
+
+**Custom CSS (RISE+):** a dedicated panel, same `theme.coded_mode_enabled` gate and same "scoped, presentation-only, never touches cart/checkout/account" guarantee as the old Customizer's Coded-mode card — this is genuinely the same backend feature, just surfaced in the new shell instead of a second implementation.
+
+**Guardrails carried over unchanged:** THE ISOLATION RULE (`check-template-isolation.js` + `templates-isolation.e2e-spec.ts`) — re-verified passing after adding `templates/dstudio-sections/` (living *under* `templates/` means the existing scan covers it for free, zero script changes needed, confirmed: "8 file(s) scanned, 0 violations"). "Managed by UZEYN" mark stays mandatory below FLY, resolved server-side, unaffected by anything in this shell. No free-form code/script input exists anywhere — Custom CSS only.
+
+**Explicitly NOT in v1 — documented "D-Studio v2" roadmap, not an oversight:** free-form drag-drop canvas/block placement (this v1 is strictly section-based, reordering existing sections — not building new layout structure), arbitrary custom code/script execution, a third-party plugin/embed system, real-time multi-user collaborative editing, AI-assisted design generation. Per the founder's own plan, these are intended to eventually become the seed of a separate external SaaS product, not features to retrofit into this shell.
+
+**Verification:** full `apps/web` typecheck + `next build` clean; real authenticated Playwright click-through against the live dev stack for a GO seller (8 unlocked / 14 locked-with-upgrade-prompt sections, confirmed zero dashboard chrome) and a RISE seller (added a RISE-only section, set a RISE-only animation preset, saved, reloaded — persisted correctly through the real backend validation).
+
+- **Empty state:** "No visible sections yet - add one from the library." **Loading:** a full-bleed dark spinner state, matching the shell's own chrome (not the dashboard's `PageSpinner`). **Icons:** lucide, consistent stroke width. **Modal:** section library + template gallery, both dark-chrome-styled to match the shell (not the light dashboard `Dialog`).
+
+### 8.1 Tab: Customizer (now secondary — kept for controls D-Studio v1 doesn't cover yet)
 `customizer/page.tsx` (~420 lines) · Module 4/58.
 
 **Gating, three distinct, real:**
