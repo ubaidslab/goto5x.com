@@ -73,6 +73,21 @@ export class SettingsService {
       return undefined;
     }
 
+    // D-Studio close-out (founder-requested time-limited feature grants) -
+    // an expired row is treated exactly as if it never existed, falling
+    // through to the next-lower-precedence scope. Opportunistically
+    // deleted here (not just skipped) so it doesn't linger forever and so
+    // the admin-facing resolve-with-chain view stops showing it as an
+    // override the moment it lapses - no separate sweep job needed for
+    // correctness, this is the one and only read path.
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.settingsValue.delete({ where: { id: row.id } }).catch(() => {});
+      await this.redis.set(ck, "__MISS__", "EX", CACHE_TTL_SECONDS);
+      return undefined;
+    }
+
+    // A short cache TTL already bounds how stale a soon-to-expire value can
+    // be served (CACHE_TTL_SECONDS, 60s) - no special-casing needed here.
     await this.redis.set(ck, JSON.stringify(row.value), "EX", CACHE_TTL_SECONDS);
     return row.value;
   }
@@ -84,6 +99,11 @@ export class SettingsService {
     scopeId: string | null,
     value: unknown,
     updatedByAdminUserId: string,
+    // D-Studio close-out - a time-limited grant. undefined leaves an
+    // existing row's expiry untouched on update (so a plain re-save of
+    // some other field never accidentally clears a grant's countdown);
+    // pass null explicitly to make an override permanent again.
+    expiresAt?: Date | null,
   ) {
     const definition = await this.prisma.settingsDefinition.findUnique({ where: { key } });
     if (!definition) {
@@ -104,7 +124,7 @@ export class SettingsService {
     const row = existing
       ? await this.prisma.settingsValue.update({
           where: { id: existing.id },
-          data: { value: value as any, updatedBy: updatedByAdminUserId },
+          data: { value: value as any, updatedBy: updatedByAdminUserId, ...(expiresAt !== undefined ? { expiresAt } : {}) },
         })
       : await this.prisma.settingsValue.create({
           data: {
@@ -113,6 +133,7 @@ export class SettingsService {
             scopeId,
             value: value as any,
             updatedBy: updatedByAdminUserId,
+            expiresAt: expiresAt ?? null,
           },
         });
 

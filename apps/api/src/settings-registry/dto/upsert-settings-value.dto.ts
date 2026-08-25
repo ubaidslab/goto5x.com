@@ -1,5 +1,5 @@
 import { SettingsScopeType } from "@prisma/client";
-import { IsDefined, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsDefined, IsEnum, IsISO8601, IsNotEmpty, IsOptional, IsString, IsUUID } from "class-validator";
 
 export class UpsertSettingsValueDto {
   @IsString()
@@ -22,4 +22,12 @@ export class UpsertSettingsValueDto {
   // to keep the property without over-constraining its type.
   @IsDefined()
   value: unknown;
+
+  // D-Studio close-out - an optional time-limited grant (e.g. "give this
+  // seller RISE-tier D-Studio capability for 14 days"). Omitted entirely on
+  // an update leaves any existing expiry untouched (see settings.service.ts's
+  // setValue()); an explicit null makes the override permanent.
+  @IsOptional()
+  @IsISO8601()
+  expiresAt?: string;
 }

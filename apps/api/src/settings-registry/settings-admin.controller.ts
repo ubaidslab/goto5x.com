@@ -61,6 +61,11 @@ export class SettingsAdminController {
       updatedBy: string | null;
       updatedByEmail: string | null;
       updatedAt: Date | null;
+      // D-Studio close-out (time-limited grants) - surfaced so an admin
+      // viewing the precedence chain (e.g. Seller-360) can see a grant's
+      // countdown, not just that an override exists. null for a permanent
+      // override or a scope that doesn't support expiry.
+      expiresAt: Date | null;
     }> = [];
 
     let winningScope: SettingsScopeType | "default" = "default";
@@ -82,6 +87,8 @@ export class SettingsAdminController {
         updatedByEmail = admin?.user.email ?? null;
       }
 
+      const isExpired = !!row?.expiresAt && row.expiresAt.getTime() <= Date.now();
+
       chain.push({
         scope,
         scopeId: scopeId ?? null,
@@ -90,9 +97,15 @@ export class SettingsAdminController {
         updatedBy: row?.updatedBy ?? null,
         updatedByEmail,
         updatedAt: row?.updatedAt ?? null,
+        expiresAt: row?.expiresAt ?? null,
       });
 
-      if (!foundWinner && row) {
+      // An expired-but-not-yet-opportunistically-deleted row (see
+      // SettingsService.getValue()) must not win here either - otherwise
+      // this admin view would show a lapsed grant as still active a full
+      // CACHE_TTL_SECONDS-and-then-some ahead of the next real resolve()
+      // call cleaning it up.
+      if (!foundWinner && row && !isExpired) {
         winningScope = scope;
         effectiveValue = row.value;
         foundWinner = true;
@@ -130,6 +143,7 @@ export class SettingsAdminController {
       dto.scopeId ?? null,
       dto.value,
       user.adminUserId!,
+      dto.expiresAt !== undefined ? (dto.expiresAt === null ? null : new Date(dto.expiresAt)) : undefined,
     );
 
     await this.auditLog.record({

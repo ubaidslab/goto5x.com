@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, Copy, GripVertical, Lock, Plus, Redo2, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, GripVertical, Lock, Plus, Redo2, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import {
   ANIMATION_CATALOG,
   ALL_ANIMATION_IDS,
@@ -173,8 +173,33 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [galleryCat, setGalleryCat] = useState<(typeof CATEGORIES)[number] | "All">("All");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // D-Studio close-out (founder-requested undo/redo + autosave + version
+  // safety) - "idle" here specifically means "edited, autosave pending" (see
+  // the autosave effect below), not "nothing has happened yet"; the
+  // workspace starts in "saved" the moment initial data loads, since at
+  // that point local state genuinely matches what's live on the server.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "offline" | "error">("saved");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+
+  // Editor-state history for undo/redo - capped at 20 entries per the
+  // founder's "last ~20 actions" spec. Deliberately snapshots the whole
+  // {themeId, settings} pair (not settings alone) so switching templates is
+  // itself undoable. customCode is excluded - Custom CSS has its own
+  // separate manual "Save code" flow, untouched by section/style edits.
+  type EditorSnapshot = { themeId: string; settings: ThemeSettings };
+  const MAX_HISTORY = 20;
+  const [past, setPast] = useState<EditorSnapshot[]>([]);
+  const [future, setFuture] = useState<EditorSnapshot[]>([]);
+  // The settings/themeId this store's storefront was actually rendering
+  // when this D-Studio session was opened - captured once, never mutated
+  // by edits/undo/redo. "Restore last published version" reverts to this.
+  // This is a session-local safety net, NOT a real version-history system
+  // (that stays a documented D-Studio v2 item) - there is no draft/
+  // published distinction in the backend today, so this is the only
+  // available "known-good" baseline to fall back to.
+  const publishedSnapshotRef = useRef<EditorSnapshot | null>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
@@ -185,17 +210,26 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
       .catch(() => {});
     api.get<Theme[]>("/themes").then(setThemes).catch(() => {});
     api
-      .get<{ themeId: string; settings: ThemeSettings; customCode: string | null; codedModeEnabled: boolean }>(`/stores/${params.storeId}/theme-settings`)
+      .get<{ themeId: string; settings: ThemeSettings; customCode: string | null; codedModeEnabled: boolean; effectiveTierOrder: number }>(
+        `/stores/${params.storeId}/theme-settings`,
+      )
       .then((ts) => {
+        const loadedSettings = ts.settings ?? {};
         setThemeId(ts.themeId);
-        setSettings(ts.settings ?? {});
+        setSettings(loadedSettings);
         setCustomCode(ts.customCode ?? "");
         setCodedModeEnabled(ts.codedModeEnabled);
+        // D-Studio close-out - effectiveTierOrder already folds in any live
+        // admin-granted override (Settings Registry `dstudio.tier_override_
+        // order`), so the UI reflects exactly what the server will enforce -
+        // no separate /sellers/me/subscription fetch needed anymore.
+        setSellerTierOrder(ts.effectiveTierOrder);
+        // Undo/redo + version safety - this is the exact object reference
+        // the autosave effect below compares against to tell "just loaded"
+        // apart from "actually edited," and it's the baseline "restore last
+        // published version" reverts to.
+        publishedSnapshotRef.current = { themeId: ts.themeId, settings: loadedSettings };
       })
-      .catch(() => {});
-    api
-      .get<{ plan: { tierOrder: number } }>("/sellers/me/subscription")
-      .then((sub) => setSellerTierOrder(sub.plan.tierOrder))
       .catch(() => setSellerTierOrder(0));
     api
       .get<{ items: Array<{ id: string; title: string; description: string | null; averageRating: string; reviewCount: number; variants?: unknown[]; seoTitle?: string; seoDescription?: string | null }> }>(
@@ -231,12 +265,90 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
 
   useEffect(() => setOpenAnimSlot(null), [selected]);
 
+  // Autosave (founder-requested "what makes the tool trustworthy for real
+  // work") - debounced 1.5s after the last change so a burst of edits (drag
+  // reorder, rapid variant switching) doesn't fire a save per keystroke.
+  // Skips scheduling when settings/themeId still reference-equal the just-
+  // loaded snapshot (nothing to save yet, or restoreLastPublished() already
+  // persisted this exact state directly) - not a "skip the first render"
+  // hack, which would misfire once the initial fetch's setState lands.
+  useEffect(() => {
+    const snap = publishedSnapshotRef.current;
+    if (!snap || (settings === snap.settings && themeId === snap.themeId)) return;
+    setSaveState("idle");
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      persist(themeId, settings);
+    }, 1500);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, themeId]);
+
+  // Undo/redo keyboard shortcuts - Cmd/Ctrl+Z to undo, Cmd/Ctrl+Shift+Z (or
+  // Ctrl+Y) to redo. Skipped while typing in the Custom CSS textarea so a
+  // seller's own text-editing undo (native textarea behavior) isn't hijacked.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT")) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() === "z" && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      } else if (e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if (e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [past, future, themeId, settings]);
+
   const themeName = themes.find((t) => t.id === themeId)?.name ?? "Editorial";
   const resolved = useMemo(() => resolveThemeSettings(themeName, settings), [themeName, settings]);
   const sectionComponents = useMemo(() => getTemplateSections(themeName), [themeName]);
   const tierOrder = sellerTierOrder ?? 0;
 
+  // Undo/redo - snapshots the state BEFORE a change is applied. Called once
+  // per discrete edit (see updateSections below, applyTemplate, and the
+  // color-picker/Custom-CSS onFocus handlers for continuous inputs, so a
+  // whole drag/typing burst counts as a single undo step, not one per
+  // keystroke).
+  function pushHistory() {
+    setPast((p) => [...p.slice(-(MAX_HISTORY - 1)), { themeId, settings }]);
+    setFuture([]);
+  }
+
+  function undo() {
+    setPast((p) => {
+      if (p.length === 0) return p;
+      const prev = p[p.length - 1];
+      setFuture((f) => [{ themeId, settings }, ...f].slice(0, MAX_HISTORY));
+      setThemeId(prev.themeId);
+      setSettings(prev.settings);
+      return p.slice(0, -1);
+    });
+  }
+
+  function redo() {
+    setFuture((f) => {
+      if (f.length === 0) return f;
+      const next = f[0];
+      setPast((p) => [...p, { themeId, settings }].slice(-MAX_HISTORY));
+      setThemeId(next.themeId);
+      setSettings(next.settings);
+      return f.slice(1);
+    });
+  }
+
   function updateSections(next: ThemeSection[]) {
+    pushHistory();
     setSettings((s) => ({ ...s, sections: next }));
   }
 
@@ -300,21 +412,53 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
   }
 
   function applyTemplate(newThemeId: string) {
+    pushHistory();
     setThemeId(newThemeId);
     setTemplatesOpen(false);
   }
 
-  async function onSave() {
+  // Takes explicit values rather than reading themeId/settings from closure,
+  // since React state updates are async - restoreLastPublished() below needs
+  // to persist the just-restored snapshot in the same call, before a
+  // re-render would make the closure's themeId/settings reflect it.
+  async function persist(themeIdToSave: string, settingsToSave: ThemeSettings) {
     setSaveState("saving");
     setErrorMsg(null);
     try {
-      await api.patch(`/stores/${params.storeId}/theme-settings`, { themeId, settings });
+      await api.patch(`/stores/${params.storeId}/theme-settings`, { themeId: themeIdToSave, settings: settingsToSave });
       setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 2000);
     } catch (err) {
-      setSaveState("error");
-      setErrorMsg(err instanceof ApiError ? err.message : "Couldn't save.");
+      if (err instanceof ApiError) {
+        setSaveState("error");
+        setErrorMsg(err.message);
+      } else {
+        // fetch() itself throws (TypeError, not ApiError) for a genuine
+        // network-level failure - offline, DNS, server unreachable - as
+        // opposed to a real HTTP 4xx/5xx the server returned.
+        setSaveState("offline");
+        setErrorMsg("Connection lost - not saved");
+      }
     }
+  }
+
+  async function onSave() {
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    await persist(themeId, settings);
+  }
+
+  // Undo/redo + version safety (founder-requested) - the one recovery
+  // action guaranteed to work even if the seller doesn't remember what they
+  // changed: revert to exactly what was live when this D-Studio session
+  // was opened, and persist that reversion immediately (autosave may have
+  // already written a mistake to the server earlier in this same session).
+  async function restoreLastPublished() {
+    const snapshot = publishedSnapshotRef.current;
+    if (!snapshot) return;
+    pushHistory();
+    setThemeId(snapshot.themeId);
+    setSettings(snapshot.settings);
+    setRestoreConfirmOpen(false);
+    await persist(snapshot.themeId, snapshot.settings);
   }
 
   async function saveCustomCode() {
@@ -437,8 +581,41 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
             </button>
           ))}
         </div>
-        <span className="text-[11px]" style={{ color: saveState === "error" ? "#ff6b6b" : CHROME.inkFaint }}>
-          {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? errorMsg ?? "Couldn't save" : "Unsaved changes are local"}
+        <button
+          onClick={undo}
+          disabled={past.length === 0}
+          title="Undo (Ctrl/Cmd+Z)"
+          className="rounded p-1.5"
+          style={{ color: past.length === 0 ? CHROME.inkFaint : CHROME.inkMuted, opacity: past.length === 0 ? 0.4 : 1 }}
+        >
+          <Undo2 size={14} />
+        </button>
+        <button
+          onClick={redo}
+          disabled={future.length === 0}
+          title="Redo (Ctrl/Cmd+Shift+Z)"
+          className="rounded p-1.5"
+          style={{ color: future.length === 0 ? CHROME.inkFaint : CHROME.inkMuted, opacity: future.length === 0 ? 0.4 : 1 }}
+        >
+          <Redo2 size={14} />
+        </button>
+        <button onClick={() => setRestoreConfirmOpen(true)} title="Restore the version live when this session opened" className="rounded p-1.5" style={{ color: CHROME.inkMuted }}>
+          <RotateCcw size={14} />
+        </button>
+        <div className="mx-1 h-4 w-px" style={{ background: CHROME.border }} />
+        <span
+          className="text-[11px]"
+          style={{ color: saveState === "error" || saveState === "offline" ? "#ff6b6b" : saveState === "idle" ? CHROME.tierRise : CHROME.inkFaint }}
+        >
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "saved"
+              ? "Saved"
+              : saveState === "offline"
+                ? "Connection lost — not saved"
+                : saveState === "error"
+                  ? (errorMsg ?? "Couldn't save")
+                  : "Unsaved changes…"}
         </span>
         <button
           onClick={onSave}
@@ -511,6 +688,7 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                     <input
                       type="color"
                       value={resolved.colors[key]}
+                      onFocus={pushHistory}
                       onChange={(e) => setSettings((s) => ({ ...s, colors: { ...resolved.colors, [key]: e.target.value } }))}
                       className="h-6 w-10 cursor-pointer rounded border-none bg-transparent"
                     />
@@ -757,6 +935,29 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore-last-published confirm modal - version safety floor
+          (founder-requested); a session-local "revert to what was live when
+          I opened D-Studio" snapshot, not real version history (v2 item). */}
+      {restoreConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(10,10,14,0.7)" }} onClick={() => setRestoreConfirmOpen(false)}>
+          <div className="w-full max-w-sm rounded-xl p-5" style={{ background: CHROME.surface, border: `1px solid ${CHROME.border}` }} onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 text-sm font-semibold">Restore last published version?</h2>
+            <p className="mb-4 text-xs" style={{ color: CHROME.inkMuted }}>
+              Reverts to exactly what was live on your storefront when you opened D-Studio, discarding every change made in
+              this session (including any already autosaved). This can be undone with Undo right after.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRestoreConfirmOpen(false)} className="rounded-md px-3 py-1.5 text-xs" style={{ color: CHROME.inkMuted }}>
+                Cancel
+              </button>
+              <button onClick={restoreLastPublished} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: "#ff6b6b", color: "#1a0d0d" }}>
+                Restore
+              </button>
             </div>
           </div>
         </div>

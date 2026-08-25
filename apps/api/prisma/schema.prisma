@@ -1575,6 +1575,14 @@ model SettingsValue {
   value         Json
   updatedBy     String?           @map("updated_by") @db.Uuid
   updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  // D-Studio close-out (founder-requested) - a time-limited admin grant:
+  // null (the vast majority of overrides) never expires, unchanged
+  // behavior. When set, SettingsService.resolve() treats a row whose
+  // expiresAt has passed as if it didn't exist (falls through to the
+  // next-lower-precedence scope) - see settings.service.ts's own note on
+  // why this reads as a real, verified auto-revert rather than an
+  // assumed one.
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz
 
   definition SettingsDefinition @relation(fields: [definitionKey], references: [key])
 

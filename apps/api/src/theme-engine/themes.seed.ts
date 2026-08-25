@@ -111,6 +111,28 @@ export async function seedModule4Settings(prisma: PrismaClient) {
     update: {},
   });
 
+  // D-Studio close-out (founder-requested time-limited feature grants) -
+  // seller-scoped only, so an admin grant never leaks into the plan/global
+  // defaults. -1 (below GO's own tierOrder 0) is the "no override" sentinel
+  // rather than null, sidestepping Prisma's Json-column null-vs-JsonNull
+  // footgun entirely: SubscriptionsService.getEffectiveDStudioTierOrder()
+  // computes max(realTierOrder, this resolved value), so a -1 default is
+  // always a no-op. Pair with a real expiresAt (settings_values.expires_at)
+  // for the actual time limit - this key's own value never encodes a
+  // duration.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "dstudio.tier_override_order" },
+    create: {
+      key: "dstudio.tier_override_order",
+      valueType: "number",
+      allowedScopes: ["seller"],
+      defaultValue: -1,
+      validation: { min: -1, max: 3 },
+      description: "Admin-granted D-Studio tier override (0=GO..3=FLY), meant to be paired with a settings_values.expires_at - Seller-360's 'Grant D-Studio access' control.",
+    },
+    update: {},
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "storefront.unlock_rate_limit_per_hour" },
     create: {

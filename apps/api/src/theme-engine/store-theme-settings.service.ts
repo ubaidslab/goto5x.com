@@ -19,6 +19,28 @@ export class StoreThemeSettingsService {
     private readonly subscriptions: SubscriptionsService,
   ) {}
 
+  /**
+   * D-Studio close-out (founder-requested time-limited feature grants) - the
+   * effective tier a seller's D-Studio surface should gate against is the
+   * greater of their real subscription tier and any live (non-expired)
+   * seller-scoped `dstudio.tier_override_order` admin grant. -1 is that
+   * key's "no override" sentinel (see themes.seed.ts), always below GO's
+   * real tierOrder 0, so Math.max() is a safe no-op when nothing was
+   * granted. This is the ONE place both getForStore() (what the UI shows)
+   * and update()'s validateSections() (what the server actually enforces)
+   * read from, so a grant can never be visible in the UI without also
+   * being enforced, or vice versa.
+   */
+  private async getEffectiveTierOrder(sellerId: string): Promise<number> {
+    const [realTierOrder, override] = await Promise.all([
+      this.subscriptions.getSellerTierOrder(sellerId),
+      this.subscriptions
+        .getPlanContext(sellerId)
+        .then((context) => this.settings.resolve<number>("dstudio.tier_override_order", context)),
+    ]);
+    return Math.max(realTierOrder, override);
+  }
+
   async getForStore(sellerId: string, storeId: string) {
     const themeSettings = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
@@ -38,7 +60,8 @@ export class StoreThemeSettingsService {
     // update() itself enforces server-side (FR-1.6).
     const context = await this.subscriptions.getPlanContext(sellerId);
     const codedModeEnabled = await this.settings.resolve<boolean>("theme.coded_mode_enabled", context);
-    return { ...themeSettings, codedModeEnabled };
+    const effectiveTierOrder = await this.getEffectiveTierOrder(sellerId);
+    return { ...themeSettings, codedModeEnabled, effectiveTierOrder };
   }
 
   async update(sellerId: string, storeId: string, dto: UpdateStoreThemeSettingsDto) {
@@ -61,8 +84,8 @@ export class StoreThemeSettingsService {
     // client-hidden UpgradeLockedCard. Runs before the transaction below so
     // a rejected write never partially persists.
     if (dto.settings && typeof dto.settings === "object" && "sections" in dto.settings) {
-      const sellerTierOrder = await this.subscriptions.getSellerTierOrder(sellerId);
-      validateSections((dto.settings as Record<string, unknown>).sections, sellerTierOrder);
+      const effectiveTierOrder = await this.getEffectiveTierOrder(sellerId);
+      validateSections((dto.settings as Record<string, unknown>).sections, effectiveTierOrder);
     }
 
     return this.tenantPrisma.run(sellerId, async (tx) => {

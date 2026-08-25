@@ -16,6 +16,24 @@
  * commented placeholder (a scale+fade entrance, reusing scale-in's tween)
  * until a real Lottie asset field is designed - flagged here and in the
  * founder-facing completion report, not hidden.
+ *
+ * STORAGE DISCIPLINE (D-Studio close-out research, no upload field built
+ * yet) - when that Lottie/media upload field is designed, it MUST follow
+ * MediaAssetsService.uploadDirect()'s pattern (apps/api/src/media/
+ * media-assets.service.ts): sum sizeBytes for the store from `media_asset`
+ * and reject the upload if it would exceed `catalog.storage_quota_bytes`
+ * (resolved through the seller's plan context), then persist the file as a
+ * real MediaAsset row (not a bespoke D-Studio-only table) so it's counted
+ * exactly like every other store asset. Do NOT model it on the existing
+ * review-media upload path - two real, verified gaps there:
+ *   1. Its actual per-file cap is 20MB (MAX_REVIEW_MEDIA_BYTES,
+ *      review-submission.controller.ts), not 12MB.
+ *   2. `ReviewMedia` has no `sizeBytes` column at all and is never summed
+ *      against any quota - buyer-submitted review media is completely
+ *      unmetered today. This is a pre-existing gap in a different feature
+ *      (Phase 4 reviews), out of D-Studio's scope to fix here, but it
+ *      means review media is NOT a working precedent for "quota-enforced
+ *      upload" - only MediaAssetsService.uploadDirect() is.
  */
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";

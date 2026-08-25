@@ -34,6 +34,12 @@ interface SellerOverview {
 
 const LIFECYCLE_STATUSES: LifecycleStatus[] = ["active", "warned", "restricted", "suspended", "banned"];
 
+// GO/RUN/RISE/FLY tierOrder mapping (plans.seed.ts) - D-Studio close-out's
+// grant-with-duration control needs these as plain labels, not the
+// creative-name-plus-subtitle treatment planTierSubtitle() gives seller-
+// facing surfaces (this is an internal admin control, not a seller surface).
+const TIER_LABELS = ["GO", "RUN", "RISE", "FLY"] as const;
+
 /**
  * Module 25 (Admin Completion) - the seller-360 page (§14 gap: per-seller
  * data was scattered across 6 siloed screens with no ID-based cross-
@@ -61,6 +67,10 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     requiresConfirmation: boolean;
   } | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [dstudioGrant, setDstudioGrant] = useState<{ tierOrder: number; expiresAt: string | null } | null>(null);
+  const [dstudioGrantTier, setDstudioGrantTier] = useState<"0" | "1" | "2" | "3">("2");
+  const [dstudioGrantDays, setDstudioGrantDays] = useState("14");
+  const [dstudioGrantError, setDstudioGrantError] = useState<string | null>(null);
 
   function load() {
     adminApi
@@ -70,6 +80,82 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   }
 
   useEffect(load, [params.sellerId]);
+
+  /**
+   * D-Studio close-out (founder-requested time-limited feature grants) - a
+   * Seller-360-scoped convenience over the same generic Settings Registry
+   * resolve/write endpoints the "Settings overrides" section below already
+   * uses, pre-filled to the one key (`dstudio.tier_override_order`) and
+   * with a duration picker instead of a free-typed JSON value, since that
+   * key's real point (an expiring grant) has no field in the generic form.
+   */
+  function loadDstudioGrant() {
+    adminApi
+      .get<{ chain: { scope: string; value: unknown; expiresAt: string | null }[] }>(
+        `/admin/settings/resolve?key=dstudio.tier_override_order&sellerId=${params.sellerId}`,
+      )
+      .then((result) => {
+        const sellerRow = result.chain.find((c) => c.scope === "seller");
+        const tierOrder = typeof sellerRow?.value === "number" ? sellerRow.value : -1;
+        setDstudioGrant(tierOrder >= 0 ? { tierOrder, expiresAt: sellerRow?.expiresAt ?? null } : null);
+      })
+      .catch(() => setDstudioGrant(null));
+  }
+
+  useEffect(loadDstudioGrant, [params.sellerId]);
+
+  async function grantDStudioAccess() {
+    setDstudioGrantError(null);
+    const days = Number(dstudioGrantDays);
+    if (!days || days <= 0) {
+      setDstudioGrantError("Duration must be a positive number of days.");
+      return;
+    }
+    const tierOrder = Number(dstudioGrantTier);
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const ok = await confirm({
+      title: `Grant ${TIER_LABELS[tierOrder]}-tier D-Studio access to ${seller.businessName}?`,
+      description: `This overrides their real plan tier for D-Studio only, for ${days} day(s), auto-reverting at expiry.`,
+      changes: [{ label: "D-Studio tier", from: dstudioGrant ? TIER_LABELS[dstudioGrant.tierOrder] : "(none)", to: `${TIER_LABELS[tierOrder]} until ${new Date(expiresAt).toLocaleString()}` }],
+      confirmLabel: "Grant access",
+    });
+    if (!ok) return;
+    try {
+      await adminApi.put("/admin/settings/values", {
+        key: "dstudio.tier_override_order",
+        scopeType: "seller",
+        scopeId: params.sellerId,
+        value: tierOrder,
+        expiresAt,
+      });
+      loadDstudioGrant();
+    } catch (err) {
+      setDstudioGrantError(err instanceof AdminApiError ? err.message : "Couldn't grant D-Studio access.");
+    }
+  }
+
+  async function revokeDStudioGrant() {
+    const ok = await confirm({
+      title: `Revoke ${seller.businessName}'s D-Studio grant?`,
+      description: "Reverts D-Studio gating to their real plan tier immediately.",
+      changes: [{ label: "D-Studio tier override", from: dstudioGrant ? TIER_LABELS[dstudioGrant.tierOrder] : "(none)", to: "(none)" }],
+      confirmLabel: "Revoke",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await adminApi.put("/admin/settings/values", {
+        key: "dstudio.tier_override_order",
+        scopeType: "seller",
+        scopeId: params.sellerId,
+        value: -1,
+        expiresAt: null,
+      });
+      loadDstudioGrant();
+    } catch (err) {
+      setDstudioGrantError(err instanceof AdminApiError ? err.message : "Couldn't revoke this grant.");
+    }
+  }
 
   async function setLifecycleStatus(status: LifecycleStatus) {
     if (!reason.trim()) {
@@ -381,6 +467,38 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
           <input value={settingsValue} onChange={(e) => setSettingsValue(e.target.value)} />
         </label>{" "}
         <button onClick={overrideSettingForSeller}>Override for this seller</button>
+      </p>
+
+      <h2>D-Studio access grant</h2>
+      <p>
+        Grant this seller any tier&apos;s D-Studio capability (sections/animation presets/variants) for a fixed window,
+        independent of their real plan - auto-reverts at expiry, never requires a follow-up action to undo.
+      </p>
+      {dstudioGrant ? (
+        <p>
+          Current grant: <strong>{TIER_LABELS[dstudioGrant.tierOrder]}</strong>
+          {dstudioGrant.expiresAt ? ` until ${new Date(dstudioGrant.expiresAt).toLocaleString()}` : " (no expiry set)"}{" "}
+          <button onClick={revokeDStudioGrant}>Revoke</button>
+        </p>
+      ) : (
+        <p>No active grant - D-Studio gates against this seller&apos;s real plan tier.</p>
+      )}
+      {dstudioGrantError && <p style={{ color: "crimson" }}>{dstudioGrantError}</p>}
+      <p>
+        <label>
+          Tier:{" "}
+          <select value={dstudioGrantTier} onChange={(e) => setDstudioGrantTier(e.target.value as typeof dstudioGrantTier)}>
+            {TIER_LABELS.map((label, tierOrder) => (
+              <option key={label} value={String(tierOrder)}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>{" "}
+        <label>
+          Days: <input type="number" min={1} value={dstudioGrantDays} onChange={(e) => setDstudioGrantDays(e.target.value)} style={{ width: "4em" }} />
+        </label>{" "}
+        <button onClick={grantDStudioAccess}>Grant access</button>
       </p>
 
       <h2>Trust &amp; Safety</h2>

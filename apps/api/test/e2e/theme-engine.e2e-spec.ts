@@ -332,4 +332,165 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
       expect(readBack.body.settings.sections).toEqual([{ id: "hero", visible: true }]);
     });
   });
+
+  /**
+   * D-Studio close-out (founder-requested time-limited feature grants) -
+   * the seller-scoped `dstudio.tier_override_order` Settings Registry key
+   * plus `settings_values.expires_at`, computed via
+   * StoreThemeSettingsService.getEffectiveTierOrder() as
+   * max(realTierOrder, resolved override). Exercises both the read side
+   * (GET .../theme-settings's `effectiveTierOrder`) and the enforcement
+   * side (PATCH .../theme-settings's validateSections() call), since the
+   * founder's instruction was explicit that a grant must be real
+   * enforcement, not just a UI-visible flag.
+   */
+  describe("D-Studio close-out: time-limited admin grants (dstudio.tier_override_order + expiresAt)", () => {
+    async function sellerIdFor(email: string) {
+      const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+      const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+      return seller.id;
+    }
+
+    it("a GO seller granted a live RISE-tier override can save a RISE-only section, and effectiveTierOrder reflects the grant", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-grant-live@example.com", "dstudio-grant-live-store");
+      const sellerId = await sellerIdFor("dstudio-grant-live@example.com");
+      const adminToken = await fullyVerifiedAdminToken("dstudio-grant-live-admin@example.com");
+
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const grant = await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId, value: 2, expiresAt: future });
+      expect(grant.status).toBe(200);
+
+      const before = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(before.body.effectiveTierOrder).toBe(2);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }] } });
+      expect(res.status).toBe(200);
+    });
+
+    it("an already-expired grant is treated as if it never existed - both effectiveTierOrder and enforcement fall back to the real (GO) tier", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-grant-expired@example.com", "dstudio-grant-expired-store");
+      const sellerId = await sellerIdFor("dstudio-grant-expired@example.com");
+      const adminToken = await fullyVerifiedAdminToken("dstudio-grant-expired-admin@example.com");
+
+      const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId, value: 2, expiresAt: past });
+
+      const before = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(before.body.effectiveTierOrder).toBe(0);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }] } });
+      expect(res.status).toBe(403);
+    });
+
+    it("a grant to seller A never leaks to seller B", async () => {
+      const a = await signupLoginAndCreateStore("dstudio-grant-a@example.com", "dstudio-grant-a-store");
+      const b = await signupLoginAndCreateStore("dstudio-grant-b@example.com", "dstudio-grant-b-store");
+      const sellerIdA = await sellerIdFor("dstudio-grant-a@example.com");
+      const adminToken = await fullyVerifiedAdminToken("dstudio-grant-leak-admin@example.com");
+
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerIdA, value: 2, expiresAt: future });
+
+      const bRes = await request(app.getHttpServer())
+        .patch(`/stores/${b.storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${b.token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }] } });
+      expect(bRes.status).toBe(403);
+
+      const aRes = await request(app.getHttpServer())
+        .patch(`/stores/${a.storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${a.token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }] } });
+      expect(aRes.status).toBe(200);
+    });
+
+    it("revoking a grant (re-setting the override to -1) reverts enforcement immediately, and the write is audit-logged", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dstudio-grant-revoke@example.com", "dstudio-grant-revoke-store");
+      const sellerId = await sellerIdFor("dstudio-grant-revoke@example.com");
+      const adminToken = await fullyVerifiedAdminToken("dstudio-grant-revoke-admin@example.com");
+
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId, value: 2, expiresAt: future });
+
+      const grantedOk = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }] } });
+      expect(grantedOk.status).toBe(200);
+
+      const revoke = await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId, value: -1, expiresAt: null });
+      expect(revoke.status).toBe(200);
+
+      const afterRevoke = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ settings: { sections: [{ id: "team", visible: true }, { id: "hero", visible: true }] } });
+      expect(afterRevoke.status).toBe(403);
+
+      const auditRows = await superuser.adminAuditLog.findMany({
+        where: { action: "settings.update", targetType: "settings_value" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(auditRows.length).toBeGreaterThanOrEqual(2); // the grant + the revoke
+    });
+
+    it("GET /admin/settings/resolve's precedence chain reports the grant's expiresAt, and never lets an expired-but-undeleted row win", async () => {
+      const { storeId: _unused } = await signupLoginAndCreateStore("dstudio-grant-chain@example.com", "dstudio-grant-chain-store");
+      const sellerId = await sellerIdFor("dstudio-grant-chain@example.com");
+      const adminToken = await fullyVerifiedAdminToken("dstudio-grant-chain-admin@example.com");
+
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId, value: 3, expiresAt: future });
+
+      const resolved = await request(app.getHttpServer())
+        .get(`/admin/settings/resolve?key=dstudio.tier_override_order&sellerId=${sellerId}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(resolved.body.winningScope).toBe("seller");
+      expect(resolved.body.effectiveValue).toBe(3);
+      const sellerEntry = resolved.body.chain.find((c: any) => c.scope === "seller");
+      expect(new Date(sellerEntry.expiresAt).toISOString()).toBe(future);
+
+      // Directly age the row past expiry without going through setValue()'s
+      // own expiresAt handling, to simulate "expired but not yet
+      // opportunistically deleted by a resolve() read" - resolveWithChain()
+      // must still skip it as the winner.
+      await superuser.settingsValue.updateMany({
+        where: { definitionKey: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+      const resolvedAfterExpiry = await request(app.getHttpServer())
+        .get(`/admin/settings/resolve?key=dstudio.tier_override_order&sellerId=${sellerId}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(resolvedAfterExpiry.body.winningScope).toBe("default");
+      expect(resolvedAfterExpiry.body.effectiveValue).toBe(-1);
+    });
+  });
 });
