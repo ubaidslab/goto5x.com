@@ -493,4 +493,150 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
       expect(resolvedAfterExpiry.body.effectiveValue).toBe(-1);
     });
   });
+
+  describe("Premium Motion Templates - in-app purchase flow (founder-approved scope addition)", () => {
+    async function sellerIdFor(email: string) {
+      const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+      const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+      return seller.id;
+    }
+
+    async function createPurchasableTheme(name: string, price: number) {
+      return superuser.theme.create({ data: { name, tier: "marketplace", price, isActive: true } });
+    }
+
+    it("a seller cannot request a purchase on a theme with no price set (not for sale in-app)", async () => {
+      const { token } = await signupLoginAndCreateStore("premium-tmpl-noprice@example.com", "premium-tmpl-noprice-store");
+      const theme = await superuser.theme.create({ data: { name: "External Only", tier: "marketplace", isActive: true } });
+      const res = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(res.status).toBe(400);
+    });
+
+    it("a seller requests a purchase, an admin verifies it, and the seller gains a real entitlement + can select the theme", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("premium-tmpl-happy@example.com", "premium-tmpl-happy-store");
+      const sellerId = await sellerIdFor("premium-tmpl-happy@example.com");
+      const theme = await createPurchasableTheme("Momentum", 4999);
+
+      // Before purchase: the theme shows as not entitled, and switching to it is forbidden.
+      const beforeList = await request(app.getHttpServer()).get("/themes").set("Authorization", `Bearer ${token}`);
+      expect(beforeList.body.find((t: any) => t.id === theme.id).entitled).toBe(false);
+      const beforeSwitch = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(beforeSwitch.status).toBe(403);
+
+      const request1 = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(request1.status).toBe(201);
+      expect(Number(request1.body.request.amount)).toBe(4999);
+      expect(request1.body.instructions).toBeTruthy();
+      expect(request1.body.request.status).toBe("pending");
+
+      // A second request for the same theme while one is already pending is rejected.
+      const duplicate = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(duplicate.status).toBe(400);
+
+      const adminToken = await fullyVerifiedAdminToken("premium-tmpl-admin-1@example.com");
+      const pending = await request(app.getHttpServer())
+        .get("/admin/template-purchases")
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(pending.status).toBe(200);
+      expect(pending.body).toHaveLength(1);
+      expect(pending.body[0].theme.name).toBe("Momentum");
+
+      const verify = await request(app.getHttpServer())
+        .post(`/admin/template-purchases/${request1.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(verify.status).toBe(201);
+      expect(verify.body.request.status).toBe("verified");
+
+      // Real entitlement now exists (not just a status flip on the request row).
+      const entitlement = await superuser.templateEntitlement.findUnique({
+        where: { sellerId_themeId: { sellerId, themeId: theme.id } },
+      });
+      expect(entitlement?.source).toBe("platform_purchase");
+      expect(entitlement?.revokedAt).toBeNull();
+
+      const afterList = await request(app.getHttpServer()).get("/themes").set("Authorization", `Bearer ${token}`);
+      expect(afterList.body.find((t: any) => t.id === theme.id).entitled).toBe(true);
+
+      const afterSwitch = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(afterSwitch.status).toBe(200);
+    });
+
+    it("an admin can reject a purchase request, leaving no entitlement behind", async () => {
+      const { token } = await signupLoginAndCreateStore("premium-tmpl-reject@example.com", "premium-tmpl-reject-store");
+      const sellerId = await sellerIdFor("premium-tmpl-reject@example.com");
+      const theme = await createPurchasableTheme("Aurora", 2999);
+
+      const purchaseReq = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+
+      const adminToken = await fullyVerifiedAdminToken("premium-tmpl-admin-2@example.com");
+      const reject = await request(app.getHttpServer())
+        .post(`/admin/template-purchases/${purchaseReq.body.request.id}/reject`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(reject.status).toBe(201);
+      expect(reject.body.status).toBe("rejected");
+
+      const entitlement = await superuser.templateEntitlement.findUnique({
+        where: { sellerId_themeId: { sellerId, themeId: theme.id } },
+      });
+      expect(entitlement).toBeNull();
+
+      // A rejected request is resolved - a fresh request for the same theme is allowed again.
+      const secondAttempt = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(secondAttempt.status).toBe(201);
+    });
+
+    it("a seller already entitled to a template cannot request it again", async () => {
+      const { token } = await signupLoginAndCreateStore("premium-tmpl-owned@example.com", "premium-tmpl-owned-store");
+      const sellerId = await sellerIdFor("premium-tmpl-owned@example.com");
+      const theme = await createPurchasableTheme("Kinetic", 3499);
+      await superuser.templateEntitlement.create({ data: { sellerId, themeId: theme.id, source: "platform_purchase" } });
+
+      const res = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id });
+      expect(res.status).toBe(400);
+    });
+
+    it("GET /sellers/me/template-purchases lists only the calling seller's own requests", async () => {
+      const themeA = await createPurchasableTheme("Zenith", 1999);
+      const { token: tokenA } = await signupLoginAndCreateStore("premium-tmpl-mine-a@example.com", "premium-tmpl-mine-a-store");
+      const { token: tokenB } = await signupLoginAndCreateStore("premium-tmpl-mine-b@example.com", "premium-tmpl-mine-b-store");
+
+      await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${tokenA}`)
+        .send({ themeId: themeA.id });
+
+      const listA = await request(app.getHttpServer())
+        .get("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${tokenA}`);
+      const listB = await request(app.getHttpServer())
+        .get("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${tokenB}`);
+      expect(listA.body).toHaveLength(1);
+      expect(listB.body).toHaveLength(0);
+    });
+  });
 });
