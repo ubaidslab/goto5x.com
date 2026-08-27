@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface Invoice {
   id: string;
@@ -18,15 +25,16 @@ interface Invoice {
   seller: { businessName: string } | null;
 }
 
+const statusTone: Record<Invoice["status"], "warning" | "success" | "danger"> = {
+  pending: "warning",
+  paid: "success",
+  overdue: "danger",
+};
+
 /**
- * Module 25 P1 (SRS §5.6c/§5.7 FR-6.17/FR-6.18/FR-7.15) - the real
- * commission/group-sponsorship invoice list, split out from the
- * mislabeled `/admin/invoices` route (that page is Module 20's wallet
- * top-up verification screen, correctly renamed "Wallet top-ups" in the
- * nav - it never showed invoices). This is the founder-required fix:
- * `GET /admin/invoices` (AdminInvoicesController) was already the correct
- * backend endpoint the whole time; only a frontend screen was missing.
- * Bare functional view (no design pass yet).
+ * Phase 6c (Admin Terminal re-skin) - Module 25 P1's commission/group-
+ * sponsorship invoice list, restyled onto DashCard. Every action preserved:
+ * mark-paid per invoice, waive a disputed commission line.
  */
 export default function AdminCommissionInvoicesPage() {
   const confirm = useConfirm();
@@ -46,6 +54,7 @@ export default function AdminCommissionInvoicesPage() {
   useEffect(load, []);
 
   async function markPaid(invoice: Invoice) {
+    setError(null);
     const ok = await confirm({
       title: `Mark this invoice paid?`,
       description: `${invoice.seller?.businessName ?? invoice.sellerId} - ${invoice.invoiceType}, ${invoice.currency} ${invoice.totalAmount}. This records the invoice as manually verified paid.`,
@@ -57,12 +66,13 @@ export default function AdminCommissionInvoicesPage() {
       await adminApi.post(`/admin/invoices/${invoice.id}/mark-paid`);
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't mark this invoice paid.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't mark this invoice paid.");
     }
   }
 
   async function waiveCommission(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     const ok = await confirm({
       title: "Waive this commission line?",
       description: `Seller ${waiveSellerId}, order ${waiveOrderId}. This permanently removes the commission owed on this order.`,
@@ -82,68 +92,65 @@ export default function AdminCommissionInvoicesPage() {
       setWaiveAmount("");
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't waive this commission.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't waive this commission.");
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!invoices) return <main>Loading...</main>;
+  if (error && !invoices) return <Alert tone="danger">{error}</Alert>;
+  if (!invoices) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Commission invoices (bare view - no design pass yet)</h1>
-      <p>Every seller's monthly commission/group-sponsorship invoice - mark a manual payment as verified, or waive a disputed commission line.</p>
+    <div>
+      <PageHeader
+        title="Commission invoices"
+        description="Every seller's monthly commission/group-sponsorship invoice - mark a manual payment as verified, or waive a disputed commission line."
+      />
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Seller</th>
-            <th>Type</th>
-            <th>Period</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Due</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoices.map((i) => (
-            <tr key={i.id}>
-              <td>{i.seller?.businessName ?? i.sellerId}</td>
-              <td>{i.invoiceType}</td>
-              <td>
-                {new Date(i.periodStart).toLocaleDateString()} - {new Date(i.periodEnd).toLocaleDateString()}
-              </td>
-              <td>
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      <DashCard className="mb-4 divide-y divide-border">
+        {invoices.map((i) => (
+          <div key={i.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-ink">
+                {i.seller?.businessName ?? i.sellerId} <span className="font-normal text-ink-muted">· {i.invoiceType}</span>
+              </p>
+              <p className="text-xs text-ink-muted">
+                {new Date(i.periodStart).toLocaleDateString()} - {new Date(i.periodEnd).toLocaleDateString()} · due {new Date(i.dueDate).toLocaleDateString()}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm tabular-nums text-ink">
                 {i.currency} {i.totalAmount}
-              </td>
-              <td>{i.status}</td>
-              <td>{new Date(i.dueDate).toLocaleDateString()}</td>
-              <td>{i.status !== "paid" && <button onClick={() => markPaid(i)}>Mark paid</button>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </span>
+              <Badge tone={statusTone[i.status]}>{i.status}</Badge>
+              {i.status !== "paid" && (
+                <Button variant="secondary" size="sm" onClick={() => markPaid(i)}>
+                  Mark paid
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </DashCard>
 
-      <h2>Waive a commission line</h2>
-      <form onSubmit={waiveCommission}>
-        <p>
-          <label>
-            Seller ID: <input value={waiveSellerId} onChange={(e) => setWaiveSellerId(e.target.value)} required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Order ID: <input value={waiveOrderId} onChange={(e) => setWaiveOrderId(e.target.value)} required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Amount: <input type="number" min={0} step="0.01" value={waiveAmount} onChange={(e) => setWaiveAmount(e.target.value)} required />
-          </label>
-        </p>
-        <button type="submit">Waive</button>
-      </form>
-    </main>
+      <DashCard className="max-w-xl">
+        <DashCardHeader title="Waive a commission line" />
+        <form onSubmit={waiveCommission} className="space-y-3">
+          <Field label="Seller ID">
+            <Input value={waiveSellerId} onChange={(e) => setWaiveSellerId(e.target.value)} required />
+          </Field>
+          <Field label="Order ID">
+            <Input value={waiveOrderId} onChange={(e) => setWaiveOrderId(e.target.value)} required />
+          </Field>
+          <Field label="Amount">
+            <Input type="number" min={0} step="0.01" value={waiveAmount} onChange={(e) => setWaiveAmount(e.target.value)} required />
+          </Field>
+          <Button type="submit" variant="danger">
+            Waive
+          </Button>
+        </form>
+      </DashCard>
+    </div>
   );
 }

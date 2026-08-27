@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AdminApiError, adminApi } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface MrrAnalytics {
   mrr: number;
@@ -45,15 +51,11 @@ interface CommissionByTier {
 }
 
 /**
- * Founder-approved Finance Terminal (own admin nav item). Deliberately
- * re-embeds rather than duplicates: revenue overview reuses the existing
- * admin/analytics/mrr endpoint (extended with realized-revenue-by-period),
- * the pending-verification queue reuses admin/wallet-topups (full
- * verify/reject workflow stays on /admin/invoices), and Platform Payment
- * Instructions stays its own page, linked here. Only the genuinely new
- * reads (refund history/totals, growth-program obligations, commission-
- * by-tier, export) have their own new backend routes. Bare view (no design
- * pass yet), same precedent as every other admin screen.
+ * Phase 6c (Admin Terminal re-skin) - the Finance Terminal, restyled onto
+ * DashCard. Every section/field/action preserved: revenue overview,
+ * pending-verification queue (linked to the full workflow on /admin/
+ * invoices), refund history + pagination, growth-program obligations,
+ * platform payment instructions link, commission-by-tier, CSV/PDF export.
  */
 export default function AdminFinanceTerminalPage() {
   const [mrr, setMrr] = useState<MrrAnalytics | null>(null);
@@ -62,6 +64,7 @@ export default function AdminFinanceTerminalPage() {
   const [obligations, setObligations] = useState<GrowthProgramObligations | null>(null);
   const [commission, setCommission] = useState<CommissionByTier | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
   const [refundPage, setRefundPage] = useState(1);
 
   useEffect(() => {
@@ -77,6 +80,7 @@ export default function AdminFinanceTerminalPage() {
 
   async function downloadExport(format: "csv" | "pdf") {
     setExportError(null);
+    setExporting(format);
     try {
       const blob = await adminApi.download(`/admin/finance/export.${format}`);
       const url = URL.createObjectURL(blob);
@@ -87,136 +91,175 @@ export default function AdminFinanceTerminalPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       setExportError(err instanceof AdminApiError ? err.message : `Couldn't generate the ${format.toUpperCase()} export.`);
+    } finally {
+      setExporting(null);
     }
   }
 
   return (
-    <main>
-      <h1>Finance Terminal (bare view - no design pass yet)</h1>
-      <p>Every platform-wide financial surface in one place - revenue, pending payment verification, refunds, growth-program obligations, commission status, and export.</p>
+    <div>
+      <PageHeader
+        title="Finance Terminal"
+        description="Every platform-wide financial surface in one place - revenue, pending payment verification, refunds, growth-program obligations, commission status, and export."
+      />
 
-      <h2>Revenue overview</h2>
-      {!mrr ? (
-        <p>Loading...</p>
-      ) : (
-        <table border={1} cellPadding={4}>
-          <tbody>
-            <tr><td>MRR</td><td>{mrr.mrr.toFixed(2)}</td></tr>
-            <tr><td>Active subscriptions</td><td>{mrr.activeSubscriptionCount}</td></tr>
-            <tr><td>Realized revenue this month</td><td>{mrr.realizedRevenueThisMonth.toFixed(2)}</td></tr>
-            <tr><td>Realized revenue this quarter</td><td>{mrr.realizedRevenueThisQuarter.toFixed(2)}</td></tr>
-            <tr><td>ARPS</td><td>{mrr.arps.toFixed(2)}</td></tr>
-            <tr><td>LTV estimate</td><td>{mrr.ltvEstimate === null ? "-" : mrr.ltvEstimate.toFixed(2)}</td></tr>
-            <tr><td>Churn rate</td><td>{mrr.churnRatePercent}%</td></tr>
-            <tr><td>Upcoming renewals (7d / 30d)</td><td>{mrr.upcomingRenewals7d} / {mrr.upcomingRenewals30d}</td></tr>
-          </tbody>
-        </table>
-      )}
+      <DashCard className="mb-4">
+        <DashCardHeader title="Revenue overview" />
+        {!mrr ? (
+          <PageSpinner />
+        ) : (
+          <Reveal className="grid grid-cols-2 gap-3 sm:grid-cols-4" stagger={0.05}>
+            {[
+              ["MRR", mrr.mrr.toFixed(2)],
+              ["Active subscriptions", String(mrr.activeSubscriptionCount)],
+              ["Realized revenue (month)", mrr.realizedRevenueThisMonth.toFixed(2)],
+              ["Realized revenue (quarter)", mrr.realizedRevenueThisQuarter.toFixed(2)],
+              ["ARPS", mrr.arps.toFixed(2)],
+              ["LTV estimate", mrr.ltvEstimate === null ? "-" : mrr.ltvEstimate.toFixed(2)],
+              ["Churn rate", `${mrr.churnRatePercent}%`],
+              ["Renewals (7d / 30d)", `${mrr.upcomingRenewals7d} / ${mrr.upcomingRenewals30d}`],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-md border border-border bg-canvas p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{value}</p>
+              </div>
+            ))}
+          </Reveal>
+        )}
+      </DashCard>
 
-      <h2>Pending payment verification</h2>
-      {!pending ? (
-        <p>Loading...</p>
-      ) : pending.length === 0 ? (
-        <p>Nothing pending.</p>
-      ) : (
-        <>
-          <p>{pending.length} request(s) waiting on verification.</p>
-          <table border={1} cellPadding={4}>
-            <thead>
-              <tr><th>Owner type</th><th>Amount</th><th>Method</th><th>Requested</th></tr>
-            </thead>
-            <tbody>
+      <DashCard className="mb-4">
+        <DashCardHeader
+          title="Pending payment verification"
+          action={
+            <Link href="/admin/invoices" className="text-sm font-medium text-accent hover:opacity-80">
+              Full verification queue &rarr;
+            </Link>
+          }
+        />
+        {!pending ? (
+          <PageSpinner />
+        ) : pending.length === 0 ? (
+          <p className="text-sm text-ink-muted">Nothing pending.</p>
+        ) : (
+          <>
+            <p className="mb-2 text-sm text-ink-muted">{pending.length} request(s) waiting on verification.</p>
+            <div className="divide-y divide-border">
               {pending.slice(0, 5).map((r) => (
-                <tr key={r.id}>
-                  <td>{r.ownerType}</td>
-                  <td>{r.amount} {r.currency}</td>
-                  <td>{r.method}</td>
-                  <td>{new Date(r.requestedAt).toLocaleString()}</td>
-                </tr>
+                <div key={r.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                  <span className="text-ink">
+                    {r.ownerType} · {r.method}
+                  </span>
+                  <span className="tabular-nums text-ink-muted">
+                    {r.amount} {r.currency} · {new Date(r.requestedAt).toLocaleString()}
+                  </span>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </>
-      )}
-      <p><Link href="/admin/invoices">Go to the full verification queue &rarr;</Link></p>
+            </div>
+          </>
+        )}
+      </DashCard>
 
-      <h2>Refund history & totals</h2>
-      {!refunds ? (
-        <p>Loading...</p>
-      ) : (
-        <>
-          <p>Total refunded (platform-wide): {refunds.totalRefunded.toFixed(2)} - {refunds.total} refund(s)</p>
-          <table border={1} cellPadding={4}>
-            <thead>
-              <tr><th>Seller</th><th>Order</th><th>Amount</th><th>Date</th></tr>
-            </thead>
-            <tbody>
+      <DashCard className="mb-4">
+        <DashCardHeader title="Refund history & totals" />
+        {!refunds ? (
+          <PageSpinner />
+        ) : (
+          <>
+            <p className="mb-2 text-sm text-ink-muted">
+              Total refunded (platform-wide): <span className="font-medium text-ink">{refunds.totalRefunded.toFixed(2)}</span> - {refunds.total} refund(s)
+            </p>
+            <div className="divide-y divide-border">
               {refunds.items.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.sellerBusinessName}</td>
-                  <td>{r.orderId ?? "-"}</td>
-                  <td>{r.amount.toFixed(2)} {r.currency}</td>
-                  <td>{new Date(r.createdAt).toLocaleString()}</td>
-                </tr>
+                <div key={r.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                  <span className="text-ink">
+                    {r.sellerBusinessName} <span className="text-ink-muted">· {r.orderId ?? "-"}</span>
+                  </span>
+                  <span className="tabular-nums text-ink-muted">
+                    {r.amount.toFixed(2)} {r.currency} · {new Date(r.createdAt).toLocaleString()}
+                  </span>
+                </div>
               ))}
-            </tbody>
-          </table>
-          <button onClick={() => setRefundPage((p) => Math.max(1, p - 1))} disabled={refundPage <= 1}>Previous</button>
-          <span> Page {refunds.page} </span>
-          <button onClick={() => setRefundPage((p) => p + 1)} disabled={refundPage * refunds.limit >= refunds.total}>Next</button>
-        </>
-      )}
+            </div>
+            <div className="mt-3 flex items-center justify-center gap-3">
+              <Button variant="ghost" size="sm" disabled={refundPage <= 1} onClick={() => setRefundPage((p) => Math.max(1, p - 1))}>
+                Previous
+              </Button>
+              <span className="text-sm text-ink-muted">Page {refunds.page}</span>
+              <Button variant="ghost" size="sm" disabled={refundPage * refunds.limit >= refunds.total} onClick={() => setRefundPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          </>
+        )}
+      </DashCard>
 
-      <h2>Growth-program obligations (outstanding)</h2>
-      {!obligations ? (
-        <p>Loading...</p>
-      ) : (
-        <table border={1} cellPadding={4}>
-          <thead>
-            <tr><th>Program</th><th>Count</th><th>Outstanding amount</th></tr>
-          </thead>
-          <tbody>
+      <DashCard className="mb-4">
+        <DashCardHeader
+          title="Growth-program obligations (outstanding)"
+          action={
+            <Link href="/admin/growth-programs/withdrawals" className="text-sm font-medium text-accent hover:opacity-80">
+              Withdrawal approval queue &rarr;
+            </Link>
+          }
+        />
+        {!obligations ? (
+          <PageSpinner />
+        ) : (
+          <div className="divide-y divide-border">
             {obligations.byProgram.map((p) => (
-              <tr key={p.programType}>
-                <td>{p.programType}</td>
-                <td>{p.count}</td>
-                <td>{p.outstandingAmount.toFixed(2)}</td>
-              </tr>
+              <div key={p.programType} className="flex items-center justify-between gap-4 py-2 text-sm">
+                <span className="text-ink">
+                  {p.programType} <span className="text-ink-muted">({p.count})</span>
+                </span>
+                <span className="tabular-nums text-ink-muted">{p.outstandingAmount.toFixed(2)}</span>
+              </div>
             ))}
-            <tr><td><strong>Total</strong></td><td></td><td><strong>{obligations.totalOutstanding.toFixed(2)}</strong></td></tr>
-          </tbody>
-        </table>
-      )}
-      <p><Link href="/admin/growth-programs/withdrawals">Go to the withdrawal approval queue &rarr;</Link></p>
+            <div className="flex items-center justify-between gap-4 py-2 text-sm font-semibold">
+              <span className="text-ink">Total</span>
+              <span className="tabular-nums text-ink">{obligations.totalOutstanding.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+      </DashCard>
 
-      <h2>Platform payment instructions</h2>
-      <p><Link href="/admin/payment-instructions">Edit platform payment instructions &rarr;</Link></p>
+      <DashCard className="mb-4">
+        <DashCardHeader title="Platform payment instructions" />
+        <Link href="/admin/payment-instructions" className="text-sm font-medium text-accent hover:opacity-80">
+          Edit platform payment instructions &rarr;
+        </Link>
+      </DashCard>
 
-      <h2>Commission status by tier</h2>
-      {!commission ? (
-        <p>Loading...</p>
-      ) : (
-        <table border={1} cellPadding={4}>
-          <thead>
-            <tr><th>Tier</th><th>Commission %</th><th>Overridden from global?</th></tr>
-          </thead>
-          <tbody>
+      <DashCard className="mb-4">
+        <DashCardHeader title="Commission status by tier" description={commission ? `Global default: ${commission.globalDefault}%` : undefined} />
+        {!commission ? (
+          <PageSpinner />
+        ) : (
+          <div className="divide-y divide-border">
             {commission.tiers.map((t) => (
-              <tr key={t.planId}>
-                <td>{t.tierName}</td>
-                <td>{t.commissionPercent}%</td>
-                <td>{t.isOverriddenFromGlobal ? "Yes" : "No"}</td>
-              </tr>
+              <div key={t.planId} className="flex items-center justify-between gap-4 py-2 text-sm">
+                <span className="text-ink">{t.tierName}</span>
+                <span className="tabular-nums text-ink-muted">
+                  {t.commissionPercent}% {t.isOverriddenFromGlobal && <span className="text-ink-faint">(overridden)</span>}
+                </span>
+              </div>
             ))}
-          </tbody>
-        </table>
-      )}
-      {commission && <p>Global default: {commission.globalDefault}%</p>}
+          </div>
+        )}
+      </DashCard>
 
-      <h2>Export</h2>
-      <button onClick={() => downloadExport("csv")}>Download CSV</button>{" "}
-      <button onClick={() => downloadExport("pdf")}>Download PDF</button>
-      {exportError && <p style={{ color: "red" }}>{exportError}</p>}
-    </main>
+      <DashCard>
+        <DashCardHeader title="Export" />
+        {exportError && <Alert tone="danger">{exportError}</Alert>}
+        <div className="flex gap-2">
+          <Button variant="secondary" loading={exporting === "csv"} onClick={() => downloadExport("csv")}>
+            Download CSV
+          </Button>
+          <Button variant="secondary" loading={exporting === "pdf"} onClick={() => downloadExport("pdf")}>
+            Download PDF
+          </Button>
+        </div>
+      </DashCard>
+    </div>
   );
 }

@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Textarea } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface SupplierAdapter {
   id: string;
@@ -13,9 +20,9 @@ interface SupplierAdapter {
 }
 
 /**
- * Module 25 P1 (FR-4.9) - register, enable/disable, or reconfigure a
- * supplier adapter without a deploy. API-only before this module. Bare
- * functional view (no design pass yet).
+ * Phase 6c (Admin Terminal re-skin) - Module 25 P1's supplier-adapter
+ * registry (FR-4.9), restyled onto DashCard. Every action preserved:
+ * register, enable/disable (confirm-gated), edit config JSON.
  */
 export default function AdminSupplierAdaptersPage() {
   const confirm = useConfirm();
@@ -24,6 +31,7 @@ export default function AdminSupplierAdaptersPage() {
   const [adapterType, setAdapterType] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [configDrafts, setConfigDrafts] = useState<Record<string, string>>({});
+  const [configErrors, setConfigErrors] = useState<Record<string, string>>({});
 
   function load() {
     adminApi
@@ -39,13 +47,14 @@ export default function AdminSupplierAdaptersPage() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     try {
       await adminApi.post("/admin/supplier-adapters", { adapterType, displayName });
       setAdapterType("");
       setDisplayName("");
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't create this adapter.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't create this adapter.");
     }
   }
 
@@ -65,61 +74,71 @@ export default function AdminSupplierAdaptersPage() {
   }
 
   async function saveConfig(adapterId: string) {
+    setConfigErrors((prev) => ({ ...prev, [adapterId]: "" }));
     let config: unknown;
     try {
       config = JSON.parse(configDrafts[adapterId]);
     } catch {
-      alert("Config must be valid JSON.");
+      setConfigErrors((prev) => ({ ...prev, [adapterId]: "Config must be valid JSON." }));
       return;
     }
     try {
       await adminApi.patch(`/admin/supplier-adapters/${adapterId}`, { config });
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't save this config.");
+      setConfigErrors((prev) => ({ ...prev, [adapterId]: err instanceof AdminApiError ? err.message : "Couldn't save this config." }));
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!adapters) return <main>Loading...</main>;
+  if (error && !adapters) return <Alert tone="danger">{error}</Alert>;
+  if (!adapters) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Supplier adapters (bare view - no design pass yet)</h1>
-      <p>Register a new supplier integration, enable/disable one, or edit its config JSON - all without a deploy.</p>
+    <div>
+      <PageHeader title="Supplier adapters" description="Register a new supplier integration, enable/disable one, or edit its config JSON - all without a deploy." />
 
-      {adapters.map((a) => (
-        <div key={a.id} style={{ marginBottom: 16, paddingBottom: 8, borderBottom: "1px solid #ccc" }}>
-          <p>
-            <strong>{a.displayName}</strong> ({a.adapterType}) - {a.isEnabled ? "enabled" : "disabled"}{" "}
-            <button onClick={() => toggleEnabled(a)}>{a.isEnabled ? "Disable" : "Enable"}</button>
-          </p>
-          <p>
-            <textarea
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      <div className="max-w-2xl space-y-4">
+        {adapters.map((a) => (
+          <DashCard key={a.id}>
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <p className="text-sm font-medium text-ink">
+                {a.displayName} <span className="font-normal text-ink-muted">({a.adapterType})</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <Badge tone={a.isEnabled ? "success" : "neutral"}>{a.isEnabled ? "enabled" : "disabled"}</Badge>
+                <Button variant="ghost" size="sm" onClick={() => toggleEnabled(a)}>
+                  {a.isEnabled ? "Disable" : "Enable"}
+                </Button>
+              </div>
+            </div>
+            {configErrors[a.id] && <Alert tone="danger">{configErrors[a.id]}</Alert>}
+            <Textarea
               rows={5}
-              cols={60}
               value={configDrafts[a.id] ?? ""}
               onChange={(e) => setConfigDrafts((d) => ({ ...d, [a.id]: e.target.value }))}
+              className="font-mono text-xs"
             />
-          </p>
-          <button onClick={() => saveConfig(a.id)}>Save config</button>
-        </div>
-      ))}
+            <Button variant="secondary" size="sm" className="mt-2" onClick={() => saveConfig(a.id)}>
+              Save config
+            </Button>
+          </DashCard>
+        ))}
 
-      <h2>Register a new adapter</h2>
-      <form onSubmit={create}>
-        <p>
-          <label>
-            Adapter type (internal key): <input value={adapterType} onChange={(e) => setAdapterType(e.target.value)} required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Display name: <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-          </label>
-        </p>
-        <button type="submit">Register</button>
-      </form>
-    </main>
+        <DashCard>
+          <DashCardHeader title="Register a new adapter" />
+          <form onSubmit={create} className="space-y-3">
+            <Field label="Adapter type (internal key)">
+              <Input value={adapterType} onChange={(e) => setAdapterType(e.target.value)} required />
+            </Field>
+            <Field label="Display name">
+              <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+            </Field>
+            <Button type="submit">Register</Button>
+          </form>
+        </DashCard>
+      </div>
+    </div>
   );
 }

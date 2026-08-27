@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface Category {
   id: string;
@@ -10,11 +17,9 @@ interface Category {
 }
 
 /**
- * Module 25 P1 (FR-2.1) - the global, admin-managed product category
- * taxonomy. `categories.controller.ts` already had list+create; this is
- * only the missing admin UI (create form - retire/rename remain out of
- * scope per that controller's own documented note). Bare functional view
- * (no design pass yet).
+ * Phase 6c (Admin Terminal re-skin) - Module 25 P1's global product category
+ * taxonomy list + create form (FR-2.1), restyled onto DashCard. Rename/
+ * retire still out of scope, same as before.
  */
 export default function AdminCategoriesPage() {
   const [categories, setCategories] = useState<Category[] | null>(null);
@@ -33,46 +38,59 @@ export default function AdminCategoriesPage() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     try {
       await adminApi.post("/categories", { name, slug });
       setName("");
       setSlug("");
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't create this category.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't create this category.");
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!categories) return <main>Loading...</main>;
+  if (error && !categories) return <Alert tone="danger">{error}</Alert>;
+  if (!categories) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Categories (bare view - no design pass yet)</h1>
-      <p>The global product category list every seller's catalog draws from. Rename/retire isn't built yet (not required by any shipped FR).</p>
+    <div>
+      <PageHeader
+        title="Categories"
+        description="The global product category list every seller's catalog draws from. Rename/retire isn't built yet (not required by any shipped FR)."
+      />
 
-      <ul>
-        {categories.map((c) => (
-          <li key={c.id}>
-            {c.name} ({c.slug})
-          </li>
-        ))}
-      </ul>
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <h2>Create a category</h2>
-      <form onSubmit={create}>
-        <p>
-          <label>
-            Name: <input value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Slug (lowercase, hyphenated): <input value={slug} onChange={(e) => setSlug(e.target.value)} required />
-          </label>
-        </p>
-        <button type="submit">Create</button>
-      </form>
-    </main>
+      <div className="max-w-xl space-y-4">
+        <DashCard>
+          <DashCardHeader title={`Categories (${categories.length})`} />
+          {categories.length === 0 ? (
+            <EmptyState title="No categories yet" description="Create the first one below." />
+          ) : (
+            <div className="divide-y divide-border">
+              {categories.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                  <span className="font-medium text-ink">{c.name}</span>
+                  <span className="text-ink-muted">{c.slug}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </DashCard>
+
+        <DashCard>
+          <DashCardHeader title="Create a category" />
+          <form onSubmit={create} className="space-y-3">
+            <Field label="Name">
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </Field>
+            <Field label="Slug (lowercase, hyphenated)">
+              <Input value={slug} onChange={(e) => setSlug(e.target.value)} required />
+            </Field>
+            <Button type="submit">Create</Button>
+          </form>
+        </DashCard>
+      </div>
+    </div>
   );
 }

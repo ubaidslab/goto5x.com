@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 type LifecycleStatus = "active" | "warned" | "restricted" | "suspended" | "banned";
 
@@ -14,50 +21,55 @@ interface Seller {
 }
 
 const LIFECYCLE_STATUSES: LifecycleStatus[] = ["active", "warned", "restricted", "suspended", "banned"];
+const lifecycleTone: Record<LifecycleStatus, "success" | "warning" | "danger" | "neutral"> = {
+  active: "success",
+  warned: "warning",
+  restricted: "warning",
+  suspended: "danger",
+  banned: "danger",
+};
 
 /**
- * SRS §5.29/FR-29.4 - the T&S enforcement ladder's admin view (bare, no
- * design pass yet). Lists sellers by lifecycle status; lets an admin
- * approve a held activation (FR-30.5) or move a seller along the ladder,
- * always with a required reason (audited).
+ * Phase 6c (Admin Terminal re-skin) - SRS §5.29/FR-29.4's T&S enforcement
+ * ladder, restyled onto DashCard/Badge/Button. Every action preserved:
+ * filter by lifecycle status, approve held activation, move along the
+ * ladder (reason-required, confirm-gated), impersonate/end support session.
  */
 export default function AdminSellersPage() {
   const confirm = useConfirm();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [filter, setFilter] = useState<LifecycleStatus>("active");
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
   // v0.23 impersonation-transparency amendment (FR-8.4) - tracked here (the
   // admin's own tab) so "End session" can call the admin-guarded end
   // endpoint with the admin's own token; the impersonation token itself
   // never authenticates as an admin.
   const [activeSessions, setActiveSessions] = useState<Record<string, string>>({});
 
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   function load() {
-    fetch(`${apiBase}/admin/sellers?lifecycleStatus=${filter}`, { headers: authHeaders() })
-      .then((r) => r.json())
+    adminApi
+      .get<Seller[]>(`/admin/sellers?lifecycleStatus=${filter}`)
       .then(setSellers)
-      .catch(() => {});
+      .catch(() => setSellers([]));
   }
 
-  useEffect(load, [apiBase, filter]);
+  useEffect(load, [filter]);
 
   async function approveActivation(sellerId: string) {
-    await fetch(`${apiBase}/admin/sellers/${sellerId}/activation/approve`, {
-      method: "POST",
-      headers: authHeaders(),
-    });
-    load();
+    setError(null);
+    try {
+      await adminApi.post(`/admin/sellers/${sellerId}/activation/approve`, {});
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't approve that activation.");
+    }
   }
 
   async function setLifecycleStatus(sellerId: string, status: LifecycleStatus, businessName: string, currentStatus: LifecycleStatus) {
+    setError(null);
     if (!reason) {
-      alert("A reason is required for every lifecycle action.");
+      setError("A reason is required for every lifecycle action.");
       return;
     }
     const ok = await confirm({
@@ -68,98 +80,108 @@ export default function AdminSellersPage() {
       tone: status === "banned" || status === "suspended" ? "danger" : "default",
     });
     if (!ok) return;
-    await fetch(`${apiBase}/admin/sellers/${sellerId}/lifecycle`, {
-      method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ status, reason }),
-    });
-    load();
+    try {
+      await adminApi.post(`/admin/sellers/${sellerId}/lifecycle`, { status, reason });
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't update that seller's lifecycle status.");
+    }
   }
 
   /** FR-8.4 - reason-required, time-boxed "login as seller" mode. */
   async function impersonate(sellerId: string) {
     const impersonationReason = window.prompt("Reason for this support session:");
     if (!impersonationReason) return;
-    const res = await fetch(`${apiBase}/admin/sellers/${sellerId}/impersonate`, {
-      method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: impersonationReason }),
-    });
-    if (!res.ok) {
-      alert("Couldn't start a support session for this seller.");
-      return;
+    setError(null);
+    try {
+      const body = await adminApi.post<{ accessToken: string; impersonationSessionId: string }>(`/admin/sellers/${sellerId}/impersonate`, {
+        reason: impersonationReason,
+      });
+      setActiveSessions({ ...activeSessions, [sellerId]: body.impersonationSessionId });
+      window.open(`/impersonate?token=${encodeURIComponent(body.accessToken)}&sessionId=${body.impersonationSessionId}`, "_blank");
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't start a support session for this seller.");
     }
-    const body = await res.json();
-    setActiveSessions({ ...activeSessions, [sellerId]: body.impersonationSessionId });
-    window.open(`/impersonate?token=${encodeURIComponent(body.accessToken)}&sessionId=${body.impersonationSessionId}`, "_blank");
   }
 
   async function endImpersonation(sellerId: string) {
     const sessionId = activeSessions[sellerId];
     if (!sessionId) return;
-    await fetch(`${apiBase}/admin/impersonation/${sessionId}/end`, { method: "POST", headers: authHeaders() });
+    await adminApi.post(`/admin/impersonation/${sessionId}/end`, {});
     const { [sellerId]: _removed, ...rest } = activeSessions;
     setActiveSessions(rest);
   }
 
   return (
-    <main>
-      <h1>Sellers - lifecycle control (bare view - no design pass yet)</h1>
-      <p>Review sellers by trust-and-safety status, approve held activations, and move a seller along the enforcement ladder.</p>
+    <div>
+      <PageHeader title="Sellers" description="Review sellers by trust-and-safety status, approve held activations, and move a seller along the enforcement ladder." />
 
-      <label>
-        Filter by lifecycle status:{" "}
-        <select value={filter} onChange={(e) => setFilter(e.target.value as LifecycleStatus)}>
-          {LIFECYCLE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </label>
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <p>
-        <label>
-          Reason (required for every action below): <input value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
-      </p>
+      <DashCard className="mb-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-48">
+            <Field label="Filter by lifecycle status">
+              <Select value={filter} onChange={(e) => setFilter(e.target.value as LifecycleStatus)}>
+                {LIFECYCLE_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="flex-1">
+            <Field label="Reason (required for every action below)">
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why are you taking this action?" />
+            </Field>
+          </div>
+        </div>
+      </DashCard>
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Business name</th>
-            <th>Activation status</th>
-            <th>Lifecycle status</th>
-            <th>Risk score</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      <DashCard>
+        <DashCardHeader title={`Sellers (${sellers.length})`} />
+        <div className="divide-y divide-border">
           {sellers.map((seller) => (
-            <tr key={seller.id}>
-              <td>{seller.businessName}</td>
-              <td>{seller.activationStatus}</td>
-              <td>{seller.lifecycleStatus}</td>
-              <td>{seller.riskScore ?? "-"}</td>
-              <td>
+            <div key={seller.id} className="flex flex-col gap-2 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-ink">{seller.businessName}</span>
+                  <Badge tone={lifecycleTone[seller.lifecycleStatus]}>{seller.lifecycleStatus}</Badge>
+                  <Badge tone={seller.activationStatus === "auto_approved" ? "success" : "warning"}>{seller.activationStatus}</Badge>
+                  <span className="text-xs text-ink-muted">Risk: {seller.riskScore ?? "-"}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {seller.activationStatus !== "auto_approved" && (
-                  <button onClick={() => approveActivation(seller.id)}>Approve activation</button>
-                )}{" "}
-                {LIFECYCLE_STATUSES.filter((s) => s !== seller.lifecycleStatus).map((s) => (
-                  <button key={s} onClick={() => setLifecycleStatus(seller.id, s, seller.businessName, seller.lifecycleStatus)}>
-                    Set {s}
-                  </button>
-                ))}{" "}
-                {activeSessions[seller.id] ? (
-                  <button onClick={() => endImpersonation(seller.id)}>End support session</button>
-                ) : (
-                  <button onClick={() => impersonate(seller.id)}>Impersonate</button>
+                  <Button variant="secondary" size="sm" onClick={() => approveActivation(seller.id)}>
+                    Approve activation
+                  </Button>
                 )}
-              </td>
-            </tr>
+                {LIFECYCLE_STATUSES.filter((s) => s !== seller.lifecycleStatus).map((s) => (
+                  <Button
+                    key={s}
+                    variant={s === "banned" || s === "suspended" ? "danger" : "ghost"}
+                    size="sm"
+                    onClick={() => setLifecycleStatus(seller.id, s, seller.businessName, seller.lifecycleStatus)}
+                  >
+                    Set {s}
+                  </Button>
+                ))}
+                {activeSessions[seller.id] ? (
+                  <Button variant="ghost" size="sm" onClick={() => endImpersonation(seller.id)}>
+                    End support session
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => impersonate(seller.id)}>
+                    Impersonate
+                  </Button>
+                )}
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </div>
+      </DashCard>
+    </div>
   );
 }

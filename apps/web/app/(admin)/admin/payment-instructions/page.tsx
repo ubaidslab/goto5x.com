@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
+import { Field, Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface BankInstructions {
   enabled: boolean;
@@ -31,18 +37,9 @@ const EMPTY: PlatformPaymentInstructions = {
 };
 
 /**
- * v0.41 audit fix (SRS FR-6.23) - ManualBankTransferTopUpAdapter used to
- * return a hardcoded placeholder sentence with no real receiving-account
- * details anywhere; a seller submitting a subscription/plan-fee payment
- * had no way to know where to actually send it. This page is the
- * founder-facing fix: a real form over the underlying
- * `billing.platform_payment_instructions` Settings Registry key (reusing
- * the same GET .../resolve and PUT .../values endpoints the generic
- * Settings Registry editor already uses), so receiving accounts can be
- * added/changed without a deploy. Distinct from a store's own
- * StorePaymentInstructions (Payments settings) - that's where a STORE
- * receives ITS buyers' payments; this is where the PLATFORM receives a
- * seller's own subscription payment.
+ * Phase 6c (Admin Terminal re-skin) - v0.41's platform payment instructions
+ * form (FR-6.23), restyled onto DashCard. Every field/method preserved,
+ * each still independently enable-able.
  */
 export default function AdminPaymentInstructionsPage() {
   const confirm = useConfirm();
@@ -88,113 +85,89 @@ export default function AdminPaymentInstructionsPage() {
     }
   }
 
-  if (error && !current) return <main>{error}</main>;
-  if (!current) return <main>Loading...</main>;
+  if (error && !current) return <Alert tone="danger">{error}</Alert>;
+  if (!current) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Platform payment instructions (bare view - no design pass yet)</h1>
-      <p>
-        Where a seller is told to send their subscription/plan-fee payment (SRS FR-6.23) - shown on the seller&apos;s
-        Billing &amp; Plan page the moment they submit a payment. Distinct from a store&apos;s own payment
-        instructions (Payments settings), which is where that store receives its own buyers&apos; payments. Each
-        method below is independently enabled - a disabled or blank method is never shown to a seller.
-      </p>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {saved && <p style={{ color: "green" }}>Saved.</p>}
+    <div>
+      <PageHeader
+        title="Platform payment instructions"
+        description="Where a seller is told to send their subscription/plan-fee payment (SRS FR-6.23) - shown on the seller's Billing & Plan page the moment they submit a payment. Distinct from a store's own payment instructions (Payments settings), which is where that store receives its own buyers' payments. Each method below is independently enabled - a disabled or blank method is never shown to a seller."
+      />
 
-      <section style={{ marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid #ccc" }}>
-        <h2>
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.bank.enabled}
-              onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, enabled: e.target.checked } }))}
-            />{" "}
+      {error && <Alert tone="danger">{error}</Alert>}
+      {saved && <Alert tone="success">Saved.</Alert>}
+
+      <div className="max-w-2xl space-y-4">
+        <DashCard>
+          <label className="mb-5 flex items-center gap-2 text-base font-semibold text-ink">
+            <input type="checkbox" checked={draft.bank.enabled} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, enabled: e.target.checked } }))} />
             Bank transfer
           </label>
-        </h2>
-        <p>
-          <label>
-            Bank name: <input value={draft.bank.bankName} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, bankName: e.target.value } }))} />
-          </label>
-        </p>
-        <p>
-          <label>
-            Account title:{" "}
-            <input value={draft.bank.accountTitle} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, accountTitle: e.target.value } }))} />
-          </label>
-        </p>
-        <p>
-          <label>
-            Account number:{" "}
-            <input value={draft.bank.accountNumber} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, accountNumber: e.target.value } }))} />
-          </label>
-        </p>
-        <p>
-          <label>
-            IBAN (optional): <input value={draft.bank.iban} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, iban: e.target.value } }))} />
-          </label>
-        </p>
-      </section>
+          <div className="space-y-3">
+            <Field label="Bank name">
+              <Input value={draft.bank.bankName} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, bankName: e.target.value } }))} />
+            </Field>
+            <Field label="Account title">
+              <Input value={draft.bank.accountTitle} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, accountTitle: e.target.value } }))} />
+            </Field>
+            <Field label="Account number">
+              <Input value={draft.bank.accountNumber} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, accountNumber: e.target.value } }))} />
+            </Field>
+            <Field label="IBAN (optional)">
+              <Input value={draft.bank.iban} onChange={(e) => setDraft((d) => ({ ...d, bank: { ...d.bank, iban: e.target.value } }))} />
+            </Field>
+          </div>
+        </DashCard>
 
-      <section style={{ marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid #ccc" }}>
-        <h2>
-          <label>
+        <DashCard>
+          <label className="mb-5 flex items-center gap-2 text-base font-semibold text-ink">
             <input
               type="checkbox"
               checked={draft.easypaisa.enabled}
               onChange={(e) => setDraft((d) => ({ ...d, easypaisa: { ...d.easypaisa, enabled: e.target.checked } }))}
-            />{" "}
+            />
             Easypaisa
           </label>
-        </h2>
-        <p>
-          <label>
-            Account title:{" "}
-            <input
-              value={draft.easypaisa.accountTitle}
-              onChange={(e) => setDraft((d) => ({ ...d, easypaisa: { ...d.easypaisa, accountTitle: e.target.value } }))}
-            />
-          </label>
-        </p>
-        <p>
-          <label>
-            Number: <input value={draft.easypaisa.number} onChange={(e) => setDraft((d) => ({ ...d, easypaisa: { ...d.easypaisa, number: e.target.value } }))} />
-          </label>
-        </p>
-      </section>
+          <div className="space-y-3">
+            <Field label="Account title">
+              <Input
+                value={draft.easypaisa.accountTitle}
+                onChange={(e) => setDraft((d) => ({ ...d, easypaisa: { ...d.easypaisa, accountTitle: e.target.value } }))}
+              />
+            </Field>
+            <Field label="Number">
+              <Input value={draft.easypaisa.number} onChange={(e) => setDraft((d) => ({ ...d, easypaisa: { ...d.easypaisa, number: e.target.value } }))} />
+            </Field>
+          </div>
+        </DashCard>
 
-      <section style={{ marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid #ccc" }}>
-        <h2>
-          <label>
+        <DashCard>
+          <label className="mb-5 flex items-center gap-2 text-base font-semibold text-ink">
             <input
               type="checkbox"
               checked={draft.jazzcash.enabled}
               onChange={(e) => setDraft((d) => ({ ...d, jazzcash: { ...d.jazzcash, enabled: e.target.checked } }))}
-            />{" "}
+            />
             JazzCash
           </label>
-        </h2>
-        <p>
-          <label>
-            Account title:{" "}
-            <input
-              value={draft.jazzcash.accountTitle}
-              onChange={(e) => setDraft((d) => ({ ...d, jazzcash: { ...d.jazzcash, accountTitle: e.target.value } }))}
-            />
-          </label>
-        </p>
-        <p>
-          <label>
-            Number: <input value={draft.jazzcash.number} onChange={(e) => setDraft((d) => ({ ...d, jazzcash: { ...d.jazzcash, number: e.target.value } }))} />
-          </label>
-        </p>
-      </section>
+          <div className="space-y-3">
+            <Field label="Account title">
+              <Input
+                value={draft.jazzcash.accountTitle}
+                onChange={(e) => setDraft((d) => ({ ...d, jazzcash: { ...d.jazzcash, accountTitle: e.target.value } }))}
+              />
+            </Field>
+            <Field label="Number">
+              <Input value={draft.jazzcash.number} onChange={(e) => setDraft((d) => ({ ...d, jazzcash: { ...d.jazzcash, number: e.target.value } }))} />
+            </Field>
+          </div>
+        </DashCard>
 
-      <button onClick={save} disabled={saving}>
-        {saving ? "Saving..." : "Save"}
-      </button>
-    </main>
+        <Button loading={saving} onClick={save}>
+          Save
+        </Button>
+      </div>
+    </div>
   );
 }

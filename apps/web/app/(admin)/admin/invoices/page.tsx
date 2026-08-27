@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
+import { adminApi } from "@/lib/admin-api";
 
 interface TopUpRequest {
   id: string;
@@ -15,55 +24,51 @@ interface TopUpRequest {
   verifiedAt: string | null;
 }
 
+const statusTone: Record<TopUpRequest["status"], "warning" | "success" | "neutral"> = {
+  pending: "warning",
+  verified: "success",
+  rejected: "neutral",
+};
+
 /**
- * Module 20 (SRS §5.6e, FR-6.23) - repurposes Module 17's admin commission-
- * invoice verification screen, not rebuilt from scratch: identical
- * list-and-verify pattern, now verifying wallet top-up requests (seller and
- * supplier) instead of invoices. The old commission-invoicing mechanism is
- * dormant (FR-6.28) - this screen no longer has anything to show for it.
- * Bare view (no design pass yet), same precedent as every other new admin screen.
+ * Phase 6c (Admin Terminal re-skin) - Module 20's wallet top-up
+ * verification screen, restyled onto DashCard. Every action preserved:
+ * per-row verify/reject, bulk verify/reject with the real per-item
+ * {succeeded, failed} bulk-decide endpoint.
  */
 export default function AdminWalletTopUpsPage() {
   const confirm = useConfirm();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [requests, setRequests] = useState<TopUpRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  }
-
   function load() {
-    fetch(`${apiBase}/admin/wallet-topups`, { headers: authHeaders() })
-      .then((r) => r.json())
+    adminApi
+      .get<TopUpRequest[]>("/admin/wallet-topups")
       .then(setRequests)
       .catch(() => setRequests([]));
   }
 
-  useEffect(load, [apiBase]);
+  useEffect(load, []);
 
   async function verify(id: string) {
     setError(null);
-    const res = await fetch(`${apiBase}/admin/wallet-topups/${id}/verify`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.message ?? "Couldn't verify that top-up.");
-      return;
+    try {
+      await adminApi.post(`/admin/wallet-topups/${id}/verify`);
+      load();
+    } catch {
+      setError("Couldn't verify that top-up.");
     }
-    load();
   }
 
   async function reject(id: string) {
     setError(null);
-    const res = await fetch(`${apiBase}/admin/wallet-topups/${id}/reject`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.message ?? "Couldn't reject that top-up.");
-      return;
+    try {
+      await adminApi.post(`/admin/wallet-topups/${id}/reject`);
+      load();
+    } catch {
+      setError("Couldn't reject that top-up.");
     }
-    load();
   }
 
   function toggleSelected(id: string) {
@@ -88,84 +93,78 @@ export default function AdminWalletTopUpsPage() {
       tone: decision === "reject" ? "danger" : "default",
     });
     if (!ok) return;
-    const res = await fetch(`${apiBase}/admin/wallet-topups/bulk-decide`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ topUpIds: [...selected], decision }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.message ?? `Some requests couldn't be ${decision === "verify" ? "verified" : "rejected"}.`);
-    } else {
-      const body = await res.json();
+    try {
+      const body = await adminApi.post<{ failed?: string[] }>("/admin/wallet-topups/bulk-decide", { topUpIds: [...selected], decision });
       if (body.failed?.length) {
-        setError(`${body.failed.length} of ${selected.size} request${selected.size === 1 ? "" : "s"} couldn't be ${decision === "verify" ? "verified" : "rejected"} - check their status below.`);
+        setError(
+          `${body.failed.length} of ${selected.size} request${selected.size === 1 ? "" : "s"} couldn't be ${decision === "verify" ? "verified" : "rejected"} - check their status below.`,
+        );
       }
+    } catch {
+      setError(`Some requests couldn't be ${decision === "verify" ? "verified" : "rejected"}.`);
     }
     setSelected(new Set());
     load();
   }
 
-  if (!requests) return <p>Loading...</p>;
+  if (!requests) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Wallet top-ups - payment verification (bare view - no design pass yet)</h1>
-      <p>
-        Seller and supplier wallet top-up requests, direct-collection style (SRS §5.6e) - verify a bank transfer to
-        credit the wallet, or reject a request that never arrived.
-      </p>
+    <div>
+      <PageHeader
+        title="Wallet top-ups"
+        description="Seller and supplier wallet top-up requests, direct-collection style (SRS §5.6e) - verify a bank transfer to credit the wallet, or reject a request that never arrived."
+      />
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <p>
-        <button onClick={() => decideSelected("verify")} disabled={selected.size === 0}>
-          Verify selected ({selected.size})
-        </button>{" "}
-        <button onClick={() => decideSelected("reject")} disabled={selected.size === 0}>
-          Reject selected ({selected.size})
-        </button>
-      </p>
+      {selected.size > 0 && (
+        <DashCard className="mb-4 flex gap-2">
+          <Button onClick={() => decideSelected("verify")}>Verify selected ({selected.size})</Button>
+          <Button variant="danger" onClick={() => decideSelected("reject")}>
+            Reject selected ({selected.size})
+          </Button>
+        </DashCard>
+      )}
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Owner type</th>
-            <th>Owner ID</th>
-            <th>Amount</th>
-            <th>Method</th>
-            <th>Status</th>
-            <th>Requested</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      {requests.length === 0 ? (
+        <DashCard>
+          <EmptyState title="No top-up requests" description="Seller and supplier wallet top-up requests will show up here." />
+        </DashCard>
+      ) : (
+        <DashCard className="divide-y divide-border">
           {requests.map((r) => (
-            <tr key={r.id}>
-              <td>
-                {r.status === "pending" && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelected(r.id)} />}
-              </td>
-              <td>{r.ownerType}</td>
-              <td>{r.ownerId}</td>
-              <td>
-                {r.currency} {r.amount}
-              </td>
-              <td>{r.method}</td>
-              <td>{r.status}</td>
-              <td>{new Date(r.requestedAt).toLocaleString()}</td>
-              <td>
+            <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="flex items-center gap-3">
+                {r.status === "pending" && (
+                  <Checkbox aria-label={`Select request ${r.id}`} checked={selected.has(r.id)} onCheckedChange={() => toggleSelected(r.id)} />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    {r.ownerType} <span className="font-normal text-ink-muted">· {r.ownerId.slice(0, 8)}</span>
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    {r.currency} {r.amount} · {r.method} · {new Date(r.requestedAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={statusTone[r.status]}>{r.status}</Badge>
                 {r.status === "pending" && (
                   <>
-                    <button onClick={() => verify(r.id)}>Verify</button>{" "}
-                    <button onClick={() => reject(r.id)}>Reject</button>
+                    <Button variant="secondary" size="sm" onClick={() => verify(r.id)}>
+                      Verify
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => reject(r.id)}>
+                      Reject
+                    </Button>
                   </>
                 )}
-              </td>
-            </tr>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </DashCard>
+      )}
+    </div>
   );
 }

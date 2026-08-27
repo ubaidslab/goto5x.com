@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 type LifecycleStatus = "active" | "warned" | "restricted" | "suspended" | "banned";
@@ -33,6 +40,13 @@ interface SellerOverview {
 }
 
 const LIFECYCLE_STATUSES: LifecycleStatus[] = ["active", "warned", "restricted", "suspended", "banned"];
+const lifecycleTone: Record<LifecycleStatus, "success" | "warning" | "danger" | "neutral"> = {
+  active: "success",
+  warned: "warning",
+  restricted: "warning",
+  suspended: "danger",
+  banned: "danger",
+};
 
 // GO/RUN/RISE/FLY tierOrder mapping (plans.seed.ts) - D-Studio close-out's
 // grant-with-duration control needs these as plain labels, not the
@@ -41,12 +55,13 @@ const LIFECYCLE_STATUSES: LifecycleStatus[] = ["active", "warned", "restricted",
 const TIER_LABELS = ["GO", "RUN", "RISE", "FLY"] as const;
 
 /**
- * Module 25 (Admin Completion) - the seller-360 page (§14 gap: per-seller
- * data was scattered across 6 siloed screens with no ID-based cross-
- * linking). Every inline action here reuses an existing, already-guarded
- * endpoint (lifecycle change, impersonate) or the one new endpoint this
- * module adds (wallet adjust) - none bypass the reason-required/audit-log
- * discipline those endpoints already enforce server-side.
+ * Phase 6c (Admin Terminal re-skin) - Seller-360 (Module 25's per-seller
+ * cross-linked view), restyled onto DashCard sections. Every control
+ * preserved unchanged - lifecycle ladder, impersonation, wallet adjust,
+ * stores/invoices, growth-program suspend/terminate + clawback, generic
+ * Settings Registry override, D-Studio time-limited grant, Trust & Safety
+ * flags, devices, timeline. `alert()` calls replaced with page-level Alert
+ * state; no action removed or behavior changed.
  */
 export default function AdminSellerOverviewPage({ params }: { params: { sellerId: string } }) {
   const confirm = useConfirm();
@@ -158,8 +173,9 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   }
 
   async function setLifecycleStatus(status: LifecycleStatus) {
+    setError(null);
     if (!reason.trim()) {
-      alert("A reason is required for every lifecycle action.");
+      setError("A reason is required for every lifecycle action.");
       return;
     }
     const ok = await confirm({
@@ -170,19 +186,29 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       tone: status === "banned" || status === "suspended" ? "danger" : "default",
     });
     if (!ok) return;
-    await adminApi.post(`/admin/sellers/${params.sellerId}/lifecycle`, { status, reason });
-    load();
+    try {
+      await adminApi.post(`/admin/sellers/${params.sellerId}/lifecycle`, { status, reason });
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't update this seller's lifecycle status.");
+    }
   }
 
   async function approveActivation() {
-    await adminApi.post(`/admin/sellers/${params.sellerId}/activation/approve`);
-    load();
+    setError(null);
+    try {
+      await adminApi.post(`/admin/sellers/${params.sellerId}/activation/approve`);
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't approve this activation.");
+    }
   }
 
   async function adjustWallet() {
+    setError(null);
     const amount = Number(adjustAmount);
     if (!amount || !adjustReason.trim()) {
-      alert("An amount and a reason are both required.");
+      setError("An amount and a reason are both required.");
       return;
     }
     const newBalance = wallet.balance + amount;
@@ -206,13 +232,14 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       setAdjustReason("");
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't adjust this seller's wallet.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't adjust this seller's wallet.");
     }
   }
 
   async function impersonate() {
     const impersonationReason = window.prompt("Reason for this support session:");
     if (!impersonationReason) return;
+    setError(null);
     try {
       const body = await adminApi.post<{ accessToken: string; impersonationSessionId: string }>(
         `/admin/sellers/${params.sellerId}/impersonate`,
@@ -221,7 +248,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       setImpersonationSessionId(body.impersonationSessionId);
       window.open(`/impersonate?token=${encodeURIComponent(body.accessToken)}&sessionId=${body.impersonationSessionId}`, "_blank");
     } catch {
-      alert("Couldn't start a support session for this seller.");
+      setError("Couldn't start a support session for this seller.");
     }
   }
 
@@ -234,11 +261,12 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   async function decideProgramParticipant(participantId: string, action: "suspend" | "terminate") {
     const notes = window.prompt(`Reason to ${action} this program participation:`);
     if (!notes) return;
+    setError(null);
     try {
       await adminApi.post(`/admin/growth-programs/applications/${participantId}/${action}`, { notes });
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : `Couldn't ${action} this participation.`);
+      setError(err instanceof AdminApiError ? err.message : `Couldn't ${action} this participation.`);
     }
   }
 
@@ -295,9 +323,10 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   }
 
   async function clawback() {
+    setError(null);
     const amount = Number(clawbackAmount);
     if (!amount || !clawbackNotes.trim()) {
-      alert("An amount and a reason are both required for a clawback.");
+      setError("An amount and a reason are both required for a clawback.");
       return;
     }
     const ok = await confirm({
@@ -320,213 +349,290 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       setClawbackNotes("");
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't clawback this seller's wallet.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't clawback this seller's wallet.");
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!overview) return <main>Loading...</main>;
+  if (error && !overview) return <Alert tone="danger">{error}</Alert>;
+  if (!overview) return <PageSpinner />;
 
   const { seller, stores, wallet, invoices, programs, trustSafety, devices, timeline } = overview;
 
   return (
-    <main>
-      <h1>{seller.businessName}</h1>
-      <p>
-        {seller.email} - lifecycle: {seller.lifecycleStatus} - activation: {seller.activationStatus} - KYC: {seller.kycStatus}
-        {seller.isTrusted && " - TRUSTED"}
-      </p>
+    <div className="space-y-4">
+      <PageHeader
+        title={seller.businessName}
+        description={`${seller.email} · KYC: ${seller.kycStatus}${seller.isTrusted ? " · TRUSTED" : ""}`}
+      />
+      <div className="-mt-4 flex items-center gap-2">
+        <Badge tone={lifecycleTone[seller.lifecycleStatus]}>{seller.lifecycleStatus}</Badge>
+        <Badge tone={seller.activationStatus === "auto_approved" ? "success" : "warning"}>{seller.activationStatus}</Badge>
+      </div>
 
-      <h2>Actions</h2>
-      <p>
-        <label>
-          Reason (required for lifecycle actions): <input value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
-      </p>
-      {seller.activationStatus !== "auto_approved" && <button onClick={approveActivation}>Approve activation</button>}
-      {LIFECYCLE_STATUSES.map((s) => (
-        <button key={s} onClick={() => setLifecycleStatus(s)} disabled={s === seller.lifecycleStatus}>
-          Set {s}
-        </button>
-      ))}
-      {impersonationSessionId ? (
-        <button onClick={endImpersonation}>End impersonation session</button>
-      ) : (
-        <button onClick={impersonate}>Impersonate (login as seller)</button>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <h2>Wallet</h2>
-      <p>
-        Balance: {wallet.currency} {wallet.balance.toFixed(2)}
-      </p>
-      <p>
-        <label>
-          Adjust amount (+credit / -debit): <input value={adjustAmount} onChange={(e) => setAdjustAmount(e.target.value)} />
-        </label>{" "}
-        <label>
-          Reason: <input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} />
-        </label>{" "}
-        <button onClick={adjustWallet}>Adjust</button>
-      </p>
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {wallet.recentLedger.map((l) => (
-            <tr key={l.id}>
-              <td>{new Date(l.createdAt).toLocaleString()}</td>
-              <td>{l.label}</td>
-              <td>{l.amount.toFixed(2)}</td>
-            </tr>
+      <DashCard>
+        <DashCardHeader title="Actions" description="Every lifecycle action is reason-required and audited." />
+        <Field label="Reason (required for lifecycle actions)">
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why are you taking this action?" />
+        </Field>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {seller.activationStatus !== "auto_approved" && (
+            <Button variant="secondary" size="sm" onClick={approveActivation}>
+              Approve activation
+            </Button>
+          )}
+          {LIFECYCLE_STATUSES.map((s) => (
+            <Button
+              key={s}
+              variant={s === "banned" || s === "suspended" ? "danger" : "ghost"}
+              size="sm"
+              disabled={s === seller.lifecycleStatus}
+              onClick={() => setLifecycleStatus(s)}
+            >
+              Set {s}
+            </Button>
           ))}
-        </tbody>
-      </table>
+          {impersonationSessionId ? (
+            <Button variant="ghost" size="sm" onClick={endImpersonation}>
+              End impersonation session
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={impersonate}>
+              Impersonate (login as seller)
+            </Button>
+          )}
+        </div>
+      </DashCard>
 
-      <h2>Stores</h2>
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Verified</th>
-            <th>Health score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stores.map((s) => (
-            <tr key={s.id}>
-              <td>{s.name}</td>
-              <td>{s.status}</td>
-              <td>{s.verifiedStatus}</td>
-              <td>{s.healthScore ?? "-"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <h2>Invoices</h2>
-      <ul>
-        {invoices.map((i) => (
-          <li key={i.id}>
-            {new Date(i.periodStart).toLocaleDateString()} - {new Date(i.periodEnd).toLocaleDateString()}: {i.totalAmount} ({i.status})
-          </li>
-        ))}
-      </ul>
-
-      <h2>Growth program participation</h2>
-      <ul>
-        {programs.map((p) => (
-          <li key={p.id}>
-            {p.programType}: {p.status} {p.referralCode && `(${p.referralCode})`}{" "}
-            {p.status === "approved" && (
-              <>
-                <button onClick={() => decideProgramParticipant(p.id, "suspend")}>Suspend</button>{" "}
-                <button onClick={() => decideProgramParticipant(p.id, "terminate")}>Terminate</button>
-              </>
-            )}
-            {p.status === "suspended" && <button onClick={() => decideProgramParticipant(p.id, "terminate")}>Terminate</button>}
-          </li>
-        ))}
-      </ul>
-      <p>
-        <label>
-          Clawback amount: <input value={clawbackAmount} onChange={(e) => setClawbackAmount(e.target.value)} />
-        </label>{" "}
-        <label>
-          Reason: <input value={clawbackNotes} onChange={(e) => setClawbackNotes(e.target.value)} />
-        </label>{" "}
-        <button onClick={clawback}>Clawback (FR-33.10)</button>
-      </p>
-
-      <h2>Settings overrides</h2>
-      <p>
-        Override any existing boolean/numeric Settings Registry key for this seller only - the seller-scope override
-        wins over any plan/global default, and only for this seller (SRS §5.54/FR-54.4). E.g. <code>catalog.listing_blocked</code>.
-      </p>
-      {settingsError && <p style={{ color: "crimson" }}>{settingsError}</p>}
-      <p>
-        <label>
-          Settings key: <input value={settingsKey} onChange={(e) => setSettingsKey(e.target.value)} placeholder="catalog.listing_blocked" />
-        </label>{" "}
-        <button onClick={lookupSetting}>Look up</button>
-      </p>
-      {settingsLookup && (
-        <p>
-          Type: {settingsLookup.valueType} - effective value: {JSON.stringify(settingsLookup.effectiveValue)} - winning scope:{" "}
-          {settingsLookup.winningScope}
-        </p>
-      )}
-      <p>
-        <label>
-          New value for this seller (JSON, e.g. <code>true</code> or <code>5</code>):{" "}
-          <input value={settingsValue} onChange={(e) => setSettingsValue(e.target.value)} />
-        </label>{" "}
-        <button onClick={overrideSettingForSeller}>Override for this seller</button>
-      </p>
-
-      <h2>D-Studio access grant</h2>
-      <p>
-        Grant this seller any tier&apos;s D-Studio capability (sections/animation presets/variants) for a fixed window,
-        independent of their real plan - auto-reverts at expiry, never requires a follow-up action to undo.
-      </p>
-      {dstudioGrant ? (
-        <p>
-          Current grant: <strong>{TIER_LABELS[dstudioGrant.tierOrder]}</strong>
-          {dstudioGrant.expiresAt ? ` until ${new Date(dstudioGrant.expiresAt).toLocaleString()}` : " (no expiry set)"}{" "}
-          <button onClick={revokeDStudioGrant}>Revoke</button>
-        </p>
-      ) : (
-        <p>No active grant - D-Studio gates against this seller&apos;s real plan tier.</p>
-      )}
-      {dstudioGrantError && <p style={{ color: "crimson" }}>{dstudioGrantError}</p>}
-      <p>
-        <label>
-          Tier:{" "}
-          <select value={dstudioGrantTier} onChange={(e) => setDstudioGrantTier(e.target.value as typeof dstudioGrantTier)}>
-            {TIER_LABELS.map((label, tierOrder) => (
-              <option key={label} value={String(tierOrder)}>
-                {label}
-              </option>
+      <DashCard>
+        <DashCardHeader title="Wallet" description={`Balance: ${wallet.currency} ${wallet.balance.toFixed(2)}`} />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-40">
+            <Field label="Adjust amount (+credit / -debit)">
+              <Input value={adjustAmount} onChange={(e) => setAdjustAmount(e.target.value)} />
+            </Field>
+          </div>
+          <div className="flex-1">
+            <Field label="Reason">
+              <Input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} />
+            </Field>
+          </div>
+          <Button onClick={adjustWallet}>Adjust</Button>
+        </div>
+        {wallet.recentLedger.length > 0 && (
+          <div className="mt-4 divide-y divide-border border-t border-border">
+            {wallet.recentLedger.map((l) => (
+              <div key={l.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                <span className="text-ink-muted">{new Date(l.createdAt).toLocaleString()}</span>
+                <span className="flex-1 px-2 text-ink">{l.label}</span>
+                <span className="font-medium tabular-nums text-ink">{l.amount.toFixed(2)}</span>
+              </div>
             ))}
-          </select>
-        </label>{" "}
-        <label>
-          Days: <input type="number" min={1} value={dstudioGrantDays} onChange={(e) => setDstudioGrantDays(e.target.value)} style={{ width: "4em" }} />
-        </label>{" "}
-        <button onClick={grantDStudioAccess}>Grant access</button>
-      </p>
+          </div>
+        )}
+      </DashCard>
 
-      <h2>Trust &amp; Safety</h2>
-      <p>Risk score: {trustSafety.riskScore ?? "-"}</p>
-      {trustSafety.cancellationRateFlag && <p>Flagged: cancellation rate {trustSafety.cancellationRateFlag.ratePercent}%</p>}
-      {trustSafety.pendingForeverRateFlag && <p>Flagged: pending-forever rate {trustSafety.pendingForeverRateFlag.ratePercent}%</p>}
-      {trustSafety.bypassAttemptFlag && <p>Flagged: {trustSafety.bypassAttemptFlag.attemptCount} moderation bypass attempts</p>}
-      {trustSafety.selfReferralFlags.map((f, i) => (
-        <p key={i}>Flagged: self-referral signal ({f.matchedSignal})</p>
-      ))}
+      <DashCard>
+        <DashCardHeader title={`Stores (${stores.length})`} />
+        <div className="divide-y divide-border">
+          {stores.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="font-medium text-ink">{s.name}</span>
+              <span className="flex items-center gap-2">
+                <Badge tone="neutral">{s.status}</Badge>
+                <Badge tone={s.verifiedStatus === "verified" ? "success" : "neutral"}>{s.verifiedStatus}</Badge>
+                <span className="text-ink-muted">Health: {s.healthScore ?? "-"}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </DashCard>
 
-      <h2>Devices / sessions</h2>
-      <ul>
-        {devices.map((d) => (
-          <li key={d.sessionId}>
-            {d.deviceLabel} - {d.ipAddress} - last active {new Date(d.lastActiveAt).toLocaleString()}
-          </li>
-        ))}
-      </ul>
+      <DashCard>
+        <DashCardHeader title={`Invoices (${invoices.length})`} />
+        <div className="divide-y divide-border">
+          {invoices.map((i) => (
+            <div key={i.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+              <span className="text-ink">
+                {new Date(i.periodStart).toLocaleDateString()} - {new Date(i.periodEnd).toLocaleDateString()}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="tabular-nums text-ink-muted">{i.totalAmount}</span>
+                <Badge tone="neutral">{i.status}</Badge>
+              </span>
+            </div>
+          ))}
+        </div>
+      </DashCard>
 
-      <h2>Timeline</h2>
-      <ul>
-        {timeline.map((t, i) => (
-          <li key={i}>
-            {new Date(t.createdAt).toLocaleString()} - {t.action}
-          </li>
-        ))}
-      </ul>
-    </main>
+      <DashCard>
+        <DashCardHeader title="Growth program participation" />
+        <div className="divide-y divide-border">
+          {programs.map((p) => (
+            <div key={p.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="text-ink">
+                {p.programType} {p.referralCode && <span className="text-ink-muted">({p.referralCode})</span>}
+              </span>
+              <span className="flex items-center gap-2">
+                <Badge tone="neutral">{p.status}</Badge>
+                {p.status === "approved" && (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => decideProgramParticipant(p.id, "suspend")}>
+                      Suspend
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => decideProgramParticipant(p.id, "terminate")}>
+                      Terminate
+                    </Button>
+                  </>
+                )}
+                {p.status === "suspended" && (
+                  <Button variant="danger" size="sm" onClick={() => decideProgramParticipant(p.id, "terminate")}>
+                    Terminate
+                  </Button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
+          <div className="w-40">
+            <Field label="Clawback amount">
+              <Input value={clawbackAmount} onChange={(e) => setClawbackAmount(e.target.value)} />
+            </Field>
+          </div>
+          <div className="flex-1">
+            <Field label="Reason">
+              <Input value={clawbackNotes} onChange={(e) => setClawbackNotes(e.target.value)} />
+            </Field>
+          </div>
+          <Button variant="danger" onClick={clawback}>
+            Clawback (FR-33.10)
+          </Button>
+        </div>
+      </DashCard>
+
+      <DashCard>
+        <DashCardHeader
+          title="Settings overrides"
+          description={`Override any existing boolean/numeric Settings Registry key for this seller only - the seller-scope override wins over any plan/global default, and only for this seller (SRS §5.54/FR-54.4). E.g. catalog.listing_blocked.`}
+        />
+        {settingsError && <Alert tone="danger">{settingsError}</Alert>}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1">
+            <Field label="Settings key">
+              <Input value={settingsKey} onChange={(e) => setSettingsKey(e.target.value)} placeholder="catalog.listing_blocked" />
+            </Field>
+          </div>
+          <Button variant="secondary" onClick={lookupSetting}>
+            Look up
+          </Button>
+        </div>
+        {settingsLookup && (
+          <p className="mt-2 text-sm text-ink-muted">
+            Type: <span className="font-medium text-ink">{settingsLookup.valueType}</span> · effective value:{" "}
+            <span className="font-medium text-ink">{JSON.stringify(settingsLookup.effectiveValue)}</span> · winning scope:{" "}
+            <span className="font-medium text-ink">{settingsLookup.winningScope}</span>
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="flex-1">
+            <Field label="New value for this seller (JSON, e.g. true or 5)">
+              <Input value={settingsValue} onChange={(e) => setSettingsValue(e.target.value)} />
+            </Field>
+          </div>
+          <Button onClick={overrideSettingForSeller}>Override for this seller</Button>
+        </div>
+      </DashCard>
+
+      <DashCard>
+        <DashCardHeader
+          title="D-Studio access grant"
+          description="Grant this seller any tier's D-Studio capability (sections/animation presets/variants) for a fixed window, independent of their real plan - auto-reverts at expiry, never requires a follow-up action to undo."
+        />
+        {dstudioGrant ? (
+          <p className="text-sm text-ink">
+            Current grant: <strong>{TIER_LABELS[dstudioGrant.tierOrder]}</strong>
+            {dstudioGrant.expiresAt ? ` until ${new Date(dstudioGrant.expiresAt).toLocaleString()}` : " (no expiry set)"}{" "}
+            <Button variant="ghost" size="sm" onClick={revokeDStudioGrant}>
+              Revoke
+            </Button>
+          </p>
+        ) : (
+          <p className="text-sm text-ink-muted">No active grant - D-Studio gates against this seller&apos;s real plan tier.</p>
+        )}
+        {dstudioGrantError && <Alert tone="danger">{dstudioGrantError}</Alert>}
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="w-32">
+            <Field label="Tier">
+              <Select value={dstudioGrantTier} onChange={(e) => setDstudioGrantTier(e.target.value as typeof dstudioGrantTier)}>
+                {TIER_LABELS.map((label, tierOrder) => (
+                  <option key={label} value={String(tierOrder)}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="w-24">
+            <Field label="Days">
+              <Input type="number" min={1} value={dstudioGrantDays} onChange={(e) => setDstudioGrantDays(e.target.value)} />
+            </Field>
+          </div>
+          <Button onClick={grantDStudioAccess}>Grant access</Button>
+        </div>
+      </DashCard>
+
+      <DashCard>
+        <DashCardHeader title="Trust & Safety" />
+        <div className="space-y-2 text-sm">
+          <p className="text-ink">
+            Risk score: <span className="font-medium">{trustSafety.riskScore ?? "-"}</span>
+          </p>
+          {trustSafety.cancellationRateFlag && (
+            <Badge tone="warning">Flagged: cancellation rate {trustSafety.cancellationRateFlag.ratePercent}%</Badge>
+          )}
+          {trustSafety.pendingForeverRateFlag && (
+            <Badge tone="warning">Flagged: pending-forever rate {trustSafety.pendingForeverRateFlag.ratePercent}%</Badge>
+          )}
+          {trustSafety.bypassAttemptFlag && (
+            <Badge tone="danger">Flagged: {trustSafety.bypassAttemptFlag.attemptCount} moderation bypass attempts</Badge>
+          )}
+          {trustSafety.selfReferralFlags.map((f, i) => (
+            <Badge key={i} tone="danger">
+              Flagged: self-referral signal ({f.matchedSignal})
+            </Badge>
+          ))}
+        </div>
+      </DashCard>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DashCard>
+          <DashCardHeader title={`Devices / sessions (${devices.length})`} />
+          <div className="divide-y divide-border">
+            {devices.map((d) => (
+              <div key={d.sessionId} className="py-2 text-sm">
+                <p className="font-medium text-ink">{d.deviceLabel}</p>
+                <p className="text-ink-muted">
+                  {d.ipAddress} · last active {new Date(d.lastActiveAt).toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </DashCard>
+
+        <DashCard>
+          <DashCardHeader title="Timeline" />
+          <div className="divide-y divide-border">
+            {timeline.map((t, i) => (
+              <div key={i} className="py-2 text-sm">
+                <span className="text-ink-muted">{new Date(t.createdAt).toLocaleString()}</span>{" "}
+                <span className="text-ink">{t.action}</span>
+              </div>
+            ))}
+          </div>
+        </DashCard>
+      </div>
+    </div>
   );
 }
