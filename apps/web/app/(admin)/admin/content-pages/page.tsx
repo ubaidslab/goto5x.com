@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Textarea } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 const SLUGS = ["terms", "privacy", "refund", "about", "contact"];
+const BRAND_ASSET_KINDS = ["logo", "favicon", "hero"];
 
 interface ContentPage {
   slug: string;
@@ -17,126 +26,122 @@ interface BrandAsset {
   currentVersion: number;
 }
 
-const BRAND_ASSET_KINDS = ["logo", "favicon", "hero"];
-
 /**
- * SRS FR-12.1 (versioned platform content pages) + FR-12.3 (platform
- * brand assets, same mechanism). Bare view (no design pass yet) - a plain
- * textarea for rich text is deliberately not a WYSIWYG editor, matching
- * this module's "bare functional" precedent for every other new admin
- * screen.
+ * Phase 6g (Admin Terminal re-skin) - SRS FR-12.1 (versioned platform
+ * content pages) + FR-12.3 (platform brand assets, same mechanism),
+ * restyled onto DashCard. Every action preserved: per-slug title/body edit
+ * + save, per-kind brand asset URL edit + save. Converted from hand-rolled
+ * fetch/authHeaders to adminApi.
  */
 export default function AdminContentPagesPage() {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [pages, setPages] = useState<Record<string, ContentPage>>({});
   const [drafts, setDrafts] = useState<Record<string, { title: string; bodyHtml: string }>>({});
   const [brandAssets, setBrandAssets] = useState<Record<string, string>>({});
+  const [loaded, setLoaded] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  }
+  const [error, setError] = useState<string | null>(null);
 
   function load() {
-    fetch(`${apiBase}/admin/content-pages`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((list: ContentPage[]) => {
-        const bySlug = Object.fromEntries(list.map((p) => [p.slug, p]));
+    Promise.all([
+      adminApi.get<ContentPage[]>("/admin/content-pages"),
+      adminApi.get<BrandAsset[]>("/admin/brand-assets"),
+    ])
+      .then(([pageList, assetList]) => {
+        const bySlug = Object.fromEntries(pageList.map((p) => [p.slug, p]));
         setPages(bySlug);
         setDrafts(
-          Object.fromEntries(
-            SLUGS.map((slug) => [slug, { title: bySlug[slug]?.title ?? "", bodyHtml: bySlug[slug]?.bodyHtml ?? "" }]),
-          ),
+          Object.fromEntries(SLUGS.map((slug) => [slug, { title: bySlug[slug]?.title ?? "", bodyHtml: bySlug[slug]?.bodyHtml ?? "" }])),
         );
-      });
-    fetch(`${apiBase}/admin/brand-assets`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((list: BrandAsset[]) => {
-        const byKind = Object.fromEntries(list.map((a) => [a.kind, a.url]));
-        setBrandAssets(byKind);
-      });
+        setBrandAssets(Object.fromEntries(assetList.map((a) => [a.kind, a.url])));
+        setLoaded(true);
+      })
+      .catch((err) => setError(err instanceof AdminApiError ? err.message : "Couldn't load content pages."));
   }
 
-  useEffect(load, [apiBase]);
+  useEffect(load, []);
 
   async function saveContentPage(slug: string) {
     setStatus(null);
-    const draft = drafts[slug];
-    const res = await fetch(`${apiBase}/admin/content-pages/${slug}`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify(draft),
-    });
-    if (!res.ok) {
-      setStatus(`Error saving "${slug}".`);
-      return;
+    setError(null);
+    try {
+      await adminApi.put(`/admin/content-pages/${slug}`, drafts[slug]);
+      setStatus(`Saved "${slug}".`);
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : `Couldn't save "${slug}".`);
     }
-    setStatus(`Saved "${slug}".`);
-    load();
   }
 
   async function saveBrandAsset(kind: string) {
     setStatus(null);
-    const res = await fetch(`${apiBase}/admin/brand-assets/${kind}`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify({ url: brandAssets[kind] ?? "" }),
-    });
-    if (!res.ok) {
-      setStatus(`Error saving "${kind}".`);
-      return;
+    setError(null);
+    try {
+      await adminApi.put(`/admin/brand-assets/${kind}`, { url: brandAssets[kind] ?? "" });
+      setStatus(`Saved "${kind}".`);
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : `Couldn't save "${kind}".`);
     }
-    setStatus(`Saved "${kind}".`);
   }
 
+  if (!loaded && !error) return <PageSpinner />;
+
   return (
-    <main>
-      <h1>Content pages &amp; brand assets (bare view - no design pass yet)</h1>
-      <p>Edit platform legal/info pages and brand assets - publishing is a data write, never a deploy.</p>
-      {status && <p>{status}</p>}
+    <div>
+      <PageHeader
+        title="Content pages & brand assets"
+        description="Platform legal/info pages and brand assets - publishing is a data write, never a deploy."
+      />
 
-      <h2>Content pages</h2>
-      {SLUGS.map((slug) => (
-        <div key={slug} style={{ marginBottom: 16 }}>
-          <h3>
-            {slug} {pages[slug] && <small>(v{pages[slug].currentVersion})</small>}
-          </h3>
-          <p>
-            <label>
-              Title{" "}
-              <input
-                value={drafts[slug]?.title ?? ""}
-                onChange={(e) => setDrafts({ ...drafts, [slug]: { ...drafts[slug], title: e.target.value } })}
-              />
-            </label>
-          </p>
-          <p>
-            <textarea
-              rows={6}
-              cols={80}
-              value={drafts[slug]?.bodyHtml ?? ""}
-              onChange={(e) => setDrafts({ ...drafts, [slug]: { ...drafts[slug], bodyHtml: e.target.value } })}
-            />
-          </p>
-          <button onClick={() => saveContentPage(slug)}>Save {slug}</button>
-        </div>
-      ))}
+      {error && <Alert tone="danger">{error}</Alert>}
+      {status && <Alert tone="success">{status}</Alert>}
 
-      <h2>Brand assets</h2>
-      {BRAND_ASSET_KINDS.map((kind) => (
-        <p key={kind}>
-          <label>
-            {kind} URL{" "}
-            <input
-              value={brandAssets[kind] ?? ""}
-              onChange={(e) => setBrandAssets({ ...brandAssets, [kind]: e.target.value })}
-              style={{ width: 400 }}
-            />
-          </label>{" "}
-          <button onClick={() => saveBrandAsset(kind)}>Save {kind}</button>
-        </p>
-      ))}
-    </main>
+      <div className="max-w-3xl space-y-4">
+        <DashCard className="divide-y divide-border">
+          {SLUGS.map((slug) => (
+            <div key={slug} className="space-y-3 py-4 first:pt-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-ink">{slug}</h3>
+                {pages[slug] && <Badge tone="neutral">v{pages[slug].currentVersion}</Badge>}
+              </div>
+              <Field label="Title">
+                <Input
+                  value={drafts[slug]?.title ?? ""}
+                  onChange={(e) => setDrafts({ ...drafts, [slug]: { ...drafts[slug], title: e.target.value } })}
+                />
+              </Field>
+              <Field label="Body (HTML)">
+                <Textarea
+                  rows={6}
+                  className="font-mono text-xs"
+                  value={drafts[slug]?.bodyHtml ?? ""}
+                  onChange={(e) => setDrafts({ ...drafts, [slug]: { ...drafts[slug], bodyHtml: e.target.value } })}
+                />
+              </Field>
+              <Button size="sm" onClick={() => saveContentPage(slug)}>
+                Save {slug}
+              </Button>
+            </div>
+          ))}
+        </DashCard>
+
+        <DashCard>
+          <DashCardHeader title="Brand assets" />
+          <div className="space-y-3">
+            {BRAND_ASSET_KINDS.map((kind) => (
+              <div key={kind} className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[16rem] flex-1">
+                  <Field label={`${kind} URL`}>
+                    <Input value={brandAssets[kind] ?? ""} onChange={(e) => setBrandAssets({ ...brandAssets, [kind]: e.target.value })} />
+                  </Field>
+                </div>
+                <Button size="sm" onClick={() => saveBrandAsset(kind)}>
+                  Save {kind}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DashCard>
+      </div>
+    </div>
   );
 }

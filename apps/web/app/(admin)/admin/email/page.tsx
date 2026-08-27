@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Textarea } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface LinkedAccount {
   id: string;
@@ -26,9 +32,11 @@ interface InboxMessage {
 }
 
 /**
- * Module 36 (SRS §5.53/FR-53.1-53.5) - UZEYN's own unified inbox in the
- * admin terminal. Bare functional view (no design pass yet), same
- * discipline as every other admin page.
+ * Phase 6g (Admin Terminal re-skin) - Module 36 (SRS §5.53/FR-53.1-53.5)'s
+ * unified inbox in the admin terminal, restyled onto DashCard. Every
+ * action preserved: link account, test connection, unlink (confirm-gated),
+ * read inbox, reply. Converted from hand-rolled fetch/authHeaders to
+ * adminApi.
  */
 export default function AdminEmailPage() {
   const confirm = useConfirm();
@@ -37,6 +45,8 @@ export default function AdminEmailPage() {
   const [error, setError] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [replyTarget, setReplyTarget] = useState<InboxMessage | null>(null);
+  const [replySubject, setReplySubject] = useState("");
+  const [replyBody, setReplyBody] = useState("");
   const [testResult, setTestResult] = useState<Record<string, string>>({});
 
   function loadAccounts() {
@@ -90,7 +100,8 @@ export default function AdminEmailPage() {
   async function handleUnlink(id: string, emailAddress: string) {
     const ok = await confirm({
       title: `Unlink ${emailAddress}?`,
-      description: "This removes the account from UZEYN's unified inbox. Nothing on the mail server itself is affected, but it can only be reached from here again by re-linking it (and re-entering the IMAP/SMTP credentials).",
+      description:
+        "This removes the account from UZEYN's unified inbox. Nothing on the mail server itself is affected, but it can only be reached from here again by re-linking it (and re-entering the IMAP/SMTP credentials).",
       confirmLabel: "Unlink",
       tone: "danger",
     });
@@ -107,9 +118,7 @@ export default function AdminEmailPage() {
   async function handleTestConnection(id: string) {
     setTestResult((prev) => ({ ...prev, [id]: "Testing..." }));
     try {
-      const result = await adminApi.post<{ imapOk: boolean; smtpOk: boolean; error?: string }>(
-        `/admin/email/accounts/${id}/test-connection`,
-      );
+      const result = await adminApi.post<{ imapOk: boolean; smtpOk: boolean; error?: string }>(`/admin/email/accounts/${id}/test-connection`);
       setTestResult((prev) => ({
         ...prev,
         [id]: `IMAP: ${result.imapOk ? "OK" : "failed"}, SMTP: ${result.smtpOk ? "OK" : "failed"}${result.error ? ` (${result.error})` : ""}`,
@@ -119,17 +128,22 @@ export default function AdminEmailPage() {
     }
   }
 
-  async function handleReply(e: React.FormEvent<HTMLFormElement>) {
+  function openReply(m: InboxMessage) {
+    setReplyTarget(m);
+    setReplySubject(`Re: ${m.subject}`);
+    setReplyBody("");
+  }
+
+  async function handleReply(e: React.FormEvent) {
     e.preventDefault();
     if (!replyTarget) return;
     setError(null);
-    const form = new FormData(e.currentTarget);
     try {
       await adminApi.post("/admin/email/reply", {
         accountId: replyTarget.accountId,
-        to: form.get("to"),
-        subject: form.get("subject"),
-        body: form.get("body"),
+        to: replyTarget.from,
+        subject: replySubject,
+        body: replyBody,
         inReplyTo: replyTarget.uid ? String(replyTarget.uid) : undefined,
       });
       setReplyTarget(null);
@@ -138,165 +152,170 @@ export default function AdminEmailPage() {
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!accounts || !inbox) return <main>Loading...</main>;
+  if (error && !accounts && !inbox) return <Alert tone="danger">{error}</Alert>;
+  if (!accounts || !inbox) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Email (bare view - no design pass yet)</h1>
-      <p>
-        UZEYN&apos;s own unified inbox - link SMTP+IMAP accounts and read/reply from here. No AI summarization or
-        suggested replies in v1.0 (roadmap-only note, SRS §5.22).
-      </p>
+    <div>
+      <PageHeader
+        title="Email"
+        description="UZEYN's own unified inbox - link SMTP+IMAP accounts and read/reply from here. No AI summarization or suggested replies in v1.0 (roadmap-only note, SRS §5.22)."
+      />
 
-      <h2>Linked accounts</h2>
-      {accounts.length === 0 ? (
-        <p>No accounts linked yet.</p>
-      ) : (
-        <table border={1} cellPadding={4}>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>IMAP</th>
-              <th>SMTP</th>
-              <th>Linked</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((a) => (
-              <tr key={a.id}>
-                <td>{a.displayName ? `${a.displayName} <${a.emailAddress}>` : a.emailAddress}</td>
-                <td>
-                  {a.imapHost}:{a.imapPort}
-                </td>
-                <td>
-                  {a.smtpHost}:{a.smtpPort}
-                </td>
-                <td>{new Date(a.createdAt).toLocaleString()}</td>
-                <td>
-                  <button onClick={() => handleTestConnection(a.id)}>Test connection</button>{" "}
-                  <button onClick={() => handleUnlink(a.id, a.emailAddress)}>Unlink</button>
-                  {testResult[a.id] && <div>{testResult[a.id]}</div>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <h3>Link a new account</h3>
-      <form onSubmit={handleLink}>
-        <p>
-          <label>
-            Email address: <input name="emailAddress" type="email" required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Display name (optional): <input name="displayName" />
-          </label>
-        </p>
-        <p>
-          <label>
-            IMAP host: <input name="imapHost" required />
-          </label>{" "}
-          <label>
-            port: <input name="imapPort" type="number" required defaultValue={993} />
-          </label>{" "}
-          <label>
-            <input name="imapUseTls" type="checkbox" defaultChecked /> use TLS
-          </label>
-        </p>
-        <p>
-          <label>
-            IMAP username: <input name="imapUsername" required />
-          </label>{" "}
-          <label>
-            password: <input name="imapPassword" type="password" required />
-          </label>
-        </p>
-        <p>
-          <label>
-            SMTP host: <input name="smtpHost" required />
-          </label>{" "}
-          <label>
-            port: <input name="smtpPort" type="number" required defaultValue={587} />
-          </label>{" "}
-          <label>
-            <input name="smtpUseTls" type="checkbox" /> use TLS
-          </label>
-        </p>
-        <p>
-          <label>
-            SMTP username: <input name="smtpUsername" required />
-          </label>{" "}
-          <label>
-            password: <input name="smtpPassword" type="password" required />
-          </label>
-        </p>
-        <button type="submit" disabled={linking}>
-          {linking ? "Linking..." : "Link account"}
-        </button>
-      </form>
+      <div className="max-w-4xl space-y-4">
+        <DashCard>
+          <DashCardHeader title="Linked accounts" />
+          {accounts.length === 0 ? (
+            <p className="text-sm text-ink-muted">No accounts linked yet.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {accounts.map((a) => (
+                <div key={a.id} className="space-y-1 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-ink">{a.displayName ? `${a.displayName} <${a.emailAddress}>` : a.emailAddress}</p>
+                      <p className="text-xs text-ink-muted">
+                        IMAP {a.imapHost}:{a.imapPort} · SMTP {a.smtpHost}:{a.smtpPort} · linked {new Date(a.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => handleTestConnection(a.id)}>
+                        Test connection
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleUnlink(a.id, a.emailAddress)}>
+                        Unlink
+                      </Button>
+                    </div>
+                  </div>
+                  {testResult[a.id] && <p className="text-xs text-ink-muted">{testResult[a.id]}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </DashCard>
 
-      <h2>Unified inbox</h2>
-      {inbox.length === 0 ? (
-        <p>No messages yet.</p>
-      ) : (
-        <table border={1} cellPadding={4}>
-          <thead>
-            <tr>
-              <th>Account</th>
-              <th>From</th>
-              <th>Subject</th>
-              <th>Date</th>
-              <th>Preview</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {inbox.map((m) => (
-              <tr key={`${m.accountId}-${m.uid}`}>
-                <td>{m.accountEmailAddress}</td>
-                <td>{m.from}</td>
-                <td>{m.subject}</td>
-                <td>{m.date ? new Date(m.date).toLocaleString() : "-"}</td>
-                <td>{m.snippet}</td>
-                <td>
-                  <button onClick={() => setReplyTarget(m)}>Reply</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {replyTarget && (
-        <>
-          <h3>
-            Reply from {replyTarget.accountEmailAddress} to {replyTarget.from}
-          </h3>
-          <form onSubmit={handleReply}>
-            <input type="hidden" name="to" value={replyTarget.from} />
-            <p>
-              To: {replyTarget.from} (fixed - replies always go back to the message&apos;s sender)
-            </p>
-            <p>
-              <label>
-                Subject: <input name="subject" required defaultValue={`Re: ${replyTarget.subject}`} />
+        <DashCard>
+          <DashCardHeader title="Link a new account" />
+          <form onSubmit={handleLink} className="space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1">
+                <Field label="Email address">
+                  <Input name="emailAddress" type="email" required />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field label="Display name (optional)">
+                  <Input name="displayName" />
+                </Field>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1">
+                <Field label="IMAP host">
+                  <Input name="imapHost" required />
+                </Field>
+              </div>
+              <div className="w-28">
+                <Field label="Port">
+                  <Input name="imapPort" type="number" required defaultValue={993} />
+                </Field>
+              </div>
+              <label className="mb-2.5 flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" name="imapUseTls" defaultChecked className="h-4 w-4 rounded border-border-strong" /> use TLS
               </label>
-            </p>
-            <p>
-              <textarea name="body" rows={6} cols={60} required />
-            </p>
-            <button type="submit">Send reply</button>{" "}
-            <button type="button" onClick={() => setReplyTarget(null)}>
-              Cancel
-            </button>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1">
+                <Field label="IMAP username">
+                  <Input name="imapUsername" required />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field label="IMAP password">
+                  <Input name="imapPassword" type="password" required />
+                </Field>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1">
+                <Field label="SMTP host">
+                  <Input name="smtpHost" required />
+                </Field>
+              </div>
+              <div className="w-28">
+                <Field label="Port">
+                  <Input name="smtpPort" type="number" required defaultValue={587} />
+                </Field>
+              </div>
+              <label className="mb-2.5 flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" name="smtpUseTls" className="h-4 w-4 rounded border-border-strong" /> use TLS
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1">
+                <Field label="SMTP username">
+                  <Input name="smtpUsername" required />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field label="SMTP password">
+                  <Input name="smtpPassword" type="password" required />
+                </Field>
+              </div>
+            </div>
+            <Button type="submit" disabled={linking}>
+              {linking ? "Linking..." : "Link account"}
+            </Button>
           </form>
-        </>
-      )}
-    </main>
+        </DashCard>
+
+        <DashCard>
+          <DashCardHeader title="Unified inbox" />
+          {inbox.length === 0 ? (
+            <p className="text-sm text-ink-muted">No messages yet.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {inbox.map((m) => (
+                <div key={`${m.accountId}-${m.uid}`} className="flex flex-wrap items-start justify-between gap-3 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-ink">{m.subject}</p>
+                    <p className="text-xs text-ink-muted">
+                      {m.from} &rarr; {m.accountEmailAddress} {m.date && `· ${new Date(m.date).toLocaleString()}`}
+                    </p>
+                    <p className="text-sm text-ink-muted">{m.snippet}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => openReply(m)}>
+                    Reply
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </DashCard>
+
+        {replyTarget && (
+          <DashCard>
+            <DashCardHeader title={`Reply from ${replyTarget.accountEmailAddress} to ${replyTarget.from}`} />
+            <form onSubmit={handleReply} className="space-y-3">
+              <p className="text-xs text-ink-muted">To: {replyTarget.from} (fixed - replies always go back to the message&apos;s sender)</p>
+              <Field label="Subject">
+                <Input value={replySubject} onChange={(e) => setReplySubject(e.target.value)} required />
+              </Field>
+              <Field label="Body">
+                <Textarea rows={6} value={replyBody} onChange={(e) => setReplyBody(e.target.value)} required />
+              </Field>
+              <div className="flex gap-2">
+                <Button type="submit">Send reply</Button>
+                <Button type="button" variant="ghost" onClick={() => setReplyTarget(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </DashCard>
+        )}
+      </div>
+    </div>
   );
 }

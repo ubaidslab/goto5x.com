@@ -2,9 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 type Channel = "banner" | "popup" | "in_app_notification";
 type TargetType = "all" | "plan" | "seller";
+
+const CHANNEL_LABEL: Record<Channel, string> = { banner: "Banner", popup: "Popup", in_app_notification: "In-app notification" };
 
 interface PlatformMessage {
   id: string;
@@ -20,16 +29,15 @@ interface PlatformMessage {
 }
 
 /**
- * SRS FR-8.15 (extends FR-8.7) - in-app messaging across banner/popup/
- * in-app-notification, each targeted and scheduled. Bare view (no design
- * pass yet). Maintenance mode itself (the rest of FR-8.7) is a Settings
- * Registry write via the existing generic /admin/settings endpoint, not a
- * separate screen here.
+ * Phase 6g (Admin Terminal re-skin) - SRS FR-8.15 (extends FR-8.7)'s
+ * in-app messaging (banner/popup/in-app-notification, targeted and
+ * scheduled), restyled onto DashCard. Every action preserved: list,
+ * create, delete (confirm-gated). Converted from hand-rolled fetch/
+ * authHeaders to adminApi.
  */
 export default function AdminMessagesPage() {
   const confirm = useConfirm();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const [messages, setMessages] = useState<PlatformMessage[]>([]);
+  const [messages, setMessages] = useState<PlatformMessage[] | null>(null);
   const [channel, setChannel] = useState<Channel>("banner");
   const [targetType, setTargetType] = useState<TargetType>("all");
   const [targetPlanId, setTargetPlanId] = useState("");
@@ -40,27 +48,20 @@ export default function AdminMessagesPage() {
   const [endsAt, setEndsAt] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  }
-
   function load() {
-    fetch(`${apiBase}/admin/messages`, { headers: authHeaders() })
-      .then((r) => r.json())
+    adminApi
+      .get<PlatformMessage[]>("/admin/messages")
       .then(setMessages)
       .catch(() => setMessages([]));
   }
 
-  useEffect(load, [apiBase]);
+  useEffect(load, []);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const res = await fetch(`${apiBase}/admin/messages`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
+    try {
+      await adminApi.post("/admin/messages", {
         channel,
         targetType,
         targetPlanId: targetType === "plan" ? targetPlanId : undefined,
@@ -69,18 +70,15 @@ export default function AdminMessagesPage() {
         body,
         startsAt: startsAt || undefined,
         endsAt: endsAt || undefined,
-      }),
-    });
-    if (!res.ok) {
-      const resBody = await res.json().catch(() => ({}));
-      setError(resBody.message ?? "Couldn't create that message.");
-      return;
+      });
+      setTitle("");
+      setBody("");
+      setStartsAt("");
+      setEndsAt("");
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't create that message.");
     }
-    setTitle("");
-    setBody("");
-    setStartsAt("");
-    setEndsAt("");
-    load();
   }
 
   async function remove(message: PlatformMessage) {
@@ -91,108 +89,106 @@ export default function AdminMessagesPage() {
       tone: "danger",
     });
     if (!ok) return;
-    await fetch(`${apiBase}/admin/messages/${message.id}`, { method: "DELETE", headers: authHeaders() });
+    await adminApi.delete(`/admin/messages/${message.id}`);
     load();
   }
 
+  if (!messages) return <PageSpinner />;
+
   return (
-    <main>
-      <h1>Messages (bare view - no design pass yet)</h1>
-      <p>Banners, popups, and in-app notifications shown to sellers - targeted and scheduled.</p>
+    <div>
+      <PageHeader title="Messages" description="Banners, popups, and in-app notifications shown to sellers - targeted and scheduled." />
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Channel</th>
-            <th>Target</th>
-            <th>Title</th>
-            <th>Body</th>
-            <th>Window</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {messages.map((m) => (
-            <tr key={m.id}>
-              <td>{m.channel}</td>
-              <td>
-                {m.targetType}
-                {m.targetType === "plan" && ` (${m.targetPlanId})`}
-                {m.targetType === "seller" && ` (${m.targetSellerId})`}
-              </td>
-              <td>{m.title ?? "-"}</td>
-              <td>{m.body}</td>
-              <td>
-                {m.startsAt ?? "always"} &rarr; {m.endsAt ?? "forever"}
-              </td>
-              <td>
-                <button onClick={() => remove(m)}>Delete</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="max-w-3xl space-y-4">
+        <DashCard className="divide-y divide-border">
+          {messages.length === 0 ? (
+            <p className="py-3 text-sm text-ink-muted">No messages yet.</p>
+          ) : (
+            messages.map((m) => (
+              <div key={m.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    {CHANNEL_LABEL[m.channel]}
+                    <span className="font-normal text-ink-muted">
+                      {" "}
+                      · {m.targetType === "all" ? "all sellers" : m.targetType === "plan" ? `plan ${m.targetPlanId}` : `seller ${m.targetSellerId}`}
+                    </span>
+                  </p>
+                  {m.title && <p className="text-sm font-medium text-ink">{m.title}</p>}
+                  <p className="text-sm text-ink-muted">{m.body}</p>
+                  <p className="text-xs text-ink-faint">
+                    {m.startsAt ? new Date(m.startsAt).toLocaleString() : "always"} &rarr; {m.endsAt ? new Date(m.endsAt).toLocaleString() : "forever"}
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => remove(m)}>
+                  Delete
+                </Button>
+              </div>
+            ))
+          )}
+        </DashCard>
 
-      <h2>New message</h2>
-      <form onSubmit={create}>
-        <p>
-          <label>
-            Channel{" "}
-            <select value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
-              <option value="banner">Banner</option>
-              <option value="popup">Popup</option>
-              <option value="in_app_notification">In-app notification</option>
-            </select>
-          </label>
-        </p>
-        <p>
-          <label>
-            Target{" "}
-            <select value={targetType} onChange={(e) => setTargetType(e.target.value as TargetType)}>
-              <option value="all">All sellers</option>
-              <option value="plan">A specific plan</option>
-              <option value="seller">A specific seller</option>
-            </select>
-          </label>
-        </p>
-        {targetType === "plan" && (
-          <p>
-            <label>
-              Plan ID <input value={targetPlanId} onChange={(e) => setTargetPlanId(e.target.value)} required />
-            </label>
-          </p>
-        )}
-        {targetType === "seller" && (
-          <p>
-            <label>
-              Seller ID <input value={targetSellerId} onChange={(e) => setTargetSellerId(e.target.value)} required />
-            </label>
-          </p>
-        )}
-        <p>
-          <label>
-            Title <input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-        </p>
-        <p>
-          <label>
-            Body <textarea value={body} onChange={(e) => setBody(e.target.value)} required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Starts at <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-          </label>
-        </p>
-        <p>
-          <label>
-            Ends at <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-          </label>
-        </p>
-        <button type="submit">Create message</button>
-      </form>
-    </main>
+        <DashCard>
+          <DashCardHeader title="New message" />
+          <form onSubmit={create} className="space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="w-56">
+                <Field label="Channel">
+                  <Select value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
+                    <option value="banner">Banner</option>
+                    <option value="popup">Popup</option>
+                    <option value="in_app_notification">In-app notification</option>
+                  </Select>
+                </Field>
+              </div>
+              <div className="w-56">
+                <Field label="Target">
+                  <Select value={targetType} onChange={(e) => setTargetType(e.target.value as TargetType)}>
+                    <option value="all">All sellers</option>
+                    <option value="plan">A specific plan</option>
+                    <option value="seller">A specific seller</option>
+                  </Select>
+                </Field>
+              </div>
+              {targetType === "plan" && (
+                <div className="flex-1">
+                  <Field label="Plan ID">
+                    <Input value={targetPlanId} onChange={(e) => setTargetPlanId(e.target.value)} required />
+                  </Field>
+                </div>
+              )}
+              {targetType === "seller" && (
+                <div className="flex-1">
+                  <Field label="Seller ID">
+                    <Input value={targetSellerId} onChange={(e) => setTargetSellerId(e.target.value)} required />
+                  </Field>
+                </div>
+              )}
+            </div>
+            <Field label="Title (optional)">
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </Field>
+            <Field label="Body">
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} required />
+            </Field>
+            <div className="flex flex-wrap gap-3">
+              <div className="w-56">
+                <Field label="Starts at (optional)">
+                  <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+                </Field>
+              </div>
+              <div className="w-56">
+                <Field label="Ends at (optional)">
+                  <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+                </Field>
+              </div>
+            </div>
+            <Button type="submit">Create message</Button>
+          </form>
+        </DashCard>
+      </div>
+    </div>
   );
 }
