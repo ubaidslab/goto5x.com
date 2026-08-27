@@ -119,8 +119,8 @@ export default function AdminSellersPage() {
       {error && <Alert tone="danger">{error}</Alert>}
 
       <DashCard className="mb-4">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="w-48">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+          <div className="sm:w-48">
             <Field label="Filter by lifecycle status">
               <Select value={filter} onChange={(e) => setFilter(e.target.value as LifecycleStatus)}>
                 {LIFECYCLE_STATUSES.map((s) => (

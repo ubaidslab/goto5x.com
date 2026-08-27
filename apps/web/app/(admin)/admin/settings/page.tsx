@@ -262,8 +262,8 @@ export default function AdminSettingsPage() {
 
             <h3 className="mb-2 text-sm font-semibold text-ink">Set a value</h3>
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-3">
-                <div className="w-40">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="sm:w-40">
                   <Field label="Scope">
                     <Select
                       value={scope}
@@ -288,7 +288,7 @@ export default function AdminSettingsPage() {
                         <Input value={scopeId} onChange={(e) => setScopeId(e.target.value)} onBlur={() => refreshResolve(selected.key, scope, scopeId)} />
                       </Field>
                     </div>
-                    <div className="w-56">
+                    <div className="sm:w-56">
                       <Field label="Expires at (optional)">
                         <Input type="datetime-local" value={expiresAtInput} onChange={(e) => setExpiresAtInput(e.target.value)} />
                       </Field>

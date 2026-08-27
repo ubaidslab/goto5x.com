@@ -43,7 +43,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <ConfirmDialogProvider>
-      <div className="flex min-h-screen bg-canvas">
+      <div className="flex min-h-screen flex-col bg-canvas md:flex-row">
         <AdminSidebar notifications={notifications} onMarkSeen={markSeen} />
         <div className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 md:px-8 md:py-8">{children}</div>
       </div>

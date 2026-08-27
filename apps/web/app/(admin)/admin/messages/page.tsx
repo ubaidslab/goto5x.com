@@ -133,8 +133,8 @@ export default function AdminMessagesPage() {
         <DashCard>
           <DashCardHeader title="New message" />
           <form onSubmit={create} className="space-y-3">
-            <div className="flex flex-wrap gap-3">
-              <div className="w-56">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="sm:w-56">
                 <Field label="Channel">
                   <Select value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
                     <option value="banner">Banner</option>
@@ -143,7 +143,7 @@ export default function AdminMessagesPage() {
                   </Select>
                 </Field>
               </div>
-              <div className="w-56">
+              <div className="sm:w-56">
                 <Field label="Target">
                   <Select value={targetType} onChange={(e) => setTargetType(e.target.value as TargetType)}>
                     <option value="all">All sellers</option>

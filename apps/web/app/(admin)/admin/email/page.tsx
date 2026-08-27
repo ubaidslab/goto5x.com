@@ -211,18 +211,18 @@ export default function AdminEmailPage() {
                 </Field>
               </div>
             </div>
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Field label="IMAP host">
                   <Input name="imapHost" required />
                 </Field>
               </div>
-              <div className="w-28">
+              <div className="sm:w-28">
                 <Field label="Port">
                   <Input name="imapPort" type="number" required defaultValue={993} />
                 </Field>
               </div>
-              <label className="mb-2.5 flex items-center gap-2 text-sm text-ink">
+              <label className="flex items-center gap-2 text-sm text-ink sm:mb-2.5">
                 <input type="checkbox" name="imapUseTls" defaultChecked className="h-4 w-4 rounded border-border-strong" /> use TLS
               </label>
             </div>
@@ -238,18 +238,18 @@ export default function AdminEmailPage() {
                 </Field>
               </div>
             </div>
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Field label="SMTP host">
                   <Input name="smtpHost" required />
                 </Field>
               </div>
-              <div className="w-28">
+              <div className="sm:w-28">
                 <Field label="Port">
                   <Input name="smtpPort" type="number" required defaultValue={587} />
                 </Field>
               </div>
-              <label className="mb-2.5 flex items-center gap-2 text-sm text-ink">
+              <label className="flex items-center gap-2 text-sm text-ink sm:mb-2.5">
                 <input type="checkbox" name="smtpUseTls" className="h-4 w-4 rounded border-border-strong" /> use TLS
               </label>
             </div>

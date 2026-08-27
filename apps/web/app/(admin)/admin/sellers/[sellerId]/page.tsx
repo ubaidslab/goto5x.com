@@ -407,8 +407,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
 
       <DashCard>
         <DashCardHeader title="Wallet" description={`Balance: ${wallet.currency} ${wallet.balance.toFixed(2)}`} />
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-40">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="sm:w-40">
             <Field label="Adjust amount (+credit / -debit)">
               <Input value={adjustAmount} onChange={(e) => setAdjustAmount(e.target.value)} />
             </Field>
@@ -495,8 +495,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
             </div>
           ))}
         </div>
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
-          <div className="w-40">
+        <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-end">
+          <div className="sm:w-40">
             <Field label="Clawback amount">
               <Input value={clawbackAmount} onChange={(e) => setClawbackAmount(e.target.value)} />
             </Field>
