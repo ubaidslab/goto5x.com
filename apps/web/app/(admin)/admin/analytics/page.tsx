@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
+import { adminApi } from "@/lib/admin-api";
 
 interface Analytics {
   gmv: number;
@@ -18,95 +23,79 @@ interface UnitEconomics {
 }
 
 /**
- * SRS FR-8.10 (real-time platform analytics) + FR-23.4 (unit-economics,
- * data-only since Module 14) - one dashboard, both views, bare view (no
- * design pass yet, same precedent as every other admin screen).
+ * Phase 6b (Admin Terminal re-skin) - FR-8.10 (real-time analytics) +
+ * FR-23.4 (unit economics), same two data sources, restyled onto DashCard.
+ * Every metric row preserved.
  */
 export default function AdminAnalyticsPage() {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [unitEconomics, setUnitEconomics] = useState<UnitEconomics | null>(null);
 
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   useEffect(() => {
-    fetch(`${apiBase}/admin/analytics`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then(setAnalytics)
-      .catch(() => {});
-    fetch(`${apiBase}/admin/unit-economics`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then(setUnitEconomics)
-      .catch(() => {});
-  }, [apiBase]);
+    adminApi.get<Analytics>("/admin/analytics").then(setAnalytics).catch(() => {});
+    adminApi.get<UnitEconomics>("/admin/unit-economics").then(setUnitEconomics).catch(() => {});
+  }, []);
 
-  if (!analytics || !unitEconomics) return <p>Loading...</p>;
+  if (!analytics || !unitEconomics) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Platform analytics (bare view - no design pass yet)</h1>
-      <p>Real-time GMV, revenue, and unit-economics - computed live against transactional data.</p>
+    <div>
+      <PageHeader title="Platform analytics" description="Real-time GMV, revenue, and unit economics - computed live against transactional data." />
 
-      <h2>Real-time analytics (FR-8.10)</h2>
-      <table border={1} cellPadding={4}>
-        <tbody>
-          <tr>
-            <td>GMV</td>
-            <td>{analytics.gmv.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td>Revenue (commission earned)</td>
-            <td>{analytics.revenue.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td>Active stores</td>
-            <td>{analytics.activeStoreCount}</td>
-          </tr>
-        </tbody>
-      </table>
+      <Reveal className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4" stagger={0.06}>
+        <DashCard className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">GMV</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{analytics.gmv.toFixed(2)}</p>
+        </DashCard>
+        <DashCard className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Revenue (commission)</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{analytics.revenue.toFixed(2)}</p>
+        </DashCard>
+        <DashCard className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Active stores</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{analytics.activeStoreCount}</p>
+        </DashCard>
+        <DashCard className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Break-even</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{unitEconomics.breakEven.toFixed(2)}</p>
+        </DashCard>
+      </Reveal>
 
-      <h3>Top sellers by commission earned</h3>
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Seller</th>
-            <th>Commission earned</th>
-          </tr>
-        </thead>
-        <tbody>
-          {analytics.topSellers.map((s) => (
-            <tr key={s.sellerId}>
-              <td>{s.businessName ?? s.sellerId}</td>
-              <td>{s.commissionEarned.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DashCard>
+          <DashCardHeader title="Top sellers by commission earned" />
+          <div className="divide-y divide-border">
+            {analytics.topSellers.map((s) => (
+              <div key={s.sellerId} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <span className="font-medium text-ink">{s.businessName ?? s.sellerId}</span>
+                <span className="tabular-nums text-ink-muted">{s.commissionEarned.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </DashCard>
 
-      <h2>Unit economics (FR-23.4)</h2>
-      <table border={1} cellPadding={4}>
-        <tbody>
-          <tr>
-            <td>Total stores</td>
-            <td>{unitEconomics.storeCount}</td>
-          </tr>
-          <tr>
-            <td>Total commission earned</td>
-            <td>{unitEconomics.totalCommission.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td>Monthly infra cost (admin-entered)</td>
-            <td>{unitEconomics.monthlyInfraCost.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td>Break-even (commission - infra cost)</td>
-            <td>{unitEconomics.breakEven.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </main>
+        <DashCard>
+          <DashCardHeader title="Unit economics" description="FR-23.4" />
+          <div className="divide-y divide-border">
+            <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="text-ink-muted">Total stores</span>
+              <span className="font-medium tabular-nums text-ink">{unitEconomics.storeCount}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="text-ink-muted">Total commission earned</span>
+              <span className="font-medium tabular-nums text-ink">{unitEconomics.totalCommission.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="text-ink-muted">Monthly infra cost (admin-entered)</span>
+              <span className="font-medium tabular-nums text-ink">{unitEconomics.monthlyInfraCost.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="text-ink-muted">Break-even (commission - infra cost)</span>
+              <span className="font-medium tabular-nums text-ink">{unitEconomics.breakEven.toFixed(2)}</span>
+            </div>
+          </div>
+        </DashCard>
+      </div>
+    </div>
   );
 }

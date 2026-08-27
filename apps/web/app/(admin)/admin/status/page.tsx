@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/Badge";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface QueueStatus {
@@ -11,6 +15,15 @@ interface QueueStatus {
   failed: number;
 }
 
+interface ProviderHealthRollup {
+  provider: string;
+  verifiedCount: number;
+  failedCount: number;
+  successRatePercent: number | null;
+  lastVerifiedAt: string | null;
+  lastFailedAt: string | null;
+}
+
 interface SystemStatus {
   db: boolean;
   redis: boolean;
@@ -18,15 +31,30 @@ interface SystemStatus {
   queues: QueueStatus[];
   email: { provider: string; deliveryFailures: string };
   backups: string;
+  paymentGatewayHealth: ProviderHealthRollup[];
+}
+
+function ServiceRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+      <span className="font-medium text-ink">{label}</span>
+      <span className="flex items-center gap-2">
+        {detail && <span className="text-ink-muted">{detail}</span>}
+        <Badge tone={ok ? "success" : "danger"} dot>
+          {ok ? "OK" : "DOWN"}
+        </Badge>
+      </span>
+    </div>
+  );
 }
 
 /**
- * Module 25 P1 - the system status page, API-only before this module
- * (genuinely new instrumentation - see admin-system-status.service.ts).
- * The founder explicitly authorized a stub "backups: not yet configured"
- * line until OPS hardening lands, and email delivery-failure tracking is
- * disclosed as not-yet-real rather than faked. Bare functional view (no
- * design pass yet).
+ * Phase 6b (Admin Terminal re-skin) - Module 25 P1's live infra health page,
+ * restyled onto DashCard. Deepened, not just restyled: `paymentGatewayHealth`
+ * (Module 67's per-provider verified/failed rollup) was already computed and
+ * returned by getStatus() but never rendered anywhere on the admin side
+ * (docs/ui-feature-inventory.md §11's disclosed gap) - now a real card here,
+ * since this is precisely the page whose job that is.
  */
 export default function AdminSystemStatusPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -41,46 +69,79 @@ export default function AdminSystemStatusPage() {
 
   useEffect(load, []);
 
-  if (error) return <main>{error}</main>;
-  if (!status) return <main>Loading...</main>;
+  if (error) return <p className="text-danger">{error}</p>;
+  if (!status) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>System status (bare view - no design pass yet)</h1>
-      <p>Live infrastructure health: database, cache, object storage, and background job queue depths.</p>
+    <div>
+      <PageHeader title="System status" description="Live infrastructure health: database, cache, object storage, background job queues, and payment gateway reliability." />
 
-      <h2>Core services</h2>
-      <ul>
-        <li>Database: {status.db ? "ok" : "DOWN"}</li>
-        <li>Redis: {status.redis ? "ok" : "DOWN"}</li>
-        <li>Object storage: {status.objectStorage ? "ok" : "DOWN"}</li>
-        <li>Email: provider = {status.email.provider} - delivery failures: {status.email.deliveryFailures}</li>
-        <li>Backups: {status.backups}</li>
-      </ul>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DashCard>
+          <DashCardHeader title="Core services" />
+          <div className="divide-y divide-border">
+            <ServiceRow label="Database" ok={status.db} />
+            <ServiceRow label="Redis" ok={status.redis} />
+            <ServiceRow label="Object storage" ok={status.objectStorage} />
+            <ServiceRow label="Email" ok detail={`${status.email.provider} · failures: ${status.email.deliveryFailures}`} />
+            <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+              <span className="font-medium text-ink">Backups</span>
+              <span className="text-ink-muted">{status.backups}</span>
+            </div>
+          </div>
+        </DashCard>
 
-      <h2>Background job queues</h2>
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Queue</th>
-            <th>Waiting</th>
-            <th>Active</th>
-            <th>Delayed</th>
-            <th>Failed</th>
-          </tr>
-        </thead>
-        <tbody>
-          {status.queues.map((q) => (
-            <tr key={q.name}>
-              <td>{q.name}</td>
-              <td>{q.waiting}</td>
-              <td>{q.active}</td>
-              <td>{q.delayed}</td>
-              <td style={q.failed > 0 ? { color: "crimson", fontWeight: "bold" } : undefined}>{q.failed}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+        <DashCard>
+          <DashCardHeader title="Payment gateway health" description="Module 67 - platform-wide, per-provider verify success rate." />
+          <div className="divide-y divide-border">
+            {status.paymentGatewayHealth.map((p) => (
+              <div key={p.provider} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <span className="font-medium capitalize text-ink">{p.provider}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-ink-muted">
+                    {p.verifiedCount} ok / {p.failedCount} failed
+                  </span>
+                  <Badge tone={p.successRatePercent === null ? "neutral" : p.successRatePercent >= 90 ? "success" : "danger"}>
+                    {p.successRatePercent === null ? "no data" : `${p.successRatePercent.toFixed(0)}%`}
+                  </Badge>
+                </span>
+              </div>
+            ))}
+          </div>
+        </DashCard>
+      </div>
+
+      <div className="mt-4">
+        <DashCard>
+          <DashCardHeader title="Background job queues" />
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                  <th className="py-2 pr-4">Queue</th>
+                  <th className="py-2 pr-4">Waiting</th>
+                  <th className="py-2 pr-4">Active</th>
+                  <th className="py-2 pr-4">Delayed</th>
+                  <th className="py-2 pr-4">Failed</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {status.queues.map((q) => (
+                  <tr key={q.name}>
+                    <td className="py-2 pr-4 font-medium text-ink">{q.name}</td>
+                    <td className="py-2 pr-4 tabular-nums text-ink-muted">{q.waiting}</td>
+                    <td className="py-2 pr-4 tabular-nums text-ink-muted">{q.active}</td>
+                    <td className="py-2 pr-4 tabular-nums text-ink-muted">{q.delayed}</td>
+                    <td className="py-2 pr-4 tabular-nums">
+                      {q.failed > 0 ? <span className="font-semibold text-danger">{q.failed}</span> : <span className="text-ink-muted">{q.failed}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DashCard>
+      </div>
+    </div>
   );
 }

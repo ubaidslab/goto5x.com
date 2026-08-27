@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { adminApi } from "@/lib/admin-api";
 
 interface SearchResult {
@@ -12,9 +18,9 @@ interface SearchResult {
 }
 
 /**
- * Module 25 (Admin Completion) - one search box across sellers/stores/
- * orders/suppliers by partial name/email/ID (§14 gap: no way to find a
- * specific record without direct DB access).
+ * Phase 6b (Admin Terminal re-skin) - same one-box search across sellers/
+ * stores/orders/suppliers (Module 25), restyled onto DashCard. Every result
+ * section/field preserved.
  */
 export default function AdminSearchPage() {
   const [q, setQ] = useState("");
@@ -32,61 +38,101 @@ export default function AdminSearchPage() {
     }
   }
 
+  const totalResults = results ? results.sellers.length + results.stores.length + results.orders.length + results.suppliers.length : 0;
+
   return (
-    <main>
-      <h1>Search</h1>
-      <form onSubmit={runSearch}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Name, email, or ID"
-          style={{ width: 300 }}
-        />
-        <button type="submit" disabled={searching}>
-          Search
-        </button>
-      </form>
+    <div>
+      <PageHeader title="Search" description="Find a specific seller, store, order, or supplier by name, email, or ID." />
 
-      {results && (
-        <>
-          <h2>Sellers ({results.sellers.length})</h2>
-          <ul>
-            {results.sellers.map((s) => (
-              <li key={s.id}>
-                <Link href={`/admin/sellers/${s.id}`}>{s.businessName}</Link> - {s.email} - {s.lifecycleStatus}
-              </li>
-            ))}
-          </ul>
+      <DashCard className="mb-6 max-w-xl">
+        <form onSubmit={runSearch} className="flex items-end gap-2">
+          <div className="flex-1">
+            <Field label="Search">
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, email, or ID" />
+            </Field>
+          </div>
+          <Button type="submit" loading={searching}>
+            Search
+          </Button>
+        </form>
+      </DashCard>
 
-          <h2>Stores ({results.stores.length})</h2>
-          <ul>
-            {results.stores.map((s) => (
-              <li key={s.id}>
-                {s.name} ({s.slug}) - seller{" "}
-                <Link href={`/admin/sellers/${s.sellerId}`}>{s.sellerId.slice(0, 8)}</Link>
-              </li>
-            ))}
-          </ul>
-
-          <h2>Orders ({results.orders.length})</h2>
-          <ul>
-            {results.orders.map((o) => (
-              <li key={o.id}>
-                {o.id.slice(0, 8)} - {o.buyerEmail} - {o.status} - {o.currency} {o.totalAmount.toFixed(2)}
-              </li>
-            ))}
-          </ul>
-
-          <h2>Suppliers ({results.suppliers.length})</h2>
-          <ul>
-            {results.suppliers.map((s) => (
-              <li key={s.id}>
-                {s.businessName} - {s.email}
-              </li>
-            ))}
-          </ul>
-        </>
+      {results && totalResults === 0 && (
+        <DashCard>
+          <EmptyState title="No matches" description="Try a different name, email, or ID." />
+        </DashCard>
       )}
-    </main>
+
+      {results && totalResults > 0 && (
+        <div className="space-y-4">
+          {results.sellers.length > 0 && (
+            <DashCard>
+              <DashCardHeader title={`Sellers (${results.sellers.length})`} />
+              <div className="divide-y divide-border">
+                {results.sellers.map((s) => (
+                  <Link key={s.id} href={`/admin/sellers/${s.id}`} className="flex items-center justify-between gap-4 py-2.5 text-sm transition-smooth-fast hover:opacity-80">
+                    <span className="font-medium text-ink">
+                      {s.businessName} <span className="font-normal text-ink-muted">· {s.email}</span>
+                    </span>
+                    <Badge tone="neutral">{s.lifecycleStatus}</Badge>
+                  </Link>
+                ))}
+              </div>
+            </DashCard>
+          )}
+
+          {results.stores.length > 0 && (
+            <DashCard>
+              <DashCardHeader title={`Stores (${results.stores.length})`} />
+              <div className="divide-y divide-border">
+                {results.stores.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                    <span className="font-medium text-ink">
+                      {s.name} <span className="font-normal text-ink-muted">({s.slug})</span>
+                    </span>
+                    <Link href={`/admin/sellers/${s.sellerId}`} className="text-accent hover:opacity-80">
+                      Seller {s.sellerId.slice(0, 8)}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </DashCard>
+          )}
+
+          {results.orders.length > 0 && (
+            <DashCard>
+              <DashCardHeader title={`Orders (${results.orders.length})`} />
+              <div className="divide-y divide-border">
+                {results.orders.map((o) => (
+                  <div key={o.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                    <span className="font-medium text-ink">
+                      #{o.id.slice(0, 8)} <span className="font-normal text-ink-muted">· {o.buyerEmail}</span>
+                    </span>
+                    <span className="text-ink-muted">
+                      <Badge tone="neutral">{o.status}</Badge>{" "}
+                      {o.currency} {o.totalAmount.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </DashCard>
+          )}
+
+          {results.suppliers.length > 0 && (
+            <DashCard>
+              <DashCardHeader title={`Suppliers (${results.suppliers.length})`} />
+              <div className="divide-y divide-border">
+                {results.suppliers.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                    <span className="font-medium text-ink">{s.businessName}</span>
+                    <span className="text-ink-muted">{s.email}</span>
+                  </div>
+                ))}
+              </div>
+            </DashCard>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
