@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
 import { BillingModule } from "../billing/billing.module";
 import { PlansModule } from "../plans/plans.module";
+import { PlatformGatewayModule } from "../platform-gateway/platform-gateway.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { AdminTemplatePurchasesController } from "./admin-template-purchases.controller";
 import { StoreThemeSettingsController } from "./store-theme-settings.controller";
@@ -12,7 +13,7 @@ import { ThemesController } from "./themes.controller";
 import { ThemesService } from "./themes.service";
 
 @Module({
-  imports: [SettingsModule, PlansModule, AdminModule, BillingModule],
+  imports: [SettingsModule, PlansModule, AdminModule, BillingModule, PlatformGatewayModule],
   controllers: [ThemesController, StoreThemeSettingsController, TemplatePurchaseController, AdminTemplatePurchasesController],
   providers: [ThemesService, StoreThemeSettingsService, TemplatePurchaseService],
   exports: [ThemesService, StoreThemeSettingsService],

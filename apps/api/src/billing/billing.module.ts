@@ -2,6 +2,7 @@ import { forwardRef, Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { PlansModule } from "../plans/plans.module";
+import { PlatformGatewayModule } from "../platform-gateway/platform-gateway.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { TrustSafetyModule } from "../trust-safety/trust-safety.module";
 import { AdminInvoicesController, SellerInvoicesController } from "./invoices.controller";
@@ -64,7 +65,7 @@ import {
   // undefined" at the MediaModule step - not a DI-instantiation-order
   // issue forwardRef normally addresses, but the same fix defers module
   // resolution past the cycle either way).
-  imports: [SettingsModule, AdminModule, PlansModule, TrustSafetyModule, forwardRef(() => InvoicesModule)],
+  imports: [SettingsModule, AdminModule, PlansModule, TrustSafetyModule, PlatformGatewayModule, forwardRef(() => InvoicesModule)],
   controllers: [
     SellerInvoicesController,
     AdminInvoicesController,

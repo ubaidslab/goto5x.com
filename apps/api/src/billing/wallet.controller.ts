@@ -11,6 +11,7 @@ import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.de
 import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
 import { JwtAccessPayload } from "../common/types";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { PayWithReferenceDto } from "../platform-gateway/dto/pay-with-reference.dto";
 import { AdjustSellerWalletDto } from "./dto/adjust-seller-wallet.dto";
 import { BulkDecideWalletTopUpsDto } from "./dto/bulk-decide-wallet-topups.dto";
 import { RequestTopUpDto } from "./dto/request-topup.dto";
@@ -65,12 +66,19 @@ export class SellerWalletController {
     return this.wallet.getPlanFeePaymentPreview(sellerId, "PKR");
   }
 
-  /** Module 73 (v0.38) - submits the one proof-of-payment for the plan fee due right now; the amount is computed server-side, never accepted from the client. */
+  /**
+   * Module 73 (v0.38) - submits the one proof-of-payment for the plan fee
+   * due right now; the amount is computed server-side, never accepted
+   * from the client. `reference` is optional (Platform Merchant Connection,
+   * founder-directed) - when supplied and the platform gateway is
+   * connected and active, this attempts automatic verification before
+   * falling back to the unchanged manual admin-confirm flow.
+   */
   @Post("plan-fee-payment")
   @UseGuards(ImpersonationWriteGuard)
   @BlockDuringImpersonation()
-  requestPlanFeePayment(@CurrentSellerId() sellerId: string) {
-    return this.wallet.requestPlanFeePayment(sellerId, "PKR");
+  requestPlanFeePayment(@CurrentSellerId() sellerId: string, @Body() dto: PayWithReferenceDto) {
+    return this.wallet.requestPlanFeePayment(sellerId, "PKR", dto.reference);
   }
 }
 

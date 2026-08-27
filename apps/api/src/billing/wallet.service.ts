@@ -9,6 +9,7 @@ import { addInterval } from "../plans/subscriptions.service";
 import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { ManualBankTransferTopUpAdapter } from "./top-up-adapter.interface";
 import { SubscriptionAbuseService } from "../trust-safety/subscription-abuse.service";
+import { PlatformGatewayService } from "../platform-gateway/platform-gateway.service";
 
 /**
  * Every debit type subtracts from balance, every credit type adds, and
@@ -84,6 +85,7 @@ export class WalletService {
     private readonly topUpAdapter: ManualBankTransferTopUpAdapter,
     private readonly settings: SettingsService,
     private readonly subscriptionAbuse: SubscriptionAbuseService,
+    private readonly platformGateway: PlatformGatewayService,
   ) {}
 
   /**
@@ -310,7 +312,7 @@ export class WalletService {
    * earlier request is still PENDING (a verified one is a resolved past
    * cycle, not a block on the next one).
    */
-  async requestPlanFeePayment(sellerId: string, currency: string) {
+  async requestPlanFeePayment(sellerId: string, currency: string, reference?: string) {
     const existing = await this.prismaAdmin.walletTopUpRequest.findFirst({
       where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "pending" },
     });
@@ -342,7 +344,21 @@ export class WalletService {
         method: this.topUpAdapter.method,
       },
     });
-    return { request, ...preview };
+
+    // Founder-directed scope addition - "Platform Merchant Connection."
+    // Dormant until an admin has both connected real credentials AND
+    // explicitly activated a provider (tryAutoVerify() returns null
+    // otherwise) - the request stays exactly as it was before this
+    // feature existed: pending, awaiting manual admin confirm.
+    if (reference) {
+      const result = await this.platformGateway.tryAutoVerify(request.id, preview.amountDue, currency, reference);
+      if (result?.verified) {
+        const { request: verified, isRenewal } = await this.verifyTopUp(request.id, null);
+        return { request: verified, ...preview, isRenewal, autoVerified: true };
+      }
+    }
+
+    return { request, ...preview, autoVerified: false };
   }
 
   async listOwnTopUpRequests(sellerId: string) {
@@ -380,7 +396,7 @@ export class WalletService {
    * early (or with the grace-day admin-processing lag) never shortens the
    * next cycle.
    */
-  async verifyTopUp(topUpId: string, adminUserId: string): Promise<{ request: WalletTopUpRequest; isRenewal: boolean }> {
+  async verifyTopUp(topUpId: string, adminUserId: string | null): Promise<{ request: WalletTopUpRequest; isRenewal: boolean }> {
     const request = await this.prismaAdmin.walletTopUpRequest.findUnique({ where: { id: topUpId } });
     if (!request) throw new NotFoundException("Top-up request not found.");
     if (request.status !== "pending") throw new BadRequestException("This top-up request has already been resolved.");
@@ -447,12 +463,16 @@ export class WalletService {
       targetType: "wallet_topup_request",
       targetId: topUpId,
       beforeValue: { status: "pending" },
-      afterValue: { status: "verified", amount: Number(request.amount) },
+      afterValue: { status: "verified", amount: Number(request.amount), autoVerified: adminUserId === null },
     });
     await this.events.emit({
       eventType: "wallet.topup_verified",
-      actorType: "admin",
-      actorId: adminUserId,
+      // Founder-directed scope addition - "Platform Merchant Connection":
+      // a null adminUserId here means the gateway auto-verified this
+      // payment, distinct from a human admin confirming it manually - the
+      // event/audit trail should say which actually happened.
+      actorType: adminUserId ? "admin" : "system",
+      actorId: adminUserId ?? undefined,
       entityType: "seller",
       entityId: request.ownerId,
       metadata: { amount: Number(request.amount) },

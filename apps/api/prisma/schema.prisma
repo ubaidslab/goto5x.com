@@ -893,6 +893,35 @@ model StorePaymentGatewayConnection {
   @@map("store_payment_gateway_connections")
 }
 
+// Founder-directed scope addition - "Platform Merchant Connection": the
+// same Module 62 adapter architecture (SellerPaymentGatewayAdapter,
+// AES-256-GCM credential encryption), but UZEYN itself is the connected
+// merchant, not a seller. Global, admin-managed, no storeId/RLS - same
+// shape as ExternalApiClient/Theme. `isActive` deliberately defaults
+// FALSE here (opposite of StorePaymentGatewayConnection's `true`) - a
+// fresh connection stays dormant until an admin has real credentials and
+// explicitly flips it on; the existing manual bank-instructions +
+// admin-confirm flow (WalletService.requestPlanFeePayment(),
+// TemplatePurchaseService.requestPurchase()) remains the active path
+// until then, same "mechanism now, real activation later" discipline
+// used everywhere else in this project.
+model PlatformGatewayConnection {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  provider           PaymentGatewayProvider @unique
+  merchantId         String?                @map("merchant_id")
+  apiKeyEncrypted    String?                @map("api_key_encrypted")
+  apiSecretEncrypted String?                @map("api_secret_encrypted")
+  isActive           Boolean                @default(false) @map("is_active")
+  verifiedCount      Int                    @default(0) @map("verified_count")
+  failedCount        Int                    @default(0) @map("failed_count")
+  lastVerifiedAt     DateTime?              @map("last_verified_at") @db.Timestamptz
+  lastFailedAt       DateTime?              @map("last_failed_at") @db.Timestamptz
+  connectedAt        DateTime               @default(now()) @map("connected_at") @db.Timestamptz
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("platform_gateway_connections")
+}
+
 enum NameConsistencyStatus {
   not_required
   pending

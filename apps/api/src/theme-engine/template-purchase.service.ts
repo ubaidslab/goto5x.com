@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { AuditLogService } from "../admin/audit-log.service";
 import { WalletService } from "../billing/wallet.service";
 import { EventsService } from "../events/events.service";
+import { PlatformGatewayService } from "../platform-gateway/platform-gateway.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
@@ -27,9 +28,10 @@ export class TemplatePurchaseService {
     private readonly wallet: WalletService,
     private readonly auditLog: AuditLogService,
     private readonly events: EventsService,
+    private readonly platformGateway: PlatformGatewayService,
   ) {}
 
-  async requestPurchase(sellerId: string, themeId: string) {
+  async requestPurchase(sellerId: string, themeId: string, reference?: string) {
     const theme = await this.prisma.theme.findFirst({ where: { id: themeId, isActive: true } });
     if (!theme) throw new NotFoundException("Template not found.");
     if (theme.tier !== "marketplace" || theme.price === null) {
@@ -53,7 +55,21 @@ export class TemplatePurchaseService {
     const request = await this.tenantPrisma.run(sellerId, (tx) =>
       tx.templatePurchaseRequest.create({ data: { sellerId, themeId, amount, currency } }),
     );
-    return { request, instructions: await this.wallet.topUpInstructions(amount, currency) };
+
+    // Founder-directed scope addition - "Platform Merchant Connection."
+    // Dormant until an admin has both connected real credentials AND
+    // explicitly activated a provider - the request stays exactly as it
+    // was before this feature existed: pending, awaiting manual admin
+    // confirm.
+    if (reference) {
+      const result = await this.platformGateway.tryAutoVerify(request.id, amount, currency, reference);
+      if (result?.verified) {
+        const verified = await this.verify(request.id, null);
+        return { request: verified.request, instructions: await this.wallet.topUpInstructions(amount, currency), autoVerified: true };
+      }
+    }
+
+    return { request, instructions: await this.wallet.topUpInstructions(amount, currency), autoVerified: false };
   }
 
   listOwn(sellerId: string) {
@@ -71,7 +87,7 @@ export class TemplatePurchaseService {
     });
   }
 
-  async verify(requestId: string, adminUserId: string) {
+  async verify(requestId: string, adminUserId: string | null) {
     const request = await this.prismaAdmin.templatePurchaseRequest.findUnique({ where: { id: requestId } });
     if (!request) throw new NotFoundException("Purchase request not found.");
     if (request.status !== "pending") throw new BadRequestException("This purchase request has already been resolved.");
@@ -98,12 +114,21 @@ export class TemplatePurchaseService {
       targetType: "template_purchase_request",
       targetId: requestId,
       beforeValue: { status: "pending" },
-      afterValue: { status: "verified", themeId: request.themeId, sellerId: request.sellerId, amount: Number(request.amount) },
+      afterValue: {
+        status: "verified",
+        themeId: request.themeId,
+        sellerId: request.sellerId,
+        amount: Number(request.amount),
+        autoVerified: adminUserId === null,
+      },
     });
     await this.events.emit({
       eventType: "theme.purchase_verified",
-      actorType: "admin",
-      actorId: adminUserId,
+      // Founder-directed scope addition - "Platform Merchant Connection":
+      // a null adminUserId means the gateway auto-verified this purchase,
+      // distinct from a human admin confirming it manually.
+      actorType: adminUserId ? "admin" : "system",
+      actorId: adminUserId ?? undefined,
       entityType: "seller",
       entityId: request.sellerId,
       metadata: { themeId: request.themeId, amount: Number(request.amount) },

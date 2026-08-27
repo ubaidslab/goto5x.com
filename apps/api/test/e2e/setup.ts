@@ -80,6 +80,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       admin_audit_logs, platform_events, settings_values, settings_definitions,
       domains, store_theme_settings,
       seller_api_tokens, template_entitlements, external_api_clients, themes,
+      platform_gateway_connections,
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
       gift_card_redemptions, gift_cards, email_campaigns, customer_segments,

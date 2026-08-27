@@ -24,6 +24,6 @@ export class TemplatePurchaseController {
   @UseGuards(ImpersonationWriteGuard)
   @BlockDuringImpersonation()
   requestPurchase(@CurrentSellerId() sellerId: string, @Body() dto: RequestTemplatePurchaseDto) {
-    return this.purchases.requestPurchase(sellerId, dto.themeId);
+    return this.purchases.requestPurchase(sellerId, dto.themeId, dto.reference);
   }
 }
