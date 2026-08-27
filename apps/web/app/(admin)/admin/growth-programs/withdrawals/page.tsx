@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface Payout {
   id: string;
@@ -13,11 +21,20 @@ interface Payout {
   paymentReference: string | null;
 }
 
+const statusTone: Record<string, "warning" | "success" | "info" | "danger" | "neutral"> = {
+  requested: "warning",
+  approved: "info",
+  processing: "info",
+  paid: "success",
+  rejected: "danger",
+};
+
 /**
- * Module 25 P1 (SRS §5.33 FR-33.9/FR-33.11) - the growth-program payout
- * approval queue, API-only before this module. Deliberately not merged
- * with the wallet top-ups screen - this moves money OUT (a disbursement),
- * top-ups move money IN. Bare functional view (no design pass yet).
+ * Phase 6e (Admin Terminal re-skin) - SRS §5.33/FR-33.9/FR-33.11's growth-
+ * program payout approval queue, restyled onto DashCard. Every action
+ * preserved: approve/reject (reason-required field), mark processing, mark
+ * paid (payment-reference field). Deliberately still separate from Wallet
+ * top-ups (disbursement vs. collection).
  */
 export default function AdminGrowthWithdrawalsPage() {
   const [queue, setQueue] = useState<Payout[] | null>(null);
@@ -35,98 +52,113 @@ export default function AdminGrowthWithdrawalsPage() {
   useEffect(load, []);
 
   async function approve(id: string) {
+    setError(null);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/approve`, { notes: notes[id] || undefined });
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't approve this payout.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't approve this payout.");
     }
   }
 
   async function markProcessing(id: string) {
+    setError(null);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/processing`);
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't mark this payout processing.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't mark this payout processing.");
     }
   }
 
   async function markPaid(id: string) {
+    setError(null);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/paid`, { paymentReference: paymentRef[id] || undefined });
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't mark this payout paid.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't mark this payout paid.");
     }
   }
 
   async function reject(id: string) {
+    setError(null);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/reject`, { notes: notes[id] || undefined });
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : "Couldn't reject this payout.");
+      setError(err instanceof AdminApiError ? err.message : "Couldn't reject this payout.");
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!queue) return <main>Loading...</main>;
+  if (error && !queue) return <Alert tone="danger">{error}</Alert>;
+  if (!queue) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Growth programs - withdrawals (bare view - no design pass yet)</h1>
-      <p>Approve, process, mark paid, or reject a program participant's payout request. A clawback is a per-seller action (seller 360°).</p>
+    <div>
+      <PageHeader
+        title="Growth programs - withdrawals"
+        description="Approve, process, mark paid, or reject a program participant's payout request. A clawback is a per-seller action (seller 360°)."
+      />
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Seller</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Requested</th>
-            <th>Notes / payment ref</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      {queue.length === 0 ? (
+        <DashCard>
+          <EmptyState title="Nothing pending" description="Payout requests will show up here." />
+        </DashCard>
+      ) : (
+        <DashCard className="divide-y divide-border">
           {queue.map((p) => (
-            <tr key={p.id}>
-              <td>{p.sellerId}</td>
-              <td>
-                {p.currency} {p.amount}
-              </td>
-              <td>{p.status}</td>
-              <td>{new Date(p.requestedAt).toLocaleString()}</td>
-              <td>
+            <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-ink">
+                  {p.sellerId.slice(0, 8)} <span className="tabular-nums text-ink-muted">· {p.currency} {p.amount}</span>
+                </p>
+                <p className="text-xs text-ink-muted">Requested {new Date(p.requestedAt).toLocaleString()}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={statusTone[p.status] ?? "neutral"}>{p.status}</Badge>
                 {p.status === "processing" ? (
-                  <input
+                  <Input
+                    className="h-8 w-40"
                     value={paymentRef[p.id] ?? ""}
                     onChange={(e) => setPaymentRef((n) => ({ ...n, [p.id]: e.target.value }))}
                     placeholder="Payment reference"
                   />
                 ) : (
-                  <input
+                  <Input
+                    className="h-8 w-40"
                     value={notes[p.id] ?? ""}
                     onChange={(e) => setNotes((n) => ({ ...n, [p.id]: e.target.value }))}
                     placeholder="Decision notes"
                   />
                 )}
-              </td>
-              <td>
                 {p.status === "requested" && (
                   <>
-                    <button onClick={() => approve(p.id)}>Approve</button>{" "}
-                    <button onClick={() => reject(p.id)}>Reject</button>
+                    <Button variant="secondary" size="sm" onClick={() => approve(p.id)}>
+                      Approve
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => reject(p.id)}>
+                      Reject
+                    </Button>
                   </>
                 )}
-                {p.status === "approved" && <button onClick={() => markProcessing(p.id)}>Mark processing</button>}
-                {p.status === "processing" && <button onClick={() => markPaid(p.id)}>Mark paid</button>}
-              </td>
-            </tr>
+                {p.status === "approved" && (
+                  <Button variant="secondary" size="sm" onClick={() => markProcessing(p.id)}>
+                    Mark processing
+                  </Button>
+                )}
+                {p.status === "processing" && (
+                  <Button variant="secondary" size="sm" onClick={() => markPaid(p.id)}>
+                    Mark paid
+                  </Button>
+                )}
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </DashCard>
+      )}
+    </div>
   );
 }

@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface Participant {
   id: string;
@@ -15,14 +23,10 @@ interface Participant {
 }
 
 /**
- * Module 25 P1 (SRS §5.33 FR-33.11) - the Growth & Partner Programs
- * application queue, API-only before this module. `listQueue()` only ever
- * returns `pending` rows (program-application.service.ts) - approve/reject
- * are the only decisions reachable from here. Suspending or terminating an
- * already-approved participant is a per-seller action, wired on the
- * seller-360 page instead (its "Growth program participation" section)
- * since this queue has no way to surface a non-pending row. Bare functional
- * view (no design pass yet), same discipline as every other admin screen.
+ * Phase 6e (Admin Terminal re-skin) - SRS §5.33/FR-33.11's Growth & Partner
+ * Programs application queue, restyled onto DashCard. Every action
+ * preserved: approve/reject with decision notes. Suspend/terminate for an
+ * already-approved participant stays on the Seller-360 page, unchanged.
  */
 export default function AdminGrowthApplicationsPage() {
   const [queue, setQueue] = useState<Participant[] | null>(null);
@@ -39,60 +43,60 @@ export default function AdminGrowthApplicationsPage() {
   useEffect(load, []);
 
   async function decide(id: string, action: "approve" | "reject") {
+    setError(null);
     try {
       await adminApi.post(`/admin/growth-programs/applications/${id}/${action}`, { notes: notes[id] || undefined });
       load();
     } catch (err) {
-      alert(err instanceof AdminApiError ? err.message : `Couldn't ${action} this application.`);
+      setError(err instanceof AdminApiError ? err.message : `Couldn't ${action} this application.`);
     }
   }
 
-  if (error) return <main>{error}</main>;
-  if (!queue) return <main>Loading...</main>;
+  if (error && !queue) return <Alert tone="danger">{error}</Alert>;
+  if (!queue) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Growth programs - applications (bare view - no design pass yet)</h1>
-      <p>
-        Approve or reject a pending application to an Ambassador/Referral/Creator program. Suspending or terminating
-        an already-approved participant is done from that seller's 360° page.
-      </p>
+    <div>
+      <PageHeader
+        title="Growth programs - applications"
+        description="Approve or reject a pending application to an Ambassador/Referral/Creator program. Suspending or terminating an already-approved participant is done from that seller's 360° page."
+      />
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Seller</th>
-            <th>Program</th>
-            <th>Status</th>
-            <th>Referral code</th>
-            <th>Applied</th>
-            <th>Notes</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      {queue.length === 0 ? (
+        <DashCard>
+          <EmptyState title="Nothing pending" description="Program applications will show up here." />
+        </DashCard>
+      ) : (
+        <DashCard className="divide-y divide-border">
           {queue.map((p) => (
-            <tr key={p.id}>
-              <td>{p.sellerId}</td>
-              <td>{p.programType}</td>
-              <td>{p.status}</td>
-              <td>{p.referralCode ?? "-"}</td>
-              <td>{new Date(p.appliedAt).toLocaleString()}</td>
-              <td>
-                <input
+            <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-ink">
+                  {p.sellerId.slice(0, 8)} <Badge tone="neutral">{p.programType}</Badge>
+                  {p.referralCode && <span className="ml-1 text-xs text-ink-muted">({p.referralCode})</span>}
+                </p>
+                <p className="text-xs text-ink-muted">Applied {new Date(p.appliedAt).toLocaleString()}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  className="h-8 w-48"
                   value={notes[p.id] ?? ""}
                   onChange={(e) => setNotes((n) => ({ ...n, [p.id]: e.target.value }))}
                   placeholder="Decision notes"
                 />
-              </td>
-              <td>
-                <button onClick={() => decide(p.id, "approve")}>Approve</button>{" "}
-                <button onClick={() => decide(p.id, "reject")}>Reject</button>
-              </td>
-            </tr>
+                <Button variant="secondary" size="sm" onClick={() => decide(p.id, "approve")}>
+                  Approve
+                </Button>
+                <Button variant="danger" size="sm" onClick={() => decide(p.id, "reject")}>
+                  Reject
+                </Button>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </DashCard>
+      )}
+    </div>
   );
 }
