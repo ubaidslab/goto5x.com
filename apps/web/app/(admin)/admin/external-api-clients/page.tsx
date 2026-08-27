@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 type ClientType = "template_store" | "social_media_saas";
 
@@ -13,60 +21,47 @@ interface ExternalApiClient {
   hasSigningSecret: boolean;
 }
 
+const CLIENT_TYPE_LABEL: Record<ClientType, string> = { template_store: "Template Store", social_media_saas: "Social Media SaaS" };
+
 /**
- * SRS FR-8.14/§3.10 - admin can register, enable, disable, or rotate the
- * secret for either external-SaaS client without a deploy, mirroring the
- * Supplier Adapter registry. Bare functional view (no design pass yet),
- * same precedent as /admin/plans and /admin/sellers.
+ * Phase 6f (Admin Terminal re-skin) - SRS FR-8.14/§3.10's external API
+ * client registry, restyled onto DashCard. Every action preserved:
+ * register, enable/disable, regenerate secret (confirm-gated, shown-once
+ * reveal). Switched from hand-rolled fetch to adminApi.
  */
 export default function AdminExternalApiClientsPage() {
   const confirm = useConfirm();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [clients, setClients] = useState<ExternalApiClient[] | null>(null);
   const [clientType, setClientType] = useState<ClientType>("template_store");
   const [displayName, setDisplayName] = useState("");
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  }
-
   function load() {
-    fetch(`${apiBase}/admin/external-api-clients`, { headers: authHeaders() })
-      .then((r) => r.json())
+    adminApi
+      .get<ExternalApiClient[]>("/admin/external-api-clients")
       .then(setClients)
       .catch(() => setClients([]));
   }
 
-  useEffect(load, [apiBase]);
+  useEffect(load, []);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setRevealedSecret(null);
-    const res = await fetch(`${apiBase}/admin/external-api-clients`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ clientType, displayName }),
-    });
-    const body = await res.json();
-    if (!res.ok) {
-      setError(body.message ?? "Couldn't create that client.");
-      return;
+    try {
+      const body = await adminApi.post<{ signingSecret: string }>("/admin/external-api-clients", { clientType, displayName });
+      setRevealedSecret(body.signingSecret);
+      setDisplayName("");
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't create that client.");
     }
-    setRevealedSecret(body.signingSecret);
-    setDisplayName("");
-    load();
   }
 
   async function toggle(id: string, isEnabled: boolean) {
-    await fetch(`${apiBase}/admin/external-api-clients/${id}`, {
-      method: "PATCH",
-      headers: authHeaders(),
-      body: JSON.stringify({ isEnabled }),
-    });
+    await adminApi.patch(`/admin/external-api-clients/${id}`, { isEnabled });
     load();
   }
 
@@ -79,70 +74,66 @@ export default function AdminExternalApiClientsPage() {
     });
     if (!ok) return;
     setRevealedSecret(null);
-    const res = await fetch(`${apiBase}/admin/external-api-clients/${id}/regenerate-secret`, {
-      method: "POST",
-      headers: authHeaders(),
-    });
-    const body = await res.json();
+    const body = await adminApi.post<{ signingSecret: string }>(`/admin/external-api-clients/${id}/regenerate-secret`);
     setRevealedSecret(body.signingSecret);
     load();
   }
 
-  if (!clients) return <p>Loading...</p>;
+  if (!clients) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>External API Clients (bare view - no design pass yet)</h1>
-      <p>Template Store and Social Media SaaS hooks (SRS §5.24). uzeyn.com never builds either external product - only this small, versioned API surface.</p>
+    <div>
+      <PageHeader
+        title="External API Clients"
+        description="Template Store and Social Media SaaS hooks (SRS §5.24). uzeyn.com never builds either external product - only this small, versioned API surface."
+      />
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
       {revealedSecret && (
-        <p>
-          <strong>Signing secret (shown once - copy it now):</strong> <code>{revealedSecret}</code>
-        </p>
+        <Alert tone="success">
+          Signing secret (shown once - copy it now): <code className="font-mono">{revealedSecret}</code>
+        </Alert>
       )}
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Display name</th>
-            <th>Enabled</th>
-            <th>Has secret</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      <div className="max-w-3xl space-y-4">
+        <DashCard className="divide-y divide-border">
           {clients.map((c) => (
-            <tr key={c.id}>
-              <td>{c.clientType}</td>
-              <td>{c.displayName}</td>
-              <td>{c.isEnabled ? "yes" : "no"}</td>
-              <td>{c.hasSigningSecret ? "yes" : "no"}</td>
-              <td>
-                <button onClick={() => toggle(c.id, !c.isEnabled)}>{c.isEnabled ? "Disable" : "Enable"}</button>{" "}
-                <button onClick={() => regenerateSecret(c.id, c.displayName)}>Regenerate secret</button>
-              </td>
-            </tr>
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-ink">
+                  {c.displayName} <span className="font-normal text-ink-muted">({CLIENT_TYPE_LABEL[c.clientType]})</span>
+                </p>
+                <p className="text-xs text-ink-muted">{c.hasSigningSecret ? "Has a signing secret" : "No signing secret set"}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={c.isEnabled ? "success" : "neutral"}>{c.isEnabled ? "enabled" : "disabled"}</Badge>
+                <Button variant="ghost" size="sm" onClick={() => toggle(c.id, !c.isEnabled)}>
+                  {c.isEnabled ? "Disable" : "Enable"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => regenerateSecret(c.id, c.displayName)}>
+                  Regenerate secret
+                </Button>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </DashCard>
 
-      <h2>Register a client</h2>
-      <form onSubmit={create}>
-        <label>
-          Type
-          <select value={clientType} onChange={(e) => setClientType(e.target.value as ClientType)}>
-            <option value="template_store">Template Store</option>
-            <option value="social_media_saas">Social Media SaaS</option>
-          </select>
-        </label>
-        <label>
-          Display name
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-        </label>
-        <button type="submit">Register</button>
-      </form>
-    </main>
+        <DashCard>
+          <DashCardHeader title="Register a client" />
+          <form onSubmit={create} className="space-y-3">
+            <Field label="Type">
+              <Select value={clientType} onChange={(e) => setClientType(e.target.value as ClientType)}>
+                <option value="template_store">Template Store</option>
+                <option value="social_media_saas">Social Media SaaS</option>
+              </Select>
+            </Field>
+            <Field label="Display name">
+              <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+            </Field>
+            <Button type="submit">Register</Button>
+          </form>
+        </DashCard>
+      </div>
+    </div>
   );
 }

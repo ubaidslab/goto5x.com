@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
+import { Field, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface AuditLogRow {
   id: string;
@@ -16,10 +21,10 @@ interface AuditLogRow {
 }
 
 /**
- * Module 25 P1 - a read-only viewer over `admin_audit_logs`, API-only
- * before this module (the table is insert-only by DB grant, so this page
- * has no write actions at all - see audit-log.service.ts). Bare
- * functional view (no design pass yet).
+ * Phase 6f (Admin Terminal re-skin) - the read-only audit log viewer,
+ * restyled onto DashCard. No write actions existed before (insert-only
+ * table) and none are added now. Every column preserved, including the
+ * expandable before/after JSON diff.
  */
 export default function AdminAuditLogPage() {
   const [rows, setRows] = useState<AuditLogRow[] | null>(null);
@@ -35,56 +40,43 @@ export default function AdminAuditLogPage() {
 
   useEffect(load, [limit]);
 
-  if (error) return <main>{error}</main>;
-  if (!rows) return <main>Loading...</main>;
+  if (error && !rows) return <Alert tone="danger">{error}</Alert>;
+  if (!rows) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Audit log (bare view - no design pass yet)</h1>
-      <p>Every admin action taken on this platform, insert-only (no admin, including this one, can edit or delete a row).</p>
-      <p>
-        <label>
-          Show last:{" "}
-          <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+    <div>
+      <PageHeader title="Audit log" description="Every admin action taken on this platform, insert-only (no admin, including this one, can edit or delete a row)." />
+
+      <div className="mb-4 max-w-xs">
+        <Field label="Show last">
+          <Select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
             <option value={50}>50</option>
             <option value={100}>100</option>
             <option value={250}>250</option>
             <option value={500}>500</option>
-          </select>
-        </label>
-      </p>
+          </Select>
+        </Field>
+      </div>
 
-      <table border={1} cellPadding={4}>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Admin</th>
-            <th>Action</th>
-            <th>Target</th>
-            <th>Impersonation session</th>
-            <th>Before / after</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id}>
-              <td>{new Date(r.createdAt).toLocaleString()}</td>
-              <td>{r.adminUserId ?? "system"}</td>
-              <td>{r.action}</td>
-              <td>
-                {r.targetType} {r.targetId && `(${r.targetId})`}
-              </td>
-              <td>{r.impersonationSessionId ?? "-"}</td>
-              <td>
-                <details>
-                  <summary>view</summary>
-                  <pre>{JSON.stringify({ before: r.beforeValue, after: r.afterValue }, null, 2)}</pre>
-                </details>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+      <DashCard className="divide-y divide-border">
+        {rows.map((r) => (
+          <div key={r.id} className="py-2.5 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-ink">
+                <span className="text-ink-muted">{new Date(r.createdAt).toLocaleString()}</span> · {r.adminUserId ?? "system"} ·{" "}
+                <span className="font-medium">{r.action}</span> · {r.targetType} {r.targetId && `(${r.targetId})`}
+              </span>
+              {r.impersonationSessionId && <span className="text-xs text-ink-faint">session {r.impersonationSessionId.slice(0, 8)}</span>}
+            </div>
+            <details className="mt-1">
+              <summary className="cursor-pointer text-xs text-accent">view before/after</summary>
+              <pre className="mt-1 overflow-x-auto rounded-md bg-canvas p-2 text-xs text-ink-muted">
+                {JSON.stringify({ before: r.beforeValue, after: r.afterValue }, null, 2)}
+              </pre>
+            </details>
+          </div>
+        ))}
+      </DashCard>
+    </div>
   );
 }

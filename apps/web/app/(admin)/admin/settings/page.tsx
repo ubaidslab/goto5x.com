@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type ScopeType = "global" | "plan" | "seller" | "category" | "store" | "supplier";
 
@@ -24,6 +30,7 @@ interface ChainEntry {
   updatedBy: string | null;
   updatedByEmail: string | null;
   updatedAt: string | null;
+  expiresAt: string | null;
 }
 
 interface ResolveResponse {
@@ -46,17 +53,20 @@ const SCOPE_QUERY_PARAM: Record<Exclude<ScopeType, "global">, string> = {
 };
 
 /**
- * Module 25 (Admin Completion) - the Settings Registry write UI (§14 gap:
- * ~90 keys existed with zero write UI, every change needed a raw API
- * call). Type-aware validation mirrors the server's own
- * SettingsService.validateValue() rules so a bad value is rejected before
- * the request even fires; the precedence chain view reuses
- * SettingsService's own PRECEDENCE order (via the new
- * GET admin/settings/resolve endpoint) so "which scope wins" is never a
- * guess. High-impact-key detection (FR-8.16, v0.40) is the data-driven
- * `requiresConfirmation` field on the definition itself, resolved through
- * to this page via GET admin/settings/resolve - no more frontend
- * key.startsWith("billing.")-style guessing.
+ * Phase 6f (Admin Terminal re-skin) - Module 25's Settings Registry write
+ * UI, restyled onto DashCard as a two-column master/detail (definitions
+ * list | selected key's precedence chain + edit form) - the founder's
+ * standing directive for this phase is explicit that this page must stay
+ * (or become more) granular, never simplified away.
+ *
+ * Deepened, not just restyled: `expiresAt` per chain entry was already
+ * returned by resolveWithChain() (the D-Studio time-limited grants work)
+ * but this generic editor never showed it or let an admin SET one - a
+ * grant/override was only ever time-limited via the narrow Seller-360
+ * D-Studio shortcut. Now every override row shows its expiry (or "no
+ * expiry"), and the edit form has an optional "Expires at" field for any
+ * scoped override on any key, since the write endpoint already accepted
+ * `expiresAt` generically.
  */
 export default function AdminSettingsPage() {
   const confirm = useConfirm();
@@ -66,6 +76,7 @@ export default function AdminSettingsPage() {
   const [scopeId, setScopeId] = useState("");
   const [resolved, setResolved] = useState<ResolveResponse | null>(null);
   const [valueInput, setValueInput] = useState("");
+  const [expiresAtInput, setExpiresAtInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -77,6 +88,7 @@ export default function AdminSettingsPage() {
     setSelected(d);
     setScope("global");
     setScopeId("");
+    setExpiresAtInput("");
     setError(null);
     setSaved(false);
     await refreshResolve(d.key, "global", "");
@@ -149,6 +161,7 @@ export default function AdminSettingsPage() {
         scopeType: scope,
         scopeId: scope === "global" ? null : scopeId,
         value: validation.value,
+        expiresAt: scope !== "global" && expiresAtInput ? new Date(expiresAtInput).toISOString() : undefined,
       });
       setSaved(true);
       await refreshResolve(selected.key, scope, scopeId);
@@ -158,127 +171,157 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <main>
-      <h1>Settings Registry</h1>
-      <p>Every platform setting. Select one to view its current effective value, precedence chain, and edit it.</p>
+    <div>
+      <PageHeader title="Settings Registry" description="Every platform setting. Select one to view its current effective value, precedence chain, and edit it." />
 
-      <div style={{ display: "flex", gap: 24 }}>
-        <table border={1} cellPadding={4} style={{ flex: 1 }}>
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Type</th>
-              <th>Default</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {definitions.map((d) => (
-              <tr key={d.key}>
-                <td>{d.key}</td>
-                <td>{d.valueType}</td>
-                <td>{JSON.stringify(d.defaultValue)}</td>
-                <td>
-                  <button onClick={() => selectDefinition(d)}>Edit</button>
-                </td>
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <DashCard className="flex-1 overflow-x-auto">
+          <DashCardHeader title={`Definitions (${definitions.length})`} />
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                <th className="py-2 pr-3">Key</th>
+                <th className="py-2 pr-3">Type</th>
+                <th className="py-2 pr-3">Default</th>
+                <th className="py-2 pr-3"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {definitions.map((d) => (
+                <tr key={d.key} className={selected?.key === d.key ? "bg-accent-subtle" : undefined}>
+                  <td className="py-2 pr-3 font-mono text-xs text-ink">{d.key}</td>
+                  <td className="py-2 pr-3 text-ink-muted">{d.valueType}</td>
+                  <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{JSON.stringify(d.defaultValue)}</td>
+                  <td className="py-2 pr-3">
+                    <Button variant="ghost" size="sm" onClick={() => selectDefinition(d)}>
+                      Edit
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </DashCard>
 
         {selected && resolved && (
-          <div style={{ flex: 1, border: "1px solid #ccc", padding: 12 }}>
-            <h2>{selected.key}</h2>
-            <p>{selected.description}</p>
+          <DashCard className="flex-1">
+            <DashCardHeader
+              title={selected.key}
+              description={selected.description}
+              action={resolved.requiresConfirmation ? <Badge tone="danger">high-impact</Badge> : undefined}
+            />
 
-            <h3>Precedence chain</h3>
-            <table border={1} cellPadding={4}>
-              <thead>
-                <tr>
-                  <th>Scope</th>
-                  <th>Override?</th>
-                  <th>Value</th>
-                  <th>Last changed by</th>
-                  <th>When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resolved.chain.map((c) => (
-                  <tr key={c.scope} style={{ fontWeight: c.scope === resolved.winningScope ? "bold" : "normal" }}>
-                    <td>{c.scope}</td>
-                    <td>{c.hasOverride ? "yes" : "no"}</td>
-                    <td>{c.hasOverride ? JSON.stringify(c.value) : "-"}</td>
-                    <td>{c.updatedByEmail ?? "-"}</td>
-                    <td>{c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "-"}</td>
+            <h3 className="mb-2 text-sm font-semibold text-ink">Precedence chain</h3>
+            <div className="mb-3 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                    <th className="py-2 pr-3">Scope</th>
+                    <th className="py-2 pr-3">Override?</th>
+                    <th className="py-2 pr-3">Value</th>
+                    <th className="py-2 pr-3">Expires</th>
+                    <th className="py-2 pr-3">Last changed by</th>
+                    <th className="py-2 pr-3">When</th>
                   </tr>
-                ))}
-                <tr>
-                  <td>default</td>
-                  <td>-</td>
-                  <td>{JSON.stringify(resolved.defaultValue)}</td>
-                  <td>-</td>
-                  <td>-</td>
-                </tr>
-              </tbody>
-            </table>
-            <p>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {resolved.chain.map((c) => (
+                    <tr key={c.scope} className={c.scope === resolved.winningScope ? "font-semibold" : undefined}>
+                      <td className="py-2 pr-3 text-ink">{c.scope}</td>
+                      <td className="py-2 pr-3 text-ink-muted">{c.hasOverride ? "yes" : "no"}</td>
+                      <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{c.hasOverride ? JSON.stringify(c.value) : "-"}</td>
+                      <td className="py-2 pr-3 text-ink-muted">
+                        {c.hasOverride ? (
+                          c.expiresAt ? (
+                            <Badge tone="warning">until {new Date(c.expiresAt).toLocaleString()}</Badge>
+                          ) : (
+                            "no expiry"
+                          )
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 text-ink-muted">{c.updatedByEmail ?? "-"}</td>
+                      <td className="py-2 pr-3 text-ink-muted">{c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "-"}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="py-2 pr-3 text-ink">default</td>
+                    <td className="py-2 pr-3 text-ink-muted">-</td>
+                    <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{JSON.stringify(resolved.defaultValue)}</td>
+                    <td className="py-2 pr-3 text-ink-muted">-</td>
+                    <td className="py-2 pr-3 text-ink-muted">-</td>
+                    <td className="py-2 pr-3 text-ink-muted">-</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mb-4 text-sm text-ink">
               Effective value right now: <strong>{JSON.stringify(resolved.effectiveValue)}</strong> (winning scope: {resolved.winningScope})
             </p>
 
-            <h3>Set a value</h3>
-            <label>
-              Scope:{" "}
-              <select
-                value={scope}
-                onChange={(e) => {
-                  const s = e.target.value as ScopeType;
-                  setScope(s);
-                  refreshResolve(selected.key, s, scopeId);
-                }}
-              >
-                {selected.allowedScopes.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {scope !== "global" && (
-              <label>
-                {" "}
-                Scope ID:{" "}
-                <input
-                  value={scopeId}
-                  onChange={(e) => setScopeId(e.target.value)}
-                  onBlur={() => refreshResolve(selected.key, scope, scopeId)}
-                />
-              </label>
-            )}
+            <h3 className="mb-2 text-sm font-semibold text-ink">Set a value</h3>
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-3">
+                <div className="w-40">
+                  <Field label="Scope">
+                    <Select
+                      value={scope}
+                      onChange={(e) => {
+                        const s = e.target.value as ScopeType;
+                        setScope(s);
+                        refreshResolve(selected.key, s, scopeId);
+                      }}
+                    >
+                      {selected.allowedScopes.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                {scope !== "global" && (
+                  <>
+                    <div className="flex-1">
+                      <Field label="Scope ID">
+                        <Input value={scopeId} onChange={(e) => setScopeId(e.target.value)} onBlur={() => refreshResolve(selected.key, scope, scopeId)} />
+                      </Field>
+                    </div>
+                    <div className="w-56">
+                      <Field label="Expires at (optional)">
+                        <Input type="datetime-local" value={expiresAtInput} onChange={(e) => setExpiresAtInput(e.target.value)} />
+                      </Field>
+                    </div>
+                  </>
+                )}
+              </div>
 
-            <p>
-              {selected.valueType === "boolean" ? (
-                <select value={valueInput} onChange={(e) => setValueInput(e.target.value)}>
-                  <option value="true">true</option>
-                  <option value="false">false</option>
-                </select>
-              ) : selected.valueType === "json" ? (
-                <textarea value={valueInput} onChange={(e) => setValueInput(e.target.value)} rows={4} style={{ width: "100%" }} />
-              ) : (
-                <input value={valueInput} onChange={(e) => setValueInput(e.target.value)} style={{ width: "100%" }} />
+              <Field label="Value">
+                {selected.valueType === "boolean" ? (
+                  <Select value={valueInput} onChange={(e) => setValueInput(e.target.value)}>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </Select>
+                ) : selected.valueType === "json" ? (
+                  <Textarea value={valueInput} onChange={(e) => setValueInput(e.target.value)} rows={4} className="font-mono text-xs" />
+                ) : (
+                  <Input value={valueInput} onChange={(e) => setValueInput(e.target.value)} />
+                )}
+              </Field>
+              {selected.validation && (selected.validation.min !== undefined || selected.validation.max !== undefined) && (
+                <p className="text-xs text-ink-muted">
+                  Allowed range: {selected.validation.min ?? "-"} to {selected.validation.max ?? "-"}
+                </p>
               )}
-            </p>
-            {selected.validation && (selected.validation.min !== undefined || selected.validation.max !== undefined) && (
-              <p>
-                Allowed range: {selected.validation.min ?? "-"} to {selected.validation.max ?? "-"}
-              </p>
-            )}
 
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            {saved && <p style={{ color: "green" }}>Saved.</p>}
-            <button onClick={save}>Save</button>
-          </div>
+              {error && <Alert tone="danger">{error}</Alert>}
+              {saved && <Alert tone="success">Saved.</Alert>}
+              <Button onClick={save}>Save</Button>
+            </div>
+          </DashCard>
         )}
       </div>
-    </main>
+    </div>
   );
 }
