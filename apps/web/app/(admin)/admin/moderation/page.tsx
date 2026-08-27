@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, Input } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 interface QueuedProduct {
   id: string;
@@ -13,15 +23,14 @@ interface QueuedProduct {
 }
 
 /**
- * SRS §4/FR-27.6 - the moderation queue's bare functional admin page (Module
- * 6 built the four API endpoints only; this is the UI, Module 17's job per
- * docs/build-plan.md). Reachable by the narrowly-scoped REVIEWER admin
- * sub-role too - a REVIEWER account sees only this page in the admin
- * terminal (enforced server-side by AdminAuthGuard, not by anything here).
+ * Phase 6d (Admin Terminal re-skin) - SRS §4/FR-27.6's moderation queue,
+ * restyled onto DashCard. Every action preserved: per-row approve/reject
+ * with notes, bulk approve/reject (real per-item succeeded/failed), and
+ * the force-remove/restore-any-product lookup (FR-54.2). Switched from
+ * hand-rolled fetch to adminApi.
  */
 export default function AdminModerationPage() {
   const confirm = useConfirm();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [queue, setQueue] = useState<QueuedProduct[] | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -31,33 +40,23 @@ export default function AdminModerationPage() {
   const [lookupNotes, setLookupNotes] = useState("");
   const [lookupResult, setLookupResult] = useState<string | null>(null);
 
-  function authHeaders(): Record<string, string> {
-    const token = localStorage.getItem("adminAccessToken");
-    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  }
-
   function load() {
-    fetch(`${apiBase}/admin/moderation/queue`, { headers: authHeaders() })
-      .then((r) => r.json())
+    adminApi
+      .get<QueuedProduct[]>("/admin/moderation/queue")
       .then(setQueue)
       .catch(() => setQueue([]));
   }
 
-  useEffect(load, [apiBase]);
+  useEffect(load, []);
 
   async function decide(productId: string, decision: "approve" | "reject") {
     setError(null);
-    const res = await fetch(`${apiBase}/admin/moderation/queue/${productId}/${decision}`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ notes: notes[productId] ?? "" }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.message ?? "Couldn't record that decision.");
-      return;
+    try {
+      await adminApi.post(`/admin/moderation/queue/${productId}/${decision}`, { notes: notes[productId] ?? "" });
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't record that decision.");
     }
-    load();
   }
 
   function toggleSelected(productId: string) {
@@ -83,19 +82,19 @@ export default function AdminModerationPage() {
       tone: decision === "reject" ? "danger" : "default",
     });
     if (!ok) return;
-    const res = await fetch(`${apiBase}/admin/moderation/queue/bulk-decide`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ productIds: [...selected], decision, notes: bulkNotes || undefined }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.message ?? `Some products couldn't be ${decision === "approve" ? "approved" : "rejected"}.`);
-    } else {
-      const body = await res.json();
+    try {
+      const body = await adminApi.post<{ failed?: string[] }>("/admin/moderation/queue/bulk-decide", {
+        productIds: [...selected],
+        decision,
+        notes: bulkNotes || undefined,
+      });
       if (body.failed?.length) {
-        setError(`${body.failed.length} of ${selected.size} product${selected.size === 1 ? "" : "s"} couldn't be ${decision === "approve" ? "approved" : "rejected"} - check the queue below.`);
+        setError(
+          `${body.failed.length} of ${selected.size} product${selected.size === 1 ? "" : "s"} couldn't be ${decision === "approve" ? "approved" : "rejected"} - check the queue below.`,
+        );
       }
+    } catch {
+      setError(`Some products couldn't be ${decision === "approve" ? "approved" : "rejected"}.`);
     }
     setSelected(new Set());
     setBulkNotes("");
@@ -124,99 +123,104 @@ export default function AdminModerationPage() {
       });
       if (!ok) return;
     }
-    const res = await fetch(`${apiBase}/admin/products/${lookupProductId.trim()}/${action}`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ notes: lookupNotes }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setLookupResult(body.message ?? `Couldn't ${action} that product.`);
-      return;
+    try {
+      const body = await adminApi.post<{ moderationStatus: string }>(`/admin/products/${lookupProductId.trim()}/${action}`, { notes: lookupNotes });
+      setLookupResult(`Product ${lookupProductId.trim()} is now: ${body.moderationStatus}`);
+    } catch (err) {
+      setLookupResult(err instanceof AdminApiError ? err.message : `Couldn't ${action} that product.`);
     }
-    setLookupResult(`Product ${lookupProductId.trim()} is now: ${body.moderationStatus}`);
   }
 
-  if (!queue) return <p>Loading...</p>;
+  if (!queue) return <PageSpinner />;
 
   return (
-    <main>
-      <h1>Moderation queue (bare view - no design pass yet)</h1>
-      <p>Listings flagged for prohibited/counterfeit content or restricted keywords, awaiting review.</p>
+    <div>
+      <PageHeader title="Moderation queue" description="Listings flagged for prohibited/counterfeit content or restricted keywords, awaiting review." />
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <h2>Force remove / restore a product</h2>
-      <p>
-        Instant takedown for a product in ANY moderation status (not just this queue) - SRS §5.54/FR-54.2. Also how
-        a supplier-listed product (source: supplier, see the queue below) can be taken down directly.
-      </p>
-      <p>
-        <label>
-          Product id: <input value={lookupProductId} onChange={(e) => setLookupProductId(e.target.value)} placeholder="uuid" />
-        </label>{" "}
-        <label>
-          Notes: <input value={lookupNotes} onChange={(e) => setLookupNotes(e.target.value)} />
-        </label>{" "}
-        <button onClick={() => forceRemoveOrRestore("remove")}>Remove</button>{" "}
-        <button onClick={() => forceRemoveOrRestore("restore")}>Restore</button>
-      </p>
-      {lookupResult && <p>{lookupResult}</p>}
+      <DashCard className="mb-4 max-w-2xl">
+        <DashCardHeader
+          title="Force remove / restore a product"
+          description="Instant takedown for a product in ANY moderation status (not just this queue) - SRS §5.54/FR-54.2. Also how a supplier-listed product (source: supplier, see the queue below) can be taken down directly."
+        />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1">
+            <Field label="Product id">
+              <Input value={lookupProductId} onChange={(e) => setLookupProductId(e.target.value)} placeholder="uuid" />
+            </Field>
+          </div>
+          <div className="flex-1">
+            <Field label="Notes">
+              <Input value={lookupNotes} onChange={(e) => setLookupNotes(e.target.value)} />
+            </Field>
+          </div>
+          <Button variant="danger" onClick={() => forceRemoveOrRestore("remove")}>
+            Remove
+          </Button>
+          <Button variant="secondary" onClick={() => forceRemoveOrRestore("restore")}>
+            Restore
+          </Button>
+        </div>
+        {lookupResult && <p className="mt-2 text-sm text-ink-muted">{lookupResult}</p>}
+      </DashCard>
 
       {queue.length === 0 ? (
-        <p>The queue is empty.</p>
+        <DashCard>
+          <EmptyState title="The queue is empty" description="Flagged listings will show up here." />
+        </DashCard>
       ) : (
-        <>
-          <p>
-            <label>
-              Notes for bulk action: <input value={bulkNotes} onChange={(e) => setBulkNotes(e.target.value)} placeholder="Reviewer notes" />
-            </label>{" "}
-            <button onClick={() => decideSelected("approve")} disabled={selected.size === 0}>
+        <DashCard>
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <div className="flex-1">
+              <Field label="Notes for bulk action">
+                <Input value={bulkNotes} onChange={(e) => setBulkNotes(e.target.value)} placeholder="Reviewer notes" />
+              </Field>
+            </div>
+            <Button disabled={selected.size === 0} onClick={() => decideSelected("approve")}>
               Approve selected ({selected.size})
-            </button>{" "}
-            <button onClick={() => decideSelected("reject")} disabled={selected.size === 0}>
+            </Button>
+            <Button variant="danger" disabled={selected.size === 0} onClick={() => decideSelected("reject")}>
               Reject selected ({selected.size})
-            </button>
-          </p>
-          <table border={1} cellPadding={4}>
-            <thead>
-              <tr>
-                <th></th>
-                <th>Store</th>
-                <th>Product</th>
-                <th>Source</th>
-                <th>Description</th>
-                <th>Notes</th>
-                <th>Decision</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queue.map((product) => (
-                <tr key={product.id}>
-                  <td>
-                    <input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
-                  </td>
-                  <td>{product.store?.name ?? "-"}</td>
-                  <td>{product.title}</td>
-                  <td>{product.sourceType === "supplier" ? "Supplier-listed" : "Self"}</td>
-                  <td>{product.description ?? "-"}</td>
-                  <td>
-                    <input
-                      value={notes[product.id] ?? ""}
-                      onChange={(e) => setNotes({ ...notes, [product.id]: e.target.value })}
-                      placeholder="Reviewer notes"
-                    />
-                  </td>
-                  <td>
-                    <button onClick={() => decide(product.id, "approve")}>Approve</button>{" "}
-                    <button onClick={() => decide(product.id, "reject")}>Reject</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+            </Button>
+          </div>
+          <div className="divide-y divide-border">
+            {queue.map((product) => (
+              <div key={product.id} className="flex flex-col gap-2 py-3">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    aria-label={`Select ${product.title}`}
+                    checked={selected.has(product.id)}
+                    onCheckedChange={() => toggleSelected(product.id)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink">
+                      {product.title} <Badge tone={product.sourceType === "supplier" ? "info" : "neutral"}>{product.sourceType === "supplier" ? "Supplier-listed" : "Self"}</Badge>
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {product.store?.name ?? "-"} {product.description && `· ${product.description}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="ml-8 flex flex-wrap items-center gap-2">
+                  <Input
+                    className="h-8 w-56"
+                    value={notes[product.id] ?? ""}
+                    onChange={(e) => setNotes({ ...notes, [product.id]: e.target.value })}
+                    placeholder="Reviewer notes"
+                  />
+                  <Button variant="secondary" size="sm" onClick={() => decide(product.id, "approve")}>
+                    Approve
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => decide(product.id, "reject")}>
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DashCard>
       )}
-    </main>
+    </div>
   );
 }
