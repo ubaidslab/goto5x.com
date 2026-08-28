@@ -86,6 +86,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   const [dstudioGrantTier, setDstudioGrantTier] = useState<"0" | "1" | "2" | "3">("2");
   const [dstudioGrantDays, setDstudioGrantDays] = useState("14");
   const [dstudioGrantError, setDstudioGrantError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   function load() {
     adminApi
@@ -135,6 +136,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       confirmLabel: "Grant access",
     });
     if (!ok) return;
+    setPendingAction("grantDStudio");
     try {
       await adminApi.put("/admin/settings/values", {
         key: "dstudio.tier_override_order",
@@ -146,6 +148,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       loadDstudioGrant();
     } catch (err) {
       setDstudioGrantError(err instanceof AdminApiError ? err.message : "Couldn't grant D-Studio access.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -158,6 +162,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       tone: "danger",
     });
     if (!ok) return;
+    setPendingAction("revokeDStudio");
     try {
       await adminApi.put("/admin/settings/values", {
         key: "dstudio.tier_override_order",
@@ -169,6 +174,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       loadDstudioGrant();
     } catch (err) {
       setDstudioGrantError(err instanceof AdminApiError ? err.message : "Couldn't revoke this grant.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -186,21 +193,27 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       tone: status === "banned" || status === "suspended" ? "danger" : "default",
     });
     if (!ok) return;
+    setPendingAction(`lifecycle:${status}`);
     try {
       await adminApi.post(`/admin/sellers/${params.sellerId}/lifecycle`, { status, reason });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't update this seller's lifecycle status.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
   async function approveActivation() {
     setError(null);
+    setPendingAction("approveActivation");
     try {
       await adminApi.post(`/admin/sellers/${params.sellerId}/activation/approve`);
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't approve this activation.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -226,6 +239,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       tone: amount < 0 ? "danger" : "default",
     });
     if (!ok) return;
+    setPendingAction("adjustWallet");
     try {
       await adminApi.post(`/admin/wallet-topups/sellers/${params.sellerId}/adjust`, { amount, reason: adjustReason });
       setAdjustAmount("");
@@ -233,6 +247,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't adjust this seller's wallet.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -240,6 +256,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     const impersonationReason = window.prompt("Reason for this support session:");
     if (!impersonationReason) return;
     setError(null);
+    setPendingAction("impersonate");
     try {
       const body = await adminApi.post<{ accessToken: string; impersonationSessionId: string }>(
         `/admin/sellers/${params.sellerId}/impersonate`,
@@ -249,6 +266,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       window.open(`/impersonate?token=${encodeURIComponent(body.accessToken)}&sessionId=${body.impersonationSessionId}`, "_blank");
     } catch {
       setError("Couldn't start a support session for this seller.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -262,11 +281,14 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     const notes = window.prompt(`Reason to ${action} this program participation:`);
     if (!notes) return;
     setError(null);
+    setPendingAction(`program:${participantId}:${action}`);
     try {
       await adminApi.post(`/admin/growth-programs/applications/${participantId}/${action}`, { notes });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : `Couldn't ${action} this participation.`);
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -281,6 +303,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     setSettingsError(null);
     setSettingsLookup(null);
     if (!settingsKey.trim()) return;
+    setPendingAction("lookupSetting");
     try {
       const result = await adminApi.get<{ valueType: string; effectiveValue: unknown; winningScope: string; requiresConfirmation: boolean }>(
         `/admin/settings/resolve?key=${encodeURIComponent(settingsKey.trim())}&sellerId=${params.sellerId}`,
@@ -288,6 +311,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       setSettingsLookup(result);
     } catch (err) {
       setSettingsError(err instanceof AdminApiError ? err.message : "Couldn't look up that settings key.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -313,12 +338,15 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       });
       if (!ok) return;
     }
+    setPendingAction("overrideSetting");
     try {
       await adminApi.put("/admin/settings/values", { key: settingsKey.trim(), scopeType: "seller", scopeId: params.sellerId, value: parsedValue });
       setSettingsValue("");
       await lookupSetting();
     } catch (err) {
       setSettingsError(err instanceof AdminApiError ? err.message : "Couldn't set that override.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -343,6 +371,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       tone: "danger",
     });
     if (!ok) return;
+    setPendingAction("clawback");
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/sellers/${params.sellerId}/clawback`, { amount, notes: clawbackNotes });
       setClawbackAmount("");
@@ -350,6 +379,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't clawback this seller's wallet.");
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -378,7 +409,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
         </Field>
         <div className="mt-3 flex flex-wrap gap-2">
           {seller.activationStatus !== "auto_approved" && (
-            <Button variant="secondary" size="sm" onClick={approveActivation}>
+            <Button variant="secondary" size="sm" onClick={approveActivation} loading={pendingAction === "approveActivation"} disabled={pendingAction !== null && pendingAction !== "approveActivation"}>
               Approve activation
             </Button>
           )}
@@ -387,7 +418,8 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               key={s}
               variant={s === "banned" || s === "suspended" ? "danger" : "ghost"}
               size="sm"
-              disabled={s === seller.lifecycleStatus}
+              disabled={s === seller.lifecycleStatus || (pendingAction !== null && pendingAction !== `lifecycle:${s}`)}
+              loading={pendingAction === `lifecycle:${s}`}
               onClick={() => setLifecycleStatus(s)}
             >
               Set {s}
@@ -398,7 +430,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               End impersonation session
             </Button>
           ) : (
-            <Button variant="ghost" size="sm" onClick={impersonate}>
+            <Button variant="ghost" size="sm" onClick={impersonate} loading={pendingAction === "impersonate"} disabled={pendingAction !== null && pendingAction !== "impersonate"}>
               Impersonate (login as seller)
             </Button>
           )}
@@ -418,7 +450,9 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               <Input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} />
             </Field>
           </div>
-          <Button onClick={adjustWallet}>Adjust</Button>
+          <Button onClick={adjustWallet} loading={pendingAction === "adjustWallet"} disabled={pendingAction !== null && pendingAction !== "adjustWallet"}>
+            Adjust
+          </Button>
         </div>
         {wallet.recentLedger.length > 0 && (
           <div className="mt-4 divide-y divide-border border-t border-border">
@@ -478,16 +512,34 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
                 <Badge tone="neutral">{p.status}</Badge>
                 {p.status === "approved" && (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => decideProgramParticipant(p.id, "suspend")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => decideProgramParticipant(p.id, "suspend")}
+                      loading={pendingAction === `program:${p.id}:suspend`}
+                      disabled={pendingAction !== null && pendingAction !== `program:${p.id}:suspend`}
+                    >
                       Suspend
                     </Button>
-                    <Button variant="danger" size="sm" onClick={() => decideProgramParticipant(p.id, "terminate")}>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => decideProgramParticipant(p.id, "terminate")}
+                      loading={pendingAction === `program:${p.id}:terminate`}
+                      disabled={pendingAction !== null && pendingAction !== `program:${p.id}:terminate`}
+                    >
                       Terminate
                     </Button>
                   </>
                 )}
                 {p.status === "suspended" && (
-                  <Button variant="danger" size="sm" onClick={() => decideProgramParticipant(p.id, "terminate")}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => decideProgramParticipant(p.id, "terminate")}
+                    loading={pendingAction === `program:${p.id}:terminate`}
+                    disabled={pendingAction !== null && pendingAction !== `program:${p.id}:terminate`}
+                  >
                     Terminate
                   </Button>
                 )}
@@ -506,7 +558,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               <Input value={clawbackNotes} onChange={(e) => setClawbackNotes(e.target.value)} />
             </Field>
           </div>
-          <Button variant="danger" onClick={clawback}>
+          <Button variant="danger" onClick={clawback} loading={pendingAction === "clawback"} disabled={pendingAction !== null && pendingAction !== "clawback"}>
             Clawback (FR-33.10)
           </Button>
         </div>
@@ -524,7 +576,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               <Input value={settingsKey} onChange={(e) => setSettingsKey(e.target.value)} placeholder="catalog.listing_blocked" />
             </Field>
           </div>
-          <Button variant="secondary" onClick={lookupSetting}>
+          <Button variant="secondary" onClick={lookupSetting} loading={pendingAction === "lookupSetting"} disabled={pendingAction !== null && pendingAction !== "lookupSetting"}>
             Look up
           </Button>
         </div>
@@ -541,7 +593,9 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               <Input value={settingsValue} onChange={(e) => setSettingsValue(e.target.value)} />
             </Field>
           </div>
-          <Button onClick={overrideSettingForSeller}>Override for this seller</Button>
+          <Button onClick={overrideSettingForSeller} loading={pendingAction === "overrideSetting"} disabled={pendingAction !== null && pendingAction !== "overrideSetting"}>
+            Override for this seller
+          </Button>
         </div>
       </DashCard>
 
@@ -554,7 +608,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
           <p className="text-sm text-ink">
             Current grant: <strong>{TIER_LABELS[dstudioGrant.tierOrder]}</strong>
             {dstudioGrant.expiresAt ? ` until ${new Date(dstudioGrant.expiresAt).toLocaleString()}` : " (no expiry set)"}{" "}
-            <Button variant="ghost" size="sm" onClick={revokeDStudioGrant}>
+            <Button variant="ghost" size="sm" onClick={revokeDStudioGrant} loading={pendingAction === "revokeDStudio"} disabled={pendingAction !== null && pendingAction !== "revokeDStudio"}>
               Revoke
             </Button>
           </p>
@@ -579,7 +633,9 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               <Input type="number" min={1} value={dstudioGrantDays} onChange={(e) => setDstudioGrantDays(e.target.value)} />
             </Field>
           </div>
-          <Button onClick={grantDStudioAccess}>Grant access</Button>
+          <Button onClick={grantDStudioAccess} loading={pendingAction === "grantDStudio"} disabled={pendingAction !== null && pendingAction !== "grantDStudio"}>
+            Grant access
+          </Button>
         </div>
       </DashCard>
 

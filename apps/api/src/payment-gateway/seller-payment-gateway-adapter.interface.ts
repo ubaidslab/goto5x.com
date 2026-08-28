@@ -33,6 +33,8 @@ export interface GatewayVerifyContext {
 export interface GatewayVerifyResult {
   verified: boolean;
   providerReference?: string;
+  /** The gateway's own reported transaction amount, when the provider's response includes one - lets a caller detect an amount mismatch before trusting `verified`. */
+  amount?: number;
 }
 
 export interface SellerPaymentGatewayAdapter {

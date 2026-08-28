@@ -20,6 +20,9 @@ export class EasypaisaGatewayAdapter implements SellerPaymentGatewayAdapter {
 
   async verifyPayment(context: GatewayVerifyContext): Promise<GatewayVerifyResult> {
     const apiBase = this.config.get<string>("PAYMENT_GATEWAY_EASYPAISA_API_BASE") ?? DEFAULT_API_BASE;
+    if (!apiBase.startsWith("https://")) {
+      throw new Error("Easypaisa gateway API base must be https:// - refusing to send credentials over an insecure connection.");
+    }
     const path = context.testMode ? "/account-info" : "/inquire";
     const res = await fetch(`${apiBase}${path}`, {
       method: context.testMode ? "GET" : "POST",
@@ -40,7 +43,7 @@ export class EasypaisaGatewayAdapter implements SellerPaymentGatewayAdapter {
     if (!res.ok) return { verified: false };
     if (context.testMode) return { verified: true };
 
-    const body = (await res.json()) as { responseCode: string; transactionId?: string };
-    return { verified: body.responseCode === "0000", providerReference: body.transactionId };
+    const body = (await res.json()) as { responseCode: string; transactionId?: string; amount?: number };
+    return { verified: body.responseCode === "0000", providerReference: body.transactionId, amount: body.amount !== undefined ? Number(body.amount) : undefined };
   }
 }

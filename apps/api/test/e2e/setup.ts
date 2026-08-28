@@ -15,6 +15,7 @@ import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedSubscriptionReadinessSettings } from "../../src/billing/subscription-readiness.seed";
 import { seedEmailTemplates } from "../../src/billing/email-templates.seed";
 import { seedWalletSettings } from "../../src/billing/wallet.seed";
+import { seedPlatformGatewaySettings } from "../../src/platform-gateway/platform-gateway.seed";
 import { seedModerationSettings } from "../../src/moderation/moderation.seed";
 import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
 import { seedGiftCardsSettings } from "../../src/gift-cards/gift-cards.seed";
@@ -80,7 +81,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       admin_audit_logs, platform_events, settings_values, settings_definitions,
       domains, store_theme_settings,
       seller_api_tokens, template_entitlements, external_api_clients, themes,
-      platform_gateway_connections,
+      platform_gateway_connections, platform_gateway_consumed_references, platform_gateway_flagged_verifications,
       collection_products, collections, store_navigation_menus,
       store_shipping_settings, store_tax_settings, store_payment_instructions, discount_codes,
       gift_card_redemptions, gift_cards, email_campaigns, customer_segments,
@@ -118,6 +119,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedOrderVerificationSettings(prisma);
   await seedBillingSettings(prisma);
   await seedWalletSettings(prisma);
+  await seedPlatformGatewaySettings(prisma);
   await seedTrustSafetySettings(prisma);
   await seedAccountSecuritySettings(prisma);
   await seedOnboardingSettings(prisma);

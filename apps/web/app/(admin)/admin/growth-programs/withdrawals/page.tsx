@@ -41,6 +41,7 @@ export default function AdminGrowthWithdrawalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [paymentRef, setPaymentRef] = useState<Record<string, string>>({});
+  const [actingId, setActingId] = useState<string | null>(null);
 
   function load() {
     adminApi
@@ -53,41 +54,53 @@ export default function AdminGrowthWithdrawalsPage() {
 
   async function approve(id: string) {
     setError(null);
+    setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/approve`, { notes: notes[id] || undefined });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't approve this payout.");
+    } finally {
+      setActingId(null);
     }
   }
 
   async function markProcessing(id: string) {
     setError(null);
+    setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/processing`);
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't mark this payout processing.");
+    } finally {
+      setActingId(null);
     }
   }
 
   async function markPaid(id: string) {
     setError(null);
+    setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/paid`, { paymentReference: paymentRef[id] || undefined });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't mark this payout paid.");
+    } finally {
+      setActingId(null);
     }
   }
 
   async function reject(id: string) {
     setError(null);
+    setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/reject`, { notes: notes[id] || undefined });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't reject this payout.");
+    } finally {
+      setActingId(null);
     }
   }
 
@@ -136,21 +149,21 @@ export default function AdminGrowthWithdrawalsPage() {
                 )}
                 {p.status === "requested" && (
                   <>
-                    <Button variant="secondary" size="sm" onClick={() => approve(p.id)}>
+                    <Button variant="secondary" size="sm" onClick={() => approve(p.id)} loading={actingId === p.id} disabled={actingId !== null && actingId !== p.id}>
                       Approve
                     </Button>
-                    <Button variant="danger" size="sm" onClick={() => reject(p.id)}>
+                    <Button variant="danger" size="sm" onClick={() => reject(p.id)} loading={actingId === p.id} disabled={actingId !== null && actingId !== p.id}>
                       Reject
                     </Button>
                   </>
                 )}
                 {p.status === "approved" && (
-                  <Button variant="secondary" size="sm" onClick={() => markProcessing(p.id)}>
+                  <Button variant="secondary" size="sm" onClick={() => markProcessing(p.id)} loading={actingId === p.id} disabled={actingId !== null && actingId !== p.id}>
                     Mark processing
                   </Button>
                 )}
                 {p.status === "processing" && (
-                  <Button variant="secondary" size="sm" onClick={() => markPaid(p.id)}>
+                  <Button variant="secondary" size="sm" onClick={() => markPaid(p.id)} loading={actingId === p.id} disabled={actingId !== null && actingId !== p.id}>
                     Mark paid
                   </Button>
                 )}

@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { PaymentGatewayProvider } from "@prisma/client";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
+import { JwtAccessPayload } from "../common/types";
 import { ConnectPlatformGatewayDto } from "./dto/connect-platform-gateway.dto";
 import { SetPlatformGatewayActiveDto } from "./dto/set-platform-gateway-active.dto";
 import { PlatformGatewayService } from "./platform-gateway.service";
@@ -34,5 +36,16 @@ export class AdminPlatformGatewayController {
   @Delete(":provider")
   remove(@Param("provider") provider: PaymentGatewayProvider) {
     return this.platformGateway.remove(provider);
+  }
+
+  /** Financial-safety hardening - the "flags for review" surface for amount mismatches and reconciliation mismatches. */
+  @Get("flagged")
+  listFlagged(@Query("includeResolved") includeResolved?: string) {
+    return this.platformGateway.listFlagged(includeResolved === "true");
+  }
+
+  @Post("flagged/:id/resolve")
+  resolveFlagged(@Param("id") id: string, @CurrentUser() user: JwtAccessPayload) {
+    return this.platformGateway.resolveFlagged(id, user.adminUserId!);
   }
 }

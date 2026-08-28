@@ -32,6 +32,9 @@ export default function AdminSupplierAdaptersPage() {
   const [displayName, setDisplayName] = useState("");
   const [configDrafts, setConfigDrafts] = useState<Record<string, string>>({});
   const [configErrors, setConfigErrors] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [savingConfigId, setSavingConfigId] = useState<string | null>(null);
 
   function load() {
     adminApi
@@ -48,6 +51,7 @@ export default function AdminSupplierAdaptersPage() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setCreating(true);
     try {
       await adminApi.post("/admin/supplier-adapters", { adapterType, displayName });
       setAdapterType("");
@@ -55,6 +59,8 @@ export default function AdminSupplierAdaptersPage() {
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't create this adapter.");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -69,8 +75,13 @@ export default function AdminSupplierAdaptersPage() {
       tone: adapter.isEnabled ? "danger" : "default",
     });
     if (!ok) return;
-    await adminApi.patch(`/admin/supplier-adapters/${adapter.id}`, { isEnabled: !adapter.isEnabled });
-    load();
+    setTogglingId(adapter.id);
+    try {
+      await adminApi.patch(`/admin/supplier-adapters/${adapter.id}`, { isEnabled: !adapter.isEnabled });
+      load();
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   async function saveConfig(adapterId: string) {
@@ -82,11 +93,14 @@ export default function AdminSupplierAdaptersPage() {
       setConfigErrors((prev) => ({ ...prev, [adapterId]: "Config must be valid JSON." }));
       return;
     }
+    setSavingConfigId(adapterId);
     try {
       await adminApi.patch(`/admin/supplier-adapters/${adapterId}`, { config });
       load();
     } catch (err) {
       setConfigErrors((prev) => ({ ...prev, [adapterId]: err instanceof AdminApiError ? err.message : "Couldn't save this config." }));
+    } finally {
+      setSavingConfigId(null);
     }
   }
 
@@ -108,7 +122,7 @@ export default function AdminSupplierAdaptersPage() {
               </p>
               <div className="flex items-center gap-2">
                 <Badge tone={a.isEnabled ? "success" : "neutral"}>{a.isEnabled ? "enabled" : "disabled"}</Badge>
-                <Button variant="ghost" size="sm" onClick={() => toggleEnabled(a)}>
+                <Button variant="ghost" size="sm" onClick={() => toggleEnabled(a)} loading={togglingId === a.id} disabled={togglingId !== null && togglingId !== a.id}>
                   {a.isEnabled ? "Disable" : "Enable"}
                 </Button>
               </div>
@@ -120,7 +134,7 @@ export default function AdminSupplierAdaptersPage() {
               onChange={(e) => setConfigDrafts((d) => ({ ...d, [a.id]: e.target.value }))}
               className="font-mono text-xs"
             />
-            <Button variant="secondary" size="sm" className="mt-2" onClick={() => saveConfig(a.id)}>
+            <Button variant="secondary" size="sm" className="mt-2" onClick={() => saveConfig(a.id)} loading={savingConfigId === a.id} disabled={savingConfigId !== null && savingConfigId !== a.id}>
               Save config
             </Button>
           </DashCard>
@@ -135,7 +149,9 @@ export default function AdminSupplierAdaptersPage() {
             <Field label="Display name">
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
             </Field>
-            <Button type="submit">Register</Button>
+            <Button type="submit" loading={creating}>
+              Register
+            </Button>
           </form>
         </DashCard>
       </div>

@@ -922,6 +922,50 @@ model PlatformGatewayConnection {
   @@map("platform_gateway_connections")
 }
 
+// Financial-safety hardening (founder-directed, post-build audit) - the
+// idempotency ledger for Platform Merchant Connection's auto-verify path.
+// A given (provider, reference) pair can be consumed by tryAutoVerify()
+// exactly once, ever - the unique constraint is the actual enforcement
+// mechanism (a DB-level guarantee, not just an application-level check),
+// so a race between two concurrent requests polling the same real-world
+// transaction can never both succeed.
+model PlatformGatewayConsumedReference {
+  id         String                 @id @default(uuid()) @db.Uuid
+  provider   PaymentGatewayProvider
+  reference  String
+  orderRef   String                 @map("order_ref")
+  amount     Decimal                @db.Decimal(12, 2)
+  currency   String
+  consumedAt DateTime               @default(now()) @map("consumed_at") @db.Timestamptz
+
+  @@unique([provider, reference])
+  @@map("platform_gateway_consumed_references")
+}
+
+// Financial-safety hardening - "flags for review, doesn't auto-activate"
+// for two cases: (1) the gateway's own poll response reports a different
+// amount than what was requested (amount_mismatch - the founder's
+// explicit requirement), and (2) the weekly reconciliation sweep re-polls
+// an already-consumed reference and the gateway no longer confirms it
+// (reconciliation_mismatch - e.g. a later reversal/chargeback). Never
+// auto-resolved; an admin reviews and marks it resolved explicitly.
+model PlatformGatewayFlaggedVerification {
+  id               String                 @id @default(uuid()) @db.Uuid
+  provider         PaymentGatewayProvider
+  orderRef         String                 @map("order_ref")
+  reference        String?
+  requestedAmount  Decimal                @map("requested_amount") @db.Decimal(12, 2)
+  gatewayAmount    Decimal?               @map("gateway_amount") @db.Decimal(12, 2)
+  currency         String
+  reason           String
+  flaggedAt        DateTime               @default(now()) @map("flagged_at") @db.Timestamptz
+  resolved         Boolean                @default(false)
+  resolvedAt       DateTime?              @map("resolved_at") @db.Timestamptz
+  resolvedByAdminId String?               @map("resolved_by_admin_id") @db.Uuid
+
+  @@map("platform_gateway_flagged_verifications")
+}
+
 enum NameConsistencyStatus {
   not_required
   pending

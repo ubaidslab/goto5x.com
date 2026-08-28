@@ -57,6 +57,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [decidingReview, setDecidingReview] = useState<string | null>(null);
+  const [decidingLinkId, setDecidingLinkId] = useState<string | null>(null);
 
   function load() {
     api
@@ -110,21 +111,27 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
 
   async function approve(linkId: string) {
     setError(null);
+    setDecidingLinkId(linkId);
     try {
       await api.patch(`/stores/${params.storeId}/supplier-links/${linkId}/approve`);
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't approve that link.");
+    } finally {
+      setDecidingLinkId(null);
     }
   }
 
   async function revoke(linkId: string) {
     setError(null);
+    setDecidingLinkId(linkId);
     try {
       await api.patch(`/stores/${params.storeId}/supplier-links/${linkId}/revoke`);
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't revoke that link.");
+    } finally {
+      setDecidingLinkId(null);
     }
   }
 
@@ -172,12 +179,24 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
                 <div className="flex items-center gap-3">
                   <Badge tone={statusTone[link.status]}>{statusLabel[link.status]}</Badge>
                   {link.status === "pending_seller_review" && (
-                    <Button variant="secondary" size="sm" onClick={() => approve(link.id)}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => approve(link.id)}
+                      loading={decidingLinkId === link.id}
+                      disabled={decidingLinkId !== null && decidingLinkId !== link.id}
+                    >
                       Approve
                     </Button>
                   )}
                   {link.status === "active" && (
-                    <Button variant="ghost" size="sm" onClick={() => revoke(link.id)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => revoke(link.id)}
+                      loading={decidingLinkId === link.id}
+                      disabled={decidingLinkId !== null && decidingLinkId !== link.id}
+                    >
                       Revoke
                     </Button>
                   )}

@@ -27,6 +27,19 @@ interface PlatformGatewayConnection {
   connectedAt: string;
 }
 
+interface FlaggedVerification {
+  id: string;
+  provider: Provider;
+  orderRef: string;
+  reference: string | null;
+  requestedAmount: string;
+  gatewayAmount: string | null;
+  currency: string;
+  reason: string;
+  flaggedAt: string;
+  resolved: boolean;
+}
+
 /**
  * Founder-directed scope addition - "Platform Merchant Connection." UZEYN
  * itself as the connected merchant (Module 62's exact adapter
@@ -41,6 +54,7 @@ interface PlatformGatewayConnection {
 export default function AdminPlatformGatewayPage() {
   const confirm = useConfirm();
   const [connections, setConnections] = useState<PlatformGatewayConnection[] | null>(null);
+  const [flagged, setFlagged] = useState<FlaggedVerification[] | null>(null);
   const [provider, setProvider] = useState<Provider>("easypaisa");
   const [merchantId, setMerchantId] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -48,12 +62,21 @@ export default function AdminPlatformGatewayPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, string>>({});
+  const [connecting, setConnecting] = useState(false);
+  const [testingProvider, setTestingProvider] = useState<Provider | null>(null);
+  const [togglingProvider, setTogglingProvider] = useState<Provider | null>(null);
+  const [removingProvider, setRemovingProvider] = useState<Provider | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   function load() {
     adminApi
       .get<PlatformGatewayConnection[]>("/admin/platform-gateway")
       .then(setConnections)
       .catch((err) => setError(err instanceof AdminApiError ? err.message : "Couldn't load platform gateway connections."));
+    adminApi
+      .get<FlaggedVerification[]>("/admin/platform-gateway/flagged")
+      .then(setFlagged)
+      .catch((err) => setError(err instanceof AdminApiError ? err.message : "Couldn't load flagged verifications."));
   }
 
   useEffect(load, []);
@@ -62,6 +85,7 @@ export default function AdminPlatformGatewayPage() {
     e.preventDefault();
     setError(null);
     setStatus(null);
+    setConnecting(true);
     try {
       await adminApi.post("/admin/platform-gateway", {
         provider,
@@ -76,6 +100,8 @@ export default function AdminPlatformGatewayPage() {
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't save this connection.");
+    } finally {
+      setConnecting(false);
     }
   }
 
@@ -91,21 +117,27 @@ export default function AdminPlatformGatewayPage() {
       if (!ok) return;
     }
     setError(null);
+    setTogglingProvider(connection.provider);
     try {
       await adminApi.patch(`/admin/platform-gateway/${connection.provider}/active`, { isActive: !connection.isActive });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't update this connection.");
+    } finally {
+      setTogglingProvider(null);
     }
   }
 
   async function testConnection(connection: PlatformGatewayConnection) {
+    setTestingProvider(connection.provider);
     setTestResult((prev) => ({ ...prev, [connection.provider]: "Testing..." }));
     try {
       const result = await adminApi.post<{ success: boolean }>(`/admin/platform-gateway/${connection.provider}/test`);
       setTestResult((prev) => ({ ...prev, [connection.provider]: result.success ? "Connection OK" : "Test failed" }));
     } catch (err) {
       setTestResult((prev) => ({ ...prev, [connection.provider]: err instanceof AdminApiError ? err.message : "Test failed." }));
+    } finally {
+      setTestingProvider(null);
     }
   }
 
@@ -117,11 +149,37 @@ export default function AdminPlatformGatewayPage() {
       tone: "danger",
     });
     if (!ok) return;
-    await adminApi.delete(`/admin/platform-gateway/${connection.provider}`);
-    load();
+    setRemovingProvider(connection.provider);
+    try {
+      await adminApi.delete(`/admin/platform-gateway/${connection.provider}`);
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't remove this connection.");
+    } finally {
+      setRemovingProvider(null);
+    }
   }
 
-  if (!connections) return <PageSpinner />;
+  async function resolveFlag(item: FlaggedVerification) {
+    const ok = await confirm({
+      title: "Mark this flag as resolved?",
+      description: "Confirms you've reviewed this mismatch. It stops appearing in the active flags list, but the record itself is kept permanently.",
+      confirmLabel: "Mark resolved",
+      tone: "default",
+    });
+    if (!ok) return;
+    setResolvingId(item.id);
+    try {
+      await adminApi.post(`/admin/platform-gateway/flagged/${item.id}/resolve`);
+      load();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Couldn't resolve this flag.");
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  if (!connections || !flagged) return <PageSpinner />;
 
   return (
     <div>
@@ -154,13 +212,25 @@ export default function AdminPlatformGatewayPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => testConnection(c)}>
+                    <Button variant="ghost" size="sm" onClick={() => testConnection(c)} loading={testingProvider === c.provider}>
                       Test connection
                     </Button>
-                    <Button variant={c.isActive ? "secondary" : "primary"} size="sm" onClick={() => toggleActive(c)}>
+                    <Button
+                      variant={c.isActive ? "secondary" : "primary"}
+                      size="sm"
+                      onClick={() => toggleActive(c)}
+                      loading={togglingProvider === c.provider}
+                      disabled={testingProvider === c.provider || removingProvider === c.provider}
+                    >
                       {c.isActive ? "Deactivate" : "Activate"}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => remove(c)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(c)}
+                      loading={removingProvider === c.provider}
+                      disabled={testingProvider === c.provider || togglingProvider === c.provider}
+                    >
                       Remove
                     </Button>
                   </div>
@@ -191,8 +261,38 @@ export default function AdminPlatformGatewayPage() {
             <Field label="API secret (optional)">
               <Input value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} type="password" />
             </Field>
-            <Button type="submit">Save connection</Button>
+            <Button type="submit" loading={connecting}>
+              Save connection
+            </Button>
           </form>
+        </DashCard>
+
+        <DashCard>
+          <DashCardHeader title="Flagged for review" />
+          {flagged.length === 0 ? (
+            <p className="py-3 text-sm text-ink-muted">Nothing flagged. An amount mismatch or a failed weekly reconciliation re-check would show up here - neither ever auto-activates or auto-corrects.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {flagged.map((f) => (
+                <div key={f.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium text-ink">
+                      {PROVIDER_LABEL[f.provider]}
+                      <Badge tone="danger">{f.reason === "amount_mismatch" ? "amount mismatch" : "reconciliation mismatch"}</Badge>
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      Order {f.orderRef} · requested {f.requestedAmount} {f.currency}
+                      {f.gatewayAmount && ` · gateway reported ${f.gatewayAmount} ${f.currency}`}
+                      {f.reference && ` · reference ${f.reference}`} · flagged {new Date(f.flaggedAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => resolveFlag(f)} loading={resolvingId === f.id}>
+                    Mark resolved
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </DashCard>
       </div>
     </div>

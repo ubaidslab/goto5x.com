@@ -3,7 +3,10 @@ import { BankTransferGatewayAdapter } from "../payment-gateway/adapters/bank-tra
 import { EasypaisaGatewayAdapter } from "../payment-gateway/adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "../payment-gateway/adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "../payment-gateway/adapters/raast-gateway.adapter";
+import { SettingsModule } from "../settings-registry/settings.module";
 import { AdminPlatformGatewayController } from "./admin-platform-gateway.controller";
+import { PlatformGatewayReconciliationScheduler } from "./platform-gateway-reconciliation.scheduler";
+import { PlatformGatewayReconciliationService } from "./platform-gateway-reconciliation.service";
 import { PlatformGatewayService } from "./platform-gateway.service";
 
 /**
@@ -19,8 +22,17 @@ import { PlatformGatewayService } from "./platform-gateway.service";
  * duplicated state).
  */
 @Module({
+  imports: [SettingsModule],
   controllers: [AdminPlatformGatewayController],
-  providers: [RaastGatewayAdapter, EasypaisaGatewayAdapter, JazzCashGatewayAdapter, BankTransferGatewayAdapter, PlatformGatewayService],
-  exports: [PlatformGatewayService],
+  providers: [
+    RaastGatewayAdapter,
+    EasypaisaGatewayAdapter,
+    JazzCashGatewayAdapter,
+    BankTransferGatewayAdapter,
+    PlatformGatewayService,
+    PlatformGatewayReconciliationService,
+    PlatformGatewayReconciliationScheduler,
+  ],
+  exports: [PlatformGatewayService, PlatformGatewayReconciliationService],
 })
 export class PlatformGatewayModule {}

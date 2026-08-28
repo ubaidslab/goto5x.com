@@ -9,6 +9,7 @@ import { BankTransferGatewayAdapter } from "../../src/payment-gateway/adapters/b
 import { EasypaisaGatewayAdapter } from "../../src/payment-gateway/adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "../../src/payment-gateway/adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "../../src/payment-gateway/adapters/raast-gateway.adapter";
+import { PlatformGatewayReconciliationService } from "../../src/platform-gateway/platform-gateway-reconciliation.service";
 import { resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -25,6 +26,7 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
   let app: INestApplication;
   let superuser: PrismaClient;
   let fakeEasypaisa: jest.Mocked<EasypaisaGatewayAdapter>;
+  let reconciliation: PlatformGatewayReconciliationService;
 
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
@@ -50,6 +52,7 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
+    reconciliation = moduleRef.get(PlatformGatewayReconciliationService);
   });
 
   afterAll(async () => {
@@ -244,5 +247,160 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
 
     const list = await request(app.getHttpServer()).get("/admin/platform-gateway").set("Authorization", `Bearer ${adminToken}`);
     expect(list.body).toHaveLength(0);
+  });
+
+  describe("financial-safety hardening (founder-directed, post-build audit)", () => {
+    it("idempotency: the same reference can never auto-verify a second, different request", async () => {
+      const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-idem@example.com");
+      await request(app.getHttpServer())
+        .post("/admin/platform-gateway")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ provider: "easypaisa", apiKey: "real-api-key" });
+      await request(app.getHttpServer())
+        .patch("/admin/platform-gateway/easypaisa/active")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ isActive: true });
+      fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-REUSED" });
+
+      const theme = await superuser.theme.create({ data: { name: "Reused Reference Template", tier: "marketplace", price: 1999, isActive: true } });
+      const { token, sellerId } = await signupLoginSeller("platform-gw-idem@example.com", "platform-gw-idem-store");
+
+      // First submission (plan-fee payment) legitimately consumes the reference.
+      const first = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ reference: "EP-TXN-REUSED" });
+      expect(first.status).toBe(201);
+      expect(first.body.autoVerified).toBe(true);
+
+      // Second submission (a DIFFERENT purchase) reuses the same real-world
+      // reference - must NOT also auto-grant, even though the gateway would
+      // still happily report "verified: true" for that same transaction.
+      const second = await request(app.getHttpServer())
+        .post("/sellers/me/template-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: theme.id, reference: "EP-TXN-REUSED" });
+      expect(second.status).toBe(201);
+      expect(second.body.autoVerified).toBe(false);
+      expect(second.body.request.status).toBe("pending");
+
+      const entitlement = await superuser.templateEntitlement.findUnique({ where: { sellerId_themeId: { sellerId, themeId: theme.id } } });
+      expect(entitlement).toBeNull();
+
+      const consumed = await superuser.platformGatewayConsumedReference.findMany({ where: { reference: "EP-TXN-REUSED" } });
+      expect(consumed).toHaveLength(1); // exactly one grant, ever, for this reference
+    });
+
+    it("amount mismatch: a gateway-reported amount that doesn't match the requested amount is flagged, never auto-activated", async () => {
+      const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-mismatch@example.com");
+      await request(app.getHttpServer())
+        .post("/admin/platform-gateway")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ provider: "easypaisa", apiKey: "real-api-key" });
+      await request(app.getHttpServer())
+        .patch("/admin/platform-gateway/easypaisa/active")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ isActive: true });
+      // Gateway reports the transaction as verified, but for a materially different amount.
+      fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-MISMATCH", amount: 1 });
+
+      const { token } = await signupLoginSeller("platform-gw-mismatch@example.com", "platform-gw-mismatch-store");
+      const res = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ reference: "EP-TXN-MISMATCH" });
+      expect(res.status).toBe(201);
+      expect(res.body.autoVerified).toBe(false);
+      expect(res.body.request.status).toBe("pending");
+
+      const flags = await superuser.platformGatewayFlaggedVerification.findMany({ where: { reason: "amount_mismatch" } });
+      expect(flags).toHaveLength(1);
+      expect(flags[0].resolved).toBe(false);
+      expect(Number(flags[0].gatewayAmount)).toBe(1);
+
+      const consumed = await superuser.platformGatewayConsumedReference.findMany({ where: { reference: "EP-TXN-MISMATCH" } });
+      expect(consumed).toHaveLength(0); // never claimed - the request is still open to a legitimate future attempt
+
+      const listFlagged = await request(app.getHttpServer()).get("/admin/platform-gateway/flagged").set("Authorization", `Bearer ${adminToken}`);
+      expect(listFlagged.status).toBe(200);
+      expect(listFlagged.body).toHaveLength(1);
+
+      const resolve = await request(app.getHttpServer())
+        .post(`/admin/platform-gateway/flagged/${flags[0].id}/resolve`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(resolve.status).toBe(201);
+      const afterResolve = await superuser.platformGatewayFlaggedVerification.findUniqueOrThrow({ where: { id: flags[0].id } });
+      expect(afterResolve.resolved).toBe(true);
+      expect(afterResolve.resolvedByAdminId).not.toBeNull();
+    });
+
+    it("timeout/failure-safe fallback: a thrown gateway error never surfaces as a 500 - falls back to the unchanged manual flow", async () => {
+      const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-timeout@example.com");
+      await request(app.getHttpServer())
+        .post("/admin/platform-gateway")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ provider: "easypaisa", apiKey: "real-api-key" });
+      await request(app.getHttpServer())
+        .patch("/admin/platform-gateway/easypaisa/active")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ isActive: true });
+      fakeEasypaisa.verifyPayment.mockRejectedValue(new Error("The operation was aborted due to timeout"));
+
+      const { token } = await signupLoginSeller("platform-gw-timeout@example.com", "platform-gw-timeout-store");
+      const res = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ reference: "will-time-out" });
+      expect(res.status).toBe(201); // never a 500 - the seller's submission itself still succeeds
+      expect(res.body.autoVerified).toBe(false);
+      expect(res.body.request.status).toBe("pending");
+
+      // Still resolvable the old way.
+      const adminVerify = await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${res.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(adminVerify.status).toBe(201);
+    });
+
+    it("weekly reconciliation sweep: re-polling an auto-verified reference that the gateway no longer confirms gets flagged, not auto-corrected", async () => {
+      const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-reconcile@example.com");
+      await request(app.getHttpServer())
+        .post("/admin/platform-gateway")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ provider: "easypaisa", apiKey: "real-api-key" });
+      await request(app.getHttpServer())
+        .patch("/admin/platform-gateway/easypaisa/active")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ isActive: true });
+      fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-RECON" });
+
+      const { token, sellerId } = await signupLoginSeller("platform-gw-reconcile@example.com", "platform-gw-reconcile-store");
+      const initial = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ reference: "EP-TXN-RECON" });
+      expect(initial.body.autoVerified).toBe(true);
+
+      const subscriptionBefore = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
+
+      // The gateway later reverses/charges back the transaction - a
+      // re-poll during the weekly sweep must now report it as no longer verified.
+      fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: false });
+
+      const { checked } = await reconciliation.runSweep();
+      expect(checked).toBe(1);
+
+      const flags = await superuser.platformGatewayFlaggedVerification.findMany({ where: { reason: "reconciliation_mismatch" } });
+      expect(flags).toHaveLength(1);
+
+      // Never auto-corrected - the subscription's already-granted period is untouched.
+      const subscriptionAfter = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
+      expect(subscriptionAfter.currentPeriodEnd).toEqual(subscriptionBefore.currentPeriodEnd);
+
+      // A second sweep run must not re-flag the same still-unresolved reference.
+      await reconciliation.runSweep();
+      const flagsAfterSecondSweep = await superuser.platformGatewayFlaggedVerification.findMany({ where: { reason: "reconciliation_mismatch" } });
+      expect(flagsAfterSecondSweep).toHaveLength(1);
+    });
   });
 });

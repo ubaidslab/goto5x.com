@@ -82,6 +82,8 @@ export default function AdminTrustSafetyPage() {
   const [reviewQueue, setReviewQueue] = useState<PaymentReviewItem[]>([]);
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [newVersion, setNewVersion] = useState("");
+  const [decidingStoreId, setDecidingStoreId] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   function load() {
     adminApi.get<RateFlag[]>("/admin/trust-safety/monitors/cancellation-rate").then(setCancellationRate).catch(() => {});
@@ -99,15 +101,25 @@ export default function AdminTrustSafetyPage() {
   useEffect(load, []);
 
   async function decideReview(storeId: string, decision: "approve" | "reject") {
-    await adminApi.post(`/admin/trust-safety/payment-review/${storeId}/${decision}`, {});
-    load();
+    setDecidingStoreId(storeId);
+    try {
+      await adminApi.post(`/admin/trust-safety/payment-review/${storeId}/${decision}`, {});
+      load();
+    } finally {
+      setDecidingStoreId(null);
+    }
   }
 
   async function publishVersion(e: React.FormEvent) {
     e.preventDefault();
-    await adminApi.post("/admin/trust-safety/agreement-versions", { version: newVersion });
-    setNewVersion("");
-    load();
+    setPublishing(true);
+    try {
+      await adminApi.post("/admin/trust-safety/agreement-versions", { version: newVersion });
+      setNewVersion("");
+      load();
+    } finally {
+      setPublishing(false);
+    }
   }
 
   return (
@@ -129,10 +141,22 @@ export default function AdminTrustSafetyPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => decideReview(item.storeId, "approve")}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => decideReview(item.storeId, "approve")}
+                    loading={decidingStoreId === item.storeId}
+                    disabled={decidingStoreId !== null && decidingStoreId !== item.storeId}
+                  >
                     Approve
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => decideReview(item.storeId, "reject")}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => decideReview(item.storeId, "reject")}
+                    loading={decidingStoreId === item.storeId}
+                    disabled={decidingStoreId !== null && decidingStoreId !== item.storeId}
+                  >
                     Reject
                   </Button>
                 </div>
@@ -184,7 +208,9 @@ export default function AdminTrustSafetyPage() {
           <div className="flex-1">
             <Input placeholder="New version, e.g. 1.1" value={newVersion} onChange={(e) => setNewVersion(e.target.value)} required />
           </div>
-          <Button type="submit">Publish new version</Button>
+          <Button type="submit" loading={publishing}>
+            Publish new version
+          </Button>
         </form>
       </DashCard>
     </div>

@@ -43,6 +43,8 @@ export default function AdminCommissionInvoicesPage() {
   const [waiveSellerId, setWaiveSellerId] = useState("");
   const [waiveOrderId, setWaiveOrderId] = useState("");
   const [waiveAmount, setWaiveAmount] = useState("");
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+  const [waiving, setWaiving] = useState(false);
 
   function load() {
     adminApi
@@ -62,11 +64,14 @@ export default function AdminCommissionInvoicesPage() {
       confirmLabel: "Mark paid",
     });
     if (!ok) return;
+    setMarkingPaidId(invoice.id);
     try {
       await adminApi.post(`/admin/invoices/${invoice.id}/mark-paid`);
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't mark this invoice paid.");
+    } finally {
+      setMarkingPaidId(null);
     }
   }
 
@@ -81,6 +86,7 @@ export default function AdminCommissionInvoicesPage() {
       tone: "danger",
     });
     if (!ok) return;
+    setWaiving(true);
     try {
       await adminApi.post("/admin/invoices/waive-commission", {
         sellerId: waiveSellerId,
@@ -93,6 +99,8 @@ export default function AdminCommissionInvoicesPage() {
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't waive this commission.");
+    } finally {
+      setWaiving(false);
     }
   }
 
@@ -125,7 +133,7 @@ export default function AdminCommissionInvoicesPage() {
               </span>
               <Badge tone={statusTone[i.status]}>{i.status}</Badge>
               {i.status !== "paid" && (
-                <Button variant="secondary" size="sm" onClick={() => markPaid(i)}>
+                <Button variant="secondary" size="sm" onClick={() => markPaid(i)} loading={markingPaidId === i.id} disabled={markingPaidId !== null && markingPaidId !== i.id}>
                   Mark paid
                 </Button>
               )}
@@ -146,7 +154,7 @@ export default function AdminCommissionInvoicesPage() {
           <Field label="Amount">
             <Input type="number" min={0} step="0.01" value={waiveAmount} onChange={(e) => setWaiveAmount(e.target.value)} required />
           </Field>
-          <Button type="submit" variant="danger">
+          <Button type="submit" variant="danger" loading={waiving}>
             Waive
           </Button>
         </form>

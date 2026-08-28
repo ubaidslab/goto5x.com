@@ -77,6 +77,8 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [gatewayTestResults, setGatewayTestResults] = useState<Record<string, boolean>>({});
   const [testingGateway, setTestingGateway] = useState<string | null>(null);
+  const [togglingGateway, setTogglingGateway] = useState<string | null>(null);
+  const [removingGateway, setRemovingGateway] = useState<string | null>(null);
 
   function loadGatewayConnections() {
     api
@@ -144,11 +146,14 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
 
   async function setGatewayActive(provider: PaymentGatewayProvider, isActive: boolean) {
     setGatewayError(null);
+    setTogglingGateway(provider);
     try {
       await api.patch(`/stores/${params.storeId}/payment-gateway/${provider}/active`, { isActive });
       loadGatewayConnections();
     } catch (err) {
       setGatewayError(err instanceof ApiError ? err.message : "Couldn't update that connection.");
+    } finally {
+      setTogglingGateway(null);
     }
   }
 
@@ -167,11 +172,14 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
 
   async function removeGatewayConnection(provider: PaymentGatewayProvider) {
     setGatewayError(null);
+    setRemovingGateway(provider);
     try {
       await api.delete(`/stores/${params.storeId}/payment-gateway/${provider}`);
       loadGatewayConnections();
     } catch (err) {
       setGatewayError(err instanceof ApiError ? err.message : "Couldn't remove that connection.");
+    } finally {
+      setRemovingGateway(null);
     }
   }
 
@@ -208,6 +216,7 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                         <input
                           type="checkbox"
                           checked={c.isActive}
+                          disabled={togglingGateway === c.provider}
                           onChange={(e) => setGatewayActive(c.provider, e.target.checked)}
                         />
                         Active
@@ -217,11 +226,19 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                         variant="ghost"
                         size="sm"
                         loading={testingGateway === c.provider}
+                        disabled={togglingGateway === c.provider || removingGateway === c.provider}
                         onClick={() => testGatewayConnection(c.provider)}
                       >
                         Test
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeGatewayConnection(c.provider)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        loading={removingGateway === c.provider}
+                        disabled={testingGateway === c.provider || togglingGateway === c.provider}
+                        onClick={() => removeGatewayConnection(c.provider)}
+                      >
                         Remove
                       </Button>
                     </div>

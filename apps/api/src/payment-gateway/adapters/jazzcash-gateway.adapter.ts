@@ -20,6 +20,9 @@ export class JazzCashGatewayAdapter implements SellerPaymentGatewayAdapter {
 
   async verifyPayment(context: GatewayVerifyContext): Promise<GatewayVerifyResult> {
     const apiBase = this.config.get<string>("PAYMENT_GATEWAY_JAZZCASH_API_BASE") ?? DEFAULT_API_BASE;
+    if (!apiBase.startsWith("https://")) {
+      throw new Error("JazzCash gateway API base must be https:// - refusing to send credentials over an insecure connection.");
+    }
     const path = context.testMode ? "/Merchant/AccountInfo" : "/Payments/StatusInquiry";
     const res = await fetch(`${apiBase}${path}`, {
       method: context.testMode ? "GET" : "POST",
@@ -40,7 +43,7 @@ export class JazzCashGatewayAdapter implements SellerPaymentGatewayAdapter {
     if (!res.ok) return { verified: false };
     if (context.testMode) return { verified: true };
 
-    const body = (await res.json()) as { pp_ResponseCode: string; pp_RetreivalReferenceNo?: string };
-    return { verified: body.pp_ResponseCode === "000", providerReference: body.pp_RetreivalReferenceNo };
+    const body = (await res.json()) as { pp_ResponseCode: string; pp_RetreivalReferenceNo?: string; pp_Amount?: number };
+    return { verified: body.pp_ResponseCode === "000", providerReference: body.pp_RetreivalReferenceNo, amount: body.pp_Amount !== undefined ? Number(body.pp_Amount) : undefined };
   }
 }

@@ -26,6 +26,9 @@ export class RaastGatewayAdapter implements SellerPaymentGatewayAdapter {
 
   async verifyPayment(context: GatewayVerifyContext): Promise<GatewayVerifyResult> {
     const apiBase = this.config.get<string>("PAYMENT_GATEWAY_RAAST_API_BASE") ?? DEFAULT_API_BASE;
+    if (!apiBase.startsWith("https://")) {
+      throw new Error("Raast gateway API base must be https:// - refusing to send credentials over an insecure connection.");
+    }
     const path = context.testMode ? "/merchant/account" : "/payments/verify";
     const res = await fetch(`${apiBase}${path}`, {
       method: context.testMode ? "GET" : "POST",
@@ -49,7 +52,7 @@ export class RaastGatewayAdapter implements SellerPaymentGatewayAdapter {
     if (!res.ok) return { verified: false };
     if (context.testMode) return { verified: true };
 
-    const body = (await res.json()) as { status: string; reference?: string };
-    return { verified: body.status === "completed", providerReference: body.reference };
+    const body = (await res.json()) as { status: string; reference?: string; amount?: number };
+    return { verified: body.status === "completed", providerReference: body.reference, amount: body.amount !== undefined ? Number(body.amount) : undefined };
   }
 }

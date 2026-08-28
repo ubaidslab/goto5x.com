@@ -18,6 +18,8 @@ import { GatewayHealthService } from "../payment-gateway/gateway-health.service"
 import { GATEWAY_HEALTH_QUEUE_NAME } from "../payment-gateway/gateway-health.queue";
 import { SupportTicketSlaService } from "../support-tickets/support-ticket-sla.service";
 import { SUPPORT_TICKET_SLA_QUEUE_NAME } from "../support-tickets/support-ticket-sla.queue";
+import { PlatformGatewayReconciliationService } from "../platform-gateway/platform-gateway-reconciliation.service";
+import { PLATFORM_GATEWAY_RECONCILIATION_QUEUE_NAME } from "../platform-gateway/platform-gateway-reconciliation.queue";
 import { ProductImportService } from "../data-portability/product-import.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "../data-portability/product-import.queue";
 import { DomainVerificationService } from "../domains/domain-verification.service";
@@ -61,6 +63,7 @@ async function main() {
   const missingTrackingAlert = appContext.get(MissingTrackingAlertService);
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const walletReconciliation = appContext.get(WalletReconciliationService);
+  const platformGatewayReconciliation = appContext.get(PlatformGatewayReconciliationService);
   const retention = appContext.get(RetentionService);
   const renewalReminders = appContext.get(RenewalRemindersService);
   const subscriptionsForCycleSweep = appContext.get(SubscriptionsService);
@@ -196,6 +199,21 @@ async function main() {
   walletReconciliationWorker.on("failed", (job, err) => {
     // eslint-disable-next-line no-console
     console.error(`wallet-reconciliation job ${job?.id} failed:`, err);
+  });
+
+  // Financial-safety hardening (founder-directed, post-build audit) - the
+  // weekly Platform Merchant Connection reconciliation sweep: re-polls
+  // recently auto-verified gateway references to confirm they're still
+  // confirmed, flagging (never auto-correcting) any that no longer are.
+  const platformGatewayReconciliationWorker = new Worker(
+    PLATFORM_GATEWAY_RECONCILIATION_QUEUE_NAME,
+    async () => platformGatewayReconciliation.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  platformGatewayReconciliationWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`platform-gateway-reconciliation job ${job?.id} failed:`, err);
   });
 
   // Module 14 (FR-23.2) - dormant-store lifecycle sweep.
@@ -377,7 +395,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening).",
   );
 
   const shutdown = async () => {
@@ -388,6 +406,7 @@ async function main() {
     await planFeeDebitWorker.close();
     await planFeeRenewalExportWorker.close();
     await walletReconciliationWorker.close();
+    await platformGatewayReconciliationWorker.close();
     await dormantStoreWorker.close();
     await retentionWorker.close();
     await renewalRemindersWorker.close();

@@ -47,6 +47,7 @@ export default function AdminVerificationPage() {
   const [reReview, setReReview] = useState<ReReviewStore[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
 
   function load() {
     adminApi.get<Application[]>("/admin/verification/applications").then(setQueue).catch(() => {});
@@ -56,13 +57,23 @@ export default function AdminVerificationPage() {
   useEffect(load, []);
 
   async function decide(applicationId: string, decision: "approve" | "reject") {
-    await adminApi.post(`/admin/verification/applications/${applicationId}/${decision}`, { notes: notes[applicationId] });
-    load();
+    setActingId(applicationId);
+    try {
+      await adminApi.post(`/admin/verification/applications/${applicationId}/${decision}`, { notes: notes[applicationId] });
+      load();
+    } finally {
+      setActingId(null);
+    }
   }
 
   async function clearReReview(storeId: string) {
-    await adminApi.post(`/admin/verification/stores/${storeId}/re-review/clear`, { notes: notes[storeId] });
-    load();
+    setActingId(storeId);
+    try {
+      await adminApi.post(`/admin/verification/stores/${storeId}/re-review/clear`, { notes: notes[storeId] });
+      load();
+    } finally {
+      setActingId(null);
+    }
   }
 
   /** Confirming a flagged re-review as "revoke" is the same standing revoke action FR-35.5 gives admins any time - it requires a reason. */
@@ -73,8 +84,13 @@ export default function AdminVerificationPage() {
       setError("Enter a reason before revoking.");
       return;
     }
-    await adminApi.post(`/admin/verification/stores/${storeId}/revoke`, { notes: reason });
-    load();
+    setActingId(storeId);
+    try {
+      await adminApi.post(`/admin/verification/stores/${storeId}/revoke`, { notes: reason });
+      load();
+    } finally {
+      setActingId(null);
+    }
   }
 
   return (
@@ -112,10 +128,10 @@ export default function AdminVerificationPage() {
                   rows={2}
                 />
                 <div className="mt-2 flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => decide(app.id, "approve")}>
+                  <Button variant="secondary" size="sm" onClick={() => decide(app.id, "approve")} loading={actingId === app.id} disabled={actingId !== null && actingId !== app.id}>
                     Approve
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => decide(app.id, "reject")}>
+                  <Button variant="danger" size="sm" onClick={() => decide(app.id, "reject")} loading={actingId === app.id} disabled={actingId !== null && actingId !== app.id}>
                     Reject (refunds fee)
                   </Button>
                 </div>
@@ -145,10 +161,10 @@ export default function AdminVerificationPage() {
                   rows={2}
                 />
                 <div className="mt-2 flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => clearReReview(store.id)}>
+                  <Button variant="secondary" size="sm" onClick={() => clearReReview(store.id)} loading={actingId === store.id} disabled={actingId !== null && actingId !== store.id}>
                     Clear - keep verified
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => confirmRevoke(store.id)}>
+                  <Button variant="danger" size="sm" onClick={() => confirmRevoke(store.id)} loading={actingId === store.id} disabled={actingId !== null && actingId !== store.id}>
                     Confirm - revoke
                   </Button>
                 </div>

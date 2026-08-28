@@ -39,6 +39,9 @@ export default function AdminModerationPage() {
   const [lookupProductId, setLookupProductId] = useState("");
   const [lookupNotes, setLookupNotes] = useState("");
   const [lookupResult, setLookupResult] = useState<string | null>(null);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [bulkDeciding, setBulkDeciding] = useState<"approve" | "reject" | null>(null);
+  const [lookupActing, setLookupActing] = useState<"remove" | "restore" | null>(null);
 
   function load() {
     adminApi
@@ -51,11 +54,14 @@ export default function AdminModerationPage() {
 
   async function decide(productId: string, decision: "approve" | "reject") {
     setError(null);
+    setDecidingId(productId);
     try {
       await adminApi.post(`/admin/moderation/queue/${productId}/${decision}`, { notes: notes[productId] ?? "" });
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't record that decision.");
+    } finally {
+      setDecidingId(null);
     }
   }
 
@@ -82,6 +88,7 @@ export default function AdminModerationPage() {
       tone: decision === "reject" ? "danger" : "default",
     });
     if (!ok) return;
+    setBulkDeciding(decision);
     try {
       const body = await adminApi.post<{ failed?: string[] }>("/admin/moderation/queue/bulk-decide", {
         productIds: [...selected],
@@ -95,6 +102,8 @@ export default function AdminModerationPage() {
       }
     } catch {
       setError(`Some products couldn't be ${decision === "approve" ? "approved" : "rejected"}.`);
+    } finally {
+      setBulkDeciding(null);
     }
     setSelected(new Set());
     setBulkNotes("");
@@ -123,11 +132,14 @@ export default function AdminModerationPage() {
       });
       if (!ok) return;
     }
+    setLookupActing(action);
     try {
       const body = await adminApi.post<{ moderationStatus: string }>(`/admin/products/${lookupProductId.trim()}/${action}`, { notes: lookupNotes });
       setLookupResult(`Product ${lookupProductId.trim()} is now: ${body.moderationStatus}`);
     } catch (err) {
       setLookupResult(err instanceof AdminApiError ? err.message : `Couldn't ${action} that product.`);
+    } finally {
+      setLookupActing(null);
     }
   }
 
@@ -155,10 +167,10 @@ export default function AdminModerationPage() {
               <Input value={lookupNotes} onChange={(e) => setLookupNotes(e.target.value)} />
             </Field>
           </div>
-          <Button variant="danger" onClick={() => forceRemoveOrRestore("remove")}>
+          <Button variant="danger" onClick={() => forceRemoveOrRestore("remove")} loading={lookupActing === "remove"} disabled={lookupActing !== null && lookupActing !== "remove"}>
             Remove
           </Button>
-          <Button variant="secondary" onClick={() => forceRemoveOrRestore("restore")}>
+          <Button variant="secondary" onClick={() => forceRemoveOrRestore("restore")} loading={lookupActing === "restore"} disabled={lookupActing !== null && lookupActing !== "restore"}>
             Restore
           </Button>
         </div>
@@ -177,10 +189,19 @@ export default function AdminModerationPage() {
                 <Input value={bulkNotes} onChange={(e) => setBulkNotes(e.target.value)} placeholder="Reviewer notes" />
               </Field>
             </div>
-            <Button disabled={selected.size === 0} onClick={() => decideSelected("approve")}>
+            <Button
+              disabled={selected.size === 0 || bulkDeciding !== null}
+              loading={bulkDeciding === "approve"}
+              onClick={() => decideSelected("approve")}
+            >
               Approve selected ({selected.size})
             </Button>
-            <Button variant="danger" disabled={selected.size === 0} onClick={() => decideSelected("reject")}>
+            <Button
+              variant="danger"
+              disabled={selected.size === 0 || bulkDeciding !== null}
+              loading={bulkDeciding === "reject"}
+              onClick={() => decideSelected("reject")}
+            >
               Reject selected ({selected.size})
             </Button>
           </div>
@@ -209,10 +230,22 @@ export default function AdminModerationPage() {
                     onChange={(e) => setNotes({ ...notes, [product.id]: e.target.value })}
                     placeholder="Reviewer notes"
                   />
-                  <Button variant="secondary" size="sm" onClick={() => decide(product.id, "approve")}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => decide(product.id, "approve")}
+                    loading={decidingId === product.id}
+                    disabled={decidingId !== null && decidingId !== product.id}
+                  >
                     Approve
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => decide(product.id, "reject")}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => decide(product.id, "reject")}
+                    loading={decidingId === product.id}
+                    disabled={decidingId !== null && decidingId !== product.id}
+                  >
                     Reject
                   </Button>
                 </div>
