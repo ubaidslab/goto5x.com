@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -64,14 +65,26 @@ export default function AdminAnalyticsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <DashCard>
           <DashCardHeader title="Top sellers by commission earned" />
-          <div className="divide-y divide-border">
-            {analytics.topSellers.map((s) => (
-              <div key={s.sellerId} className="flex items-center justify-between gap-4 py-2.5 text-sm">
-                <span className="font-medium text-ink">{s.businessName ?? s.sellerId}</span>
-                <span className="tabular-nums text-ink-muted">{s.commissionEarned.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
+          {analytics.topSellers.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-muted">No commission earned yet.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(240, analytics.topSellers.length * 36)}>
+              <BarChart
+                data={analytics.topSellers.map((s) => ({ name: s.businessName ?? s.sellerId, commissionEarned: s.commissionEarned }))}
+                layout="vertical"
+                margin={{ left: 24 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                <Tooltip
+                  formatter={(value: unknown) => [Number(value ?? 0).toFixed(2), "Commission earned"]}
+                  contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
+                />
+                <Bar dataKey="commissionEarned" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </DashCard>
 
         <DashCard>

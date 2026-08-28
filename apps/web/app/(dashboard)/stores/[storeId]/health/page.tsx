@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { api } from "@/lib/dashboard-api";
 
 interface HealthBreakdownInput {
@@ -105,17 +107,26 @@ export default function StoreHealthPage({ params }: { params: { storeId: string 
       )}
 
       {history.length > 0 && (
-        <Card>
-          <CardHeader title="Recent history" />
-          <CardBody className="divide-y divide-border">
-            {history.map((row) => (
-              <div key={row.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                <p className="text-xs text-ink-muted">{new Date(row.computedAt).toLocaleString()}</p>
-                <p className="text-sm font-medium text-ink">{row.score}</p>
-              </div>
-            ))}
-          </CardBody>
-        </Card>
+        <Reveal>
+          <Card>
+            <CardHeader title="Score over time" description="Your last few scheduled recomputations." />
+            <CardBody>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={[...history].reverse()}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                  <XAxis dataKey="computedAt" tickFormatter={(v) => new Date(v).toLocaleDateString()} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                  <Tooltip
+                    labelFormatter={(v) => new Date(v as string).toLocaleString()}
+                    formatter={(value: unknown) => [Number(value ?? 0), "Score"]}
+                    contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
+                  />
+                  <Line type="monotone" dataKey="score" stroke="var(--color-accent)" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardBody>
+          </Card>
+        </Reveal>
       )}
     </div>
   );
