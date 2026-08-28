@@ -11,6 +11,7 @@ import { DashCard, DashCardFooter, DashCardHeader } from "@/components/dashboard
 import { GaugeCard } from "@/components/dashboard/ui/Gauge";
 import { Milestone, MilestoneBanner } from "@/components/dashboard/MilestoneBanner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Reveal } from "@/components/motion/Reveal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
@@ -364,7 +365,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
 
       <MilestoneBanner milestone={milestone} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Reveal className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.06}>
         <GaugeCard
           icon={ShoppingBag}
           label="Sales (30d)"
@@ -401,7 +402,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
           isEmpty={!hasSalesHistory}
           emptyMessage="No sales yet"
         />
-      </div>
+      </Reveal>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <DashCard className="lg:col-span-2">
@@ -413,7 +414,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
               description="Orders will show up here as soon as buyers start checking out."
             />
           ) : (
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
               {recentOrders.map((order) => (
                 <div key={order.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="flex min-w-0 items-center gap-3">
@@ -433,7 +434,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
                   </div>
                 </div>
               ))}
-            </div>
+            </Reveal>
           )}
           <DashCardFooter className="justify-start">
             <Link href={`/stores/${params.storeId}/orders`}>

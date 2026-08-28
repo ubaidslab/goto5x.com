@@ -9,6 +9,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 type Channel = "banner" | "popup" | "in_app_notification";
 type TargetType = "all" | "plan" | "seller";
@@ -106,7 +107,8 @@ export default function AdminMessagesPage() {
           {messages.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">No messages yet.</p>
           ) : (
-            messages.map((m) => (
+            <Reveal stagger={0.04}>
+            {messages.map((m) => (
               <div key={m.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
                 <div>
                   <p className="text-sm font-medium text-ink">
@@ -126,7 +128,8 @@ export default function AdminMessagesPage() {
                   Delete
                 </Button>
               </div>
-            ))
+            ))}
+            </Reveal>
           )}
         </DashCard>
 

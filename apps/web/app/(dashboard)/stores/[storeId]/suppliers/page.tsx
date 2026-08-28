@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type LinkStatus = "pending_seller_review" | "active" | "revoked";
@@ -167,6 +168,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
           </Card>
         ) : (
           <Card className="divide-y divide-border overflow-hidden">
+            <Reveal stagger={0.04}>
             {links.map((link) => (
               <div key={link.id} className="flex items-center justify-between gap-4 px-6 py-4">
                 <div>
@@ -203,6 +205,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
                 </div>
               </div>
             ))}
+            </Reveal>
           </Card>
         )}
 

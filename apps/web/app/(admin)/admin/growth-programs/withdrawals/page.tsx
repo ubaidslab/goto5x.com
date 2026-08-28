@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface Payout {
   id: string;
@@ -122,6 +123,7 @@ export default function AdminGrowthWithdrawalsPage() {
         </DashCard>
       ) : (
         <DashCard className="divide-y divide-border">
+          <Reveal stagger={0.04}>
           {queue.map((p) => (
             <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div>
@@ -170,6 +172,7 @@ export default function AdminGrowthWithdrawalsPage() {
               </div>
             </div>
           ))}
+          </Reveal>
         </DashCard>
       )}
     </div>

@@ -10,6 +10,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 type Provider = "raast" | "easypaisa" | "jazzcash" | "bank";
 
@@ -196,48 +197,50 @@ export default function AdminPlatformGatewayPage() {
           {connections.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">No providers connected yet. The manual bank-instructions flow is the only active path.</p>
           ) : (
-            connections.map((c) => (
-              <div key={c.id} className="space-y-2 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-medium text-ink">
-                      {PROVIDER_LABEL[c.provider]}
-                      <Badge tone={c.isActive ? "success" : "neutral"}>{c.isActive ? "active - auto-verifying" : "dormant"}</Badge>
-                    </p>
-                    <p className="text-xs text-ink-muted">
-                      {c.merchantId ? `Merchant ID: ${c.merchantId} · ` : ""}
-                      {c.verifiedCount} verified · {c.failedCount} failed
-                      {c.lastVerifiedAt && ` · last verified ${new Date(c.lastVerifiedAt).toLocaleString()}`}
-                      {c.lastFailedAt && ` · last failed ${new Date(c.lastFailedAt).toLocaleString()}`}
-                    </p>
+            <Reveal stagger={0.04}>
+              {connections.map((c) => (
+                <div key={c.id} className="space-y-2 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-medium text-ink">
+                        {PROVIDER_LABEL[c.provider]}
+                        <Badge tone={c.isActive ? "success" : "neutral"}>{c.isActive ? "active - auto-verifying" : "dormant"}</Badge>
+                      </p>
+                      <p className="text-xs text-ink-muted">
+                        {c.merchantId ? `Merchant ID: ${c.merchantId} · ` : ""}
+                        {c.verifiedCount} verified · {c.failedCount} failed
+                        {c.lastVerifiedAt && ` · last verified ${new Date(c.lastVerifiedAt).toLocaleString()}`}
+                        {c.lastFailedAt && ` · last failed ${new Date(c.lastFailedAt).toLocaleString()}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => testConnection(c)} loading={testingProvider === c.provider}>
+                        Test connection
+                      </Button>
+                      <Button
+                        variant={c.isActive ? "secondary" : "primary"}
+                        size="sm"
+                        onClick={() => toggleActive(c)}
+                        loading={togglingProvider === c.provider}
+                        disabled={testingProvider === c.provider || removingProvider === c.provider}
+                      >
+                        {c.isActive ? "Deactivate" : "Activate"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => remove(c)}
+                        loading={removingProvider === c.provider}
+                        disabled={testingProvider === c.provider || togglingProvider === c.provider}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => testConnection(c)} loading={testingProvider === c.provider}>
-                      Test connection
-                    </Button>
-                    <Button
-                      variant={c.isActive ? "secondary" : "primary"}
-                      size="sm"
-                      onClick={() => toggleActive(c)}
-                      loading={togglingProvider === c.provider}
-                      disabled={testingProvider === c.provider || removingProvider === c.provider}
-                    >
-                      {c.isActive ? "Deactivate" : "Activate"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => remove(c)}
-                      loading={removingProvider === c.provider}
-                      disabled={testingProvider === c.provider || togglingProvider === c.provider}
-                    >
-                      Remove
-                    </Button>
-                  </div>
+                  {testResult[c.provider] && <p className="text-xs text-ink-muted">{testResult[c.provider]}</p>}
                 </div>
-                {testResult[c.provider] && <p className="text-xs text-ink-muted">{testResult[c.provider]}</p>}
-              </div>
-            ))
+              ))}
+            </Reveal>
           )}
         </DashCard>
 
@@ -272,7 +275,7 @@ export default function AdminPlatformGatewayPage() {
           {flagged.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">Nothing flagged. An amount mismatch or a failed weekly reconciliation re-check would show up here - neither ever auto-activates or auto-corrects.</p>
           ) : (
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
               {flagged.map((f) => (
                 <div key={f.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div>
@@ -291,7 +294,7 @@ export default function AdminPlatformGatewayPage() {
                   </Button>
                 </div>
               ))}
-            </div>
+            </Reveal>
           )}
         </DashCard>
       </div>

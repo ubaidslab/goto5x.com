@@ -7,6 +7,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface RateFlag {
   sellerId: string;
@@ -131,7 +132,7 @@ export default function AdminTrustSafetyPage() {
         {reviewQueue.length === 0 ? (
           <EmptyState title="Nothing pending review" description="Held payment instruments needing manual review will show up here." />
         ) : (
-          <div className="divide-y divide-border">
+          <Reveal className="divide-y divide-border" stagger={0.04}>
             {reviewQueue.map((item) => (
               <div key={item.storeId} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
                 <div>
@@ -162,7 +163,7 @@ export default function AdminTrustSafetyPage() {
                 </div>
               </div>
             ))}
-          </div>
+          </Reveal>
         )}
       </DashCard>
 

@@ -9,6 +9,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface LinkedAccount {
   id: string;
@@ -170,7 +171,7 @@ export default function AdminEmailPage() {
           {accounts.length === 0 ? (
             <p className="text-sm text-ink-muted">No accounts linked yet.</p>
           ) : (
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
               {accounts.map((a) => (
                 <div key={a.id} className="space-y-1 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -192,7 +193,7 @@ export default function AdminEmailPage() {
                   {testResult[a.id] && <p className="text-xs text-ink-muted">{testResult[a.id]}</p>}
                 </div>
               ))}
-            </div>
+            </Reveal>
           )}
         </DashCard>
 
@@ -276,7 +277,7 @@ export default function AdminEmailPage() {
           {inbox.length === 0 ? (
             <p className="text-sm text-ink-muted">No messages yet.</p>
           ) : (
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
               {inbox.map((m) => (
                 <div key={`${m.accountId}-${m.uid}`} className="flex flex-wrap items-start justify-between gap-3 py-3">
                   <div>
@@ -291,7 +292,7 @@ export default function AdminEmailPage() {
                   </Button>
                 </div>
               ))}
-            </div>
+            </Reveal>
           )}
         </DashCard>
 

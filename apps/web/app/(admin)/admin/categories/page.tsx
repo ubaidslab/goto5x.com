@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface Category {
   id: string;
@@ -67,14 +68,14 @@ export default function AdminCategoriesPage() {
           {categories.length === 0 ? (
             <EmptyState title="No categories yet" description="Create the first one below." />
           ) : (
-            <div className="divide-y divide-border">
+            <Reveal className="divide-y divide-border" stagger={0.03}>
               {categories.map((c) => (
                 <div key={c.id} className="flex items-center justify-between gap-4 py-2 text-sm">
                   <span className="font-medium text-ink">{c.name}</span>
                   <span className="text-ink-muted">{c.slug}</span>
                 </div>
               ))}
-            </div>
+            </Reveal>
           )}
         </DashCard>
 

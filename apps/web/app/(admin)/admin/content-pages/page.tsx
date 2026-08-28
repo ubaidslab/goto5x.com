@@ -9,6 +9,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 const SLUGS = ["terms", "privacy", "refund", "about", "contact"];
 const BRAND_ASSET_KINDS = ["logo", "favicon", "hero"];
@@ -97,6 +98,7 @@ export default function AdminContentPagesPage() {
 
       <div className="max-w-3xl space-y-4">
         <DashCard className="divide-y divide-border">
+          <Reveal stagger={0.04}>
           {SLUGS.map((slug) => (
             <div key={slug} className="space-y-3 py-4 first:pt-0">
               <div className="flex items-center gap-2">
@@ -122,11 +124,12 @@ export default function AdminContentPagesPage() {
               </Button>
             </div>
           ))}
+          </Reveal>
         </DashCard>
 
         <DashCard>
           <DashCardHeader title="Brand assets" />
-          <div className="space-y-3">
+          <Reveal className="space-y-3" stagger={0.04}>
             {BRAND_ASSET_KINDS.map((kind) => (
               <div key={kind} className="flex flex-wrap items-end gap-2">
                 <div className="min-w-[16rem] flex-1">
@@ -139,7 +142,7 @@ export default function AdminContentPagesPage() {
                 </Button>
               </div>
             ))}
-          </div>
+          </Reveal>
         </DashCard>
       </div>
     </div>

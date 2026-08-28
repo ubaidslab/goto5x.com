@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface Collection {
@@ -84,6 +85,7 @@ export default function CollectionsPage({ params }: { params: { storeId: string 
           </Card>
         ) : (
           <Card className="divide-y divide-border overflow-hidden">
+            <Reveal stagger={0.03}>
             {collections.map((collection) => (
               <Link
                 key={collection.id}
@@ -97,6 +99,7 @@ export default function CollectionsPage({ params }: { params: { storeId: string 
                 {!collection.isActive && <Badge tone="neutral">inactive</Badge>}
               </Link>
             ))}
+            </Reveal>
           </Card>
         )}
       </div>

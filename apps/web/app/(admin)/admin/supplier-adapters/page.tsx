@@ -10,6 +10,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface SupplierAdapter {
   id: string;
@@ -113,7 +114,7 @@ export default function AdminSupplierAdaptersPage() {
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="max-w-2xl space-y-4">
+      <Reveal className="max-w-2xl space-y-4" stagger={0.05}>
         {adapters.map((a) => (
           <DashCard key={a.id}>
             <div className="mb-3 flex items-center justify-between gap-4">
@@ -139,7 +140,9 @@ export default function AdminSupplierAdaptersPage() {
             </Button>
           </DashCard>
         ))}
+      </Reveal>
 
+      <div className="mt-4 max-w-2xl">
         <DashCard>
           <DashCardHeader title="Register a new adapter" />
           <form onSubmit={create} className="space-y-3">

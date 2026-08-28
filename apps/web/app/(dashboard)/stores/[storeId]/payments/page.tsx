@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface PaymentInstructions {
@@ -200,7 +201,7 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
           <CardBody>
             {gatewayError && <Alert>{gatewayError}</Alert>}
             {gatewayConnections.length > 0 && (
-              <div className="mb-4 divide-y divide-border overflow-hidden rounded-lg border border-border">
+              <Reveal className="mb-4 divide-y divide-border overflow-hidden rounded-lg border border-border" stagger={0.04}>
                 {gatewayConnections.map((c) => (
                   <div key={c.provider} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <div>
@@ -244,7 +245,7 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                     </div>
                   </div>
                 ))}
-              </div>
+              </Reveal>
             )}
             <form onSubmit={connectGateway} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">

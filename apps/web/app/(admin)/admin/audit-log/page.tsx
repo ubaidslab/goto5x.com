@@ -7,6 +7,7 @@ import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface AuditLogRow {
   id: string;
@@ -59,6 +60,7 @@ export default function AdminAuditLogPage() {
       </div>
 
       <DashCard className="divide-y divide-border">
+        <Reveal stagger={0.02}>
         {rows.map((r) => (
           <div key={r.id} className="py-2.5 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -76,6 +78,7 @@ export default function AdminAuditLogPage() {
             </details>
           </div>
         ))}
+        </Reveal>
       </DashCard>
     </div>
   );

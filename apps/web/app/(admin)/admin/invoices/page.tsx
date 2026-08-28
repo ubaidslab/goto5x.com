@@ -10,6 +10,7 @@ import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { adminApi } from "@/lib/admin-api";
 
 interface TopUpRequest {
@@ -133,6 +134,7 @@ export default function AdminWalletTopUpsPage() {
         </DashCard>
       ) : (
         <DashCard className="divide-y divide-border">
+          <Reveal stagger={0.03}>
           {requests.map((r) => (
             <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="flex items-center gap-3">
@@ -163,6 +165,7 @@ export default function AdminWalletTopUpsPage() {
               </div>
             </div>
           ))}
+          </Reveal>
         </DashCard>
       )}
     </div>

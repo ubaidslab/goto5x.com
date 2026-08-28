@@ -10,6 +10,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface Invoice {
   id: string;
@@ -117,6 +118,7 @@ export default function AdminCommissionInvoicesPage() {
       {error && <Alert tone="danger">{error}</Alert>}
 
       <DashCard className="mb-4 divide-y divide-border">
+        <Reveal stagger={0.03}>
         {invoices.map((i) => (
           <div key={i.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
@@ -140,6 +142,7 @@ export default function AdminCommissionInvoicesPage() {
             </div>
           </div>
         ))}
+        </Reveal>
       </DashCard>
 
       <DashCard className="max-w-xl">

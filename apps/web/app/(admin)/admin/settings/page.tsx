@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 
 type ScopeType = "global" | "plan" | "seller" | "category" | "store" | "supplier";
 
@@ -175,7 +176,8 @@ export default function AdminSettingsPage() {
       <PageHeader title="Settings Registry" description="Every platform setting. Select one to view its current effective value, precedence chain, and edit it." />
 
       <div className="flex flex-col gap-4 lg:flex-row">
-        <DashCard className="flex-1 overflow-x-auto">
+        <Reveal className="flex-1">
+        <DashCard className="overflow-x-auto">
           <DashCardHeader title={`Definitions (${definitions.length})`} />
           <table className="w-full text-sm">
             <thead>
@@ -202,6 +204,7 @@ export default function AdminSettingsPage() {
             </tbody>
           </table>
         </DashCard>
+        </Reveal>
 
         {selected && resolved && (
           <DashCard className="flex-1">

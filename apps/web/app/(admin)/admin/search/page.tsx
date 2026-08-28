@@ -8,6 +8,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 import { adminApi } from "@/lib/admin-api";
 
 interface SearchResult {
@@ -64,7 +65,7 @@ export default function AdminSearchPage() {
       )}
 
       {results && totalResults > 0 && (
-        <div className="space-y-4">
+        <Reveal className="space-y-4" stagger={0.08}>
           {results.sellers.length > 0 && (
             <DashCard>
               <DashCardHeader title={`Sellers (${results.sellers.length})`} />
@@ -131,7 +132,7 @@ export default function AdminSearchPage() {
               </div>
             </DashCard>
           )}
-        </div>
+        </Reveal>
       )}
     </div>
   );

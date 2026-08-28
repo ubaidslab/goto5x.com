@@ -10,6 +10,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 type PlanGroup = "individual" | "team" | "supplier";
 
@@ -211,6 +212,7 @@ export default function AdminPlansPage() {
         )}
       </DashCard>
 
+      <Reveal stagger={0.08}>
       {GROUPS.map((group) => (
         <DashCard key={group} className="mb-4">
           <DashCardHeader title={GROUP_LABELS[group]} />
@@ -277,6 +279,7 @@ export default function AdminPlansPage() {
           </div>
         </DashCard>
       ))}
+      </Reveal>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <DashCard>

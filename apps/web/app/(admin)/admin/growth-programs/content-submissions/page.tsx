@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface Submission {
   id: string;
@@ -70,6 +71,7 @@ export default function AdminGrowthContentSubmissionsPage() {
         </DashCard>
       ) : (
         <DashCard className="divide-y divide-border">
+          <Reveal stagger={0.04}>
           {queue.map((s) => (
             <div key={s.id} className="flex flex-col gap-2 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -104,6 +106,7 @@ export default function AdminGrowthContentSubmissionsPage() {
               </div>
             </div>
           ))}
+          </Reveal>
         </DashCard>
       )}
     </div>

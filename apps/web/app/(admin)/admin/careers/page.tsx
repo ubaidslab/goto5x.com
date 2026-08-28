@@ -9,6 +9,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 type JobPostingStatus = "draft" | "open" | "closed";
 type JobApplicationStatus = "received" | "reviewing" | "interviewing" | "rejected" | "hired";
@@ -107,6 +108,7 @@ export default function AdminCareersPage() {
 
       <div className="max-w-3xl space-y-4">
         <DashCard className="divide-y divide-border">
+          <Reveal stagger={0.04}>
           {postings.map((p) => (
             <div key={p.id} className="py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -161,6 +163,7 @@ export default function AdminCareersPage() {
               )}
             </div>
           ))}
+          </Reveal>
         </DashCard>
 
         <DashCard>

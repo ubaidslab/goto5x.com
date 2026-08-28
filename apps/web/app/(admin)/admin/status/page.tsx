@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 interface QueueStatus {
@@ -93,7 +94,7 @@ export default function AdminSystemStatusPage() {
 
         <DashCard>
           <DashCardHeader title="Payment gateway health" description="Module 67 - platform-wide, per-provider verify success rate." />
-          <div className="divide-y divide-border">
+          <Reveal className="divide-y divide-border" stagger={0.04}>
             {status.paymentGatewayHealth.map((p) => (
               <div key={p.provider} className="flex items-center justify-between gap-4 py-2.5 text-sm">
                 <span className="font-medium capitalize text-ink">{p.provider}</span>
@@ -107,11 +108,11 @@ export default function AdminSystemStatusPage() {
                 </span>
               </div>
             ))}
-          </div>
+          </Reveal>
         </DashCard>
       </div>
 
-      <div className="mt-4">
+      <Reveal className="mt-4">
         <DashCard>
           <DashCardHeader title="Background job queues" />
           <div className="overflow-x-auto">
@@ -141,7 +142,7 @@ export default function AdminSystemStatusPage() {
             </table>
           </div>
         </DashCard>
-      </div>
+      </Reveal>
     </div>
   );
 }

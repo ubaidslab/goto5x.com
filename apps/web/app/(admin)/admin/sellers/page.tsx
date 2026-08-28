@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 type LifecycleStatus = "active" | "warned" | "restricted" | "suspended" | "banned";
@@ -141,7 +142,7 @@ export default function AdminSellersPage() {
 
       <DashCard>
         <DashCardHeader title={`Sellers (${sellers.length})`} />
-        <div className="divide-y divide-border">
+        <Reveal className="divide-y divide-border" stagger={0.03}>
           {sellers.map((seller) => (
             <div key={seller.id} className="flex flex-col gap-2 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -180,7 +181,7 @@ export default function AdminSellersPage() {
               </div>
             </div>
           ))}
-        </div>
+        </Reveal>
       </DashCard>
     </div>
   );

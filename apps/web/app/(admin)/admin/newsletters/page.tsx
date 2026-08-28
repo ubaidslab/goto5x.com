@@ -10,6 +10,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface Newsletter {
   id: string;
@@ -110,7 +111,8 @@ export default function AdminNewslettersPage() {
           {newsletters.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">No newsletters yet.</p>
           ) : (
-            newsletters.map((n) => (
+            <Reveal stagger={0.04}>
+            {newsletters.map((n) => (
               <div key={n.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
                 <div>
                   <p className="flex items-center gap-2 text-sm font-medium text-ink">
@@ -131,7 +133,8 @@ export default function AdminNewslettersPage() {
                   </Button>
                 )}
               </div>
-            ))
+            ))}
+            </Reveal>
           )}
         </DashCard>
 
