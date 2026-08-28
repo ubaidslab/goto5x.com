@@ -402,5 +402,43 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
       const flagsAfterSecondSweep = await superuser.platformGatewayFlaggedVerification.findMany({ where: { reason: "reconciliation_mismatch" } });
       expect(flagsAfterSecondSweep).toHaveLength(1);
     });
+
+    it("retry-storm guard: concurrent resubmissions from the same seller can only trigger one outbound gateway attempt", async () => {
+      const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-storm@example.com");
+      await request(app.getHttpServer())
+        .post("/admin/platform-gateway")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ provider: "easypaisa", apiKey: "real-api-key" });
+      await request(app.getHttpServer())
+        .patch("/admin/platform-gateway/easypaisa/active")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ isActive: true });
+      fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-RACE" });
+
+      const { token } = await signupLoginSeller("platform-gw-storm@example.com", "platform-gw-storm-store");
+
+      // Two submissions fired concurrently (Promise.all, neither awaited
+      // before the other starts) simulate a script resubmitting a failed
+      // payment reference in a burst - the pre-existing "already pending"
+      // check alone is a check-then-create race and can't guarantee only
+      // one gets through; the atomic Redis cooldown claim must.
+      const [a, b] = await Promise.all([
+        request(app.getHttpServer())
+          .post("/sellers/me/wallet/plan-fee-payment")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ reference: "RACE-A" }),
+        request(app.getHttpServer())
+          .post("/sellers/me/wallet/plan-fee-payment")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ reference: "RACE-B" }),
+      ]);
+
+      const statuses = [a.status, b.status].sort();
+      expect(statuses).toEqual([201, 429]);
+      expect(fakeEasypaisa.verifyPayment).toHaveBeenCalledTimes(1);
+
+      const winner = a.status === 201 ? a : b;
+      expect(winner.body.autoVerified).toBe(true);
+    });
   });
 });

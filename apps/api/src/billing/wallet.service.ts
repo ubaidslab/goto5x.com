@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
 import { LedgerEntry, LedgerEntryType, Plan, PlanBillingInterval, Prisma, WalletTopUpRequest } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AuditLogService } from "../admin/audit-log.service";
@@ -318,6 +318,17 @@ export class WalletService {
     });
     if (existing) {
       throw new BadRequestException("A plan-fee payment request is already pending for this account.");
+    }
+
+    // Retry-storm guard - only applies to a real auto-verify attempt
+    // (a reference present), which is the only path that makes an outbound
+    // gateway call; closes the race the check above alone can't (see
+    // PlatformGatewayService.claimSubmissionCooldown's own comment).
+    if (reference) {
+      const allowed = await this.platformGateway.claimSubmissionCooldown(sellerId, "plan_fee");
+      if (!allowed) {
+        throw new HttpException("Please wait a moment before resubmitting a payment reference.", HttpStatus.TOO_MANY_REQUESTS);
+      }
     }
 
     const preview = await this.getPlanFeePaymentPreview(sellerId, currency);

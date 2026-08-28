@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditLogService } from "../admin/audit-log.service";
 import { WalletService } from "../billing/wallet.service";
 import { EventsService } from "../events/events.service";
@@ -49,6 +49,16 @@ export class TemplatePurchaseService {
       tx.templatePurchaseRequest.findFirst({ where: { sellerId, themeId, status: "pending" } }),
     );
     if (pending) throw new BadRequestException("You already have a pending purchase request for this template.");
+
+    // Retry-storm guard - see PlatformGatewayService.claimSubmissionCooldown's
+    // own comment; only applies when a reference is present (the only path
+    // that makes an outbound gateway call).
+    if (reference) {
+      const allowed = await this.platformGateway.claimSubmissionCooldown(sellerId, `template_purchase:${themeId}`);
+      if (!allowed) {
+        throw new HttpException("Please wait a moment before resubmitting a payment reference.", HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
 
     const amount = Number(theme.price);
     const currency = "PKR";

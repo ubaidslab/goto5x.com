@@ -9,6 +9,8 @@ import { decryptGatewayCredential, encryptGatewayCredential } from "../payment-g
 import { GatewayVerifyContext, GatewayVerifyResult, SellerPaymentGatewayAdapter } from "../payment-gateway/seller-payment-gateway-adapter.interface";
 import { round2 } from "../orders/money.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { RedisService } from "../common/redis/redis.service";
+import { SettingsService } from "../settings-registry/settings.service";
 
 function isUniqueConstraintViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
@@ -71,12 +73,16 @@ const SAFE_SELECT = {
  *    reference can be consumed (credited) exactly once, ever, enforced as
  *    a DB unique-constraint race-guard, not just an application check.
  *  - Poll rate/backoff: no automatic retry loop exists here at all - a
- *    failed/timed-out attempt returns null once and falls back to manual;
- *    the caller-side "already have a pending request" guard
- *    (WalletService.requestPlanFeePayment / TemplatePurchaseService.
- *    requestPurchase) is what prevents a seller from resubmitting and
- *    re-polling the same order repeatedly, and the weekly reconciliation
- *    sweep only re-polls each already-consumed reference once per run.
+ *    failed/timed-out attempt returns null once and falls back to manual.
+ *    Resubmission is guarded two ways at the caller (WalletService.
+ *    requestPlanFeePayment / TemplatePurchaseService.requestPurchase): the
+ *    "already have a pending request" check stops a *sequential* resubmit,
+ *    and `claimSubmissionCooldown()` below closes the concurrent-request
+ *    race that check-then-create alone can't (an atomic Redis `SET NX EX`,
+ *    Settings-Registry-configured, per (seller, scope)) - added post-launch
+ *    after the founder specifically asked whether a retry-storm of rapid
+ *    resubmissions was covered. The weekly reconciliation sweep only
+ *    re-polls each already-consumed reference once per run.
  *  - Amount-mismatch handling: the gateway's own reported amount (when the
  *    response includes one) is compared against the requested amount
  *    before trusting `verified` - a mismatch is flagged
@@ -98,6 +104,8 @@ export class PlatformGatewayService {
 
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
+    private readonly redis: RedisService,
+    private readonly settings: SettingsService,
     config: ConfigService,
     raastAdapter: RaastGatewayAdapter,
     easypaisaAdapter: EasypaisaGatewayAdapter,
@@ -257,6 +265,29 @@ export class PlatformGatewayService {
     });
 
     return result;
+  }
+
+  /**
+   * Retry-storm guard (founder-directed, post-hardening follow-up). The
+   * "already have a pending request" checks in WalletService.
+   * requestPlanFeePayment() / TemplatePurchaseService.requestPurchase() stop
+   * a *sequential* resubmission - once a request exists, every later attempt
+   * is rejected before it ever reaches here - but that check-then-create is
+   * not atomic, so two truly concurrent submissions from the same seller
+   * could both pass it before either commits, each independently attempting
+   * a real outbound gateway call. This closes that race with an atomic
+   * Redis claim (`SET NX EX`): only the first of any concurrent burst for a
+   * given (seller, scope) wins the slot; the rest must wait out the
+   * Settings-Registry-configured cooldown. The caller passes a `scope` key
+   * granular enough that two legitimately-independent submissions (a
+   * plan-fee payment and a template purchase moments apart, as the
+   * idempotency test does; or two different templates) don't collide.
+   */
+  async claimSubmissionCooldown(sellerId: string, scope: string): Promise<boolean> {
+    const cooldownSeconds = await this.settings.resolve<number>("billing.platform_gateway_submission_cooldown_seconds");
+    const key = `platform-gateway:submission-cooldown:${scope}:${sellerId}`;
+    const claimed = await this.redis.set(key, "1", "EX", cooldownSeconds, "NX");
+    return claimed === "OK";
   }
 
   private buildVerifyContext(
