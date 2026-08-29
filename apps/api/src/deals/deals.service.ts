@@ -174,26 +174,80 @@ export class DealsService {
     return true;
   }
 
-  async listActive(hostname: string) {
-    const store = await this.storefront.loadActiveStoreOrThrow(hostname);
-    const deals = await this.prismaAdmin.deal.findMany({
-      where: { storeId: store.id, status: "active" },
-      include: { items: { include: { product: true, variant: true }, orderBy: { sortOrder: "asc" } } },
-      orderBy: { createdAt: "desc" },
-    });
-    return deals.filter((d) => this.isWithinWindow(d));
+  private readonly dealPublicInclude = {
+    items: {
+      include: { product: { include: { media: { where: { isPrimary: true }, take: 1 } } }, variant: true },
+      orderBy: { sortOrder: "asc" as const },
+    },
+    thumbnailMedia: true,
+  };
+
+  /** Never exposes raw Prisma fields (moderationStatus, baseCost, timestamps, etc.) to the public storefront - only what a buyer needs to see. */
+  private toPublicDeal(deal: {
+    id: string;
+    title: string;
+    slug: string;
+    description: string | null;
+    discountPercent: unknown;
+    startsAt: Date | null;
+    endsAt: Date | null;
+    thumbnailMedia: { url: string } | null;
+    items: {
+      productId: string;
+      variantId: string;
+      product: { title: string; media: { url: string }[] };
+      variant: { price: unknown; stockQuantity: number; trackInventory: boolean };
+    }[];
+  }) {
+    return {
+      id: deal.id,
+      title: deal.title,
+      slug: deal.slug,
+      description: deal.description,
+      discountPercent: Number(deal.discountPercent),
+      startsAt: deal.startsAt,
+      endsAt: deal.endsAt,
+      thumbnailUrl: deal.thumbnailMedia?.url ?? null,
+      items: deal.items.map((item) => {
+        const price = Number(item.variant.price);
+        return {
+          productId: item.productId,
+          variantId: item.variantId,
+          title: item.product.title,
+          imageUrl: item.product.media[0]?.url ?? null,
+          price,
+          discountedPrice: DealsService.discountedUnitPrice(price, Number(deal.discountPercent)),
+          inStock: !item.variant.trackInventory || item.variant.stockQuantity > 0,
+        };
+      }),
+    };
   }
 
-  async getActiveOne(hostname: string, dealId: string) {
+  private async loadActiveDealOrThrow(hostname: string, dealId: string) {
     const store = await this.storefront.loadActiveStoreOrThrow(hostname);
     const deal = await this.prismaAdmin.deal.findUnique({
       where: { id: dealId },
-      include: { items: { include: { product: true, variant: true }, orderBy: { sortOrder: "asc" } } },
+      include: this.dealPublicInclude,
     });
     if (!deal || deal.storeId !== store.id || deal.status !== "active" || !this.isWithinWindow(deal)) {
       throw new NotFoundException("Deal not found.");
     }
     return deal;
+  }
+
+  async listActive(hostname: string) {
+    const store = await this.storefront.loadActiveStoreOrThrow(hostname);
+    const deals = await this.prismaAdmin.deal.findMany({
+      where: { storeId: store.id, status: "active" },
+      include: this.dealPublicInclude,
+      orderBy: { createdAt: "desc" },
+    });
+    return deals.filter((d) => this.isWithinWindow(d)).map((d) => this.toPublicDeal(d));
+  }
+
+  async getActiveOne(hostname: string, dealId: string) {
+    const deal = await this.loadActiveDealOrThrow(hostname, dealId);
+    return this.toPublicDeal(deal);
   }
 
   /**
@@ -209,7 +263,7 @@ export class DealsService {
     const buyNowLimit = await this.settings.resolve<number>("deals.buy_now_rate_limit_per_hour");
     await this.rateLimit.enforcePerHour(`deal-buy-now-ip:${ip}`, buyNowLimit);
 
-    const deal = await this.getActiveOne(dto.hostname, dealId);
+    const deal = await this.loadActiveDealOrThrow(dto.hostname, dealId);
     if (deal.items.length === 0) {
       throw new BadRequestException("This deal has no items and cannot be purchased.");
     }

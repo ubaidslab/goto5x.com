@@ -52,6 +52,7 @@ const emptyFilters = {
   moderationStatus: "",
   minPrice: "",
   maxPrice: "",
+  inActiveDeal: "",
 };
 
 type BulkAction = "" | "publish" | "unpublish" | "archive" | "delete" | "price" | "stock" | "category" | "collection" | "tag";
@@ -114,6 +115,7 @@ export default function ProductsListPage({ params }: { params: { storeId: string
     if (filters.moderationStatus) query.set("moderationStatus", filters.moderationStatus);
     if (filters.minPrice) query.set("minPrice", filters.minPrice);
     if (filters.maxPrice) query.set("maxPrice", filters.maxPrice);
+    if (filters.inActiveDeal) query.set("inActiveDeal", "true");
     api
       .get<ProductPage>(`/stores/${params.storeId}/products?${query.toString()}`)
       .then(setProductPage)
@@ -258,9 +260,14 @@ export default function ProductsListPage({ params }: { params: { storeId: string
         title="Products"
         description="Everything you sell, in one place."
         action={
-          <Link href={`/stores/${params.storeId}/products/new`}>
-            <Button>Add product</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={`/stores/${params.storeId}/deals`}>
+              <Button variant="outline">Deals</Button>
+            </Link>
+            <Link href={`/stores/${params.storeId}/products/new`}>
+              <Button>Add product</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -312,6 +319,13 @@ export default function ProductsListPage({ params }: { params: { storeId: string
             </Button>
           </div>
         </div>
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-ink-muted">
+          <Checkbox
+            checked={filters.inActiveDeal === "true"}
+            onCheckedChange={(checked) => setFilter("inActiveDeal", checked ? "true" : "")}
+          />
+          In an active deal
+        </label>
         <p className="text-xs text-ink-muted">
           {productPage.total} product{productPage.total === 1 ? "" : "s"} match{productPage.total === 1 ? "es" : ""}
         </p>

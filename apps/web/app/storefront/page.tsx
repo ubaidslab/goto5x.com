@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   fetchStorefrontCollection,
   fetchStorefrontCollections,
+  fetchStorefrontDeals,
   fetchStorefrontNavigation,
   fetchStorefrontProducts,
   fetchStorefrontStore,
@@ -40,10 +41,11 @@ export default async function StorefrontHomePage() {
   }
 
   const needsCollection = theme.sections.some((s) => s.visible && s.id === "featured_collection");
-  const [products, navigation, collections] = await Promise.all([
+  const [products, navigation, collections, deals] = await Promise.all([
     fetchStorefrontProducts(host, access.gated ? undefined : access.unlockToken),
     fetchStorefrontNavigation(host),
     needsCollection ? fetchStorefrontCollections(host, access.gated ? undefined : access.unlockToken) : Promise.resolve([]),
+    fetchStorefrontDeals(host),
   ]);
   const featuredCollection = collections[0]
     ? await fetchStorefrontCollection(host, collections[0].id, access.gated ? undefined : access.unlockToken)
@@ -53,6 +55,24 @@ export default async function StorefrontHomePage() {
     <>
       <AnnouncementBar theme={theme} />
       <SiteHeader navigation={navigation} theme={theme} store={store} />
+      {deals.length > 0 && (
+        <a
+          href="/deals"
+          style={{
+            display: "block",
+            textAlign: "center",
+            padding: "10px 16px",
+            background: theme.colors.primary,
+            color: "#fff",
+            fontWeight: 600,
+            fontSize: 14,
+            textDecoration: "none",
+          }}
+        >
+          {deals.length} deal{deals.length === 1 ? "" : "s"} live right now - up to{" "}
+          {Math.max(...deals.map((d) => d.discountPercent))}% off &rarr;
+        </a>
+      )}
       <main>
         {theme.sections
           .filter((section) => section.visible)

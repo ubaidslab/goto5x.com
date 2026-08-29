@@ -38,6 +38,14 @@ interface ReturnRateByProductRow {
   returnRate: number;
 }
 
+interface DealPerformanceRow {
+  dealId: string;
+  title: string;
+  orders: number;
+  revenue: number;
+  units: number;
+}
+
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function formatHour(hour: number): string {
@@ -86,6 +94,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
   const [rangeEnd, setRangeEnd] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [returnRateByProduct, setReturnRateByProduct] = useState<ReturnRateByProductRow[] | null>(null);
+  const [dealPerformance, setDealPerformance] = useState<DealPerformanceRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -117,7 +126,15 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
       .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load return rate by product."));
   }, [params.storeId]);
 
-  const loading = topProducts === null || salesOverTime === null || overview === null || returnRateByProduct === null;
+  useEffect(() => {
+    api
+      .get<DealPerformanceRow[]>(`/stores/${params.storeId}/analytics/deal-performance`)
+      .then(setDealPerformance)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load deal performance."));
+  }, [params.storeId]);
+
+  const loading =
+    topProducts === null || salesOverTime === null || overview === null || returnRateByProduct === null || dealPerformance === null;
 
   return (
     <div>
@@ -276,6 +293,30 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                       contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
                     />
                     <Bar dataKey="returnRate" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardBody>
+          </Card>
+          </Reveal>
+
+          <Reveal>
+          <Card>
+            <CardHeader title="Deal performance" description="Orders, units, and revenue attributable to each deal - confirmed orders only (SRS §5.67/FR-67.5)." />
+            <CardBody>
+              {dealPerformance!.length === 0 ? (
+                <p className="py-8 text-center text-sm text-ink-muted">No confirmed deal orders yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(200, dealPerformance!.length * 36)}>
+                  <BarChart data={dealPerformance!} layout="vertical" margin={{ left: 24 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                    <YAxis type="category" dataKey="title" width={140} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+                    <Tooltip
+                      formatter={(value: unknown) => [`Rs ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
+                      contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
+                    />
+                    <Bar dataKey="revenue" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}

@@ -283,6 +283,49 @@ export async function fetchStorefrontOrderStatus(token: string): Promise<PublicO
   return res.json();
 }
 
+// Module 91 (SRS §5.67/FR-67.3) - a seller-created bundle of their own
+// products sold together at one uniform percentage off. `discountedPrice`
+// is computed server-side at the moment this response is built - it is
+// informational display only, never trusted as the actual checkout
+// discount (checkout.service.ts recomputes it live against current
+// prices, same reasoning as the API's own doc comment on this method).
+export interface PublicDealItem {
+  productId: string;
+  variantId: string;
+  title: string;
+  imageUrl: string | null;
+  price: number;
+  discountedPrice: number;
+  inStock: boolean;
+}
+
+export interface PublicDeal {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  discountPercent: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  thumbnailUrl: string | null;
+  items: PublicDealItem[];
+}
+
+export async function fetchStorefrontDeals(hostname: string): Promise<PublicDeal[]> {
+  const res = await fetch(`${API_BASE}/storefront/deals?hostname=${encodeURIComponent(hostname)}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchStorefrontDeal(hostname: string, dealId: string): Promise<PublicDeal | null> {
+  const res = await fetch(
+    `${API_BASE}/storefront/deals/${encodeURIComponent(dealId)}?hostname=${encodeURIComponent(hostname)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function unlockStorefront(hostname: string, password: string): Promise<string | null> {
   const res = await fetch(`${API_BASE}/storefront/unlock`, {
     method: "POST",
