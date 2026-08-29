@@ -1,7 +1,10 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.41 (Build-phase amendment — Subscription Business Readiness re-amended for the subscription-only model, §5.6k; bulk-action backend endpoints and a minimal support-ticket system, FR-8.17/FR-8.18)
-**Date:** 2026-08-09
+**Version:** 0.42 (Build-phase amendment — Deals & Bundles, uniform-percentage
+store promotions reusing the existing checkout pipeline, §5.67/FR-67.1-67.5,
+Module 91; founder-approved after a full live walkthrough of the built
+system, first of an 18-item design/feature batch)
+**Date:** 2026-08-29
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -5784,6 +5787,57 @@ AI store design, or a customizable/build-your-own plan (§5.6j).
   tracking page keeps a clean status timeline with UZEYN branding,
   unchanged in mechanism.
 
+### 5.67 Deals & Bundles (new, v0.42 — founder-approved after a live
+walkthrough of the built system; Module 91)
+A seller-created promotion grouping several of their own products/variants
+under one storefront listing at a uniform percentage discount (e.g. "Steal
+Deal — 20% off all 5"). Deliberately reuses existing, already-hardened
+mechanisms rather than building a parallel commerce path: the checkout
+pipeline (§5.9's cart/checkout flow) and the same atomic stock-decrement
+guard used everywhere else stock is reserved (Module 46's oversell-
+protection logic, §14.39a). Per-item (non-uniform) discounts within a
+single deal — e.g. 30% off item A but 10% off item B in the same deal —
+are explicitly out of scope for this build and are logged as a documented
+v1.1/roadmap enhancement; the uniform-percentage model is what the
+founder-approved data model covers for launch.
+
+- FR-67.1 (Module 91): **Deal data model.** A new store-scoped `Deal`
+  (id, storeId, title, slug, description, thumbnailMediaId,
+  `discountPercent` — one uniform percentage off for the whole deal,
+  status: draft/active/archived, optional `startsAt`/`endsAt`) and
+  `DealItem` (id, dealId, productId, variantId, sortOrder; unique on
+  `[dealId, variantId]`) join table, mirroring `DiscountCode`'s existing
+  store-scoped-uniqueness shape (§5.7) rather than inventing a new
+  pattern. The discount is **live-computed** against each variant's
+  current price at purchase time — never a frozen/snapshotted price — so
+  a seller's later price edit on a deal product is reflected immediately,
+  consistent with how the rest of the catalog prices are read.
+- FR-67.2 (Module 91): **Buy-now purchase flow.** A new
+  `POST /storefront/deals/:dealId/buy-now` endpoint pre-populates a cart
+  with every `DealItem` in the deal at its live discounted price, then
+  hands off into the existing checkout flow (§5.9) unchanged — no
+  parallel order-creation or payment-verification code path. Per-item
+  stock is checked through the same atomic guard as any other order line
+  (Module 46); if any single item in the deal is out of stock, the whole
+  deal purchase is blocked rather than silently partial-fulfilling it.
+  `Order` gains an optional nullable `dealId` FK, the same pattern as the
+  existing `discountCodeId` link (§5.7), so a completed order can be
+  traced back to the deal that produced it.
+- FR-67.3 (Module 91): **Storefront surfaces.** A buyer-facing deal
+  listing page (active deals for the store) and a deal detail page
+  showing the bundled items, the uniform discount, and a single buy-now
+  action — both reusing existing storefront rendering/theme conventions
+  (§5.4) rather than a one-off template.
+- FR-67.4 (Module 91): **Seller dashboard management.** A Deals
+  management view (under the existing Products hub) for creating,
+  editing, and archiving deals and their line items, plus a filter chip
+  on the product list ("in an active deal") so a seller can see at a
+  glance which of their products are currently bundled.
+- FR-67.5 (Module 91): **Analytics.** A deal-performance card on the
+  seller Analytics page (§5.54) — units sold and revenue attributable to
+  `Order.dealId`, reusing the existing analytics query/chart
+  infrastructure rather than a bespoke reporting path.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -9002,6 +9056,27 @@ v0.38 wording item-for-item, same FR/module numbers)
       item) and flagging the order as overdue in the Orders Command
       Center until resolved; tracking-upload responsibility itself stays
       exactly split as already built (FR-66.8, Module 88).
+
+### 14.69 Deals & Bundles (new, v0.42, §5.67, not yet built)
+- [ ] `Deal`/`DealItem` Prisma models exist, store-scoped, with a uniform
+      `discountPercent` per deal and unique `[dealId, variantId]` on
+      `DealItem` (FR-67.1, Module 91).
+- [ ] Deal discounts are computed live against current variant price at
+      purchase time, never snapshotted (FR-67.1, Module 91).
+- [ ] `POST /storefront/deals/:dealId/buy-now` pre-populates a cart and
+      hands off into the existing checkout pipeline — no parallel order-
+      creation path — and blocks the whole purchase if any single item is
+      out of stock, using the same atomic stock-decrement guard as
+      Module 46 (FR-67.2, Module 91).
+- [ ] `Order.dealId` is a nullable FK, same pattern as `discountCodeId`
+      (FR-67.2, Module 91).
+- [ ] Buyer-facing deal listing and detail pages render on the storefront
+      (FR-67.3, Module 91).
+- [ ] Seller dashboard has a Deals management view (create/edit/archive
+      deals and items) and a "in an active deal" product-list filter chip
+      (FR-67.4, Module 91).
+- [ ] A deal-performance card (units sold, revenue) appears on the
+      seller Analytics page (FR-67.5, Module 91).
 
 ---
 
