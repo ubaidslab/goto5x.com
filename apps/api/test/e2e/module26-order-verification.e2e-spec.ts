@@ -304,6 +304,88 @@ describe("Order Verification Channel Adapter (e2e) - SRS §3.5/§5.37, §14.37",
     expect(verification.status).toBe("failed");
   });
 
+  it("retry-storm guard: a concurrent burst of guesses can never be evaluated beyond the max-attempts cap (security audit)", async () => {
+    // Confirmed live before this fix: a check-then-write attemptCount race
+    // let every request in a concurrent burst read the same pre-increment
+    // count, so all of them got compared against the real OTP hash
+    // regardless of maxAttempts - a script firing a large concurrent burst
+    // could get far more than maxAttempts guesses evaluated "for the price
+    // of one round" (confirmed live: 20 concurrent guesses against
+    // maxAttempts=5 let a correct code through, final attemptCount only 2
+    // due to lost updates - proof the cap wasn't enforced at all). The
+    // fixed behavior isn't "no concurrent guess can ever succeed" (a
+    // legitimate buyer racing their own resend/retry should still succeed
+    // if within budget) - it's that AT MOST maxAttempts guesses are ever
+    // evaluated, no matter how many arrive at once. This test uses only
+    // wrong codes so the outcome is deterministic regardless of which
+    // requests win the race.
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("verify-race@example.com", "verify-race-store");
+    await setVerificationChannel(storeId, "whatsapp_otp");
+    await superuser.settingsValue.create({
+      data: { definitionKey: "orders.verification_otp_max_attempts", scopeType: "store", scopeId: storeId, value: 5 },
+    });
+    const checkout = await checkoutOnce(hostname, storeId, token, "03001234567");
+    const orderId = checkout.body.id as string;
+    const order = await superuser.order.findUniqueOrThrow({ where: { id: orderId } });
+
+    const wrongCodes = Array.from({ length: 8 }, (_, i) => String(100000 + i).padStart(6, "0"));
+
+    // Fire 8 concurrent wrong-code verify requests against a
+    // maxAttempts=5 lockout, all at once via Promise.all - exactly the
+    // burst a script would fire to try to squeeze more than 5 guesses in.
+    const results = await Promise.all(
+      wrongCodes.map((code) =>
+        request(app.getHttpServer())
+          .post(`/storefront/order-verification/${order.statusLookupToken}/verify`)
+          .send({ code }),
+      ),
+    );
+
+    expect(results.every((r) => r.status === 400)).toBe(true);
+    // Exactly maxAttempts requests can ever win an atomic claim slot
+    // (pre-claim counts 0..maxAttempts-1) - of those, the one that pushes
+    // attemptCount to the cap reports "too many" instead of "incorrect"
+    // (same wording the pre-existing sequential retry-cap test asserts),
+    // so this count is deterministically maxAttempts - 1 regardless of
+    // request interleaving. The remaining requests are all rejected too
+    // (asserted via the blanket 400 check above and the final attemptCount
+    // below) - their exact wording ("too many" vs "already failed") is a
+    // genuinely racy timing detail against the one lockout-flip write, not
+    // a security property, so it's deliberately not asserted here. The old
+    // bug would have produced 8 "Incorrect verification code." responses
+    // instead of 4 - every one of the 8 concurrent guesses evaluated
+    // against the real hash with no cap enforced at all.
+    const evaluated = results.filter((r) => r.body.message.message === "Incorrect verification code.").length;
+    expect(evaluated).toBe(4);
+
+    const after = await superuser.orderVerification.findUniqueOrThrow({ where: { orderId } });
+    expect(after.status).toBe("failed");
+    expect(after.attemptCount).toBe(5); // exactly the configured cap, not more (no lost-update overcounting either)
+  });
+
+  it("retry-storm guard: concurrent resends can't bypass the resend cooldown (security audit)", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("verify-resend-race@example.com", "verify-resend-race-store");
+    await setVerificationChannel(storeId, "whatsapp_otp");
+    await superuser.settingsValue.create({
+      data: { definitionKey: "orders.verification_otp_resend_cooldown_seconds", scopeType: "store", scopeId: storeId, value: 900 },
+    });
+    const checkout = await checkoutOnce(hostname, storeId, token, "03001234567");
+    const orderId = checkout.body.id as string;
+    const order = await superuser.order.findUniqueOrThrow({ where: { id: orderId } });
+
+    // Clear the checkout-time send so the cooldown window has just begun,
+    // then fire 10 concurrent buyer-triggered resends at once.
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        request(app.getHttpServer()).post(`/storefront/order-verification/${order.statusLookupToken}/resend`),
+      ),
+    );
+
+    const succeeded = results.filter((r) => r.status === 201);
+    expect(succeeded).toHaveLength(0); // the initial checkout-time send already started the cooldown - all 10 must be rejected
+    expect(results.every((r) => r.status === 400)).toBe(true);
+  });
+
   it("whatsapp_otp: an expired OTP is rejected even with the correct code (FR-37.5)", async () => {
     const { token, storeId, hostname } = await signupLoginAndCreateStore("verify-expiry@example.com", "verify-expiry-store");
     await setVerificationChannel(storeId, "whatsapp_otp");

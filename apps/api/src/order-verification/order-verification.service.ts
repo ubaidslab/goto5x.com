@@ -218,7 +218,24 @@ export class OrderVerificationService {
     return verification.status === "verified";
   }
 
-  /** FR-37.5 - single-use, retry-capped, time-limited. Buyer-facing (statusLookupToken-gated by the caller), so PrismaAdminService. */
+  /**
+   * FR-37.5 - single-use, retry-capped, time-limited. Buyer-facing
+   * (statusLookupToken-gated by the caller), so PrismaAdminService.
+   *
+   * Security-hardening fix (post-launch audit): this used to be a
+   * check-then-write - read `attemptCount`/`status`, decide in application
+   * code, then write - which a burst of concurrent requests can race:
+   * every request reads the same pre-write snapshot, so none of them see
+   * the lockout and ALL of them get compared against the real OTP hash,
+   * completely defeating the "N attempts max" brute-force guard (confirmed
+   * live: 20 concurrent guesses against maxAttempts=5 let the correct code
+   * through, final attemptCount only 2 due to lost updates). The claim
+   * below is a single conditional `updateMany` guarded by
+   * `status: "pending", attemptCount: { lt: maxAttempts }` in its WHERE -
+   * Postgres serializes concurrent UPDATEs on the same row, so only
+   * requests that see the *current, already-committed* state pass; a
+   * concurrent loser's `count` comes back 0, not a stale success.
+   */
   async verifyOtp(orderId: string, code: string) {
     const verification = await this.prismaAdmin.orderVerification.findUnique({ where: { orderId } });
     if (!verification) throw new NotFoundException("No verification is pending for this order.");
@@ -234,42 +251,61 @@ export class OrderVerificationService {
     const maxAttempts = await this.settings.resolve<number>("orders.verification_otp_max_attempts", {
       storeId: verification.storeId,
     });
-    if (verification.attemptCount >= maxAttempts) {
-      await this.prismaAdmin.orderVerification.update({ where: { orderId }, data: { status: "failed" } });
-      await this.alertSellerVerificationFailed(orderId, verification.storeId);
+    // otpHash is immutable for the life of this pending verification (only
+    // resend/regenerate changes it), so correctness can be decided from the
+    // read above - only the attempt-count/lockout gate needs to be atomic.
+    const isCorrect = hashOtp(code) === verification.otpHash;
+
+    if (isCorrect) {
+      const claim = await this.prismaAdmin.orderVerification.updateMany({
+        where: { orderId, status: "pending", attemptCount: { lt: maxAttempts } },
+        data: { status: "verified", verifiedAt: new Date() },
+      });
+      if (claim.count === 0) {
+        const current = await this.prismaAdmin.orderVerification.findUniqueOrThrow({ where: { orderId } });
+        if (current.status === "verified") return current; // a concurrent request already verified it - idempotent
+        throw new BadRequestException(
+          current.status === "pending" ? "Too many incorrect attempts - request a new code." : `This order's verification is already "${current.status}".`,
+        );
+      }
+      const verified = await this.prismaAdmin.orderVerification.findUniqueOrThrow({ where: { orderId } });
+      // FR-37.4's "same audit trail precedent as markAsPaid()" - the
+      // order's own timeline records the moment its FTI gate cleared, same
+      // as any other status-affecting event. Only the request that
+      // actually won the claim above creates this, so a concurrent race
+      // can never create a duplicate entry.
+      await this.prismaAdmin.orderTimelineEvent.create({
+        data: { storeId: verification.storeId, orderId, eventType: "verification_confirmed", afterValue: { channel: verification.channel } },
+      });
+      return verified;
+    }
+
+    // A separate follow-up read to decide `failedNow` (as a plain
+    // updateMany+findUnique pair) would itself be racy against sibling
+    // claims: it could observe a count already bumped by OTHER concurrent
+    // winners, not just this request's own increment, making "who reports
+    // the cap" nondeterministic. RETURNING gives back the exact row this
+    // specific UPDATE produced, so `failedNow` reflects this request's own
+    // atomic write, not a later, independently-racy read.
+    const claimed = await this.prismaAdmin.$queryRaw<Array<{ attempt_count: number }>>`
+      UPDATE order_verifications
+      SET attempt_count = attempt_count + 1
+      WHERE order_id = ${orderId}::uuid AND status = 'pending' AND attempt_count < ${maxAttempts}
+      RETURNING attempt_count
+    `;
+    if (claimed.length === 0) {
+      const current = await this.prismaAdmin.orderVerification.findUniqueOrThrow({ where: { orderId } });
+      if (current.status !== "pending") {
+        throw new BadRequestException(`This order's verification is already "${current.status}".`);
+      }
       throw new BadRequestException("Too many incorrect attempts - request a new code.");
     }
-
-    if (hashOtp(code) !== verification.otpHash) {
-      const attemptCount = verification.attemptCount + 1;
-      const failedNow = attemptCount >= maxAttempts;
-      await this.prismaAdmin.orderVerification.update({
-        where: { orderId },
-        data: { attemptCount, status: failedNow ? "failed" : "pending" },
-      });
-      if (failedNow) await this.alertSellerVerificationFailed(orderId, verification.storeId);
-      throw new BadRequestException(
-        failedNow ? "Too many incorrect attempts - request a new code." : "Incorrect verification code.",
-      );
+    const failedNow = claimed[0].attempt_count >= maxAttempts;
+    if (failedNow) {
+      const lockOut = await this.prismaAdmin.orderVerification.updateMany({ where: { orderId, status: "pending" }, data: { status: "failed" } });
+      if (lockOut.count > 0) await this.alertSellerVerificationFailed(orderId, verification.storeId);
     }
-
-    const verified = await this.prismaAdmin.orderVerification.update({
-      where: { orderId },
-      data: { status: "verified", verifiedAt: new Date() },
-    });
-    // FR-37.4's "same audit trail precedent as markAsPaid()" - the order's
-    // own timeline (already surfaced on the seller's order-detail view)
-    // records the moment its FTI gate cleared, same as any other
-    // status-affecting event.
-    await this.prismaAdmin.orderTimelineEvent.create({
-      data: {
-        storeId: verification.storeId,
-        orderId,
-        eventType: "verification_confirmed",
-        afterValue: { channel: verification.channel },
-      },
-    });
-    return verified;
+    throw new BadRequestException(failedNow ? "Too many incorrect attempts - request a new code." : "Incorrect verification code.");
   }
 
   /**
@@ -300,6 +336,16 @@ export class OrderVerificationService {
    * FR-37.5 rate limit on resends - `updatedAt` doubles as "last sent at"
    * since every resend rewrites the same row (a fresh otpHash/otpExpiresAt),
    * so no separate lastSentAt column is needed.
+   *
+   * Security-hardening fix (post-launch audit, same class of bug as
+   * verifyOtp()): reading `updatedAt` and comparing it in application code
+   * before writing is a check-then-write race - a burst of concurrent
+   * buyer-triggered resends could all read the same stale `updatedAt`,
+   * all pass the cooldown check, and all fire a real OTP send (SMS/email
+   * bombing). The claim below atomically re-touches `updatedAt` (Prisma's
+   * `@updatedAt`) gated on the cooldown still being satisfied at the
+   * moment of the write, not the moment of the read - only one concurrent
+   * request in a burst can win it.
    */
   async resendOtp(orderId: string, storeName: string, buyerEmail: string, buyerWhatsapp: string | null) {
     const verification = await this.prismaAdmin.orderVerification.findUnique({ where: { orderId } });
@@ -308,10 +354,19 @@ export class OrderVerificationService {
     const cooldownSeconds = await this.settings.resolve<number>("orders.verification_otp_resend_cooldown_seconds", {
       storeId: verification.storeId,
     });
-    const secondsSinceLastSend = (Date.now() - verification.updatedAt.getTime()) / 1000;
-    if (secondsSinceLastSend < cooldownSeconds) {
+    const cutoff = new Date(Date.now() - cooldownSeconds * 1000);
+    const claim = await this.prismaAdmin.orderVerification.updateMany({
+      where: { orderId, status: "pending", updatedAt: { lt: cutoff } },
+      data: { status: "pending" }, // no-op value write, just to atomically re-touch @updatedAt as the cooldown claim
+    });
+    if (claim.count === 0) {
+      const current = await this.prismaAdmin.orderVerification.findUniqueOrThrow({ where: { orderId } });
+      if (current.status !== "pending") {
+        throw new BadRequestException(`This order's verification is already "${current.status}".`);
+      }
+      const secondsSinceLastSend = (Date.now() - current.updatedAt.getTime()) / 1000;
       throw new BadRequestException(
-        `Please wait ${Math.ceil(cooldownSeconds - secondsSinceLastSend)}s before requesting another code.`,
+        `Please wait ${Math.ceil(Math.max(0, cooldownSeconds - secondsSinceLastSend))}s before requesting another code.`,
       );
     }
 
