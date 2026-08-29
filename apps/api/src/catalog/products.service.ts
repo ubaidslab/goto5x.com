@@ -211,11 +211,15 @@ export class ProductsService {
   }
 
   async getOne(sellerId: string, storeId: string, productId: string) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
-      const product = await tx.product.findUnique({ where: { id: productId }, include: { variants: true } });
-      if (!product || product.storeId !== storeId) throw new NotFoundException("Product not found.");
-      return product;
+    const product = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const found = await tx.product.findUnique({ where: { id: productId }, include: { variants: true } });
+      if (!found || found.storeId !== storeId) throw new NotFoundException("Product not found.");
+      return found;
     });
+    // Module 91 (founder batch B15) - same reasoning as StoresService.getOwn().
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const seoAdvancedFieldsEnabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
+    return { ...product, seoAdvancedFieldsEnabled };
   }
 
   /**

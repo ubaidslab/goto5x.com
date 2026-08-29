@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -8,6 +9,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type AccessMode = "public" | "coming_soon" | "password_protected";
@@ -80,6 +82,10 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [seoStructuredDataDefault, setSeoStructuredDataDefault] = useState(true);
   const [seoSitemapIncludedDefault, setSeoSitemapIncludedDefault] = useState(true);
   const [customHeadTags, setCustomHeadTags] = useState("");
+  // Founder batch B15 - "locked, not hidden" (UpgradeLockedCard) instead of
+  // relying on the backend's 403 alone; defaults true so the form doesn't
+  // flash locked before the real value loads.
+  const [seoAdvancedFieldsEnabled, setSeoAdvancedFieldsEnabled] = useState(true);
   const [savingSeo, setSavingSeo] = useState(false);
   const [seoSaved, setSeoSaved] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
@@ -180,6 +186,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         seoStructuredDataDefault: boolean;
         seoSitemapIncludedDefault: boolean;
         customHeadTags: string | null;
+        seoAdvancedFieldsEnabled: boolean;
       }>(`/stores/${params.storeId}`)
       .then((s) => {
         setAccessMode(s.accessMode);
@@ -193,6 +200,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         setSeoStructuredDataDefault(s.seoStructuredDataDefault);
         setSeoSitemapIncludedDefault(s.seoSitemapIncludedDefault);
         setCustomHeadTags(s.customHeadTags ?? "");
+        setSeoAdvancedFieldsEnabled(s.seoAdvancedFieldsEnabled);
       })
       .finally(() => setLoaded(true));
     api
@@ -530,61 +538,76 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         <Card>
           <CardHeader
             title="Advanced SEO"
-            description="Store-wide defaults for search-engine indexing, structured data, and sitemap inclusion - a Growth-plan feature. Per-product and per-collection overrides are set on each product/collection's own edit page. The basic page title/description above stay available on every plan."
+            description="Store-wide defaults for search-engine indexing, structured data, and sitemap inclusion. Per-product and per-collection overrides are set on each product/collection's own edit page. The basic page title/description above stay available on every plan."
           />
-          <CardBody>
-            <form onSubmit={saveAdvancedSeo} className="space-y-4">
-              {seoSaved && <Alert tone="success">Saved.</Alert>}
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={seoRobotsIndexDefault}
-                  onChange={(e) => setSeoRobotsIndexDefault(e.target.checked)}
-                />
-                Allow search engines to index products/collections by default
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={seoRobotsFollowDefault}
-                  onChange={(e) => setSeoRobotsFollowDefault(e.target.checked)}
-                />
-                Allow search engines to follow links by default
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={seoStructuredDataDefault}
-                  onChange={(e) => setSeoStructuredDataDefault(e.target.checked)}
-                />
-                Include structured data (rich snippets) on products by default
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={seoSitemapIncludedDefault}
-                  onChange={(e) => setSeoSitemapIncludedDefault(e.target.checked)}
-                />
-                Include products/collections in sitemap.xml by default
-              </label>
-              <Field
-                label="Custom head tags"
-                htmlFor="custom-head-tags"
-                hint="Advanced: raw meta/link tags or a JSON-LD script (e.g. a search-console verification tag). Everything else is stripped for security."
-              >
-                <Textarea
-                  id="custom-head-tags"
-                  rows={4}
-                  value={customHeadTags}
-                  onChange={(e) => setCustomHeadTags(e.target.value)}
-                  placeholder='<meta name="google-site-verification" content="..." />'
-                />
-              </Field>
-              <Button type="submit" loading={savingSeo}>
-                Save
-              </Button>
-            </form>
-          </CardBody>
+          {seoAdvancedFieldsEnabled ? (
+            <CardBody>
+              <form onSubmit={saveAdvancedSeo} className="space-y-4">
+                {seoSaved && <Alert tone="success">Saved.</Alert>}
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={seoRobotsIndexDefault}
+                    onChange={(e) => setSeoRobotsIndexDefault(e.target.checked)}
+                  />
+                  Allow search engines to index products/collections by default
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={seoRobotsFollowDefault}
+                    onChange={(e) => setSeoRobotsFollowDefault(e.target.checked)}
+                  />
+                  Allow search engines to follow links by default
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={seoStructuredDataDefault}
+                    onChange={(e) => setSeoStructuredDataDefault(e.target.checked)}
+                  />
+                  Include structured data (rich snippets) on products by default
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={seoSitemapIncludedDefault}
+                    onChange={(e) => setSeoSitemapIncludedDefault(e.target.checked)}
+                  />
+                  Include products/collections in sitemap.xml by default
+                </label>
+                <Field
+                  label="Custom head tags"
+                  htmlFor="custom-head-tags"
+                  hint="Advanced: raw meta/link tags or a JSON-LD script (e.g. a search-console verification tag). Everything else is stripped for security."
+                >
+                  <Textarea
+                    id="custom-head-tags"
+                    rows={4}
+                    value={customHeadTags}
+                    onChange={(e) => setCustomHeadTags(e.target.value)}
+                    placeholder='<meta name="google-site-verification" content="..." />'
+                  />
+                </Field>
+                <Button type="submit" loading={savingSeo}>
+                  Save
+                </Button>
+              </form>
+            </CardBody>
+          ) : (
+            <UpgradeLockedCard
+              requiredTier="RISE"
+              title="Advanced SEO is a RISE+ feature"
+              description="Control robots directives, structured data, sitemap inclusion, and custom head tags for your whole store, once you're on RISE or FLY."
+              action={
+                <Link href={`/stores/${params.storeId}/billing`}>
+                  <Button size="sm" variant="secondary">
+                    View plans
+                  </Button>
+                </Link>
+              }
+            />
+          )}
         </Card>
 
         <Card id="reports">

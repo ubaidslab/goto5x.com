@@ -11,6 +11,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface ProductResponse {
@@ -33,6 +34,7 @@ interface ProductResponse {
   structuredDataEnabled: boolean | null;
   sitemapIncluded: boolean | null;
   slug: string | null;
+  seoAdvancedFieldsEnabled: boolean;
 }
 
 export default function EditProductPage({ params }: { params: { storeId: string; productId: string } }) {
@@ -144,45 +146,60 @@ export default function EditProductPage({ params }: { params: { storeId: string;
         <Card>
           <CardHeader
             title="Advanced SEO"
-            description="Growth-plan feature. Overrides this product's canonical URL, search-engine indexing, social preview, structured data, and sitemap inclusion. Leave blank/on to use your store's defaults."
+            description="Overrides this product's canonical URL, search-engine indexing, social preview, structured data, and sitemap inclusion. Leave blank/on to use your store's defaults."
           />
-          <CardBody>
-            <form onSubmit={saveAdvancedSeo} className="space-y-4">
-              {seoError && <Alert>{seoError}</Alert>}
-              {seoSaved && <Alert tone="success">Saved.</Alert>}
-              <Field label="Canonical URL" htmlFor="product-canonical-url" hint="Leave blank to use this product's own URL.">
-                <Input id="product-canonical-url" value={canonicalUrl} onChange={(e) => setCanonicalUrl(e.target.value)} placeholder="https://..." />
-              </Field>
-              <Field label="Custom slug" htmlFor="product-slug" hint="A canonical-URL enhancement only - this product's real storefront link is unchanged.">
-                <Input id="product-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="e.g. blue-cotton-shirt" />
-              </Field>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={robotsIndex} onChange={(e) => setRobotsIndex(e.target.checked)} />
-                Allow search engines to index this product
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={robotsFollow} onChange={(e) => setRobotsFollow(e.target.checked)} />
-                Allow search engines to follow links from this product
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={structuredDataEnabled} onChange={(e) => setStructuredDataEnabled(e.target.checked)} />
-                Include structured data (rich snippets)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={sitemapIncluded} onChange={(e) => setSitemapIncluded(e.target.checked)} />
-                Include in sitemap.xml
-              </label>
-              <Field label="Social preview title" htmlFor="product-og-title" hint="Shown when this product is shared on social media. Falls back to the SEO title above when blank.">
-                <Input id="product-og-title" value={ogTitle} onChange={(e) => setOgTitle(e.target.value)} />
-              </Field>
-              <Field label="Social preview description" htmlFor="product-og-description" hint="Falls back to the SEO description above when blank.">
-                <Textarea id="product-og-description" rows={2} value={ogDescription} onChange={(e) => setOgDescription(e.target.value)} />
-              </Field>
-              <Button type="submit" loading={savingSeo}>
-                Save advanced SEO
-              </Button>
-            </form>
-          </CardBody>
+          {product.seoAdvancedFieldsEnabled ? (
+            <CardBody>
+              <form onSubmit={saveAdvancedSeo} className="space-y-4">
+                {seoError && <Alert>{seoError}</Alert>}
+                {seoSaved && <Alert tone="success">Saved.</Alert>}
+                <Field label="Canonical URL" htmlFor="product-canonical-url" hint="Leave blank to use this product's own URL.">
+                  <Input id="product-canonical-url" value={canonicalUrl} onChange={(e) => setCanonicalUrl(e.target.value)} placeholder="https://..." />
+                </Field>
+                <Field label="Custom slug" htmlFor="product-slug" hint="A canonical-URL enhancement only - this product's real storefront link is unchanged.">
+                  <Input id="product-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="e.g. blue-cotton-shirt" />
+                </Field>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={robotsIndex} onChange={(e) => setRobotsIndex(e.target.checked)} />
+                  Allow search engines to index this product
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={robotsFollow} onChange={(e) => setRobotsFollow(e.target.checked)} />
+                  Allow search engines to follow links from this product
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={structuredDataEnabled} onChange={(e) => setStructuredDataEnabled(e.target.checked)} />
+                  Include structured data (rich snippets)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={sitemapIncluded} onChange={(e) => setSitemapIncluded(e.target.checked)} />
+                  Include in sitemap.xml
+                </label>
+                <Field label="Social preview title" htmlFor="product-og-title" hint="Shown when this product is shared on social media. Falls back to the SEO title above when blank.">
+                  <Input id="product-og-title" value={ogTitle} onChange={(e) => setOgTitle(e.target.value)} />
+                </Field>
+                <Field label="Social preview description" htmlFor="product-og-description" hint="Falls back to the SEO description above when blank.">
+                  <Textarea id="product-og-description" rows={2} value={ogDescription} onChange={(e) => setOgDescription(e.target.value)} />
+                </Field>
+                <Button type="submit" loading={savingSeo}>
+                  Save advanced SEO
+                </Button>
+              </form>
+            </CardBody>
+          ) : (
+            <UpgradeLockedCard
+              requiredTier="RISE"
+              title="Advanced SEO is a RISE+ feature"
+              description="Override this product's canonical URL, search-engine indexing, social preview, structured data, and sitemap inclusion, once you're on RISE or FLY."
+              action={
+                <Link href={`/stores/${params.storeId}/billing`}>
+                  <Button size="sm" variant="secondary">
+                    View plans
+                  </Button>
+                </Link>
+              }
+            />
+          )}
         </Card>
 
         {product.sourceType === "supplier" ? (

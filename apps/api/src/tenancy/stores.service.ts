@@ -128,7 +128,13 @@ export class StoresService {
     });
     // FR-32.5 - flattened alongside the raw FK for dashboard convenience.
     const { logoMedia, ...rest } = store;
-    return { ...stripPasswordHash(rest), logoUrl: logoMedia?.url ?? null };
+    // Module 91 (founder batch B15) - the dashboard's own "locked, not
+    // hidden" convention (UpgradeLockedCard) needs to know whether this
+    // gate is actually open, same reasoning as updateOwn()'s enforcement
+    // below - computed once here rather than a second round-trip.
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const seoAdvancedFieldsEnabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
+    return { ...stripPasswordHash(rest), logoUrl: logoMedia?.url ?? null, seoAdvancedFieldsEnabled };
   }
 
   async updateOwn(sellerId: string, storeId: string, dto: UpdateStoreDto) {

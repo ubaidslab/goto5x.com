@@ -160,6 +160,27 @@ describe("Advanced Store SEO Control (e2e) - SRS §5.65, §14.64", () => {
       expect(update.status).toBe(200);
       expect(update.body.seoTitle).toBe("Custom SEO title");
     });
+
+    it("founder batch B15: GET store/product responses expose seoAdvancedFieldsEnabled, reflecting the real gate before and after upgrade", async () => {
+      const { token, sellerId, storeId } = await signupLoginAndCreateStore("seo-gate-flag@example.com", "seo-gate-flag-store");
+      const productId = await createSelfProduct(token, storeId);
+
+      const storeBefore = await request(app.getHttpServer()).get(`/stores/${storeId}`).set("Authorization", `Bearer ${token}`);
+      expect(storeBefore.body.seoAdvancedFieldsEnabled).toBe(false);
+      const productBefore = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/products/${productId}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(productBefore.body.seoAdvancedFieldsEnabled).toBe(false);
+
+      await upgradeToGrowth(sellerId);
+
+      const storeAfter = await request(app.getHttpServer()).get(`/stores/${storeId}`).set("Authorization", `Bearer ${token}`);
+      expect(storeAfter.body.seoAdvancedFieldsEnabled).toBe(true);
+      const productAfter = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/products/${productId}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(productAfter.body.seoAdvancedFieldsEnabled).toBe(true);
+    });
   });
 
   describe("FR-65.1/65.2: fallback cascade rendered through the public storefront read API", () => {
