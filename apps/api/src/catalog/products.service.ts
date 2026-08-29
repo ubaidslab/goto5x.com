@@ -160,6 +160,10 @@ export class ProductsService {
       if (query.moderationStatus) {
         conditions.push({ moderationStatus: query.moderationStatus as ModerationStatus });
       }
+      // Module 91 (SRS §5.67/FR-67.4) - "in an active deal" filter chip.
+      if (query.inActiveDeal) {
+        conditions.push({ dealItems: { some: { deal: { status: "active" } } } });
+      }
       if (query.minPrice != null || query.maxPrice != null) {
         conditions.push({
           variants: {

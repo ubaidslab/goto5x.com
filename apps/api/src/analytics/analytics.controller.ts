@@ -58,4 +58,9 @@ export class AnalyticsController {
   getReturnRateByProduct(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.analytics.getReturnRateByProduct(sellerId, storeId);
   }
+
+  @Get("deal-performance")
+  getDealPerformance(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
+    return this.analytics.getDealPerformance(sellerId, storeId);
+  }
 }

@@ -21,6 +21,7 @@ import { validateEnv } from "./config/env.validation";
 import { CustomersModule } from "./customers/customers.module";
 import { DataExportModule } from "./data-export/data-export.module";
 import { DataPortabilityModule } from "./data-portability/data-portability.module";
+import { DealsModule } from "./deals/deals.module";
 import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
@@ -120,6 +121,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     PnLModule,
     BrandingModule,
     GiftCardsModule,
+    DealsModule,
     CustomerSegmentsModule,
     CampaignsModule,
     StaffModule,

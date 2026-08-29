@@ -55,7 +55,15 @@ export class CartService {
 
     const updated = await this.prismaAdmin.cart.update({
       where: { id: cart.id },
-      data: { items: dto.items as unknown as object },
+      // Module 91 (SRS §5.67/FR-67.2) - editing a deal cart's item list
+      // forfeits the deal discount (dealId cleared unconditionally, cheap
+      // even when it was already null): the uniform-percentage discount is
+      // only valid for the deal's exact item set, and this is the only
+      // place a buyer can change a deal cart's contents after buy-now
+      // created it - closes the "pad in extra products to get them
+      // discounted too" abuse vector without needing a subset check at
+      // checkout time.
+      data: { items: dto.items as unknown as object, dealId: null },
     });
     return this.toPublicCart(updated, store.id);
   }

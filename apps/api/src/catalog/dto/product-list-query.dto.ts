@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
+import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
 import { ModerationStatus } from "@prisma/client";
 
 /** SRS §5.57/FR-57.2 - the dashboard product-list filter/search/pagination surface. Every field optional and combinable (FR-57.3). */
@@ -37,6 +37,12 @@ export class ProductListQueryDto {
   @IsOptional()
   @IsEnum(ModerationStatus)
   moderationStatus?: ModerationStatus;
+
+  // Module 91 (SRS §5.67/FR-67.4) - "in an active deal" filter chip.
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  inActiveDeal?: boolean;
 
   @IsOptional()
   @Type(() => Number)

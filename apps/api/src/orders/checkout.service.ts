@@ -42,6 +42,8 @@ interface PlaceOrderParams {
   shippingAddress: ShippingAddressLike;
   discountCode?: string;
   giftCardCode?: string;
+  /** Module 91 (SRS §5.67/FR-67.2) - set only from Cart.dealId (a buy-now cart), never client-supplied directly. */
+  dealId?: string;
   source: OrderSource;
 }
 
@@ -90,6 +92,13 @@ export class CheckoutService {
     const items = cart.items as { productId: string; variantId: string; quantity: number }[];
     if (items.length === 0) throw new BadRequestException("This cart is empty.");
 
+    // Module 91 (SRS §5.67/FR-67.2) - a discount code and a deal are
+    // mutually exclusive; a deal cart's frontend never offers a discount-
+    // code field, so this only ever fires against a hand-crafted request.
+    if (cart.dealId && dto.discountCode) {
+      throw new BadRequestException("A discount code cannot be combined with a deal.");
+    }
+
     const { order, paymentInstructions } = await this.placeOrder({
       storeId: store.id,
       currency: store.currency,
@@ -99,6 +108,7 @@ export class CheckoutService {
       shippingAddress: dto.shippingAddress,
       discountCode: dto.discountCode,
       giftCardCode: dto.giftCardCode,
+      dealId: cart.dealId ?? undefined,
       source: "storefront",
     });
 
@@ -202,6 +212,34 @@ export class CheckoutService {
         );
         discountAmount = applied.amount;
         discountCodeId = applied.discountCodeId;
+      }
+
+      // Module 91 (SRS §5.67/FR-67.2) - live-computed against the prices
+      // just resolved above (subtotalBeforeDiscount), never a stored/
+      // snapshotted amount. Re-validates the deal itself (active, within
+      // its startsAt/endsAt window, still belongs to this store) rather
+      // than trusting the cart's stale dealId, and re-validates that every
+      // priced item is actually one of the deal's items - defense-in-depth
+      // alongside CartService.update()'s dealId-clearing guard, in case a
+      // cart is ever fed into placeOrder by a path other than the ordinary
+      // checkout() above.
+      let dealId: string | null = null;
+      if (params.dealId) {
+        const deal = await this.prismaAdmin.deal.findUnique({
+          where: { id: params.dealId },
+          include: { items: true },
+        });
+        const now = Date.now();
+        const withinWindow = deal && (!deal.startsAt || deal.startsAt.getTime() <= now) && (!deal.endsAt || deal.endsAt.getTime() >= now);
+        if (!deal || deal.storeId !== params.storeId || deal.status !== "active" || !withinWindow) {
+          throw new BadRequestException("This deal is no longer available.");
+        }
+        const dealVariantIds = new Set(deal.items.map((i) => i.variantId));
+        if (priced.some((item) => !dealVariantIds.has(item.variantId))) {
+          throw new BadRequestException("This cart no longer matches the deal - please start over.");
+        }
+        dealId = deal.id;
+        discountAmount = round2(subtotalBeforeDiscount * (Number(deal.discountPercent) / 100));
       }
 
       const [shippingSettings, taxSettings, paymentInstructions, store] = await Promise.all([
@@ -330,6 +368,7 @@ export class CheckoutService {
             status: "pending",
             source: params.source,
             discountCodeId,
+            dealId,
             discountAmount,
             giftCardAmount,
             shippingAmount,

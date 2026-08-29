@@ -127,4 +127,38 @@ export class AnalyticsService {
       );
     });
   }
+
+  /** SRS §5.67/FR-67.5 (Module 91) - orders/revenue/units per deal, same CONFIRMED_OR_BEYOND Financial Truth Invariant gate as every other card here. */
+  async getDealPerformance(sellerId: string, storeId: string) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      await this.assertStoreExists(tx, storeId);
+
+      const [orders, deals] = await Promise.all([
+        tx.order.findMany({
+          where: { storeId, dealId: { not: null }, status: { in: CONFIRMED_OR_BEYOND } },
+          select: { dealId: true, totalAmount: true, items: { select: { quantity: true } } },
+        }),
+        tx.deal.findMany({ where: { storeId }, select: { id: true, title: true } }),
+      ]);
+
+      const titleById = new Map(deals.map((d) => [d.id, d.title]));
+      const byDeal = new Map<string, { dealId: string; title: string; orders: number; revenue: number; units: number }>();
+      for (const order of orders) {
+        const dealId = order.dealId as string;
+        const entry = byDeal.get(dealId) ?? {
+          dealId,
+          title: titleById.get(dealId) ?? "Deleted deal",
+          orders: 0,
+          revenue: 0,
+          units: 0,
+        };
+        entry.orders += 1;
+        entry.revenue += Number(order.totalAmount);
+        entry.units += order.items.reduce((sum, item) => sum + item.quantity, 0);
+        byDeal.set(dealId, entry);
+      }
+
+      return [...byDeal.values()].sort((a, b) => b.revenue - a.revenue);
+    });
+  }
 }

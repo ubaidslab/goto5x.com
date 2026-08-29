@@ -570,6 +570,7 @@ model Store {
   paymentInstructions       StorePaymentInstructions?
   paymentGatewayConnections StorePaymentGatewayConnection[]
   discountCodes             DiscountCode[]
+  deals                     Deal[]
   supplierLinks             StoreSupplierLink[]
   listingReviews            ListingReview[]
   carts                     Cart[]
@@ -693,6 +694,7 @@ model Product {
   collectionProducts CollectionProduct[]
   orderItems         OrderItem[]
   reviews            ProductReview[]
+  dealItems          DealItem[]
 
   @@unique([storeId, slug], name: "uniq_product_store_slug")
   @@index([storeId, status], name: "idx_products_store_status")
@@ -1008,6 +1010,64 @@ model DiscountCode {
   @@map("discount_codes")
 }
 
+enum DealStatus {
+  draft
+  active
+  archived
+}
+
+// Module 91 (SRS §5.67/FR-67.1) - a seller-created bundle of their own
+// products/variants sold together at one uniform percentage off. Mirrors
+// DiscountCode's store-scoped shape above; discountPercent is applied
+// live against each DealItem's variant's current price at purchase time
+// (DealsService.buyNow()) - never snapshotted onto the Deal or DealItem
+// row, so a later price edit is reflected immediately, same as every
+// other catalog price read.
+model Deal {
+  id               String     @id @default(uuid()) @db.Uuid
+  storeId          String     @map("store_id") @db.Uuid
+  title            String
+  slug             String
+  description      String?
+  thumbnailMediaId String?    @map("thumbnail_media_id") @db.Uuid
+  discountPercent  Decimal    @map("discount_percent") @db.Decimal(5, 2)
+  status           DealStatus @default(draft)
+  startsAt         DateTime?  @map("starts_at") @db.Timestamptz
+  endsAt           DateTime?  @map("ends_at") @db.Timestamptz
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  store          Store       @relation(fields: [storeId], references: [id])
+  thumbnailMedia MediaAsset? @relation("DealThumbnail", fields: [thumbnailMediaId], references: [id])
+  items          DealItem[]
+  orders         Order[]
+  carts          Cart[]
+
+  @@unique([storeId, slug], name: "uniq_deal_store_slug")
+  @@index([storeId, status], name: "idx_deals_store_status")
+  @@map("deals")
+}
+
+// Module 91 (SRS §5.67/FR-67.1) - `storeId` denormalized directly onto this
+// join table, same tenant-strategy shape as CollectionProduct above (every
+// tenant table gets the same RLS predicate, no exceptions to reason about).
+model DealItem {
+  id        String @id @default(uuid()) @db.Uuid
+  storeId   String @map("store_id") @db.Uuid
+  dealId    String @map("deal_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String @map("variant_id") @db.Uuid
+  sortOrder Int    @default(0) @map("sort_order")
+
+  deal    Deal           @relation(fields: [dealId], references: [id])
+  product Product        @relation(fields: [productId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([dealId, variantId], name: "uniq_deal_item_variant")
+  @@index([dealId, sortOrder], name: "idx_deal_items_deal")
+  @@map("deal_items")
+}
+
 enum GiftCardSource {
   buyer_purchase
   seller_issued
@@ -1239,6 +1299,7 @@ model ProductVariant {
   product          Product           @relation(fields: [productId], references: [id])
   orderItems       OrderItem[]
   stockAdjustments StockAdjustment[]
+  dealItems        DealItem[]
 
   @@index([productId], name: "idx_variants_product_id")
   @@map("product_variants")
@@ -1260,6 +1321,7 @@ model MediaAsset {
   logoForStores         Store[]      @relation("StoreLogo")
   ogImageForProducts    Product[]    @relation("ProductOgImage")
   ogImageForCollections Collection[] @relation("CollectionOgImage")
+  thumbnailForDeals     Deal[]       @relation("DealThumbnail")
 
   @@index([storeId], name: "idx_media_store_id")
   @@index([productId], name: "idx_media_product_id")
@@ -1955,12 +2017,20 @@ model Cart {
   items            Json       @default("[]")
   status           CartStatus @default(active)
   convertedOrderId String?    @map("converted_order_id") @db.Uuid
+  // Module 91 (SRS §5.67/FR-67.2) - set only by DealsService.buyNow(), never
+  // buyer-settable via UpdateCartDto; CartService.update() nulls this back
+  // out the instant a buyer edits a deal cart's item list, since the
+  // uniform discount is only valid for the deal's exact item set (closes
+  // the "pad in extra products to get them discounted too" abuse vector).
+  dealId           String?    @map("deal_id") @db.Uuid
   createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
 
   store Store @relation(fields: [storeId], references: [id])
+  deal  Deal? @relation(fields: [dealId], references: [id])
 
   @@index([storeId, status, updatedAt], name: "idx_carts_store_status_updated")
+  @@index([dealId], name: "idx_carts_deal")
   @@map("carts")
 }
 
@@ -1993,6 +2063,12 @@ model Order {
   source            OrderSource @default(storefront)
   discountCodeId    String?     @map("discount_code_id") @db.Uuid
   discountAmount    Decimal     @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  // Module 91 (SRS §5.67/FR-67.2) - same optional-FK pattern as
+  // discountCodeId above; traces a completed order back to the Deal that
+  // produced it (buy-now flow), purely informational for FR-67.5's
+  // analytics card - never read by checkout/pricing logic itself, which
+  // already applied the live-computed discount before the order existed.
+  dealId            String?     @map("deal_id") @db.Uuid
   // Module 32 (SRS §5.49/FR-49.5) - a redeemed gift card is a payment
   // reduction against the already-computed total, never a price discount
   // (unlike discountAmount, it plays no part in computeOrderTotals()'s
@@ -2026,6 +2102,7 @@ model Order {
   store               Store                @relation(fields: [storeId], references: [id])
   customer            Customer?            @relation(fields: [customerId], references: [id])
   discountCode        DiscountCode?        @relation(fields: [discountCodeId], references: [id])
+  deal                Deal?                @relation(fields: [dealId], references: [id])
   items               OrderItem[]
   notes               OrderNote[]
   timelineEvents      OrderTimelineEvent[]
@@ -2048,6 +2125,7 @@ model Order {
   @@unique([storeId, orderNumber], name: "uniq_orders_store_order_number")
   @@index([storeId, status, placedAt], name: "idx_orders_store_status_date")
   @@index([discountCodeId], name: "idx_orders_discount_code")
+  @@index([dealId], name: "idx_orders_deal")
   @@index([customerId], name: "idx_orders_customer")
   @@map("orders")
 }
