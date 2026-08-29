@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { CreatePromoCodeDto } from "./dto/create-promo-code.dto";
 
@@ -37,6 +38,22 @@ export class PromoCodesService {
     });
   }
 
+  /**
+   * Security-hardening fix (post-launch audit, same class of bug as
+   * verifyOtp()/claimSubmissionCooldown()): the `redeemedCount >=
+   * maxRedemptions` check below was a read-then-write race - concurrent
+   * redemptions from DIFFERENT sellers could all read the same
+   * pre-increment count, all pass the check, and all succeed past
+   * `maxRedemptions` (the per-seller unique constraint only stops one
+   * seller redeeming twice, it does nothing for the global cap). The
+   * `$transaction` below closes it the same way
+   * DiscountCodesService.validateAndApply() does: an atomic conditional
+   * `updateMany` guarded by `redeemedCount: { lt: maxRedemptions }` in its
+   * WHERE, with the affected-row-count checked, wrapped in the same
+   * transaction as the per-seller redemption-row create so a duplicate
+   * redemption (caught via the unique constraint) rolls back the claimed
+   * slot instead of leaking a phantom redemption.
+   */
   async redeem(sellerId: string, code: string) {
     const promo = await this.prisma.platformPromoCode.findUnique({ where: { code } });
     if (!promo) throw new NotFoundException("Promo code not found.");
@@ -58,15 +75,24 @@ export class PromoCodesService {
     });
     if (alreadyRedeemed) throw new BadRequestException("You have already redeemed this promo code.");
 
-    const [redemption] = await this.prisma.$transaction([
-      this.prisma.platformPromoCodeRedemption.create({
-        data: { promoCodeId: promo.id, sellerId },
-      }),
-      this.prisma.platformPromoCode.update({
-        where: { id: promo.id },
-        data: { redeemedCount: { increment: 1 } },
-      }),
-    ]);
-    return redemption;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const claim = await tx.platformPromoCode.updateMany({
+          where: { id: promo.id, redeemedCount: { lt: promo.maxRedemptions } },
+          data: { redeemedCount: { increment: 1 } },
+        });
+        if (claim.count === 0) {
+          throw new BadRequestException("This promo code has reached its redemption limit.");
+        }
+        return tx.platformPromoCodeRedemption.create({
+          data: { promoCodeId: promo.id, sellerId },
+        });
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new BadRequestException("You have already redeemed this promo code.");
+      }
+      throw err;
+    }
   }
 }
