@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -9,7 +10,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
-import { planTierSubtitle } from "@/lib/plan-tier-copy";
+import { planTierCopy, planTierSubtitle } from "@/lib/plan-tier-copy";
 
 interface Plan {
   id: string;
@@ -190,7 +191,7 @@ export default function BillingPage() {
       <PageHeader title="Plans & Billing" description="Your plan, upgrade options, and teams." />
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="max-w-3xl space-y-6">
+      <div className="max-w-5xl space-y-6">
         <Card>
           <CardHeader title="Current plan" />
           <CardBody>
@@ -267,35 +268,58 @@ export default function BillingPage() {
 
         {!activeMembership && plans && (
           <Card>
-            <CardHeader title="Available plans" description="Upgrading or downgrading takes effect at your next billing cycle." />
+            <CardHeader title="Available plans" description="What each tier gets you - upgrading or downgrading takes effect at your next billing cycle." />
             <CardBody>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {plans.individual.map((plan) => {
                   const isCurrent = subscription?.planId === plan.id;
                   const isPending = subscription?.pendingPlanId === plan.id;
+                  const copyForTier = planTierCopy(plan.name);
                   return (
-                    <div key={plan.id} className="flex flex-col gap-2 rounded-md border border-border p-4">
+                    <div
+                      key={plan.id}
+                      className={`flex flex-col rounded-lg border p-4 ${
+                        isCurrent ? "border-accent bg-accent-subtle/30" : "border-border bg-surface"
+                      }`}
+                    >
                       <div>
                         <p className="font-medium text-ink">{plan.name}</p>
                         {planTierSubtitle(plan.name) && <p className="text-xs text-ink-faint">{planTierSubtitle(plan.name)}</p>}
                       </div>
-                      <p className="text-sm text-ink-muted">
+
+                      {/* Features first, most of the card's visual weight - price is a
+                          single de-emphasized line below, not the headline (founder
+                          batch A8: features-first, price-last). */}
+                      <ul className="mt-3 flex-1 space-y-1.5">
+                        {copyForTier.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-1.5 text-xs text-ink-muted">
+                            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <p className="mt-4 text-xs text-ink-faint">
                         {plan.price === "0" ? "Free" : `${plan.currency} ${plan.price}/${plan.billingInterval}`}
                       </p>
-                      {isCurrent ? (
-                        <Badge tone="success">Current plan</Badge>
-                      ) : isPending ? (
-                        <Badge tone="info">Scheduled</Badge>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => changePlan(plan.id)}
-                          loading={changingPlanId === plan.id}
-                        >
-                          Switch to this plan
-                        </Button>
-                      )}
+
+                      <div className="mt-2">
+                        {isCurrent ? (
+                          <Badge tone="success">Current plan</Badge>
+                        ) : isPending ? (
+                          <Badge tone="info">Scheduled</Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="w-full"
+                            onClick={() => changePlan(plan.id)}
+                            loading={changingPlanId === plan.id}
+                          >
+                            Switch to this plan
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

@@ -211,15 +211,22 @@ export class SubscriptionsService {
           billingInterval,
           currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(new Date(), billingInterval ?? "monthly"),
         },
+        include: { plan: true, pendingPlan: true },
       });
       await this.multiStoreDowngrade.applyDowngrade(sellerId, newPlanId, keepStoreIds ?? []);
       await this.multiStoreDowngrade.reclaimOnUpgrade(sellerId, newPlanId);
       return updated;
     }
 
+    // Matches getSubscription()'s shape - the frontend renders subscription.plan
+    // and subscription.pendingPlan directly off whatever this returns (both the
+    // Plans & Billing page's "Current plan" card and the immediate-apply branch
+    // above), so an un-included relation here crashes that render the instant a
+    // seller with an active cycle switches plans.
     return this.prisma.subscription.update({
       where: { sellerId },
       data: { pendingPlanId: newPlanId, pendingKeepStoreIds: keepStoreIds ?? [], billingInterval },
+      include: { plan: true, pendingPlan: true },
     });
   }
 
