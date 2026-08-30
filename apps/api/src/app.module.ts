@@ -22,6 +22,7 @@ import { CustomersModule } from "./customers/customers.module";
 import { DataExportModule } from "./data-export/data-export.module";
 import { DataPortabilityModule } from "./data-portability/data-portability.module";
 import { DealsModule } from "./deals/deals.module";
+import { DesignTokensModule } from "./design-tokens/design-tokens.module";
 import { DiscoveryModule } from "./discovery/discovery.module";
 import { DomainsModule } from "./domains/domains.module";
 import { EventsModule } from "./events/events.module";
@@ -122,6 +123,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     BrandingModule,
     GiftCardsModule,
     DealsModule,
+    DesignTokensModule,
     CustomerSegmentsModule,
     CampaignsModule,
     StaffModule,

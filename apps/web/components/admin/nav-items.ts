@@ -14,6 +14,7 @@ import {
   Mail,
   MessageSquare,
   Newspaper,
+  Palette,
   Receipt,
   RefreshCcw,
   ScrollText,
@@ -82,6 +83,7 @@ export const adminNavItems: AdminNavItem[] = [
   { href: "/admin/careers", label: "Careers", icon: Briefcase, group: "growth" },
 
   { href: "/admin/settings", label: "Settings Registry", icon: SettingsIcon, group: "platform" },
+  { href: "/admin/design-tokens", label: "Design tokens", icon: Palette, group: "platform" },
   { href: "/admin/audit-log", label: "Audit log", icon: ScrollText, group: "platform" },
   { href: "/admin/external-api-clients", label: "External API clients", icon: Database, group: "platform" },
 

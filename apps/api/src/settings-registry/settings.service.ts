@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { SettingsScopeType } from "@prisma/client";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { RedisService } from "../common/redis/redis.service";
-import { PRECEDENCE, scopeIdFor, SettingsContext } from "./settings.types";
+import { contextFromScope, PRECEDENCE, scopeIdFor, SettingsContext } from "./settings.types";
 
 const CACHE_TTL_SECONDS = 60;
 
@@ -121,6 +121,14 @@ export class SettingsService {
       where: { definitionKey: key, scopeType, scopeId },
     });
 
+    // Module 92 (SRS §5.68/FR-68.3) - a locked row rejects every plain
+    // value write, regardless of key. Locking/unlocking itself goes through
+    // setLocked() below, which never calls this method, so a locked row can
+    // only ever be freed by an explicit, audited unlock action.
+    if (existing?.locked) {
+      throw new ConflictException(`"${key}" is locked - unlock it before changing its value.`);
+    }
+
     const row = existing
       ? await this.prisma.settingsValue.update({
           where: { id: existing.id },
@@ -141,6 +149,54 @@ export class SettingsService {
     return row;
   }
 
+  /**
+   * Module 92 (SRS §5.68/FR-68.3) - toggles a row's lock state. Deliberately
+   * bypasses setValue()'s own lock-guard (this IS the lock-guard's escape
+   * hatch) and never touches the value on an unlock. Locking a key with no
+   * existing override row yet pins the current resolved value as an
+   * explicit global override at the moment it's locked, so "locked" always
+   * means "this exact value, unconditionally" - never an ambiguous "locked
+   * at some undefined value".
+   */
+  async setLocked(
+    key: string,
+    scopeType: SettingsScopeType,
+    scopeId: string | null,
+    locked: boolean,
+    updatedByAdminUserId: string,
+  ) {
+    const definition = await this.prisma.settingsDefinition.findUnique({ where: { key } });
+    if (!definition) {
+      throw new NotFoundException(`Unknown settings key: ${key}`);
+    }
+    if (!definition.allowedScopes.includes(scopeType)) {
+      throw new BadRequestException(`Key "${key}" does not support scope "${scopeType}".`);
+    }
+
+    const existing = await this.prisma.settingsValue.findFirst({
+      where: { definitionKey: key, scopeType, scopeId },
+    });
+
+    const row = existing
+      ? await this.prisma.settingsValue.update({
+          where: { id: existing.id },
+          data: { locked, updatedBy: updatedByAdminUserId },
+        })
+      : await this.prisma.settingsValue.create({
+          data: {
+            definitionKey: key,
+            scopeType,
+            scopeId,
+            value: (await this.resolve(key, contextFromScope(scopeType, scopeId))) as any,
+            locked,
+            updatedBy: updatedByAdminUserId,
+          },
+        });
+
+    await this.redis.del(cacheKey(key, scopeType, scopeId));
+    return row;
+  }
+
   private validateValue(valueType: string, validation: unknown, value: unknown): void {
     if (valueType === "number" && typeof value !== "number") {
       throw new BadRequestException(`Value for a "number" setting must be a number.`);
@@ -150,6 +206,9 @@ export class SettingsService {
     }
     if (valueType === "string" && typeof value !== "string") {
       throw new BadRequestException(`Value for a "string" setting must be a string.`);
+    }
+    if (valueType === "color" && (typeof value !== "string" || !/^#[0-9a-fA-F]{6}$/.test(value))) {
+      throw new BadRequestException(`Value for a "color" setting must be a 6-digit #rrggbb hex string.`);
     }
 
     const rules = validation as { min?: number; max?: number } | null | undefined;

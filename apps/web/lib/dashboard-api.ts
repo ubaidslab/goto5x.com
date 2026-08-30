@@ -9,6 +9,8 @@
  * exists to remove - SRS FR-28.3).
  */
 
+import { getApiErrorMessage } from "./api-error";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export class ApiError extends Error {
@@ -40,10 +42,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}) as { message?: string });
-    const message =
-      typeof body.message === "string" ? body.message : Array.isArray(body.message) ? body.message.join(", ") : res.statusText;
-    throw new ApiError(message, res.status);
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(getApiErrorMessage(body, res.statusText), res.status);
   }
 
   if (res.status === 204) return undefined as T;

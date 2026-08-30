@@ -1,10 +1,10 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.42 (Build-phase amendment — Deals & Bundles, uniform-percentage
-store promotions reusing the existing checkout pipeline, §5.67/FR-67.1-67.5,
-Module 91; founder-approved after a full live walkthrough of the built
-system, first of an 18-item design/feature batch)
-**Date:** 2026-08-29
+**Version:** 0.43 (Build-phase amendment — admin-configurable, lockable brand
+color tokens at runtime, §5.68/FR-68.1-68.5, Module 92; founder batch item
+A6, motivated directly by a founder-caught regression during A2's brand-
+palette rollout where a token got mis-set with no safeguard against a repeat)
+**Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -5837,6 +5837,92 @@ founder-approved data model covers for launch.
   seller Analytics page (§5.54) — units sold and revenue attributable to
   `Order.dealId`, reusing the existing analytics query/chart
   infrastructure rather than a bespoke reporting path.
+
+### 5.68 Admin-Configurable, Lockable Brand Color Tokens (new, v0.43 — founder
+batch item A6; Module 92)
+Directly motivated by a real incident: during A2's brand-palette rollout, the
+platform's `--color-ink` token was mistakenly set to the same hex as
+`--color-accent` — body text and the one-restrained-accent-only interactive
+color became indistinguishable, a regression the founder caught by eye and
+that was only fixed by hand-editing `globals.css` again. This module gives
+admin a supported way to change the platform's core brand colors **without a
+deploy**, and — the part that directly prevents a repeat of the incident — a
+way to **lock** a token once its value is right, so it can't be silently
+changed again by a future edit. Deliberately reuses the existing Settings
+Registry (§3.8) rather than building a parallel config system: these are
+Settings Registry keys like any other, just a new `color` value type and one
+new safety mechanism (locking) layered onto the existing resolve/write path
+every other tunable already goes through.
+
+- FR-68.1 (Module 92): **Scope — the 13 core neutral/accent tokens, light
+  mode only.** Registered as thirteen new global-scope-only
+  `SettingsDefinition` rows under the `design.color.*` key prefix (canvas,
+  surface, surface_raised, border, border_strong, ink, ink_muted, ink_faint,
+  accent, accent_hover, accent_active, accent_subtle, on_accent), each
+  mapping 1:1 to the CSS custom property of the same purpose in
+  `globals.css`'s `@theme` block. **Explicitly excluded, same as A2's own
+  scope note:** semantic/status colors (success/warning/danger/info) and the
+  per-seller cosmetic dashboard-accent presets (emerald/amber/rose) —
+  functional signals and a separate seller-facing feature, not brand chrome.
+  Dark-mode tokens are out of scope for this pass too — dark mode has no UI
+  toggle yet (§CSS comment, "not wired to a manual toggle"), so there is no
+  live surface for an admin override to matter on yet; extending this
+  mechanism to the dark-mode block is a natural follow-up once dark mode
+  itself ships, not before.
+- FR-68.2 (Module 92): **New `color` Settings Registry value type.** Extends
+  the existing `SettingsValueType` enum (boolean/number/string/json) with
+  `color`; `SettingsService`'s value validation rejects anything that isn't
+  a 6-digit `#rrggbb` hex string for a `color`-typed key, the same
+  fail-before-it-reaches-the-database discipline §3.8 already applies to a
+  numeric setting's min/max. Every `design.color.*` definition is seeded
+  `requiresConfirmation: true` (FR-8.16) — changing a platform-wide brand
+  color is exactly the "high-impact key" category that mechanism exists for.
+- FR-68.3 (Module 92): **Locking (new Settings Registry capability, not
+  color-specific).** A `locked` boolean on `SettingsValue` (not the
+  definition — a per-scope-override property, defaulting `false`).
+  `SettingsService.setValue()` rejects a write to a locked row outright
+  (409) regardless of which key it is — a genuinely general Settings
+  Registry safety mechanism, exposed via UI for `design.color.*` keys only
+  in this pass, exactly as A2's own hardcoded-defaults-now/admin-UI-later
+  split was scoped. Locking a token that has no override yet pins its
+  current effective value as an explicit global override at the moment
+  it's locked (so "locked" always means "this exact value, unconditionally,
+  until unlocked" — never an ambiguous "locked at some undefined value").
+  Unlocking is the more consequential of the two actions (it removes a
+  safety rail) and requires the same admin-confirm-dialog step as any other
+  FR-8.16 high-impact change; locking itself is one click. Both actions are
+  audit-logged (`settings.lock`/`settings.unlock`, before/after `locked`
+  state) — same `admin_audit_logs` mechanism, not a parallel log.
+- FR-68.4 (Module 92): **Runtime application — no deploy required.** A new
+  public, unauthenticated `GET /design-tokens` endpoint (parallel precedent:
+  `StorefrontDealsController`'s public, unauthenticated shape) returns only
+  the `design.color.*` keys that currently have an active global override
+  (resolved value differs from the seeded default) as a flat
+  `{ cssVarName: hex }` map — the common case (no admin override set) is an
+  empty response, zero extra payload, zero visual change, reusing
+  `SettingsService.resolve()`'s existing Redis cache rather than a new
+  caching layer. The root layout (`app/layout.tsx`, a Server Component,
+  wrapping every route — marketing, storefront, dashboard, admin, and the
+  A1 login pages alike) fetches this once per render and, only when the
+  response is non-empty, inlines a `<style>` tag overriding the affected
+  `:root` custom properties — first paint already reflects the override,
+  no client-side flash-then-repaint. A failed or slow fetch degrades to
+  "render nothing extra" (the platform's static default colors), never a
+  broken or blank page — the same non-blocking-degradation discipline
+  §3.11 requires of Platform Event Log writes, applied here to a fetch
+  instead of a write.
+- FR-68.5 (Module 92): **Admin UI — preview, override, lock.** A new
+  `/admin/design-tokens` screen (Platform nav group, alongside Settings
+  Registry/Audit log/External API clients) listing all thirteen tokens as a
+  swatch grid: current effective value, a hex input, a live client-side
+  preview panel (a sample heading/body-text/button/badge that recolors
+  instantly as the admin edits a candidate value — before anything is
+  saved, so a mistake is caught before it ships, not after), and a
+  Lock/Unlock control per token. Saving a value reuses the existing
+  Settings Registry write endpoint and its FR-8.16 confirm-dialog flow
+  unchanged — this screen is a curated, purpose-built view over the same
+  mechanism every other settings key already goes through, not a
+  parallel write path.
 
 ---
 

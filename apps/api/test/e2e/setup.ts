@@ -11,6 +11,7 @@ import { seedCareersSettings } from "../../src/careers/careers.seed";
 import { seedCustomerSegmentsSettings } from "../../src/customer-segments/customer-segments.seed";
 import { seedDataExportSettings } from "../../src/data-export/data-export.seed";
 import { seedDealsSettings } from "../../src/deals/deals.seed";
+import { seedDesignTokensSettings } from "../../src/design-tokens/design-tokens.seed";
 import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
 import { seedBillingSettings } from "../../src/billing/billing.seed";
 import { seedSubscriptionReadinessSettings } from "../../src/billing/subscription-readiness.seed";
@@ -168,6 +169,7 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedAdminEmailSettings(prisma);
   await seedGiftCardsSettings(prisma);
   await seedDealsSettings(prisma);
+  await seedDesignTokensSettings(prisma);
   // Module 75 (SRS §5.6j/FR-7.23) - same paid-plan-row dependency as gift cards above.
   await seedCustomerSegmentsSettings(prisma);
   await seedReviewsSettings(prisma);

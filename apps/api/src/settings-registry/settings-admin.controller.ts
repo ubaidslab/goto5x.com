@@ -7,6 +7,7 @@ import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { SettingsService } from "./settings.service";
 import { PRECEDENCE, scopeIdFor, SettingsContext } from "./settings.types";
+import { SetSettingsLockDto } from "./dto/set-settings-lock.dto";
 import { UpsertSettingsValueDto } from "./dto/upsert-settings-value.dto";
 
 /**
@@ -153,6 +154,27 @@ export class SettingsAdminController {
       targetId: after.id,
       beforeValue: before?.value ?? null,
       afterValue: after.value,
+    });
+
+    return after;
+  }
+
+  /** Module 92 (SRS §5.68/FR-68.3). */
+  @Put("values/lock")
+  async setLock(@Body() dto: SetSettingsLockDto, @CurrentUser() user: JwtAccessPayload) {
+    const before = await this.prisma.settingsValue.findFirst({
+      where: { definitionKey: dto.key, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null },
+    });
+
+    const after = await this.settings.setLocked(dto.key, dto.scopeType, dto.scopeId ?? null, dto.locked, user.adminUserId!);
+
+    await this.auditLog.record({
+      adminUserId: user.adminUserId,
+      action: dto.locked ? "settings.lock" : "settings.unlock",
+      targetType: "settings_value",
+      targetId: after.id,
+      beforeValue: { locked: before?.locked ?? false },
+      afterValue: { locked: after.locked },
     });
 
     return after;

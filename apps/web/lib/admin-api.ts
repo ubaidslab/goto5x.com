@@ -9,6 +9,8 @@
  * scope to refactor 12 already-shipped, already-tested pages).
  */
 
+import { getApiErrorMessage } from "./api-error";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export class AdminApiError extends Error {
@@ -37,10 +39,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}) as { message?: string });
-    const message =
-      typeof body.message === "string" ? body.message : Array.isArray(body.message) ? body.message.join(", ") : res.statusText;
-    throw new AdminApiError(message, res.status);
+    const body = await res.json().catch(() => ({}));
+    throw new AdminApiError(getApiErrorMessage(body, res.statusText), res.status);
   }
 
   if (res.status === 204) return undefined as T;

@@ -6,7 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
-import { getAuthErrorMessage } from "@/lib/auth-error";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -33,7 +33,7 @@ export default function AdminLoginPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(getAuthErrorMessage(body, res.statusText));
+        setError(getApiErrorMessage(body, res.statusText));
         return;
       }
       setPreAuthToken(body.preAuthToken);
@@ -67,7 +67,7 @@ export default function AdminLoginPage() {
         localStorage.setItem("adminAccessToken", body.accessToken);
         setLoggedIn(true);
       } else {
-        setError(getAuthErrorMessage(body, res.statusText));
+        setError(getApiErrorMessage(body, res.statusText));
       }
     } finally {
       setSubmitting(false);

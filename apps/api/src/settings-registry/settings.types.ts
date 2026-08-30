@@ -37,3 +37,25 @@ export function scopeIdFor(scope: SettingsScopeType, context: SettingsContext): 
       return undefined;
   }
 }
+
+/**
+ * The reverse of scopeIdFor() - builds a single-scope SettingsContext from
+ * one (scopeType, scopeId) pair. Module 92 (SRS §5.68/FR-68.3) uses this
+ * so setLocked() can call resolve() with exactly the scope it's locking,
+ * without needing every other scope's id as well.
+ */
+export function contextFromScope(scope: SettingsScopeType, scopeId: string | null): SettingsContext {
+  if (scope === "global" || scopeId === null) return {};
+  switch (scope) {
+    case "seller":
+      return { sellerId: scopeId };
+    case "store":
+      return { storeId: scopeId };
+    case "plan":
+      return { planId: scopeId };
+    case "supplier":
+      return { supplierId: scopeId };
+    case "category":
+      return { categoryId: scopeId };
+  }
+}

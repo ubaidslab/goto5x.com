@@ -7,7 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
-import { getAuthErrorMessage } from "@/lib/auth-error";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -43,7 +43,7 @@ export default function LoginPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(getAuthErrorMessage(body, res.statusText));
+        setError(getApiErrorMessage(body, res.statusText));
         return;
       }
       if (body.preAuthToken) {
@@ -81,7 +81,7 @@ export default function LoginPage() {
         setLoggedIn(true);
         setPreAuthToken(null);
       } else {
-        setError(getAuthErrorMessage(body, res.statusText));
+        setError(getApiErrorMessage(body, res.statusText));
       }
     } finally {
       setSubmitting(false);

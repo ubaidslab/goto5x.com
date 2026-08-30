@@ -15,7 +15,11 @@ type ScopeType = "global" | "plan" | "seller" | "category" | "store" | "supplier
 
 interface SettingsDefinition {
   key: string;
-  valueType: "boolean" | "number" | "string" | "json";
+  // Module 92 (SRS §5.68/FR-68.2) added "color" - renders/validates through
+  // this generic editor's existing string-shaped fallback path (a plain
+  // hex-text Input, no swatch preview); the dedicated /admin/design-tokens
+  // screen is the intended UI for design.color.* keys specifically.
+  valueType: "boolean" | "number" | "string" | "json" | "color";
   allowedScopes: ScopeType[];
   defaultValue: unknown;
   description?: string;

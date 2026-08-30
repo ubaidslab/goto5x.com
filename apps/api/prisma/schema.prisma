@@ -99,6 +99,9 @@ enum SettingsValueType {
   number
   string
   json
+  // Module 92 (SRS §5.68/FR-68.2) - a 6-digit #rrggbb hex string, validated
+  // by SettingsService.validateValue() the same way a number's min/max is.
+  color
 }
 
 enum SettingsScopeType {
@@ -1761,6 +1764,14 @@ model SettingsValue {
   // why this reads as a real, verified auto-revert rather than an
   // assumed one.
   expiresAt DateTime? @map("expires_at") @db.Timestamptz
+
+  // Module 92 (SRS §5.68/FR-68.3) - a general Settings Registry safety
+  // mechanism (not color-specific): SettingsService.setValue() rejects any
+  // write to a row with locked=true. Defaults false so every pre-existing
+  // settings row is unaffected. Toggled only via the dedicated
+  // setLocked()/lock endpoint, never as a side effect of a plain value
+  // write.
+  locked Boolean @default(false)
 
   definition SettingsDefinition @relation(fields: [definitionKey], references: [key])
 
