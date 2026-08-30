@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 /*
- * UZEYN Design System — v1.2 (founder brand-palette pass, batch A2/A3)
+ * UZEYN Design System — v1.2.1 (founder brand-palette pass, batch A2/A3,
+ * plus a founder-caught post-ship correction)
  * -----------------------------------------------------------------------
  * v1.2 note: the founder's real brand colors replace the v1.1 placeholder
  * warm-paper/near-black scale, platform-wide - #FBF5DD (lightest/bg),
@@ -11,7 +12,13 @@
  * override is removed, not recolored - one brand identity, not two).
  * Alegreya SC (a display serif) replaces Geist as the headline face.
  * Status/semantic colors and per-seller cosmetic dashboard-accent presets
- * are untouched - functional/optional, not brand chrome. See each token
+ * are untouched - functional/optional, not brand chrome.
+ * v1.2.1 correction: the initial v1.2 rollout made ink/ink-muted/ink-faint
+ * a "brand-tinted" scale mixed toward #0D530E - in light mode this went
+ * as far as making --color-ink literally equal to --color-accent, the
+ * exact standing-since-Phase-1 violation this system's own "one
+ * restrained accent, never applied to body text" rule exists to prevent.
+ * Reverted to true neutrals in both light and dark mode. See each token
  * group's own comment below for contrast numbers and the specific
  * before/after reasoning.
  * Single source of truth for every color, type, spacing, radius, shadow,
@@ -22,11 +29,11 @@
  * is checked against.
  *
  * Direction: monochrome premium — near-white (now near-cream) surfaces,
- * a brand-tinted dark-green ink, a full tonal scale between, and AT MOST
- * one restrained accent (used sparingly: links, the primary CTA, active/
- * selected state) — apple.com discipline, horizonx.so-class motion,
- * iOS-like polish; generous whitespace and subtle depth rather than heavy
- * borders/shadows.
+ * a true near-black ink (never the accent hue), a full tonal scale
+ * between, and AT MOST one restrained accent (used sparingly: links, the
+ * primary CTA, active/selected state) — apple.com discipline,
+ * horizonx.so-class motion, iOS-like polish; generous whitespace and
+ * subtle depth rather than heavy borders/shadows.
  *
  * Values inside `@theme` are read by Tailwind v4 to generate matching
  * utilities (e.g. --color-accent -> bg-accent/text-accent/border-accent,
@@ -36,40 +43,48 @@
  * JS constants in lib/motion.ts for GSAP to read the same values from.
  */
 @theme {
-  /* Neutrals - founder brand-palette pass (batch A2): the founder's own
-     four colors (#FBF5DD lightest/bg, #E7E1B1 secondary/muted, #306D29
-     primary accent, #0D530E darkest/matches-the-logo) replace the
-     placeholder warm-paper/near-black scale, applied platform-wide (base
-     @theme here - the old separate dashboard/admin indigo override
-     further down this file is removed, not just recolored, per explicit
-     founder direction to unify on one brand identity everywhere rather
-     than keep two). ink/ink-muted/ink-faint are a genuine brand-tinted
-     scale (mixed from #0D530E toward #FBF5DD), not a plain gray dressed
-     up - premium-design-taste's "a subtle brand tint mixed into white/
-     black... alone makes a palette feel designed rather than default."
-     Contrast checked, not assumed: ink #0D530E on canvas #FBF5DD is
-     8.51:1 (AAA), on border-strong #E7E1B1 is 7.00:1 (AAA) - both exceed
-     the 4.5:1 AA floor for normal text with real margin. Status/semantic
-     colors below are deliberately untouched - functional signals, not
-     brand chrome, per the founder's explicit scope note. */
+  /* Neutrals - founder brand-palette pass (batch A2), CORRECTED post-ship
+     (a founder-caught regression against the standing "one restrained
+     accent, never applied to body text" rule locked since Phase 1): the
+     canvas/surface/border trio below is the founder's own cream palette
+     (#FBF5DD lightest/bg, #E7E1B1 secondary/muted) - legitimate to tint,
+     these are backgrounds, not text. ink/ink-muted/ink-faint were WRONG
+     in the initial A2 rollout - mixed toward #0D530E, which made
+     --color-ink literally equal to --color-accent (the exact same hex),
+     so body text and the one-accent-only interactive color were
+     indistinguishable. Reverted to true neutral near-black/grays (this
+     project's own pre-rebrand v1.1 values, which were never the problem -
+     only the accent/canvas changed this pass, ink never should have).
+     Contrast re-verified against the NEW cream canvas/border-strong (not
+     assumed to still hold from the old near-white scale): ink #0A0A0A on
+     canvas #FBF5DD is 18.1:1 (AAA); ink-muted #5F5C56 is 6.1:1 on canvas /
+     5.0:1 on border-strong (AA+); ink-faint #7A766E is 4.1:1 on canvas /
+     3.4:1 on border-strong (clears the 3:1 floor this token needs - it's
+     never used for body-length text, see accessibility-performance
+     skill). Status/semantic colors below are deliberately untouched -
+     functional signals, not brand chrome, per the founder's explicit
+     scope note. */
   --color-canvas: #fbf5dd;
   --color-surface: #fdfaee;
   --color-surface-raised: #ffffff;
   --color-border: #f1ebc7;
   --color-border-strong: #e7e1b1;
-  --color-ink: #0d530e;
-  --color-ink-muted: #4f7649;
-  --color-ink-faint: #8a9c76;
+  --color-ink: #0a0a0a;
+  --color-ink-muted: #5f5c56;
+  --color-ink-faint: #7a766e;
 
   /* Accent - the ONE restrained color, still the same discipline as
      before (marketing/hero: at most one appearance, the primary CTA;
      dashboard/admin: also drives checked/on toggles, focus rings, the
      active nav item - conventional UI state, not a second "brand voice
      spend"). Founder-directed value (not a placeholder anymore):
-     #0D530E, the same darkest green as the ink token above, matching the
-     founder's logo - accent-hover steps UP to the lighter #306D29 the
-     founder named as the palette's own "primary accent" shade (a
-     confident, visible hover response rather than a barely-there shift).
+     #0D530E, matching the founder's logo - accent-hover steps UP to the
+     lighter #306D29 the founder named as the palette's own "primary
+     accent" shade (a confident, visible hover response rather than a
+     barely-there shift). This is the ONLY place #0D530E appears in the
+     light-mode token set - ink above is a true neutral specifically so
+     this color stays exclusively an interactive/emphasis signal, never
+     body text (see the neutrals comment above for the post-ship fix).
      On dense/data-heavy screens (Settings Registry, admin queues,
      analytics tables) this stays exactly as restrained as the old blue
      was - interactive/emphasis elements only, never a tinted surface
@@ -198,10 +213,17 @@
    utility class Tailwind generated from @theme above repaints for free.
    Not wired to a manual toggle yet (no dark-mode UI ships this checkpoint)
    - this proves the token architecture supports it when that ships.
-   Founder brand-palette pass (batch A2): a dark, desaturated-green
-   canvas/ink scale derived from the same #0D530E/#FBF5DD brand hues
-   (not a generic near-black), so dark mode reads as the same brand, not
-   a different one. --color-accent is intentionally NOT #0D530E here -
+   Founder brand-palette pass (batch A2), CORRECTED post-ship (same fix as
+   the light-mode neutrals above): canvas/surface/border keep a dark,
+   desaturated-green tint derived from the brand hues - legitimate,
+   they're backgrounds. ink/ink-muted/ink-faint were wrong here too in the
+   initial rollout (b7c2a0/7c8a6c read as sage/olive - a visible green
+   tint on text, the same category of mistake as light mode's literal
+   ink==accent bug, just less extreme). Reverted to this project's
+   pre-rebrand true neutrals, re-verified against the NEW dark canvas
+   #0A130A: ink #F5F5F7 is 17.4:1 (AAA), ink-muted #A1A1A6 is 7.4:1 (AAA),
+   ink-faint #7A7A7E is 4.4:1 (comfortably past the 3:1 floor this token
+   needs). --color-accent is intentionally NOT #0D530E here -
    that value is too dark to read as either text or a button fill against
    a near-black canvas, so it's replaced with a brighter in-family green
    calibrated for contrast at both jobs: #4A8F40 as accent TEXT (e.g. a
@@ -217,9 +239,9 @@
     --color-surface-raised: #1a2e16;
     --color-border: #24391e;
     --color-border-strong: #35502c;
-    --color-ink: #f3f0dc;
-    --color-ink-muted: #b7c2a0;
-    --color-ink-faint: #7c8a6c;
+    --color-ink: #f5f5f7;
+    --color-ink-muted: #a1a1a6;
+    --color-ink-faint: #7a7a7e;
 
     --color-accent: #4a8f40;
     --color-accent-hover: #5ca751;
