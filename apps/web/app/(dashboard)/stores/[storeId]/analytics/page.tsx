@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock4, RotateCcw, Users, Wallet } from "lucide-react";
+import { RotateCcw, Users, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -28,8 +28,6 @@ interface Overview {
   repeatCustomerRate: number;
   returnRate: number;
   aov: number;
-  bestDayOfWeek: number | null;
-  bestHourOfDay: number | null;
 }
 
 interface ReturnRateByProductRow {
@@ -44,14 +42,6 @@ interface DealPerformanceRow {
   orders: number;
   revenue: number;
   units: number;
-}
-
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function formatHour(hour: number): string {
-  const period = hour < 12 ? "AM" : "PM";
-  const twelveHour = hour % 12 === 0 ? 12 : hour % 12;
-  return `${twelveHour}:00 ${period}`;
 }
 
 function StatTile({
@@ -149,16 +139,10 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
         <PageSpinner />
       ) : (
         <div className="max-w-5xl space-y-6">
-          <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-3">
             <StatTile icon={Users} label="Repeat customers" value={`${overview!.repeatCustomerRate}%`} hint="Ordered more than once" />
             <StatTile icon={RotateCcw} label="Return rate" value={`${overview!.returnRate}%`} hint="Of confirmed orders" />
             <StatTile icon={Wallet} label="Average order value" value={`Rs ${overview!.aov.toLocaleString()}`} />
-            <StatTile
-              icon={Clock4}
-              label="Best time to sell"
-              value={overview!.bestDayOfWeek !== null ? DAY_NAMES[overview!.bestDayOfWeek] : "No data yet"}
-              hint={overview!.bestHourOfDay !== null ? `Around ${formatHour(overview!.bestHourOfDay)}` : undefined}
-            />
           </Reveal>
 
           <Reveal>
