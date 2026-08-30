@@ -143,6 +143,9 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
             // transparency (Module 8/29) - null is the correct "no data
             // fetched for this" value here, not a misrepresentation.
             supplierShipping: null,
+            // SRS §5.69 (Module 94) - not fetched by this preview's inline
+            // type above; this panel doesn't render product details either.
+            customAttributes: [],
           })),
         ),
       )

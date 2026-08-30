@@ -53,6 +53,8 @@ export interface PublicProduct {
   sitemapIncluded: boolean;
   /** FR-65.3 - additive only; the `id`-based route above is never replaced. */
   slug: string | null;
+  /** SRS §5.69/FR-69.1/69.3 (Module 94) - ordered, non-variant, buyer-facing by default. */
+  customAttributes: { key: string; value: string }[];
 }
 
 export interface PublicCollection {

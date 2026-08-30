@@ -108,6 +108,24 @@ export default async function StorefrontProductPage({ params }: { params: { prod
           ))}
         </div>
         {product.description && <p>{product.description}</p>}
+        {/* SRS §5.69/FR-69.3 (Module 94) - buyer-facing by default, no seller
+            opt-in required (contrast with tags' FR-57.4 opt-in). Absent
+            entirely when a product has none. */}
+        {product.customAttributes.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <h2 style={{ fontSize: 16 }}>Product details</h2>
+            <table>
+              <tbody>
+                {product.customAttributes.map((attr) => (
+                  <tr key={attr.key}>
+                    <td style={{ paddingRight: 16, fontWeight: 600 }}>{attr.key}</td>
+                    <td>{attr.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <DeliveryBadge supplierShipping={product.supplierShipping} theme={theme} />
         <div style={{ marginTop: 16 }}>
           <AddToCartForm

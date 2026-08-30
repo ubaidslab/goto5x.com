@@ -27,6 +27,22 @@ const ADVANCED_SEO_PRODUCT_FIELDS = [
   "slug",
 ] as const;
 
+// SRS §5.69/FR-69.1 (Module 94) - "keys must be unique within a product
+// (case-insensitive)" is a business rule the DTO's per-item validation
+// can't express (each ProductCustomAttributeDto is validated in
+// isolation), so it's checked here, shared by create()/update().
+function assertUniqueAttributeKeys(attributes: { key: string }[] | undefined): void {
+  if (!attributes) return;
+  const seen = new Set<string>();
+  for (const { key } of attributes) {
+    const normalized = key.trim().toLowerCase();
+    if (seen.has(normalized)) {
+      throw new BadRequestException(`Duplicate attribute key "${key}" - each attribute name must be unique.`);
+    }
+    seen.add(normalized);
+  }
+}
+
 export interface ProductListPage {
   items: unknown[];
   page: number;
@@ -54,6 +70,7 @@ export class ProductsService {
   ) {}
 
   async create(sellerId: string, storeId: string, dto: CreateProductDto) {
+    assertUniqueAttributeKeys(dto.customAttributes);
     let queuedReason: string | undefined;
     const product = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
@@ -100,6 +117,7 @@ export class ProductsService {
           status: dto.status ?? "draft",
           moderationStatus: decision.status,
           tags: dto.tags ?? [],
+          customAttributes: (dto.customAttributes ?? []) as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -231,6 +249,7 @@ export class ProductsService {
    * queue a listing, but never silently un-flags one.
    */
   async update(sellerId: string, storeId: string, productId: string, dto: UpdateProductDto) {
+    assertUniqueAttributeKeys(dto.customAttributes);
     if (ADVANCED_SEO_PRODUCT_FIELDS.some((field) => dto[field] !== undefined)) {
       const planContext = await this.subscriptions.getPlanContext(sellerId);
       const enabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
@@ -249,7 +268,13 @@ export class ProductsService {
         }
 
         const nextStatus = dto.status ?? existing.status;
-        const data = { ...dto } as UpdateProductDto & { moderationStatus?: "pending" };
+        // customAttributes needs an explicit cast: class-validator's DTO
+        // instances don't structurally satisfy Prisma's Json input type,
+        // even though they serialize to exactly the same plain array.
+        const data = {
+          ...dto,
+          customAttributes: dto.customAttributes as unknown as Prisma.InputJsonValue | undefined,
+        } as Prisma.ProductUpdateInput & { moderationStatus?: "pending" };
         if (nextStatus === "active" && existing.sourceType === "self") {
           const decision = await this.moderation.evaluateProductEdit(tx, sellerId, {
             title: dto.title ?? existing.title,

@@ -1,10 +1,9 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.44 (Build-phase amendment — review detail view and reason-
-audited soft-delete, §5.14/FR-14.5-14.6, Module 93; founder batch item A9,
-extending the existing Product Reviews & Ratings feature rather than a new
-top-level module, same "extend the existing FR block" precedent as FR-7.19-
-7.21)
+**Version:** 0.45 (Build-phase amendment — product custom attributes,
+§5.69/FR-69.1-69.4, Module 94; founder batch item B10, first item of Part
+B — new functional features, each getting its own SRS amendment first per
+standing session instruction)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -5954,6 +5953,46 @@ every other tunable already goes through.
   unchanged — this screen is a curated, purpose-built view over the same
   mechanism every other settings key already goes through, not a
   parallel write path.
+
+### 5.69 Product Custom Attributes (new, v0.45 — founder batch item B10;
+Module 94)
+- FR-69.1: **Free-form key-value pairs, product-scoped, explicitly
+  non-variant.** New `Product.customAttributes Json @default("[]")`
+  column — an ordered array of `{key, value}` string pairs (e.g.
+  "Material" → "100% Cotton", "Country of Origin" → "Pakistan"),
+  editable wholesale on create/update exactly like `Product.tags`
+  (FR-57.1) already is, not merged/appended. Deliberately distinct from
+  `ProductVariant.attributes` (Module 12's variant-option JSON, e.g.
+  size/color) — a custom attribute never creates a purchasable option,
+  never affects price or stock, and carries no relationship to
+  `ProductVariant` at all. At most 20 pairs per product (same ceiling
+  FR-57.1 already applies to tags); each key and value must be
+  non-empty, key ≤ 60 chars, value ≤ 200 chars, and keys must be unique
+  within a product (case-insensitive) — enforced server-side, not just a
+  UI nudge.
+- FR-69.2: **Seller dashboard: edit alongside title/description.** The
+  product edit form gets a repeatable key-value row editor (add/remove/
+  reorder rows), positioned with the other descriptive fields — not
+  bundled into the separate Variants section, so a seller adding "Fabric
+  weight: 180gsm" is never confused into thinking they're creating a
+  purchase option.
+- FR-69.3: **Storefront display, buyer-facing by default.** Rendered on
+  the public product detail page as a simple two-column "Product
+  details" table/list, ordered exactly as the seller entered them — no
+  seller opt-in required (contrast with FR-57.4's tags, which stay
+  dashboard-private until a seller turns on exposure): a custom
+  attribute exists specifically to answer a buyer's question before they
+  ask it, so hiding it by default would defeat the feature's purpose.
+  Absent entirely from the page (no empty "Product details" section)
+  when a product has none.
+- FR-69.4: **No variant/inventory/pricing interaction whatsoever.**
+  Custom attributes are pure display metadata: absent from cart,
+  checkout, order line items, the P&L engine, and every existing
+  variant-driven flow (stock decrement, low-stock alerts, SKU search).
+  A future decision to let a custom attribute drive variant generation
+  (turning "Color: Blue" into an actual purchasable option) is
+  explicitly out of scope here and would be new, separate functionality
+  requiring its own amendment, not an extension of this one.
 
 ---
 

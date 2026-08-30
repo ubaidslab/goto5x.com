@@ -505,6 +505,7 @@ export class StorefrontService {
       structuredDataEnabled: boolean | null;
       sitemapIncluded: boolean | null;
       slug: string | null;
+      customAttributes: unknown;
     },
     store: SeoStoreDefaults,
     supplierTransparency?: {
@@ -557,6 +558,10 @@ export class StorefrontService {
       slug: product.slug,
       // FR-4.6 (Module 8) - null for self-fulfilled products.
       supplierShipping: supplierTransparency ?? null,
+      // SRS §5.69/FR-69.3 (Module 94) - buyer-facing by default, unlike
+      // tags (FR-57.4's private-until-opt-in). Pass-through: already the
+      // exact {key, value}[] shape the storefront renders.
+      customAttributes: product.customAttributes,
     };
   }
 }

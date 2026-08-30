@@ -679,6 +679,13 @@ model Product {
   // `@@index` can't declare an index type without the extendedIndexes
   // preview feature, which this schema doesn't otherwise need.
   tags                  String[]                 @default([])
+  // SRS §5.69/FR-69.1 (Module 94) - ordered array of {key, value} string
+  // pairs, buyer-facing by default (contrast with tags above, which stay
+  // dashboard-private until FR-57.4's opt-in). Deliberately separate from
+  // ProductVariant.attributes (the variant-option JSON) - a custom
+  // attribute never creates a purchasable option and has no relationship
+  // to ProductVariant at all.
+  customAttributes      Json                     @default("[]") @map("custom_attributes")
   // Module 5 (Discovery & Merchandising, FR-16.2). Populated by a raw-SQL
   // GENERATED ALWAYS AS ... STORED column (migration) - Prisma can't manage
   // a generated column's value, so it's Unsupported here (read via

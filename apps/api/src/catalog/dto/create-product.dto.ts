@@ -1,5 +1,7 @@
-import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
 import { ProductStatus } from "@prisma/client";
+import { ProductCustomAttributeDto } from "./product-custom-attribute.dto";
 
 export class CreateProductDto {
   @IsString()
@@ -35,4 +37,12 @@ export class CreateProductDto {
   @IsString({ each: true })
   @MaxLength(60, { each: true })
   tags?: string[];
+
+  /** SRS §5.69/FR-69.1 - replaces the full set (not a merge/append), same convention as `tags` above. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => ProductCustomAttributeDto)
+  customAttributes?: ProductCustomAttributeDto[];
 }

@@ -437,3 +437,139 @@ describe("Product Organization at Scale (e2e) - SRS §5.57/FR-57.1-57.3 (Module 
     expect(pageFour.body.total).toBe(5);
   });
 });
+
+describe("Product Custom Attributes (e2e) - SRS §5.69/FR-69.1-69.4 (Module 94)", () => {
+  let app: INestApplication;
+  let superuser: PrismaClient;
+
+  beforeAll(async () => {
+    superuser = superuserPrismaForTests();
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await superuser.$disconnect();
+  });
+
+  afterEach(async () => {
+    await resetDatabase(superuser);
+    await resetRedis();
+    await seedSettings(superuser);
+  });
+
+  async function signupLoginAndCreateStore(email: string, slug: string) {
+    await request(app.getHttpServer())
+      .post("/auth/signup")
+      .send({ agreementAccepted: true, email, password: "correct-horse-battery", businessName: `Business for ${email}` });
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email, password: "correct-horse-battery" });
+    const token = login.body.accessToken as string;
+    const store = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: `Store for ${email}`, slug });
+    // Module 6 (SRS §5.27/FR-27.1) - an untrusted seller's new listings are
+    // queued for moderation (moderationStatus "pending"), which fails the
+    // storefront's PUBLIC_MODERATION_STATUSES check - trusted here so the
+    // FR-69.3 storefront-visibility test below reflects the common case,
+    // same setup module15's checkoutAndPay()-based tests already use.
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    await superuser.seller.update({ where: { userId: user.id }, data: { isTrusted: true } });
+    return { token, storeId: store.body.id as string, hostname: `${slug}.uzeyn.com` };
+  }
+
+  it("FR-69.1: set at creation, replaced (not merged) on update", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("attrs-owner@example.com", "attrs-store");
+
+    const created = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Canvas Tote", customAttributes: [{ key: "Material", value: "100% Cotton" }, { key: "Weight", value: "250g" }] });
+    expect(created.status).toBe(201);
+    expect(created.body.customAttributes).toEqual([{ key: "Material", value: "100% Cotton" }, { key: "Weight", value: "250g" }]);
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/products/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ customAttributes: [{ key: "Country of Origin", value: "Pakistan" }] });
+    expect(updated.status).toBe(200);
+    // Replaced wholesale - "Material"/"Weight" are gone, not merged with the new pair.
+    expect(updated.body.customAttributes).toEqual([{ key: "Country of Origin", value: "Pakistan" }]);
+  });
+
+  it("FR-69.1: rejects duplicate keys (case-insensitive), an empty key, and more than 20 pairs", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("attrs-dup@example.com", "attrs-dup-store");
+
+    const dup = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Product", customAttributes: [{ key: "Material", value: "Cotton" }, { key: "material", value: "Wool" }] });
+    expect(dup.status).toBe(400);
+
+    const emptyKey = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Product", customAttributes: [{ key: "", value: "Cotton" }] });
+    expect(emptyKey.status).toBe(400);
+
+    const tooMany = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Product", customAttributes: Array.from({ length: 21 }, (_, i) => ({ key: `k${i}`, value: `v${i}` })) });
+    expect(tooMany.status).toBe(400);
+  });
+
+  it("FR-69.3: buyer-facing by default on the storefront, absent when a product has none, never affects variants/price/stock (FR-69.4)", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("attrs-storefront@example.com", "attrs-storefront-store");
+
+    const withAttrs = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Classic Tee", status: "active", customAttributes: [{ key: "Material", value: "100% Cotton" }] });
+    const withoutAttrs = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Plain Mug", status: "active" });
+
+    const variant = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products/${withAttrs.body.id}/variants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ sku: "TEE-1", price: 1500, stockQuantity: 10 });
+    expect(variant.status).toBe(201);
+
+    const publicWithAttrs = await request(app.getHttpServer()).get(
+      `/storefront/products/${withAttrs.body.id}?hostname=${hostname}`,
+    );
+    expect(publicWithAttrs.status).toBe(200);
+    expect(publicWithAttrs.body.customAttributes).toEqual([{ key: "Material", value: "100% Cotton" }]);
+    // No variant/price/stock interaction - the variant just created exists independently.
+    expect(publicWithAttrs.body.variants).toHaveLength(1);
+    expect(publicWithAttrs.body.variants[0].sku).toBe("TEE-1");
+
+    const publicWithoutAttrs = await request(app.getHttpServer()).get(
+      `/storefront/products/${withoutAttrs.body.id}?hostname=${hostname}`,
+    );
+    expect(publicWithoutAttrs.body.customAttributes).toEqual([]);
+  });
+
+  it("Tenant isolation: a seller cannot set custom attributes on another store's product", async () => {
+    const sellerA = await signupLoginAndCreateStore("attrs-iso-a@example.com", "attrs-iso-a-store");
+    const sellerB = await signupLoginAndCreateStore("attrs-iso-b@example.com", "attrs-iso-b-store");
+
+    const product = await request(app.getHttpServer())
+      .post(`/stores/${sellerA.storeId}/products`)
+      .set("Authorization", `Bearer ${sellerA.token}`)
+      .send({ title: "Seller A's Product" });
+
+    const crossUpdate = await request(app.getHttpServer())
+      .patch(`/stores/${sellerA.storeId}/products/${product.body.id}`)
+      .set("Authorization", `Bearer ${sellerB.token}`)
+      .send({ customAttributes: [{ key: "Hacked", value: "true" }] });
+    expect(crossUpdate.status).toBe(404);
+  });
+});

@@ -1,5 +1,7 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
 import { ProductStatus } from "@prisma/client";
+import { ProductCustomAttributeDto } from "./product-custom-attribute.dto";
 
 export class UpdateProductDto {
   @IsOptional()
@@ -81,4 +83,12 @@ export class UpdateProductDto {
   @IsString()
   @Matches(/^[a-z0-9-]{1,63}$/, { message: "slug must be 1-63 lowercase letters, numbers, or hyphens" })
   slug?: string;
+
+  /** SRS §5.69/FR-69.1 - replaces the full set (not a merge/append), same convention as `tags` above. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => ProductCustomAttributeDto)
+  customAttributes?: ProductCustomAttributeDto[];
 }

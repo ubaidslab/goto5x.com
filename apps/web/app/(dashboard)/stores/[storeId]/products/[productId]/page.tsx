@@ -25,6 +25,8 @@ interface ProductResponse {
   sourceType: "self" | "supplier";
   variants: Variant[];
   tags: string[];
+  // SRS §5.69/FR-69.1 (Module 94) - ordered, non-variant key-value pairs.
+  customAttributes: { key: string; value: string }[];
   // Module 58 (SRS §5.65, FR-65.1-65.3) - Growth+ gated advanced SEO fields.
   canonicalUrl: string | null;
   robotsIndex: boolean | null;
@@ -55,6 +57,14 @@ export default function EditProductPage({ params }: { params: { storeId: string;
   const [seoSaved, setSeoSaved] = useState(false);
   const [seoError, setSeoError] = useState<string | null>(null);
 
+  // SRS §5.69/FR-69.1-69.2 (Module 94) - own card, own save action, same
+  // pattern as the Advanced SEO card above: local draft state, submitted
+  // wholesale (never merged) on save.
+  const [attributes, setAttributes] = useState<{ key: string; value: string }[]>([]);
+  const [savingAttributes, setSavingAttributes] = useState(false);
+  const [attributesSaved, setAttributesSaved] = useState(false);
+  const [attributesError, setAttributesError] = useState<string | null>(null);
+
   function load() {
     api
       .get<ProductResponse>(`/stores/${params.storeId}/products/${params.productId}`)
@@ -68,6 +78,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
         setStructuredDataEnabled(p.structuredDataEnabled ?? true);
         setSitemapIncluded(p.sitemapIncluded ?? true);
         setSlug(p.slug ?? "");
+        setAttributes(p.customAttributes ?? []);
       })
       .catch(() => setProduct(null));
   }
@@ -87,6 +98,45 @@ export default function EditProductPage({ params }: { params: { storeId: string;
       tags: values.tags,
     });
     load();
+  }
+
+  function updateAttribute(index: number, field: "key" | "value", value: string) {
+    setAttributes((prev) => prev.map((attr, i) => (i === index ? { ...attr, [field]: value } : attr)));
+  }
+
+  function removeAttribute(index: number) {
+    setAttributes((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addAttribute() {
+    setAttributes((prev) => [...prev, { key: "", value: "" }]);
+  }
+
+  async function saveAttributes() {
+    setAttributesError(null);
+    setAttributesSaved(false);
+
+    const trimmed = attributes.map((a) => ({ key: a.key.trim(), value: a.value.trim() })).filter((a) => a.key || a.value);
+    if (trimmed.some((a) => !a.key || !a.value)) {
+      setAttributesError("Every attribute needs both a name and a value - remove any incomplete rows.");
+      return;
+    }
+    const keys = trimmed.map((a) => a.key.toLowerCase());
+    if (new Set(keys).size !== keys.length) {
+      setAttributesError("Attribute names must be unique.");
+      return;
+    }
+
+    setSavingAttributes(true);
+    try {
+      await api.patch(`/stores/${params.storeId}/products/${params.productId}`, { customAttributes: trimmed });
+      setAttributesSaved(true);
+      setAttributes(trimmed);
+    } catch (err) {
+      setAttributesError(err instanceof ApiError ? err.message : "Couldn't save product details.");
+    } finally {
+      setSavingAttributes(false);
+    }
   }
 
   async function saveAdvancedSeo(e: React.FormEvent<HTMLFormElement>) {
@@ -140,6 +190,54 @@ export default function EditProductPage({ params }: { params: { storeId: string;
           submitLabel="Save changes"
           onSubmit={handleSave}
         />
+
+        <Card>
+          <CardHeader
+            title="Product details"
+            description="Free-form facts a buyer sees on the product page - material, dimensions, country of origin. These never create purchase options; use Variants below for that."
+          />
+          <CardBody className="space-y-3">
+            {attributesError && <Alert>{attributesError}</Alert>}
+            {attributesSaved && <Alert tone="success">Saved.</Alert>}
+            {attributes.length === 0 ? (
+              <p className="text-sm text-ink-muted">No product details yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {attributes.map((attr, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="w-2/5">
+                      <Input
+                        value={attr.key}
+                        onChange={(e) => updateAttribute(i, "key", e.target.value)}
+                        placeholder="e.g. Material"
+                        aria-label={`Attribute ${i + 1} name`}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Input
+                        value={attr.value}
+                        onChange={(e) => updateAttribute(i, "value", e.target.value)}
+                        placeholder="e.g. 100% Cotton"
+                        aria-label={`Attribute ${i + 1} value`}
+                      />
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeAttribute(i)} aria-label={`Remove attribute ${i + 1}`}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={addAttribute} disabled={attributes.length >= 20}>
+                Add detail
+              </Button>
+              <Button type="button" size="sm" loading={savingAttributes} onClick={saveAttributes}>
+                Save product details
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
 
         <ImagesSection storeId={params.storeId} productId={params.productId} />
 

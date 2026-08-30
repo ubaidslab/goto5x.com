@@ -257,6 +257,9 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
             sitemapIncluded: true,
             slug: null,
             supplierShipping: null,
+            // SRS §5.69 (Module 94) - not fetched by this preview's inline
+            // type above; this panel doesn't render product details either.
+            customAttributes: [],
           })),
         ),
       )
