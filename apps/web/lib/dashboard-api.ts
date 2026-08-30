@@ -46,8 +46,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(getApiErrorMessage(body, res.statusText), res.status);
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  // A 204, or any handler that returns void (NestJS still answers 200, not
+  // 204, for those - e.g. ReviewsService.moderate()), reaches here with an
+  // empty body. res.json() throws SyntaxError on empty input, which isn't
+  // an ApiError, so every caller's catch block would show a generic
+  // "couldn't do that" message on an action that actually succeeded -
+  // checked by status text length, not res.status, so it's correct
+  // regardless of which status code a void-returning handler answers with.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /**

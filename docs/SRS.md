@@ -1,9 +1,10 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.43 (Build-phase amendment — admin-configurable, lockable brand
-color tokens at runtime, §5.68/FR-68.1-68.5, Module 92; founder batch item
-A6, motivated directly by a founder-caught regression during A2's brand-
-palette rollout where a token got mis-set with no safeguard against a repeat)
+**Version:** 0.44 (Build-phase amendment — review detail view and reason-
+audited soft-delete, §5.14/FR-14.5-14.6, Module 93; founder batch item A9,
+extending the existing Product Reviews & Ratings feature rather than a new
+top-level module, same "extend the existing FR block" precedent as FR-7.19-
+7.21)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -3356,6 +3357,36 @@ requires the founder to ask an engineer for a deploy.
 - FR-14.4: A product's average rating and review count are shown on its storefront
   page, recomputed whenever a review's moderation status changes (denormalized for
   page-load speed — the highest-traffic read path a review touches).
+- FR-14.5 (Module 93, new v0.44 — founder batch item A9): **Review detail
+  view.** The seller moderation queue (FR-14.3) gets a per-review detail
+  view (buyer email in addition to name, order reference, full media
+  gallery, and — once a review reaches the deleted state below — its
+  deletion reason and timestamp) alongside the existing compact list row;
+  it is a read surface only, not a second moderation entry point (the
+  approve/hide/delete actions stay exactly where FR-14.3 already put
+  them).
+- FR-14.6 (Module 93, new v0.44 — founder batch item A9): **Reason-audited
+  soft-delete, seller-initiated.** `ReviewStatus` gains a fourth value,
+  `deleted`, alongside `pending`/`approved`/`hidden` — a harder, one-way
+  action from a seller's perspective (no "undelete" surfaced anywhere),
+  distinct from `hidden` (which stays freely reversible via the existing
+  approve/hide toggle). Soft, not physical, exactly like every other
+  "delete" in this system with a downstream audit/legal reason to keep
+  the row (returns, order cancellation) — a deleted review's row,
+  `deletedAt`, and `deletedReason` persist, it is simply excluded from
+  the product's public rating/count recomputation (FR-14.4) the same way
+  `hidden` already is. A reason is **required** to delete (mirrors
+  FR-60.3's reject-a-return-request reason requirement — same "a reason
+  is required" `BadRequestException` discipline, not merely a UI-level
+  nudge) and is recorded two places: directly on the row for the detail
+  view (FR-14.5) to render without a join, and as a Platform Event Log
+  entry (§3.11) — `actorType: "seller"` — so the action has the same
+  non-blocking, best-effort audit trail every other platform event does.
+  Deleting a review this way is a store-scoped seller action only in
+  this pass — no admin-side review moderation surface exists yet
+  (disclosed scope decision, not an oversight: nothing in this SRS gives
+  admins visibility into individual reviews today, and adding that is a
+  separate, larger surface than "add a delete reason field").
 
 ### 5.15 Cart Persistence & Abandoned Carts
 - FR-15.1: **Checkout is email-first (locked UX decision, new in v0.6).** Email is

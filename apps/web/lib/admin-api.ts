@@ -43,8 +43,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new AdminApiError(getApiErrorMessage(body, res.statusText), res.status);
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  // Same fix as dashboard-api.ts's request() - a 200 with an empty body
+  // (any void-returning handler, not just an explicit 204) would otherwise
+  // throw SyntaxError out of res.json(), reported to callers as a generic
+  // failure on an action that actually succeeded.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /**

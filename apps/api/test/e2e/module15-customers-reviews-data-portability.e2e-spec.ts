@@ -262,6 +262,70 @@ describe("Customers, Reviews & Data Portability (e2e) - SRS §5.13/§5.14/§5.18
     expect(Number(product.averageRating)).toBe(4);
   });
 
+  it("FR-14.5/14.6 (Module 93): a review can be soft-deleted with a required reason, is excluded from the rating, and is audit-logged", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("rev-del-a@example.com", "rev-del-a-store");
+    const { productId, variantId } = await createSelfProduct(token, storeId, 500);
+    const first = await checkoutAndPay(token, storeId, hostname, productId, variantId, "del-buyer-a@example.com");
+    const second = await checkoutAndPay(token, storeId, hostname, productId, variantId, "del-buyer-b@example.com");
+
+    const reviewA = await request(app.getHttpServer())
+      .post(`/storefront/order-status/${first.statusLookupToken}/reviews`)
+      .send({ productId, buyerName: "A", rating: 5, body: "Great" });
+    const reviewB = await request(app.getHttpServer())
+      .post(`/storefront/order-status/${second.statusLookupToken}/reviews`)
+      .send({ productId, buyerName: "B", rating: 1, body: "Spam content" });
+
+    await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/reviews/${reviewA.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "approved" });
+    await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/reviews/${reviewB.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "approved" });
+
+    let product = await superuser.product.findUniqueOrThrow({ where: { id: productId } });
+    expect(product.reviewCount).toBe(2);
+    expect(Number(product.averageRating)).toBe(3);
+
+    // No reason -> 400, nothing changes.
+    const noReason = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/reviews/${reviewB.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "deleted" });
+    expect(noReason.status).toBe(400);
+
+    const withReason = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/reviews/${reviewB.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "deleted", reason: "Fake/spam review - not a genuine buyer complaint" });
+    expect(withReason.status).toBe(200);
+
+    const deletedRow = await superuser.productReview.findUniqueOrThrow({ where: { id: reviewB.body.id } });
+    expect(deletedRow.status).toBe("deleted");
+    expect(deletedRow.deletedReason).toBe("Fake/spam review - not a genuine buyer complaint");
+    expect(deletedRow.deletedAt).not.toBeNull();
+
+    // Excluded from the rating exactly like a hidden review already is.
+    product = await superuser.product.findUniqueOrThrow({ where: { id: productId } });
+    expect(product.reviewCount).toBe(1);
+    expect(Number(product.averageRating)).toBe(5);
+
+    // Audit trail: a Platform Event was recorded for the delete.
+    const events = await superuser.platformEvent.findMany({
+      where: { eventType: "review.soft_deleted", entityId: reviewB.body.id },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].actorType).toBe("seller");
+    expect((events[0].metadata as { reason: string }).reason).toBe("Fake/spam review - not a genuine buyer complaint");
+
+    // The detail/moderation list can filter down to just deleted reviews.
+    const deletedList = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/reviews?status=deleted`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(deletedList.body.map((r: { id: string }) => r.id)).toEqual([reviewB.body.id]);
+  });
+
   it("Tenant isolation: a seller cannot moderate another store's reviews", async () => {
     const sellerA = await signupLoginAndCreateStore("rev-iso-a@example.com", "rev-iso-a-store");
     const sellerB = await signupLoginAndCreateStore("rev-iso-b@example.com", "rev-iso-b-store");

@@ -23,6 +23,6 @@ export class ReviewsController {
     @Param("reviewId") reviewId: string,
     @Body() dto: ModerateReviewDto,
   ) {
-    return this.reviews.moderate(sellerId, storeId, reviewId, dto.status);
+    return this.reviews.moderate(sellerId, storeId, reviewId, dto.status, dto.reason);
   }
 }

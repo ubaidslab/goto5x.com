@@ -7,6 +7,7 @@ import { SettingsService } from "../settings-registry/settings.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { ObjectStorageService } from "../media/object-storage.service";
 import { mediaTypeFromMimetype, sanitizeFilename } from "../media/media.util";
+import { EventsService } from "../events/events.service";
 
 function round1(n: number): number {
   return Math.round((n + Number.EPSILON) * 10) / 10;
@@ -29,6 +30,7 @@ export class ReviewsService {
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
     private readonly objectStorage: ObjectStorageService,
+    private readonly events: EventsService,
   ) {}
 
   /** FR-14.1/14.2 - identified via the order-status link (FR-5.4) rather than an account. */
@@ -137,18 +139,48 @@ export class ReviewsService {
   }
 
   /**
-   * FR-14.3/14.4 - approve or hide; no review publishes automatically. The
-   * product's denormalized average is recomputed immediately after, since
-   * this is the only event that can change it.
+   * FR-14.3/14.4/14.6 - approve, hide, or (Module 93) soft-delete; no
+   * review publishes automatically. The product's denormalized average is
+   * recomputed immediately after, since this is the only event that can
+   * change it (a delete removes the review from the count exactly like
+   * hiding already does).
+   *
+   * A reason is required to delete (FR-14.6, same "a reason is required"
+   * discipline as FR-60.3's return-request rejection) - checked here, not
+   * just at the DTO layer, so no future caller of this method can skip it.
+   * Recorded both directly on the row (deletedAt/deletedReason, for the
+   * detail view to render with no join) and as a Platform Event Log entry
+   * (§3.11) - the audit trail half of FR-14.6.
    */
-  async moderate(sellerId: string, storeId: string, reviewId: string, status: "approved" | "hidden") {
+  async moderate(sellerId: string, storeId: string, reviewId: string, status: "approved" | "hidden" | "deleted", reason?: string) {
+    if (status === "deleted" && !reason?.trim()) {
+      throw new BadRequestException("A reason is required to delete a review.");
+    }
     const productId = await this.tenantPrisma.run(sellerId, async (tx) => {
       const review = await tx.productReview.findUnique({ where: { id: reviewId } });
       if (!review || review.storeId !== storeId) throw new NotFoundException("Review not found.");
-      await tx.productReview.update({ where: { id: reviewId }, data: { status } });
+      await tx.productReview.update({
+        where: { id: reviewId },
+        data:
+          status === "deleted"
+            ? { status, deletedAt: new Date(), deletedReason: reason!.trim() }
+            : { status },
+      });
       return review.productId;
     });
     await this.recomputeProductRating(productId);
+
+    if (status === "deleted") {
+      await this.events.emit({
+        eventType: "review.soft_deleted",
+        actorType: "seller",
+        actorId: sellerId,
+        storeId,
+        entityType: "product_review",
+        entityId: reviewId,
+        metadata: { reason: reason!.trim() },
+      });
+    }
   }
 
   /** FR-14.4 - denormalized for page-load speed, the highest-traffic read path a review touches. */

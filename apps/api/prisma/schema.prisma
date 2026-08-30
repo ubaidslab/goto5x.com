@@ -2327,6 +2327,11 @@ enum ReviewStatus {
   pending
   approved
   hidden
+  // SRS §5.14/FR-14.6 (Module 93) - a harder, one-way action from a
+  // seller's perspective (no "undelete" surfaced anywhere), distinct from
+  // `hidden` which stays freely reversible. Soft, not physical - the row,
+  // deletedAt, and deletedReason below all persist for the audit trail.
+  deleted
 }
 
 // Module 15 (FR-14.1-14.4) - submitted via the order-status link (FR-5.4),
@@ -2344,6 +2349,12 @@ model ProductReview {
   isVerifiedPurchase Boolean      @default(false) @map("is_verified_purchase")
   status             ReviewStatus @default(pending)
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  // SRS §5.14/FR-14.6 (Module 93) - set together, only when status becomes
+  // `deleted`. Kept directly on the row (rather than requiring a join to
+  // the Platform Event Log, which also records this action) so the detail
+  // view (FR-14.5) can render them with no extra query.
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+  deletedReason String?   @map("deleted_reason")
 
   product Product       @relation(fields: [productId], references: [id])
   order   Order?        @relation(fields: [orderId], references: [id])
