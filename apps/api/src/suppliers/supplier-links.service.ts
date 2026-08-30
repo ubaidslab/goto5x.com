@@ -91,4 +91,30 @@ export class SupplierLinksService {
       return tx.storeSupplierLink.update({ where: { id: linkId }, data: { status: "revoked" } });
     });
   }
+
+  /** Module 96 (SRS §5.4/FR-4.12) - the Suppliers page's mini-dashboard summary strip, shown whether or not the seller has any connections yet. */
+  async dashboard(sellerId: string, storeId: string) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const [activeSuppliersCount, pendingLinksCount, pendingReviewsCount, ordersForwardedCount, forwardingIssuesCount] =
+        await Promise.all([
+          tx.storeSupplierLink.count({ where: { storeId, status: "active" } }),
+          tx.storeSupplierLink.count({ where: { storeId, status: "pending_seller_review" } }),
+          tx.listingReview.count({ where: { storeId, status: "pending" } }),
+          tx.orderTimelineEvent.count({ where: { storeId, eventType: "supplier_order_forwarded", createdAt: { gte: thirtyDaysAgo } } }),
+          tx.orderTimelineEvent.count({ where: { storeId, eventType: "supplier_order_forward_failed", createdAt: { gte: thirtyDaysAgo } } }),
+        ]);
+
+      return {
+        activeSuppliersCount,
+        pendingApprovalsCount: pendingLinksCount + pendingReviewsCount,
+        ordersForwardedCount,
+        forwardingIssuesCount,
+      };
+    });
+  }
 }

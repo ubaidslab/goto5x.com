@@ -78,7 +78,6 @@ export interface NavItem {
   href: (storeId: string) => string;
   icon: LucideIcon;
   group: NavGroup;
-  conditional?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -87,6 +86,13 @@ export const navItems: NavItem[] = [
   { label: "Products", href: (id) => `/stores/${id}/products`, icon: Package, group: "main" },
   { label: "Inventory", href: (id) => `/stores/${id}/inventory`, icon: Boxes, group: "main" },
   { label: "Customers", href: (id) => `/stores/${id}/customers`, icon: Users, group: "main" },
+  // Module 96 (SRS §5.4/FR-4.11, founder batch B13) - moved here from
+  // "operations" and made unconditionally visible, reversing the original
+  // UI/UX Design Phase decision (see this file's own history) that hid it
+  // until a supplier link existed. Local dropshipping is a first-class,
+  // discoverable capability now, not a screen a seller has to already
+  // know about to ever find.
+  { label: "Suppliers", href: (id) => `/stores/${id}/suppliers`, icon: Handshake, group: "main" },
 
   { label: "Analytics", href: (id) => `/stores/${id}/analytics`, icon: BarChart3, group: "growth" },
   { label: "Marketing", href: (id) => `/stores/${id}/marketing`, icon: Megaphone, group: "growth" },
@@ -102,7 +108,6 @@ export const navItems: NavItem[] = [
   { label: "Design Studio", href: (id) => `/stores/${id}/d-studio`, icon: Palette, group: "growth" },
 
   { label: "Shipping & tracking", href: (id) => `/stores/${id}/shipping-tax`, icon: Truck, group: "operations" },
-  { label: "Suppliers", href: (id) => `/stores/${id}/suppliers`, icon: Handshake, group: "operations", conditional: true },
   { label: "Payments", href: (id) => `/stores/${id}/payments`, icon: CreditCard, group: "operations" },
 
   { label: "Reports", href: (id) => `/stores/${id}/settings#reports`, icon: FileText, group: "admin" },

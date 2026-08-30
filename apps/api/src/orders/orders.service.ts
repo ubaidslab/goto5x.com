@@ -596,6 +596,18 @@ export class OrdersService {
           `Failed to forward order ${order.id} item ${item.id} to its supplier - payment confirmation is unaffected.`,
           err instanceof Error ? err.stack : String(err),
         );
+        // Module 96 (SRS §5.4/FR-4.12) - mirrors the success path's own
+        // supplier_order_forwarded event exactly, so a failure is queryable
+        // (the Suppliers mini-dashboard's "forwarding issues" tile) for the
+        // first time, without changing this method's "never throw" contract.
+        await this.prismaAdmin.orderTimelineEvent.create({
+          data: {
+            storeId: order.storeId,
+            orderId: order.id,
+            eventType: "supplier_order_forward_failed",
+            metadata: { orderItemId: item.id, supplierId: item.supplierId },
+          },
+        });
       }
     }
   }

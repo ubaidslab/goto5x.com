@@ -24,7 +24,6 @@ export default function StoreDashboardLayout({
   const [store, setStore] = useState<Store | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState("default");
-  const [hasSuppliers, setHasSuppliers] = useState(false);
   const [planName, setPlanName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -50,13 +49,6 @@ export default function StoreDashboardLayout({
       .then((profile) => setDashboardTheme(profile.dashboardTheme))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    api
-      .get<unknown[]>(`/stores/${params.storeId}/supplier-links`)
-      .then((links) => setHasSuppliers(links.length > 0))
-      .catch(() => {});
-  }, [params.storeId]);
 
   // UI/UX Design Phase (Part B item 7) - "plan name shown as small text
   // under Settings." Seller-scoped, not store-scoped (Module 61), same
@@ -84,7 +76,7 @@ export default function StoreDashboardLayout({
           </div>
         )}
         <div className="app-shell-surface flex flex-1 flex-col md:flex-row" data-dashboard-theme={dashboardTheme}>
-          <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} planName={planName} />
+          <Sidebar storeId={params.storeId} storeName={store?.name} stores={stores} planName={planName} />
           <main className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8">
             {/* Founder batch A4 - was `mx-auto max-w-5xl`, a hard 1024px cap
                 that left ~160px of dead space on a 1440px viewport (measured

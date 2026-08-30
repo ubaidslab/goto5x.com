@@ -1,8 +1,8 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.46 (Build-phase amendment — store-wide payment model
-selection (Prepaid/COD/Advance), §5.6l/FR-6.61-6.68, Module 95; founder
-batch item B12, third item of Part B — new functional features, each
+**Version:** 0.47 (Build-phase amendment — Suppliers as a permanent
+top-level nav item + mini-dashboard, FR-4.11-4.12, Module 96; founder
+batch item B13, fourth item of Part B — new functional features, each
 getting its own SRS amendment first per standing session instruction)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
@@ -1894,6 +1894,43 @@ audit log — one purpose-built role, not the start of a general framework.
   API availability and stability. If viable, it is added as a standard adapter with
   zero core-platform changes; if not, it stays a research note. AliExpress/Alibaba
   remain future adapter candidates under the same evaluate-first discipline (FR-4.4).
+- FR-4.11 (Module 96, founder batch B13): **Suppliers is a permanent,
+  always-visible top-level nav item — reverses the earlier
+  Seller-Dashboard-IA decision.** The original UI/UX Design Phase
+  information architecture (`nav-items.ts`'s own doc comment) hid this
+  item behind `conditional: true` + a live `hasSuppliers` check
+  (`GET .../supplier-links`, shown only once at least one link exists),
+  reasoning that a purely self-fulfilled seller never needs the screen —
+  a real application of the SIMPLICITY INVARIANT (§3.13) at the time. The
+  founder's explicit instruction supersedes that reasoning: local
+  dropshipping ("connect with local suppliers, sell without holding
+  stock," already this platform's own pricing-page positioning per
+  Module 80/FR-7.24) is a discoverable, first-class capability, not a
+  screen a seller should have to already know about to ever find. The
+  item moves from the `operations` nav group into `main` (alongside
+  Home/Orders/Products/Inventory/Customers) and is shown unconditionally
+  — `conditional`/`hasSuppliers` plumbing (`Sidebar.tsx`,
+  `NavLinks`, the store layout's own fetch) is removed rather than kept
+  dormant, since it has no other caller and no "might reactivate later"
+  rationale the way a dormant payment gateway or pricing model does.
+- FR-4.12 (Module 96): **A mini-dashboard summary strip atop the existing
+  Suppliers page** (`SupplierLinksPage`), shown regardless of whether the
+  seller has any connections yet — the empty-state cards below it are
+  unchanged. Four at-a-glance tiles, backed by one new endpoint
+  (`GET stores/:storeId/supplier-links/dashboard`):
+  active supplier count (`StoreSupplierLink.status = "active"`),
+  pending approvals (pending links + pending listing reviews, combined),
+  orders forwarded in the last 30 days, and forwarding issues in the last
+  30 days. The last tile requires a small, narrowly-scoped addition to
+  `OrdersService.forwardSupplierItems()`: a failed forward already logs
+  (§5.5/FR-3.4's own comment — "per-item failures are caught and logged,
+  never thrown"), but nothing durable was ever recorded, so a failure was
+  invisible to the seller. A new `supplier_order_forward_failed`
+  `OrderTimelineEvent` is written in that existing catch block — mirroring
+  the successful path's own `supplier_order_forwarded` event exactly, not
+  a new mechanism — making failures queryable for the first time without
+  changing the "never throw, payment confirmation is unaffected"
+  behavior itself.
 
 ### 5.5 Order & Fulfillment Management
 - FR-5.1: Unified order dashboard per seller, spanning both self-fulfilled and

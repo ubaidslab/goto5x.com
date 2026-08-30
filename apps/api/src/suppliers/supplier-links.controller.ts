@@ -23,6 +23,12 @@ export class SupplierLinksController {
     return this.supplierLinks.list(sellerId, storeId);
   }
 
+  /** Module 96 (SRS §5.4/FR-4.12) - the Suppliers page's mini-dashboard summary strip. */
+  @Get("dashboard")
+  dashboard(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
+    return this.supplierLinks.dashboard(sellerId, storeId);
+  }
+
   @Patch(":linkId/approve")
   approve(
     @CurrentSellerId() sellerId: string,

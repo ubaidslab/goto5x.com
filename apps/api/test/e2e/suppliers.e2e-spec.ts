@@ -344,6 +344,77 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
     expect(res.status).toBe(403);
   });
 
+  describe("Suppliers mini-dashboard (SRS §5.4/FR-4.12, Module 96, founder batch B13)", () => {
+    it("reflects active suppliers, pending approvals, and forwarded orders", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dash-seller@example.com", "dash-seller-store");
+      const supplierToken = await signupLoginSupplier("dash-supplier@example.com");
+
+      const empty = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/supplier-links/dashboard`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(empty.status).toBe(200);
+      expect(empty.body).toEqual({
+        activeSuppliersCount: 0,
+        pendingApprovalsCount: 0,
+        ordersForwardedCount: 0,
+        forwardingIssuesCount: 0,
+      });
+
+      const linkRes = await request(app.getHttpServer())
+        .post("/supplier/store-links")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSlug: "dash-seller-store" });
+
+      const pending = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/supplier-links/dashboard`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(pending.body.activeSuppliersCount).toBe(0);
+      expect(pending.body.pendingApprovalsCount).toBe(1);
+
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/supplier-links/${linkRes.body.id}/approve`)
+        .set("Authorization", `Bearer ${token}`);
+
+      const active = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/supplier-links/dashboard`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(active.body.activeSuppliersCount).toBe(1);
+      expect(active.body.pendingApprovalsCount).toBe(0);
+
+      // A pending listing review also counts toward pendingApprovalsCount.
+      const { listing } = await seedSupplierListing("dash-supplier@example.com");
+      await request(app.getHttpServer())
+        .post("/supplier/listings/submit-review")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSupplierLinkId: linkRes.body.id, supplierListingId: listing.id });
+
+      const withReview = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/supplier-links/dashboard`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(withReview.body.pendingApprovalsCount).toBe(1);
+    });
+
+    it("a revoked link no longer counts as an active supplier", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("dash-revoke-seller@example.com", "dash-revoke-seller-store");
+      const supplierToken = await signupLoginSupplier("dash-revoke-supplier@example.com");
+      const linkRes = await request(app.getHttpServer())
+        .post("/supplier/store-links")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ storeSlug: "dash-revoke-seller-store" });
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/supplier-links/${linkRes.body.id}/approve`)
+        .set("Authorization", `Bearer ${token}`);
+      await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/supplier-links/${linkRes.body.id}/revoke`)
+        .set("Authorization", `Bearer ${token}`);
+
+      const res = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/supplier-links/dashboard`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(res.body.activeSuppliersCount).toBe(0);
+    });
+  });
+
   describe("Moderation amendment (SRS §5.27, v0.13) - supplier listings run through the same engine self-fulfilled products do", () => {
     async function linkAndActivate(sellerToken: string, storeId: string, storeSlug: string, supplierToken: string) {
       const linkRes = await request(app.getHttpServer())

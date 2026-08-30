@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, CheckCircle2, PackageCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -11,6 +12,22 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
+
+/** Same local StatTile shape as the Analytics page's own (not shared/extracted - this codebase's existing per-page precedent). */
+function StatTile({ icon: Icon, label, value, hint }: { icon: typeof Users; label: string; value: string; hint?: string }) {
+  return (
+    <Card>
+      <CardBody>
+        <div className="flex items-center gap-2 text-ink-muted">
+          <Icon className="h-4 w-4" />
+          <p className="text-xs font-medium uppercase tracking-wide">{label}</p>
+        </div>
+        <p className="mt-1 text-3xl font-semibold text-ink">{value}</p>
+        {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
+      </CardBody>
+    </Card>
+  );
+}
 
 type LinkStatus = "pending_seller_review" | "active" | "revoked";
 type ReviewStatus = "pending" | "approved" | "rejected";
@@ -46,14 +63,25 @@ const reviewStatusTone: Record<ReviewStatus, "neutral" | "success" | "warning" |
   rejected: "danger",
 };
 
+interface DashboardSummary {
+  activeSuppliersCount: number;
+  pendingApprovalsCount: number;
+  ordersForwardedCount: number;
+  forwardingIssuesCount: number;
+}
+
 /**
- * Optional by design (SIMPLICITY INVARIANT): a self-fulfilled seller with no
- * supplier connections never needs this screen - the sidebar only links here
- * once at least one supplier link exists (see Sidebar.tsx).
+ * Module 96 (SRS §5.4/FR-4.11, founder batch B13) - a permanent, always-
+ * visible top-level nav item (reverses the earlier SIMPLICITY-INVARIANT
+ * decision to hide this screen until a supplier link existed - see
+ * nav-items.ts's own history note). Local dropshipping is a first-class,
+ * discoverable capability now, so this page - including its empty states
+ * below - must read well for a seller who has never connected a supplier.
  */
 export default function SupplierLinksPage({ params }: { params: { storeId: string } }) {
   const [links, setLinks] = useState<SupplierLink[] | null>(null);
   const [reviews, setReviews] = useState<ListingReview[] | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,8 +102,16 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
       .catch(() => setReviews([]));
   }
 
+  function loadSummary() {
+    api
+      .get<DashboardSummary>(`/stores/${params.storeId}/supplier-links/dashboard`)
+      .then(setSummary)
+      .catch(() => {});
+  }
+
   useEffect(load, [params.storeId]);
   useEffect(loadReviews, [params.storeId]);
+  useEffect(loadSummary, [params.storeId]);
 
   if (!links || !reviews) return <PageSpinner />;
 
@@ -85,6 +121,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
     try {
       await api.patch(`/stores/${params.storeId}/listing-reviews/${reviewId}/${decision}`);
       loadReviews();
+      loadSummary();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Couldn't ${decision} that listing.`);
     } finally {
@@ -116,6 +153,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
     try {
       await api.patch(`/stores/${params.storeId}/supplier-links/${linkId}/approve`);
       load();
+      loadSummary();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't approve that link.");
     } finally {
@@ -129,6 +167,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
     try {
       await api.patch(`/stores/${params.storeId}/supplier-links/${linkId}/revoke`);
       load();
+      loadSummary();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't revoke that link.");
     } finally {
@@ -139,6 +178,20 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
   return (
     <div>
       <PageHeader title="Suppliers" description="Local suppliers whose products you can list and sell from your store." />
+
+      {summary && (
+        <Reveal stagger={0.08} className="mb-6 grid gap-4 sm:grid-cols-4">
+          <StatTile icon={Users} label="Active suppliers" value={String(summary.activeSuppliersCount)} />
+          <StatTile icon={AlertTriangle} label="Pending approvals" value={String(summary.pendingApprovalsCount)} hint="Links + listings awaiting you" />
+          <StatTile icon={PackageCheck} label="Orders forwarded" value={String(summary.ordersForwardedCount)} hint="Last 30 days" />
+          <StatTile
+            icon={summary.forwardingIssuesCount > 0 ? AlertTriangle : CheckCircle2}
+            label="Forwarding issues"
+            value={String(summary.forwardingIssuesCount)}
+            hint="Last 30 days"
+          />
+        </Reveal>
+      )}
 
       {error && <Alert tone="danger">{error}</Alert>}
 

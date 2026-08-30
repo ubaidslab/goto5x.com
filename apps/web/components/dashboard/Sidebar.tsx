@@ -55,14 +55,13 @@ function StoreSwitcher({ storeId, storeName, stores }: { storeId: string; storeN
   );
 }
 
-function NavLinks({ storeId, showSuppliers, planName, onNavigate }: { storeId: string; showSuppliers: boolean; planName?: string; onNavigate?: () => void }) {
+function NavLinks({ storeId, planName, onNavigate }: { storeId: string; planName?: string; onNavigate?: () => void }) {
   const pathname = usePathname();
-  const visibleItems = navItems.filter((item) => !item.conditional || (item.label === "Suppliers" && showSuppliers));
 
   return (
     <nav className="mt-2 flex flex-1 flex-col gap-4">
       {GROUP_ORDER.map((group) => {
-        const items = visibleItems.filter((item) => item.group === group);
+        const items = navItems.filter((item) => item.group === group);
         if (items.length === 0) return null;
         return (
           <div key={group} className={group === "admin" ? "border-t border-border pt-4" : undefined}>
@@ -104,13 +103,11 @@ function NavLinks({ storeId, showSuppliers, planName, onNavigate }: { storeId: s
 export function Sidebar({
   storeId,
   storeName,
-  showSuppliers = false,
   stores = [],
   planName,
 }: {
   storeId: string;
   storeName?: string;
-  showSuppliers?: boolean;
   /** SRS §5.56/FR-56.3 - the seller's full store list, for the switcher below. Only rendered as a dropdown when there's more than one (a single-store seller sees the same plain label as before). */
   stores?: StoreSummary[];
   /** Shown as small text under the Settings link (Part B item 7 of the UI/UX mandate). */
@@ -151,7 +148,7 @@ export function Sidebar({
               </DialogPrimitive.Close>
             </div>
             <StoreSwitcher storeId={storeId} storeName={storeName} stores={stores} />
-            <NavLinks storeId={storeId} showSuppliers={showSuppliers} planName={planName} onNavigate={() => setMobileOpen(false)} />
+            <NavLinks storeId={storeId} planName={planName} onNavigate={() => setMobileOpen(false)} />
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
@@ -160,7 +157,7 @@ export function Sidebar({
       <aside className="hidden h-screen w-64 flex-shrink-0 flex-col overflow-y-auto bg-surface px-3 py-5 md:flex">
         <Wordmark />
         <StoreSwitcher storeId={storeId} storeName={storeName} stores={stores} />
-        <NavLinks storeId={storeId} showSuppliers={showSuppliers} planName={planName} />
+        <NavLinks storeId={storeId} planName={planName} />
       </aside>
     </>
   );
