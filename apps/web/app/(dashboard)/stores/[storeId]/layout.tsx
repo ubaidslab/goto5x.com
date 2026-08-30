@@ -86,7 +86,17 @@ export default function StoreDashboardLayout({
         <div className="app-shell-surface flex flex-1 flex-col md:flex-row" data-dashboard-theme={dashboardTheme}>
           <Sidebar storeId={params.storeId} storeName={store?.name} showSuppliers={hasSuppliers} stores={stores} planName={planName} />
           <main className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8">
-            <div className="mx-auto max-w-5xl">
+            {/* Founder batch A4 - was `mx-auto max-w-5xl`, a hard 1024px cap
+                that left ~160px of dead space on a 1440px viewport (measured
+                live: 1184px available, only 1024px used) and grows worse on
+                wider monitors - grid/table-heavy pages (Products, Orders,
+                Analytics, the dashboard gauges) never got to use the room
+                they had. Dropped to match the admin terminal's own content
+                wrapper (components/admin/.. via (admin)/admin/layout.tsx),
+                which already has no such cap. Pages that genuinely want a
+                narrower reading width (e.g. Settings' form cards) already
+                set their own inner max-w-2xl - unaffected either way. */}
+            <div>
               <PlatformMessages />
               {children}
             </div>
