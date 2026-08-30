@@ -58,7 +58,11 @@ const EXPORT_FILE_LABELS: { file: "products" | "orders" | "customers" | "invento
 ];
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
-  { id: "default", label: "Blue (default)", swatch: "#0071e3" },
+  // "default" mirrors the platform's own --color-accent token (founder
+  // brand-palette pass, batch A2) rather than reading the CSS variable at
+  // runtime, since this array also needs a static label - keep this swatch
+  // in sync by hand if the base accent token in globals.css ever changes.
+  { id: "default", label: "Green (default)", swatch: "#0d530e" },
   { id: "emerald", label: "Emerald", swatch: "#1f9254" },
   { id: "amber", label: "Amber", swatch: "#b5750a" },
   { id: "rose", label: "Rose", swatch: "#c23b6b" },

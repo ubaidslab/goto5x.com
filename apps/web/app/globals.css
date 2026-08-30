@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
 /*
- * UZEYN Design System — v1.1 (Phase 1 redo, Module 19)
+ * UZEYN Design System — v1.2 (founder brand-palette pass, batch A2/A3)
  * -----------------------------------------------------------------------
- * v1.1 note: v1's Plus Jakarta Sans + softer neutrals were founder-
- * rejected as reading "friendly startup," not "premium minimal." This
- * pass swaps to Geist, hardens the neutrals to warm-paper/near-black with
- * real contrast jumps, doubles marketing-surface spacing, blunts shadows
- * toward "distance not drama," and enforces one heavy heading weight
- * throughout instead of a 600/700 mix. See each token group's own comment
- * below for the specific before/after reasoning.
+ * v1.2 note: the founder's real brand colors replace the v1.1 placeholder
+ * warm-paper/near-black scale, platform-wide - #FBF5DD (lightest/bg),
+ * #E7E1B1 (secondary/muted), #306D29 (accent-hover), #0D530E (darkest,
+ * matches the founder's logo - now the accent). Applied everywhere,
+ * including the dashboard/admin terminal (their previous separate indigo
+ * override is removed, not recolored - one brand identity, not two).
+ * Alegreya SC (a display serif) replaces Geist as the headline face.
+ * Status/semantic colors and per-seller cosmetic dashboard-accent presets
+ * are untouched - functional/optional, not brand chrome. See each token
+ * group's own comment below for contrast numbers and the specific
+ * before/after reasoning.
  * Single source of truth for every color, type, spacing, radius, shadow,
  * and motion value used across UZEYN's dashboard, marketing site,
  * storefronts, and admin terminal. Rebranding — a new accent color, an
@@ -17,11 +21,12 @@
  * rewrite. See /design-system for the live contract every component below
  * is checked against.
  *
- * Direction: monochrome premium — near-white surfaces, near-black ink, a
- * full grayscale scale between, and AT MOST one restrained accent (used
- * sparingly: links, the primary CTA, active/selected state) — apple.com
- * discipline, horizonx.so-class motion, iOS-like polish; generous
- * whitespace and subtle depth rather than heavy borders/shadows.
+ * Direction: monochrome premium — near-white (now near-cream) surfaces,
+ * a brand-tinted dark-green ink, a full tonal scale between, and AT MOST
+ * one restrained accent (used sparingly: links, the primary CTA, active/
+ * selected state) — apple.com discipline, horizonx.so-class motion,
+ * iOS-like polish; generous whitespace and subtle depth rather than heavy
+ * borders/shadows.
  *
  * Values inside `@theme` are read by Tailwind v4 to generate matching
  * utilities (e.g. --color-accent -> bg-accent/text-accent/border-accent,
@@ -31,41 +36,49 @@
  * JS constants in lib/motion.ts for GSAP to read the same values from.
  */
 @theme {
-  /* Neutrals - "ink-on-paper" (founder redo direction, post Phase-1
-     rejection). A warm paper canvas (not a cool/blue-tinted gray - the
-     previous #f5f5f7 measured 229/229/234, a faint COOL tilt that read as
-     generic-SaaS-gray rather than considered) against a true near-black
-     ink, with real lightness jumps between steps rather than a smooth,
-     low-contrast gradient - canvas/surface sit close together, then each
-     step down is a deliberate, visible move: ~98% -> 100% -> 91% -> 85%
-     -> 61% -> 42% -> 4% L. Borders stay hairline-subtle (1px, low
-     contrast against both canvas and surface) - depth comes from spacing
-     and type weight, not visible edges. */
-  --color-canvas: #faf9f6;
-  --color-surface: #ffffff;
+  /* Neutrals - founder brand-palette pass (batch A2): the founder's own
+     four colors (#FBF5DD lightest/bg, #E7E1B1 secondary/muted, #306D29
+     primary accent, #0D530E darkest/matches-the-logo) replace the
+     placeholder warm-paper/near-black scale, applied platform-wide (base
+     @theme here - the old separate dashboard/admin indigo override
+     further down this file is removed, not just recolored, per explicit
+     founder direction to unify on one brand identity everywhere rather
+     than keep two). ink/ink-muted/ink-faint are a genuine brand-tinted
+     scale (mixed from #0D530E toward #FBF5DD), not a plain gray dressed
+     up - premium-design-taste's "a subtle brand tint mixed into white/
+     black... alone makes a palette feel designed rather than default."
+     Contrast checked, not assumed: ink #0D530E on canvas #FBF5DD is
+     8.51:1 (AAA), on border-strong #E7E1B1 is 7.00:1 (AAA) - both exceed
+     the 4.5:1 AA floor for normal text with real margin. Status/semantic
+     colors below are deliberately untouched - functional signals, not
+     brand chrome, per the founder's explicit scope note. */
+  --color-canvas: #fbf5dd;
+  --color-surface: #fdfaee;
   --color-surface-raised: #ffffff;
-  --color-border: #eae7e1;
-  --color-border-strong: #dbd7ce;
-  --color-ink: #0a0a0a;
-  --color-ink-muted: #6b6862;
-  --color-ink-faint: #9c988f;
+  --color-border: #f1ebc7;
+  --color-border-strong: #e7e1b1;
+  --color-ink: #0d530e;
+  --color-ink-muted: #4f7649;
+  --color-ink-faint: #8a9c76;
 
-  /* Accent - the ONE restrained color. Hardened discipline after the
-     Phase-1 rejection: on any marketing/hero-class page, accent may
-     appear in AT MOST one place - the primary CTA - never as a
-     decorative highlight, underline, or badge tint alongside it. Inside
-     the dashboard/admin product, it also drives functional interactive
-     state (checked/on toggles, focus rings, the active nav item) - that's
-     conventional UI state, not a second "brand voice spend." Every other
-     color in this file is neutral by design so a future accent swap never
-     fights a second "loud" color. Still a placeholder hue pending the
-     founder's real brand-color pass - the discipline matters more than
-     the exact value.
-  */
-  --color-accent: #0071e3;
-  --color-accent-hover: #0058b0;
-  --color-accent-active: #00468c;
-  --color-accent-subtle: #e8f2fd;
+  /* Accent - the ONE restrained color, still the same discipline as
+     before (marketing/hero: at most one appearance, the primary CTA;
+     dashboard/admin: also drives checked/on toggles, focus rings, the
+     active nav item - conventional UI state, not a second "brand voice
+     spend"). Founder-directed value (not a placeholder anymore):
+     #0D530E, the same darkest green as the ink token above, matching the
+     founder's logo - accent-hover steps UP to the lighter #306D29 the
+     founder named as the palette's own "primary accent" shade (a
+     confident, visible hover response rather than a barely-there shift).
+     On dense/data-heavy screens (Settings Registry, admin queues,
+     analytics tables) this stays exactly as restrained as the old blue
+     was - interactive/emphasis elements only, never a tinted surface
+     wash. Contrast checked: white on-accent text on #0D530E is 9.31:1
+     (AAA). */
+  --color-accent: #0d530e;
+  --color-accent-hover: #306d29;
+  --color-accent-active: #093a0a;
+  --color-accent-subtle: #dee2c4;
   --color-on-accent: #ffffff;
 
   /* Semantic status colors - kept muted/refined, never neon, for order
@@ -80,22 +93,22 @@
   --color-info-subtle: #eaf1fe;
 
   /* Type - two families, one job each (premium-design-taste's pairing
-     rule: max 2 families, commit site-wide). GEIST (--font-display)
-     carries headlines/hero/wordmark voice - Vercel's own family (used on
-     vercel.com), a neo-grotesque built on classic Swiss-typography
-     principles. Replaces Plus Jakarta Sans, which read "friendly
-     startup" rather than "premium minimal" at hero scale (founder
-     rejection, Phase 1 redo) - see /design-system/type for the
-     side-by-side comparison against the one alternative considered
-     (Instrument Sans) and why Geist won. Inter (--font-sans) stays the
-     body/UI face - proven legible at 13-14px across every dense
-     dashboard table this product has shipped. Geist loaded via the
-     `geist` npm package (a pre-optimized next/font/local build, since
-     Geist isn't on Google Fonts); Inter via next/font/google. Both in
-     app/layout.tsx; system-stack fallbacks so text never flashes
+     rule: max 2 families, commit site-wide). Founder batch A3: Alegreya
+     SC - a small-caps display serif - is now --font-display's headline/
+     hero/wordmark voice platform-wide, replacing Geist (kept loaded and
+     still available as --font-geist-sans for the Atelier storefront
+     template's own independent identity - see app/layout.tsx's comment -
+     but no longer the platform's own headline face). Editorial/serif
+     voice pairs deliberately with the new cream/green brand palette
+     above - "premium minimal" now reads as considered-and-crafted rather
+     than generic-SaaS-neo-grotesque. Inter (--font-sans) is UNCHANGED -
+     stays the body/UI face, proven legible at 13-14px across every dense
+     dashboard table this product has shipped; the founder's instruction
+     was headings only. Alegreya SC loaded via next/font/google in
+     app/layout.tsx; system-stack serif fallback so text never flashes
      unstyled. */
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: var(--font-geist-sans), var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-alegreya-sc), Georgia, "Times New Roman", serif;
 
   /* Type scale - redone bigger and blunter after the Phase-1 rejection:
      hero display now bottoms out at 3.5rem (was 2.75rem) and tops out at
@@ -184,22 +197,35 @@
 /* Dark-mode token overrides - same variable names, new values, so every
    utility class Tailwind generated from @theme above repaints for free.
    Not wired to a manual toggle yet (no dark-mode UI ships this checkpoint)
-   - this proves the token architecture supports it when that ships. */
+   - this proves the token architecture supports it when that ships.
+   Founder brand-palette pass (batch A2): a dark, desaturated-green
+   canvas/ink scale derived from the same #0D530E/#FBF5DD brand hues
+   (not a generic near-black), so dark mode reads as the same brand, not
+   a different one. --color-accent is intentionally NOT #0D530E here -
+   that value is too dark to read as either text or a button fill against
+   a near-black canvas, so it's replaced with a brighter in-family green
+   calibrated for contrast at both jobs: #4A8F40 as accent TEXT (e.g. a
+   link) on canvas is 4.77:1 (AA); the same #4A8F40 as a button fill needs
+   dark (not white) on-accent text to clear AA - white-on-#4A8F40 is only
+   3.97:1, but near-black-on-#4A8F40 is 4.81:1, so --color-on-accent
+   flips to a dark value here (the one dark-mode-specific token override
+   the light scheme doesn't need). */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #000000;
-    --color-surface: #1c1c1e;
-    --color-surface-raised: #2c2c2e;
-    --color-border: #38383a;
-    --color-border-strong: #48484a;
-    --color-ink: #f5f5f7;
-    --color-ink-muted: #a1a1a6;
-    --color-ink-faint: #7a7a7e;
+    --color-canvas: #0a130a;
+    --color-surface: #12200f;
+    --color-surface-raised: #1a2e16;
+    --color-border: #24391e;
+    --color-border-strong: #35502c;
+    --color-ink: #f3f0dc;
+    --color-ink-muted: #b7c2a0;
+    --color-ink-faint: #7c8a6c;
 
-    --color-accent: #409cff;
-    --color-accent-hover: #64b3ff;
-    --color-accent-active: #2a86ea;
-    --color-accent-subtle: #16283d;
+    --color-accent: #4a8f40;
+    --color-accent-hover: #5ca751;
+    --color-accent-active: #3d7a35;
+    --color-accent-subtle: #162413;
+    --color-on-accent: #08150a;
 
     --color-success-subtle: #113322;
     --color-warning-subtle: #3a2a0d;
@@ -246,43 +272,19 @@ body:has(.app-shell-surface[data-dashboard-theme="rose"]) {
   --color-accent-subtle: #fbe9f0;
 }
 
-/* UI/UX Design Phase (post-launch-features, founder mandate) - the seller
-   dashboard and admin terminal get their own visual language: white page /
-   #fafafa tonal cards (no borders on cards), a restrained indigo accent,
-   distinct from the marketing/storefront identity above (Module 19, which
-   stays untouched per the mandate's explicit "do not touch storefront"
-   scope boundary). Scoped to `.app-shell-surface` - the wrapping element
-   both the seller dashboard's layout.tsx and (from Phase 6) the admin
-   terminal's layout.tsx render their content inside - so nothing on the
-   marketing site or storefront templates is affected by this override.
-   Lower specificity than the per-seller cosmetic accent presets above
-   (`.app-shell-surface[data-dashboard-theme="emerald|amber|rose"]`), so a
-   seller who's chosen one of those still sees their own accent - this
-   block only changes the *default* ("blue"/unset) case from Apple-blue to
-   indigo and adds the tonal-card canvas/surface split. Card radius (12-
-   14px) is set directly on the new dashboard Card component instead of
-   overriding --radius-lg here, since that token is also read by buttons/
-   inputs/other rounded elements this phase isn't meant to touch.
-
-   Scoped via `body:has(.app-shell-surface)`, NOT `.app-shell-surface`
-   directly - discovered live while screenshot-testing Phase 1's mobile
-   nav drawer: Radix's Dialog/DropdownMenu/Tooltip/Toast all portal their
-   content to a container appended directly to <body>, outside
-   .app-shell-surface's own DOM subtree, so a plain descendant-selector
-   override never reached them (the drawer's focus ring rendered the OLD
-   Apple-blue, not indigo). `:has()` lets the override live on <body> -
-   the true ancestor of both the normal render tree AND every portal -
-   while still only ever being TRUE on a page that actually renders
-   .app-shell-surface (dashboard/admin), never on marketing/storefront. */
-body:has(.app-shell-surface) {
-  --color-canvas: #ffffff;
-  --color-surface: #fafafa;
-  --color-surface-raised: #ffffff;
-  --color-accent: #5b5bf0;
-  --color-accent-hover: #4a4ae0;
-  --color-accent-active: #3d3dc9;
-  --color-accent-subtle: #eeeefd;
-}
+/* REMOVED (founder brand-palette pass, batch A2): the dashboard/admin
+   terminal used to carry its own `body:has(.app-shell-surface) { ... }`
+   override here - white canvas, #fafafa tonal cards, a restrained indigo
+   accent (#5b5bf0) distinct from the marketing/storefront identity.
+   Founder direction: "the platform needs one consistent brand identity
+   everywhere; indigo was only ever a placeholder before the real brand
+   color existed." The base @theme tokens above (cream canvas, #0d530e
+   accent) now equal what this override used to set, so the block is
+   deleted rather than recolored - dashboard/admin inherit the platform
+   default directly, same as marketing/storefront. The per-seller cosmetic
+   accent presets immediately above this comment (emerald/amber/rose) are
+   unaffected - they still override on top of whatever the accent default
+   is, unchanged mechanism, unchanged colors. */
 
 /* Phase 2 checkpoint color A/B (founder-requested comparison, not shipped
    copy) - a warmer "energy" accent + canvas tint scoped to
