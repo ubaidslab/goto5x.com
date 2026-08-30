@@ -130,6 +130,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   const [profit, setProfit] = useState<OrderProfit | null>(null);
   const [verification, setVerification] = useState<OrderVerification | null | undefined>(undefined);
   const [verifyActionLoading, setVerifyActionLoading] = useState(false);
+  const [markingDeliveredItemId, setMarkingDeliveredItemId] = useState<string | null>(null);
 
   function load() {
     api
@@ -299,11 +300,14 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
 
   async function markDelivered(itemId: string) {
     setError(null);
+    setMarkingDeliveredItemId(itemId);
     try {
       await api.post(`/stores/${params.storeId}/orders/${params.orderId}/items/${itemId}/deliver`);
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't mark that item delivered.");
+    } finally {
+      setMarkingDeliveredItemId(null);
     }
   }
 
@@ -447,7 +451,11 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                       Save tracking
                     </Button>
                     {item.fulfillmentStatus === "shipped" && (
-                      <Button variant="secondary" onClick={() => markDelivered(item.id)}>
+                      <Button
+                        variant="secondary"
+                        loading={markingDeliveredItemId === item.id}
+                        onClick={() => markDelivered(item.id)}
+                      >
                         Mark delivered
                       </Button>
                     )}
