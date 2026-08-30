@@ -537,6 +537,17 @@ export class OrderVerificationService {
       if (!enabled) {
         throw new ForbiddenException("Prepaid partial-advance verification is not included in your current plan.");
       }
+      // Module 95 (SRS §5.6l/FR-6.67) - the one narrow cross-setting rule:
+      // a store already collecting a gateway-charged Advance payment under
+      // the store-wide payment model doesn't also need this channel's own
+      // gateway-charged deposit - both would charge the buyer a percentage
+      // of the same order for overlapping reasons.
+      const store = await this.prismaAdmin.store.findUnique({ where: { id: storeId }, select: { paymentModel: true } });
+      if (store?.paymentModel === "advance") {
+        throw new BadRequestException(
+          "This store's payment model is already set to Advance, which collects its own gateway-verified deposit - the prepaid partial-advance verification channel would duplicate that. Switch the payment model first if you want this channel instead.",
+        );
+      }
     }
     // Module 77 (FR-6.53) - same RUN+ boundary; email verification is
     // never gated (email_otp has no corresponding check here at all).

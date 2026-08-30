@@ -7,8 +7,23 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
+
+type PaymentModel = "prepaid" | "cod" | "advance";
+
+const PAYMENT_MODEL_LABEL: Record<PaymentModel, string> = {
+  prepaid: "Prepaid - buyer pays in full before you ship",
+  cod: "Cash on Delivery - buyer pays when the order arrives",
+  advance: "Advance - buyer pays a percentage now, the rest on delivery",
+};
+
+interface PaymentModelSettings {
+  paymentModel: PaymentModel;
+  advancePercent: number;
+  prepaidEnabled: boolean;
+}
 
 interface PaymentInstructions {
   bankAccountTitle: string | null;
@@ -69,6 +84,13 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
   const [paymentSaved, setPaymentSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [modelSettings, setModelSettings] = useState<PaymentModelSettings | null>(null);
+  const [selectedModel, setSelectedModel] = useState<PaymentModel | null>(null);
+  const [advancePercentInput, setAdvancePercentInput] = useState("20");
+  const [savingModel, setSavingModel] = useState(false);
+  const [modelSaved, setModelSaved] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+
   const [gatewayConnections, setGatewayConnections] = useState<PaymentGatewayConnection[] | null>(null);
   const [gatewayProvider, setGatewayProvider] = useState<PaymentGatewayProvider>("raast");
   const [gatewayMerchantId, setGatewayMerchantId] = useState("");
@@ -93,8 +115,38 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
       .get<PaymentInstructions>(`/stores/${params.storeId}/payment-instructions`)
       .then(setPayment)
       .catch(() => {});
+    api
+      .get<PaymentModelSettings>(`/stores/${params.storeId}/payment-model`)
+      .then((s) => {
+        setModelSettings(s);
+        setAdvancePercentInput(String(s.advancePercent));
+      })
+      .catch(() => {});
     loadGatewayConnections();
   }, [params.storeId]);
+
+  async function saveModel(e: React.FormEvent) {
+    e.preventDefault();
+    if (!modelSettings) return;
+    const paymentModel = selectedModel ?? modelSettings.paymentModel;
+    setModelError(null);
+    setModelSaved(false);
+    setSavingModel(true);
+    try {
+      await api.patch<{ paymentModel: PaymentModel; advancePercent: number }>(`/stores/${params.storeId}/payment-model`, {
+        paymentModel,
+        advancePercent: paymentModel === "advance" ? Number(advancePercentInput) : undefined,
+      });
+      const refreshed = await api.get<PaymentModelSettings>(`/stores/${params.storeId}/payment-model`);
+      setModelSettings(refreshed);
+      setSelectedModel(null);
+      setModelSaved(true);
+    } catch (err) {
+      setModelError(err instanceof ApiError ? err.message : "Couldn't save the payment model.");
+    } finally {
+      setSavingModel(false);
+    }
+  }
 
   async function savePayment(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -184,7 +236,9 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
     }
   }
 
-  if (!payment || !gatewayConnections) return <PageSpinner />;
+  if (!payment || !gatewayConnections || !modelSettings) return <PageSpinner />;
+
+  const effectiveModel = selectedModel ?? modelSettings.paymentModel;
 
   return (
     <div>
@@ -193,6 +247,57 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
+        <Card>
+          <CardHeader
+            title="Payment model"
+            description="How your whole store collects payment - one rule for every order, replacing a mix of methods. Switching this only affects new orders placed from now on."
+          />
+          <CardBody>
+            {modelError && <Alert tone="danger">{modelError}</Alert>}
+            <form onSubmit={saveModel} className="space-y-4">
+              <Field label="Model" hint="Every option is listed even if your plan doesn't include it yet.">
+                <Select value={effectiveModel} onChange={(e) => setSelectedModel(e.target.value as PaymentModel)}>
+                  {(Object.keys(PAYMENT_MODEL_LABEL) as PaymentModel[]).map((model) => {
+                    const locked = model === "prepaid" && !modelSettings.prepaidEnabled;
+                    return (
+                      <option key={model} value={model}>
+                        {PAYMENT_MODEL_LABEL[model]}
+                        {locked ? " (requires RUN or above)" : ""}
+                      </option>
+                    );
+                  })}
+                </Select>
+              </Field>
+
+              {effectiveModel === "prepaid" && !modelSettings.prepaidEnabled && (
+                <UpgradeLockedCard
+                  requiredTier="RUN"
+                  title="Prepaid payment model"
+                  description="Buyers pay the full amount before you ship - no cash-on-delivery risk. Requires a connected payment gateway or your bank/JazzCash/Easypaisa details below."
+                />
+              )}
+
+              {effectiveModel === "advance" && (
+                <Field label="Advance percentage" hint="10-50%. The buyer pays this via your connected gateway at checkout; the rest is collected on delivery.">
+                  <Input
+                    type="number"
+                    min={10}
+                    max={50}
+                    value={advancePercentInput}
+                    onChange={(e) => setAdvancePercentInput(e.target.value)}
+                    required
+                  />
+                </Field>
+              )}
+
+              {modelSaved && <Alert tone="success">Saved.</Alert>}
+              <Button type="submit" loading={savingModel} disabled={effectiveModel === "prepaid" && !modelSettings.prepaidEnabled}>
+                Save payment model
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+
         <Card>
           <CardHeader
             title="Payment gateway"

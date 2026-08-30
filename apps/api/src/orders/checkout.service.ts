@@ -253,6 +253,7 @@ export class CheckoutService {
             name: true,
             status: true,
             publishedAt: true,
+            paymentModel: true,
             logoMedia: { select: { url: true } },
             taxNumber: true,
             invoiceFooterText: true,
@@ -272,6 +273,26 @@ export class CheckoutService {
         throw new BadRequestException(
           "This store hasn't configured a way to receive payment yet - checkout isn't available.",
         );
+      }
+
+      // Module 95 (SRS §5.6l/FR-6.64) - extends the check above with a
+      // per-payment-model readiness rule: COD is satisfied by anything
+      // hasAnyPaymentMethod already accepted, but Prepaid and Advance each
+      // need something more specific than "COD alone" to actually be
+      // consistent with the model the seller selected.
+      if (store.paymentModel === "prepaid") {
+        const hasRealInstrument =
+          Boolean(paymentInstructions.bankAccountNumber || paymentInstructions.jazzcashNumber || paymentInstructions.easypaisaNumber) ||
+          (await this.hasActiveGatewayConnection(params.storeId));
+        if (!hasRealInstrument) {
+          throw new BadRequestException(
+            "Your store is set to Prepaid but has no way to collect payment before shipping - connect a gateway or add payment instructions.",
+          );
+        }
+      } else if (store.paymentModel === "advance") {
+        if (!(await this.hasActiveGatewayConnection(params.storeId))) {
+          throw new BadRequestException("Advance requires a connected payment gateway.");
+        }
       }
 
       // SRS §5.30/FR-30.1 - "same activation gate as FR-6.14's payment-
@@ -367,6 +388,9 @@ export class CheckoutService {
             shippingAddress: params.shippingAddress as unknown as object,
             status: "pending",
             source: params.source,
+            // Module 95 (SRS §5.6l/FR-6.65) - sticky snapshot, never
+            // re-resolved from the store's current setting later.
+            paymentModel: store.paymentModel,
             discountCodeId,
             dealId,
             discountAmount,
@@ -541,5 +565,13 @@ export class CheckoutService {
         data: { stockQuantity: { increment: r.quantity } },
       });
     }
+  }
+
+  /** Module 95 (SRS §5.6l/FR-6.64) - whether this store has any active, real (credentialed) gateway connection - Prepaid/Advance readiness. */
+  private async hasActiveGatewayConnection(storeId: string): Promise<boolean> {
+    const count = await this.prismaAdmin.storePaymentGatewayConnection.count({
+      where: { storeId, isActive: true },
+    });
+    return count > 0;
   }
 }

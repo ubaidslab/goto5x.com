@@ -2,7 +2,10 @@ import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post,
 import { FileInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { JwtAccessPayload } from "../common/types";
 import { CreateStoreDto } from "./dto/create-store.dto";
+import { UpdatePaymentModelDto } from "./dto/update-payment-model.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
 import { StoresService } from "./stores.service";
 
@@ -64,5 +67,21 @@ export class StoresController {
   @Post(":id/onboarding/domain-ack")
   ackOnboardingDomain(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
     return this.stores.ackOnboardingDomain(sellerId, id);
+  }
+
+  /** Module 95 (SRS §5.6l/FR-6.61-6.68) - the store-wide payment-model choice. */
+  @Get(":id/payment-model")
+  getPaymentModel(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
+    return this.stores.getPaymentModel(sellerId, id);
+  }
+
+  @Patch(":id/payment-model")
+  updatePaymentModel(
+    @CurrentSellerId() sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("id") id: string,
+    @Body() dto: UpdatePaymentModelDto,
+  ) {
+    return this.stores.updatePaymentModel(sellerId, id, user.sub, dto);
   }
 }

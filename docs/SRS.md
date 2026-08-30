@@ -1,9 +1,9 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.45 (Build-phase amendment — product custom attributes,
-§5.69/FR-69.1-69.4, Module 94; founder batch item B10, first item of Part
-B — new functional features, each getting its own SRS amendment first per
-standing session instruction)
+**Version:** 0.46 (Build-phase amendment — store-wide payment model
+selection (Prepaid/COD/Advance), §5.6l/FR-6.61-6.68, Module 95; founder
+batch item B12, third item of Part B — new functional features, each
+getting its own SRS amendment first per standing session instruction)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -2905,6 +2905,154 @@ can actually be enforced against.
   scope, matching the original disclosure's spirit: no rich text, no
   attachments, no multi-department routing, no canned responses — a
   ticket is a subject, a body, and a thread of plain-text replies.
+
+### 5.6l Store-Wide Payment Model (new, v0.46 — Module 95, founder batch B12)
+A single, mutually-exclusive choice per store — **Prepaid / COD /
+Advance** — replacing the implicit, method-by-method configuration
+`StorePaymentInstructions` alone provided. This is deliberately a
+different concept from two pre-existing, similarly-named mechanisms it
+must not be confused with: FR-37.4's **Prepaid Confirmation** channel (a
+small flat deposit, a *buyer-intent* fraud check, never counted toward
+the order total) and FR-6.52's **Prepaid partial-advance (5%)** channel
+(Module 76 — also a buyer-intent verification mechanism, gateway-charged
+but still framed as *proof of intent*, not real payment collection).
+Both stay exactly as built; neither is touched by this section. This
+section's "Advance" is a third, new thing: a genuine **partial
+payment-collection model**, not a verification gate.
+
+- FR-6.61 (Module 95): **`Store.paymentModel`**, a new enum column
+  (`prepaid` / `cod` / `advance`), default `cod` on every existing row
+  (preserves current behavior — no seller sees a behavior change on
+  upgrade day). Mutually exclusive by construction (one enum value, not
+  independent toggles) — this is the founder's explicit requirement
+  ("poora store aik hi method par chalega," the whole store runs on one
+  method), and it **replaces** today's "enable any combination" framing
+  for the purposes of which checkout path is offered, while the
+  individual bank/JazzCash/Easypaisa/COD fields on
+  `StorePaymentInstructions` are **unchanged and keep their existing
+  job** — they remain the instrument-level detail (account numbers,
+  whether COD is physically offered) that whichever model is selected
+  reads from; `paymentModel` sits one level above them as the mode
+  selector, not a replacement for them.
+- FR-6.62: **Tier gate on `prepaid`.** A new Settings Registry key,
+  `payments.prepaid_model_enabled` (`plan` scope, boolean, default
+  `false`), seeded `true` for RUN and above (tierOrder ≥ 1) — same
+  pattern as `orders.prepaid_partial_advance_enabled` (Module 76). GO
+  sellers see "Prepaid" in the model picker locked-not-disabled (the
+  existing `UpgradeLockedCard` pattern, never hidden entirely), and may
+  freely choose `cod` or `advance`. `cod` and `advance` are available on
+  every tier — the founder's explicit instruction was that only Prepaid
+  is gated, not the other two.
+- FR-6.63: **Advance percentage — a new, separate Settings Registry
+  key.** `payments.advance_model_percent` (`store` scope, number,
+  default `20`, validated `10`-`50`) is deliberately **not** the same key
+  as `orders.prepaid_partial_advance_percent` (Module 76's anti-fraud
+  channel percent) — the two "advance" concepts stay architecturally
+  distinct at the settings level even though both ultimately reuse
+  `PaymentGatewayService.chargeViaGateway()` as their charge-and-verify
+  engine (that method is already amount-agnostic and provider-agnostic
+  by design — "the only difference between a full-amount and a
+  partial-advance gateway charge is the `amount` passed in," per its own
+  existing comment). Keeping the settings key separate means a
+  seller changing one number never silently changes the other feature,
+  and an audit of "which advance is this charge for" is never ambiguous.
+- FR-6.64: **Checkout readiness gate, per model — extends (never
+  duplicates) FR-6.14's existing `hasAnyPaymentMethod` check** in
+  `CheckoutService.placeOrder()`:
+  - `cod`: unchanged — any configured instrument (including COD alone)
+    satisfies readiness, exactly as today.
+  - `prepaid`: requires at least one *real* payment instrument beyond a
+    bare COD toggle — an active `StorePaymentGatewayConnection`, or at
+    least one of bank/JazzCash/Easypaisa filled in on
+    `StorePaymentInstructions`. A store set to `prepaid` with only COD
+    enabled has nothing consistent with its own selected model; checkout
+    is blocked with a clear "Your store is set to Prepaid but has no way
+    to collect payment before shipping — connect a gateway or add
+    payment instructions" error, not a silent fallback to COD.
+  - `advance`: requires an **active payment gateway connection**
+    specifically (`raast`/`easypaisa`/`jazzcash`/`bank`, per the existing
+    `PaymentGatewayProvider` adapters) — a real, API-verifiable charge is
+    what actually collects the advance amount, so informal bank-transfer
+    instructions alone (no automated verification) are insufficient here
+    even though they're sufficient for `prepaid`. Blocked with a clear
+    "Advance requires a connected payment gateway" error if none is
+    active.
+- FR-6.65: **Order-level snapshot.** `Order.paymentModel` is set once, at
+  placement, to whatever the store's `paymentModel` was **at that
+  moment** — the same "sticky snapshot, never re-resolved from the
+  store's current setting" discipline `OrderVerification.channel`
+  already established for exactly this reason (documented at its own
+  call site). A later change to the store's model never reinterprets an
+  in-flight order; only new orders placed after the change follow it.
+- FR-6.66: **Buyer-facing payment step per model**, extending the
+  existing gateway-payment surface (`BuyerPaymentGatewayController`,
+  already mounted on the order-confirmation/order-status pages) rather
+  than building a parallel one:
+  - `prepaid`: reuses FR-6.38's existing full-amount flow
+    (`getCheckoutOptionsByToken` / `verifyByToken` →
+    `verifyAndConfirm()`) completely unchanged — when a gateway is
+    active the buyer sees "Pay the full amount now"; when only manual
+    instructions exist, the buyer sees the existing "how to pay" copy
+    and the order awaits the seller's manual `markAsPaid()`, same as
+    COD's manual path today, just under different buyer-facing framing
+    ("pay before I ship" vs. "pay cash at delivery").
+  - `advance`: two new endpoints,
+    `GET/POST storefront/gateway-payment/:token/model-advance[/verify]`,
+    backed by two new `PaymentGatewayService` methods
+    (`getModelAdvanceOptionsByToken` / `verifyModelAdvanceByToken`) that
+    mirror FR-6.52's `getPartialAdvanceOptionsByToken` /
+    `verifyPartialAdvanceByToken` in shape (same `chargeViaGateway()`
+    core, same round-to-2dp amount computation) but read
+    `payments.advance_model_percent` and gate on
+    `order.paymentModel === "advance"` instead of an `OrderVerification`
+    channel — and, critically, never touch an `OrderVerification` row at
+    all (no channel snapshot, no "verified" write against it). On a
+    verified charge it calls `OrdersService.markAsPaid()` directly, the
+    same sole `pending → confirmed` gate every other path already uses;
+    since `markAsPaid()` unconditionally re-checks
+    `isClearedForConfirmation()`, a store that *also* has an independent
+    verification channel configured (e.g. `whatsapp_otp`) still requires
+    that to clear too — the two systems compose correctly by virtue of
+    sharing the same gate, with no special-casing needed. Consistent
+    with the existing partial-advance channel's own financial semantics
+    (§5.6j/FR-6.52), the resulting `Payment` row records the **full**
+    order total via `markAsPaid()`'s existing, unmodified behavior (it
+    has no partial-payment concept to begin with) — the remainder stays
+    genuinely uncollected by the platform, tracked only informally, same
+    as COD's full amount is never processed through the platform today.
+    No new partial-payment ledger machinery is introduced; none is
+    needed.
+  - `cod`: unchanged — no additional payment step; existing "how to pay"
+    / manual `markAsPaid()` flow.
+- FR-6.67: **One narrow cross-setting rule, not a general interaction
+  matrix.** Every existing verification channel (`none` / `whatsapp_otp`
+  / `email_otp` / `prepaid_confirmation`) stays fully independent of
+  `paymentModel` and freely selectable under any of the three models.
+  The single exception: a store cannot have `paymentModel = "advance"`
+  **and** `orders.verification_channel = "prepaid_partial_advance"`
+  simultaneously — both would gateway-charge the buyer a percentage of
+  the same order for overlapping reasons, which is confusing UX and
+  redundant (the model's own advance charge already proves buyer intent
+  at least as strongly as the 5% verification charge does). Whichever
+  setting is saved **second** is rejected with a clear, specific error
+  naming the conflicting setting already in effect — enforced in both
+  `OrderVerificationService.updateSettingsForStore()` and the new
+  payment-model update method, each checking the other's current value.
+- FR-6.68: **Seller-facing UI** — a new "Payment model" card on the
+  existing Payments page (`apps/web/.../payments/page.tsx`), placed
+  above the existing "Payment gateway" and "Payment instructions" cards
+  it depends on: a 3-way choice (Prepaid — locked-not-disabled below
+  RUN — / COD / Advance), with a percentage field (10-50, default 20)
+  that appears only when Advance is selected. Saves via a new
+  `PATCH /stores/:id/payment-model` endpoint.
+
+Explicitly out of scope for v1.0, consistent with this platform's
+existing Direct Seller Collection posture: no platform-side escrow or
+split-settlement of the advance vs. the COD remainder (the platform
+never holds either portion); no automatic reconciliation of the
+COD remainder collected at delivery (exactly as unreconciled as COD's
+full amount is today); no per-order override of the store's model (the
+whole point is one rule per store, not per-order choice).
 
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans — **First Month, Starter, Growth, Pro** (v0.33: these

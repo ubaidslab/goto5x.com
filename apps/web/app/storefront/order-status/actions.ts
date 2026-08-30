@@ -96,3 +96,26 @@ export async function chargePartialAdvance(token: string, provider: string): Pro
   }
   return { ok: true };
 }
+
+/** Module 95 (SRS §5.6l/FR-6.66) - the store-wide Advance payment model's own amount due + active gateway options, bridging PaymentGatewayService.getModelAdvanceOptionsByToken(). Deliberately a separate pair of actions from the partial-advance ones above - the two "advance" concepts stay architecturally distinct. */
+export async function getModelAdvanceOptions(
+  token: string,
+): Promise<{ amount: number; currency: string; providers: string[] } | null> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/gateway-payment/${token}/model-advance`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Module 95 (FR-6.66) - charges the Advance model's percentage via the chosen provider and, on a verified match, confirms the order (PaymentGatewayService.verifyModelAdvanceByToken()). */
+export async function chargeModelAdvance(token: string, provider: string): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/gateway-payment/${token}/model-advance/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { message?: string });
+    return { ok: false, message: typeof body.message === "string" ? body.message : "Payment could not be verified yet." };
+  }
+  return { ok: true };
+}

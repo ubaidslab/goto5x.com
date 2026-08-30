@@ -256,6 +256,9 @@ export interface PublicOrderStatus {
   taxAmount: string;
   discountAmount: string;
   shippingAddress: { fullName: string; line1: string; line2?: string; city: string; country: string; postalCode?: string; phone: string };
+  // Module 95 (SRS §5.6l/FR-6.65) - the store's paymentModel snapshotted at
+  // placement time, independent of `verification` below.
+  paymentModel: "prepaid" | "cod" | "advance";
   // Launch-blocker fix (found while building Module 76's buyer UI) - this
   // was never exposed here at all, so there was nowhere for a buyer-facing
   // verification UI to even mount for ANY channel (not just Module 76's).

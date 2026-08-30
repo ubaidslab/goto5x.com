@@ -7,6 +7,7 @@ import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { sanitizeHeadTags } from "../storefront/head-tag-sanitizer.util";
 import { CreateStoreDto } from "./dto/create-store.dto";
+import { UpdatePaymentModelDto } from "./dto/update-payment-model.dto";
 import { UpdateStoreDto } from "./dto/update-store.dto";
 
 // Module 58 (SRS §5.65, FR-65.5) - the store-level advanced-SEO fields;
@@ -177,6 +178,59 @@ export class StoresService {
       return tx.store.update({ where: { id: storeId }, data });
     });
     return stripPasswordHash(store);
+  }
+
+  /**
+   * Module 95 (SRS §5.6l/FR-6.61-6.63) - the store-wide payment-model
+   * choice, mutually exclusive by construction (one enum column, not
+   * independent toggles). "Prepaid" is the only tier-gated value; "cod"
+   * and "advance" are free on every tier. The one cross-setting rule
+   * (FR-6.67, Advance vs. the prepaid_partial_advance verification
+   * channel) is enforced here in the "advance" direction - the reverse
+   * direction is enforced in OrderVerificationService.updateSettingsForStore().
+   */
+  async getPaymentModel(sellerId: string, storeId: string) {
+    const store = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.store.findUnique({ where: { id: storeId }, select: { paymentModel: true } });
+      if (!existing) throw new NotFoundException("Store not found.");
+      return existing;
+    });
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const prepaidEnabled = await this.settings.resolve<boolean>("payments.prepaid_model_enabled", planContext);
+    const advancePercent = await this.settings.resolve<number>("payments.advance_model_percent", { storeId });
+    return { paymentModel: store.paymentModel, advancePercent, prepaidEnabled };
+  }
+
+  async updatePaymentModel(sellerId: string, storeId: string, userId: string, dto: UpdatePaymentModelDto) {
+    if (dto.paymentModel === "prepaid") {
+      const planContext = await this.subscriptions.getPlanContext(sellerId);
+      const enabled = await this.settings.resolve<boolean>("payments.prepaid_model_enabled", planContext);
+      if (!enabled) {
+        throw new ForbiddenException("The Prepaid payment model is not included in your current plan.");
+      }
+    }
+
+    if (dto.paymentModel === "advance") {
+      const currentChannel = await this.settings.resolve<string>("orders.verification_channel", { storeId });
+      if (currentChannel === "prepaid_partial_advance") {
+        throw new BadRequestException(
+          "This store's order-verification channel is already set to prepaid partial-advance, which would duplicate the Advance payment model's own gateway-verified deposit. Switch the verification channel first if you want Advance instead.",
+        );
+      }
+    }
+
+    const store = await this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.store.findUnique({ where: { id: storeId } });
+      if (!existing) throw new NotFoundException("Store not found.");
+      return tx.store.update({ where: { id: storeId }, data: { paymentModel: dto.paymentModel } });
+    });
+
+    if (dto.paymentModel === "advance" && dto.advancePercent !== undefined) {
+      await this.settings.setValue("payments.advance_model_percent", "store", storeId, dto.advancePercent, userId);
+    }
+
+    const advancePercent = await this.settings.resolve<number>("payments.advance_model_percent", { storeId });
+    return { paymentModel: store.paymentModel, advancePercent };
   }
 
   /**

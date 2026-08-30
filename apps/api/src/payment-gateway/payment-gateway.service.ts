@@ -287,6 +287,67 @@ export class PaymentGatewayService {
     return this.orders.markAsPaid(store.sellerId, order.storeId, order.id);
   }
 
+  /**
+   * Module 95 (SRS §5.6l/FR-6.66) - the store-wide Advance payment
+   * model's own amount-due + active gateway options, buyer-facing.
+   * Deliberately mirrors getPartialAdvanceOptionsByToken()'s shape but
+   * reads payments.advance_model_percent (never
+   * orders.prepaid_partial_advance_percent) and gates on the order's own
+   * paymentModel snapshot, never an OrderVerification channel - the two
+   * "advance" concepts stay architecturally separate (FR-6.63).
+   */
+  async getModelAdvanceOptionsByToken(token: string) {
+    const order = await this.resolveModelAdvanceOrder(token);
+    const percent = await this.settings.resolve<number>("payments.advance_model_percent", { storeId: order.storeId });
+    return {
+      amount: round2(Number(order.totalAmount) * (percent / 100)),
+      currency: order.currency,
+      providers: await this.listActiveForCheckout(order.storeId),
+    };
+  }
+
+  /**
+   * FR-6.66 - the buyer-facing verify entry point for the Advance payment
+   * model. On a verified charge, calls OrdersService.markAsPaid() directly
+   * - never touches an OrderVerification row (no channel snapshot, no
+   * "verified" write) - so a store that also has an independent
+   * verification channel configured still requires that to clear too,
+   * since markAsPaid() unconditionally re-checks isClearedForConfirmation().
+   * Consistent with markAsPaid()'s own existing (unmodified) behavior, the
+   * resulting Payment row records the full order total - this platform has
+   * no partial-payment ledger concept, by design (§5.6j/FR-6.52 already
+   * established the same "the remainder stays genuinely uncollected by the
+   * platform" semantics for a gateway-charged percentage).
+   */
+  async verifyModelAdvanceByToken(token: string, provider: PaymentGatewayProvider, reference?: string) {
+    const order = await this.resolveModelAdvanceOrder(token);
+    const percent = await this.settings.resolve<number>("payments.advance_model_percent", { storeId: order.storeId });
+    const amount = round2(Number(order.totalAmount) * (percent / 100));
+
+    const result = await this.chargeViaGateway(order.storeId, provider, order.id, amount, order.currency, reference);
+    if (!result.verified) {
+      throw new BadRequestException("Payment could not be verified with this provider yet.");
+    }
+
+    const store = await this.prismaAdmin.store.findUniqueOrThrow({ where: { id: order.storeId }, select: { sellerId: true } });
+    return this.orders.markAsPaid(store.sellerId, order.storeId, order.id);
+  }
+
+  private async resolveModelAdvanceOrder(token: string) {
+    const order = await this.prismaAdmin.order.findUnique({
+      where: { statusLookupToken: token },
+      select: { id: true, storeId: true, totalAmount: true, currency: true, paymentModel: true, status: true },
+    });
+    if (!order) throw new NotFoundException("Order not found.");
+    if (order.paymentModel !== "advance") {
+      throw new BadRequestException("This order isn't using the Advance payment model.");
+    }
+    if (order.status !== "pending") {
+      throw new BadRequestException(`This order's status is already "${order.status}".`);
+    }
+    return order;
+  }
+
   private async resolvePendingPartialAdvanceOrder(token: string) {
     const order = await this.prismaAdmin.order.findUnique({
       where: { statusLookupToken: token },

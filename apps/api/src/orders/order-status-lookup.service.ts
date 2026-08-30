@@ -65,6 +65,9 @@ export class OrderStatusLookupService {
       taxAmount: order.taxAmount,
       discountAmount: order.discountAmount,
       shippingAddress: order.shippingAddress,
+      // Module 95 (SRS §5.6l/FR-6.66) - so the buyer-facing UI knows to
+      // mount the Advance payment step, independent of `verification`.
+      paymentModel: order.paymentModel,
       verification: order.verification ? { channel: order.verification.channel, status: order.verification.status } : null,
       paymentInstructions: paymentInstructions
         ? {

@@ -387,6 +387,9 @@ export async function seedPlansData(prisma: PrismaClient) {
     if (tier.tierOrder >= 1) {
       await setPlanScopedSetting(prisma, "orders.prepaid_partial_advance_enabled", plan.id, true);
       await setPlanScopedSetting(prisma, "orders.whatsapp_verification_enabled", plan.id, true);
+      // Module 95 (SRS §5.6l/FR-6.62) - "Prepaid" is the only store-wide
+      // payment model gated by tier; COD and Advance are free on GO too.
+      await setPlanScopedSetting(prisma, "payments.prepaid_model_enabled", plan.id, true);
     }
   }
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { ModelAdvancePanel } from "../../order-status/model-advance-panel";
 import { OrderVerificationPanel } from "../../order-status/order-verification-panel";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
         </div>
 
         <OrderVerificationPanel token={params.token} verification={order.verification} />
+        <ModelAdvancePanel token={params.token} paymentModel={order.paymentModel} orderStatus={order.status} />
 
         <h2>Order summary</h2>
         <ul>

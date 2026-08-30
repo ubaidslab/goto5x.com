@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { ModelAdvancePanel } from "../model-advance-panel";
 import { OrderVerificationPanel } from "../order-verification-panel";
 import { ReturnRequestForm } from "../return-request-form";
 import { ReviewForm } from "../review-form";
@@ -37,6 +38,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
         <p>Placed {new Date(order.placedAt).toLocaleString()}</p>
 
         <OrderVerificationPanel token={params.token} verification={order.verification} />
+        <ModelAdvancePanel token={params.token} paymentModel={order.paymentModel} orderStatus={order.status} />
 
         <h2>Order timeline</h2>
         <ol style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>

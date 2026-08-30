@@ -419,15 +419,15 @@ model AdminUser {
 
   user User @relation(fields: [userId], references: [id])
 
-  auditLogs                AdminAuditLog[]
-  verifiedInvoices         SellerInvoice[]
-  promoCodesCreated        PlatformPromoCode[]
-  impersonationSessions    ImpersonationSession[]
-  verifiedWalletTopUps     WalletTopUpRequest[]
+  auditLogs                 AdminAuditLog[]
+  verifiedInvoices          SellerInvoice[]
+  promoCodesCreated         PlatformPromoCode[]
+  impersonationSessions     ImpersonationSession[]
+  verifiedWalletTopUps      WalletTopUpRequest[]
   verifiedTemplatePurchases TemplatePurchaseRequest[]
-  decidedVerifiedStoreApps VerifiedStoreApplication[]
-  linkedEmailAccounts      AdminEmailAccount[]
-  platformNewsletters      PlatformNewsletter[]
+  decidedVerifiedStoreApps  VerifiedStoreApplication[]
+  linkedEmailAccounts       AdminEmailAccount[]
+  platformNewsletters       PlatformNewsletter[]
 
   @@map("admin_users")
 }
@@ -450,6 +450,11 @@ model Store {
   // internal password-verification call) - same "never returned" discipline
   // as the Google Drive refresh token (Module 2).
   accessPasswordHash    String?         @map("access_password_hash")
+  // Module 95 (SRS §5.6l, FR-6.61) - the store-wide, mutually-exclusive
+  // payment model (replaces the implicit "enable any combination of
+  // instruments" framing for checkout purposes). Default `cod` on every
+  // existing row preserves current behavior on upgrade day.
+  paymentModel          PaymentModel    @default(cod) @map("payment_model")
   seoTitle              String?         @map("seo_title")
   seoDescription        String?         @map("seo_description")
   currency              String          @default("PKR")
@@ -489,13 +494,13 @@ model Store {
   // restoreAfterPlanFeePayment() runs. This is the sole anchor the
   // 14-day-retention scheduled deletion job checks - a store paused for
   // any other reason is never eligible for deletion.
-  terminalPausedAt      DateTime?       @map("terminal_paused_at") @db.Timestamptz
+  terminalPausedAt            DateTime? @map("terminal_paused_at") @db.Timestamptz
   // Module 66 (SRS §5.6k, FR-6.43, v0.41) - set when a downgrade pauses a
   // store beyond the new tier's stores.max_per_seller limit. A 30-day
   // reclaim window; after it elapses the store just stays orders_paused
   // indefinitely (never deleted, never touched by FR-6.41's job, which
   // only ever acts on terminalPausedAt above).
-  overLimitPausedAt     DateTime?       @map("over_limit_paused_at") @db.Timestamptz
+  overLimitPausedAt           DateTime? @map("over_limit_paused_at") @db.Timestamptz
   // Module 64 (FR-6.41) - one sticky sent-at timestamp per warning
   // milestone, same "sticky timestamp so a sweep never re-sends" pattern
   // as dormantWarningSentAt/walletLowBalanceWarningSentAt. All three are
@@ -509,9 +514,9 @@ model Store {
   // same milestone/reset discipline (cleared alongside terminalPausedAt by
   // restoreAfterPlanFeePayment()), distinct sends with distinct copy from
   // the day0/7/13 deletion warnings above.
-  winbackDay3SentAt  DateTime? @map("winback_day3_sent_at") @db.Timestamptz
-  winbackDay7SentAt  DateTime? @map("winback_day7_sent_at") @db.Timestamptz
-  winbackDay14SentAt DateTime? @map("winback_day14_sent_at") @db.Timestamptz
+  winbackDay3SentAt           DateTime? @map("winback_day3_sent_at") @db.Timestamptz
+  winbackDay7SentAt           DateTime? @map("winback_day7_sent_at") @db.Timestamptz
+  winbackDay14SentAt          DateTime? @map("winback_day14_sent_at") @db.Timestamptz
 
   // Module 52 (SRS §5.59/FR-59.1) - the next human-readable Order.orderNumber
   // this store will assign, atomically incremented (via a plain UPDATE ...
@@ -962,18 +967,18 @@ model PlatformGatewayConsumedReference {
 // (reconciliation_mismatch - e.g. a later reversal/chargeback). Never
 // auto-resolved; an admin reviews and marks it resolved explicitly.
 model PlatformGatewayFlaggedVerification {
-  id               String                 @id @default(uuid()) @db.Uuid
-  provider         PaymentGatewayProvider
-  orderRef         String                 @map("order_ref")
-  reference        String?
-  requestedAmount  Decimal                @map("requested_amount") @db.Decimal(12, 2)
-  gatewayAmount    Decimal?               @map("gateway_amount") @db.Decimal(12, 2)
-  currency         String
-  reason           String
-  flaggedAt        DateTime               @default(now()) @map("flagged_at") @db.Timestamptz
-  resolved         Boolean                @default(false)
-  resolvedAt       DateTime?              @map("resolved_at") @db.Timestamptz
-  resolvedByAdminId String?               @map("resolved_by_admin_id") @db.Uuid
+  id                String                 @id @default(uuid()) @db.Uuid
+  provider          PaymentGatewayProvider
+  orderRef          String                 @map("order_ref")
+  reference         String?
+  requestedAmount   Decimal                @map("requested_amount") @db.Decimal(12, 2)
+  gatewayAmount     Decimal?               @map("gateway_amount") @db.Decimal(12, 2)
+  currency          String
+  reason            String
+  flaggedAt         DateTime               @default(now()) @map("flagged_at") @db.Timestamptz
+  resolved          Boolean                @default(false)
+  resolvedAt        DateTime?              @map("resolved_at") @db.Timestamptz
+  resolvedByAdminId String?                @map("resolved_by_admin_id") @db.Uuid
 
   @@map("platform_gateway_flagged_verifications")
 }
@@ -1583,49 +1588,49 @@ model Plan {
 // support for it), the same "Prisma manages columns, migration.sql
 // hand-adds what it can't express" pattern RLS policies already use.
 model Subscription {
-  id                String              @id @default(uuid()) @db.Uuid
-  sellerId          String?             @unique @map("seller_id") @db.Uuid
-  supplierId        String?             @unique @map("supplier_id") @db.Uuid
-  planId            String              @map("plan_id") @db.Uuid
-  status            SubscriptionStatus  @default(active)
+  id                   String              @id @default(uuid()) @db.Uuid
+  sellerId             String?             @unique @map("seller_id") @db.Uuid
+  supplierId           String?             @unique @map("supplier_id") @db.Uuid
+  planId               String              @map("plan_id") @db.Uuid
+  status               SubscriptionStatus  @default(active)
   // Null when there is no active billing cycle to wait for (e.g. a
   // sponsored team member, FR-7.18) - every seller's OWN subscription gets
   // a real value here from signup onward (v0.33: First Month is a real
   // paid tier, not a Free Plan). A plan change then always resolves
   // against this rather than "immediately" (FR-7.5).
-  currentPeriodEnd  DateTime?           @map("current_period_end") @db.Timestamptz
+  currentPeriodEnd     DateTime?           @map("current_period_end") @db.Timestamptz
   // FR-7.5 - a requested change is staged here and applied at
   // currentPeriodEnd by the scheduled cycle job, never immediately, except
   // the one FR-7.5-consistent case where there is no cycle yet to wait for
   // (a Free-Plan seller with no currentPeriodEnd) - see SubscriptionsService.
-  pendingPlanId     String?             @map("pending_plan_id") @db.Uuid
+  pendingPlanId        String?             @map("pending_plan_id") @db.Uuid
   // Module 66 (SRS §5.6k, FR-6.43) - the seller's store-choice confirmation
   // from the downgrade request, staged alongside pendingPlanId until the
   // scheduled cycle job (or the immediate-application branch) actually
   // applies it. Empty array means "seller didn't choose" - the default
   // "oldest store stays active" rule applies at that point instead.
-  pendingKeepStoreIds String[]          @default([]) @map("pending_keep_store_ids")
+  pendingKeepStoreIds  String[]            @default([]) @map("pending_keep_store_ids")
   // Module 72 (SRS §5.6k, FR-6.49) - set the moment the one-time first-
   // cycle cancellation refund is posted, so a second cancellation attempt
   // (or any other future check) can never refund the same cycle twice.
   // Null forever for a seller who never qualifies or is never refunded.
-  firstCycleRefundedAt DateTime?         @map("first_cycle_refunded_at") @db.Timestamptz
+  firstCycleRefundedAt DateTime?           @map("first_cycle_refunded_at") @db.Timestamptz
   // Module 61 (SRS §5.7, FR-7.20) - which of the three cycles (monthly/
   // six_month/yearly) this subscription is on; drives both the multiplier
   // PlanFeeDebitService applies on renewal and the span it advances
   // currentPeriodEnd by. Defaults to monthly - every subscription that
   // existed before this column was purely monthly anyway.
-  billingInterval   PlanBillingInterval @default(monthly) @map("billing_interval")
+  billingInterval      PlanBillingInterval @default(monthly) @map("billing_interval")
   // v0.17/FR-7.11-7.15 - set while this seller is an actively-sponsored team
   // member; null for an unsponsored subscription (including a member who has
   // left, per FR-7.13's graceful downgrade).
-  sponsoredByTeamId String?             @map("sponsored_by_team_id") @db.Uuid
+  sponsoredByTeamId    String?             @map("sponsored_by_team_id") @db.Uuid
   // v0.26/FR-33.1 - captured once, at signup, never backfillable. No
   // Growth & Partner Programs tables exist yet to resolve this against
   // (Module 22) - it is stored as given (shape-validated only) until then.
-  referralSource    String?             @map("referral_source")
-  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  referralSource       String?             @map("referral_source")
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz
 
   // Module 65 (SRS §5.6k/FR-6.42) - sticky sent-at timestamps for the
   // pre-expiry reminder ladder, same "never re-send" discipline as
@@ -1634,10 +1639,10 @@ model Subscription {
   // billing cycle's reminders fire fresh - unlike Store.terminalPausedAt's
   // warnings, which track a single pause episode, these track ONE cycle
   // and must reset every cycle or they'd only ever fire once, ever.
-  renewalReminderDay7SentAt       DateTime? @map("renewal_reminder_day7_sent_at") @db.Timestamptz
-  renewalReminderDay3SentAt       DateTime? @map("renewal_reminder_day3_sent_at") @db.Timestamptz
-  renewalReminderDay1SentAt       DateTime? @map("renewal_reminder_day1_sent_at") @db.Timestamptz
-  renewalReminderExpiryDaySentAt  DateTime? @map("renewal_reminder_expiry_day_sent_at") @db.Timestamptz
+  renewalReminderDay7SentAt      DateTime? @map("renewal_reminder_day7_sent_at") @db.Timestamptz
+  renewalReminderDay3SentAt      DateTime? @map("renewal_reminder_day3_sent_at") @db.Timestamptz
+  renewalReminderDay1SentAt      DateTime? @map("renewal_reminder_day1_sent_at") @db.Timestamptz
+  renewalReminderExpiryDaySentAt DateTime? @map("renewal_reminder_expiry_day_sent_at") @db.Timestamptz
 
   seller          Seller?   @relation(fields: [sellerId], references: [id])
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
@@ -1736,19 +1741,19 @@ model PlatformPromoCodeRedemption {
 }
 
 model SettingsDefinition {
-  key           String              @id
-  valueType     SettingsValueType   @map("value_type")
-  allowedScopes SettingsScopeType[] @map("allowed_scopes")
-  defaultValue  Json                @map("default_value")
-  validation    Json?
-  description   String?
+  key                  String              @id
+  valueType            SettingsValueType   @map("value_type")
+  allowedScopes        SettingsScopeType[] @map("allowed_scopes")
+  defaultValue         Json                @map("default_value")
+  validation           Json?
+  description          String?
   // FR-8.16 (v0.40) - data-driven replacement for the admin Settings
   // Registry editor's prior hardcoded frontend high-impact-key heuristic
   // (billing./commission/platform.maintenance string-match). When true,
   // both the standalone Settings Registry editor and Seller-360's own
   // settings-override mini-editor require the shared admin confirm
   // dialog (old value -> new value) before a write to this key is sent.
-  requiresConfirmation Boolean @default(false) @map("requires_confirmation")
+  requiresConfirmation Boolean             @default(false) @map("requires_confirmation")
 
   values SettingsValue[]
 
@@ -1770,7 +1775,7 @@ model SettingsValue {
   // next-lower-precedence scope) - see settings.service.ts's own note on
   // why this reads as a real, verified auto-revert rather than an
   // assumed one.
-  expiresAt DateTime? @map("expires_at") @db.Timestamptz
+  expiresAt     DateTime?         @map("expires_at") @db.Timestamptz
 
   // Module 92 (SRS §5.68/FR-68.3) - a general Settings Registry safety
   // mechanism (not color-specific): SettingsService.setValue() rejects any
@@ -1965,6 +1970,18 @@ enum CartStatus {
 // exclude it. `confirmed` is reached either via a verified gateway webhook
 // (Module 10/11, not yet wired) or an explicit manual mark-as-paid
 // (FR-17.1, built in this module).
+// Module 95 (SRS §5.6l, FR-6.61) - a store's single, mutually-exclusive
+// payment model. Distinct from the two pre-existing, similarly-named
+// order-verification concepts (FR-37.4's flat Prepaid Confirmation
+// deposit, FR-6.52's 5% Prepaid partial-advance) - neither is touched by
+// this enum; both remain buyer-intent verification mechanisms, not payment
+// models.
+enum PaymentModel {
+  prepaid
+  cod
+  advance
+}
+
 enum OrderStatus {
   pending
   confirmed
@@ -2060,62 +2077,67 @@ model Cart {
 // migration, not resurrected dead schema (same discipline as the
 // `manual_payment_link_token` precedent already documented for this table).
 model Order {
-  id                String      @id @default(uuid()) @db.Uuid
-  storeId           String      @map("store_id") @db.Uuid
+  id                       String       @id @default(uuid()) @db.Uuid
+  storeId                  String       @map("store_id") @db.Uuid
   // Module 52 (SRS §5.59/FR-59.1) - a per-store sequential, human-readable
   // identifier (displayed as "#1042"), assigned atomically from
   // Store.nextOrderNumber at creation time in CheckoutService.placeOrder().
   // Orders were UUID-addressed only before this - FR-59.3's CSV tracking
   // upload needs something a seller can actually read and type into a
   // spreadsheet cell, not a raw UUID.
-  orderNumber       Int         @map("order_number")
-  customerId        String?     @map("customer_id") @db.Uuid
-  buyerId           String?     @map("buyer_id") @db.Uuid
-  buyerEmail        String      @map("buyer_email")
+  orderNumber              Int          @map("order_number")
+  customerId               String?      @map("customer_id") @db.Uuid
+  buyerId                  String?      @map("buyer_id") @db.Uuid
+  buyerEmail               String       @map("buyer_email")
   // Module 26 (SRS §5.37/FR-37.8) - same optional-unless-the-store-needs-it
   // field as Cart.buyerWhatsapp, carried forward at checkout.
-  buyerWhatsapp     String?     @map("buyer_whatsapp")
-  statusLookupToken String      @unique @map("status_lookup_token")
-  shippingAddress   Json        @map("shipping_address")
-  status            OrderStatus @default(pending)
-  source            OrderSource @default(storefront)
-  discountCodeId    String?     @map("discount_code_id") @db.Uuid
-  discountAmount    Decimal     @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  buyerWhatsapp            String?      @map("buyer_whatsapp")
+  statusLookupToken        String       @unique @map("status_lookup_token")
+  shippingAddress          Json         @map("shipping_address")
+  status                   OrderStatus  @default(pending)
+  source                   OrderSource  @default(storefront)
+  discountCodeId           String?      @map("discount_code_id") @db.Uuid
+  discountAmount           Decimal      @default(0) @map("discount_amount") @db.Decimal(12, 2)
   // Module 91 (SRS §5.67/FR-67.2) - same optional-FK pattern as
   // discountCodeId above; traces a completed order back to the Deal that
   // produced it (buy-now flow), purely informational for FR-67.5's
   // analytics card - never read by checkout/pricing logic itself, which
   // already applied the live-computed discount before the order existed.
-  dealId            String?     @map("deal_id") @db.Uuid
+  dealId                   String?      @map("deal_id") @db.Uuid
+  // Module 95 (SRS §5.6l, FR-6.65) - a sticky snapshot of the store's
+  // paymentModel AT PLACEMENT TIME, never re-resolved from the store's
+  // current setting - same discipline as OrderVerification.channel. A
+  // later store-level model switch never reinterprets this order.
+  paymentModel             PaymentModel @default(cod) @map("payment_model")
   // Module 32 (SRS §5.49/FR-49.5) - a redeemed gift card is a payment
   // reduction against the already-computed total, never a price discount
   // (unlike discountAmount, it plays no part in computeOrderTotals()'s
   // tax/shipping math) - the seller still collects `totalAmount -
   // giftCardAmount` via the normal Direct Seller Collection flow, and
   // commission (FR-49.5) is accrued on the full totalAmount regardless.
-  giftCardAmount    Decimal     @default(0) @map("gift_card_amount") @db.Decimal(12, 2)
-  tags              String[]    @default([])
-  shippingAmount    Decimal     @map("shipping_amount") @db.Decimal(12, 2)
-  taxAmount         Decimal     @default(0) @map("tax_amount") @db.Decimal(12, 2)
-  totalAmount       Decimal     @map("total_amount") @db.Decimal(12, 2)
-  currency          String
+  giftCardAmount           Decimal      @default(0) @map("gift_card_amount") @db.Decimal(12, 2)
+  tags                     String[]     @default([])
+  shippingAmount           Decimal      @map("shipping_amount") @db.Decimal(12, 2)
+  taxAmount                Decimal      @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  totalAmount              Decimal      @map("total_amount") @db.Decimal(12, 2)
+  currency                 String
   // Module 31 (SRS §5.42/FR-42.1) - optional seller-entered per-order
   // costs for the P&L engine; unlike ProductVariant.baseCost, a missing
   // value here is genuinely zero (not every order has one), so PnLService
   // never flags these two as incomplete.
-  courierCost       Decimal?    @map("courier_cost") @db.Decimal(12, 2)
-  handlingCost      Decimal?    @map("handling_cost") @db.Decimal(12, 2)
+  courierCost              Decimal?     @map("courier_cost") @db.Decimal(12, 2)
+  handlingCost             Decimal?     @map("handling_cost") @db.Decimal(12, 2)
   // Module 15 (FR-19.1) - MinIO URL of the generated PDF invoice/receipt,
   // rendered once at order-placement time (the same moment the order-
   // confirmation email already sends) and reused on every subsequent view.
-  invoicePdfUrl     String?     @map("invoice_pdf_url")
-  placedAt          DateTime    @default(now()) @map("placed_at") @db.Timestamptz
+  invoicePdfUrl            String?      @map("invoice_pdf_url")
+  placedAt                 DateTime     @default(now()) @map("placed_at") @db.Timestamptz
   // Phase 5 (founder-requested "missing tracking" alert) - set once this
   // order has been alerted on by MissingTrackingAlertService's sweep, so a
   // repeat sweep run never re-alerts the same order. Naturally stops
   // mattering once the order leaves the "awaitingTracking" bucket (moves
   // to shipped/cancelled/etc.) - no reset needed, this is a one-time flag.
-  missingTrackingAlertedAt DateTime? @map("missing_tracking_alerted_at") @db.Timestamptz
+  missingTrackingAlertedAt DateTime?    @map("missing_tracking_alerted_at") @db.Timestamptz
 
   store               Store                @relation(fields: [storeId], references: [id])
   customer            Customer?            @relation(fields: [customerId], references: [id])
@@ -2360,8 +2382,8 @@ model ProductReview {
   // `deleted`. Kept directly on the row (rather than requiring a join to
   // the Platform Event Log, which also records this action) so the detail
   // view (FR-14.5) can render them with no extra query.
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
-  deletedReason String?   @map("deleted_reason")
+  deletedAt          DateTime?    @map("deleted_at") @db.Timestamptz
+  deletedReason      String?      @map("deleted_reason")
 
   product Product       @relation(fields: [productId], references: [id])
   order   Order?        @relation(fields: [orderId], references: [id])
@@ -2938,15 +2960,15 @@ enum PayoutRequestStatus {
 /// `approved`/`rejected`; `referralCode` is issued only on approval - an
 /// application that was never approved has nothing to give out.
 model ProgramParticipant {
-  id                   String                   @id @default(uuid()) @db.Uuid
-  sellerId             String                   @map("seller_id") @db.Uuid
-  programType          ReferralProgramType      @map("program_type")
-  status               ProgramParticipantStatus @default(pending)
-  referralCode         String?                  @unique @map("referral_code")
-  appliedAt            DateTime                 @default(now()) @map("applied_at") @db.Timestamptz
-  decidedAt            DateTime?                @map("decided_at") @db.Timestamptz
-  decidedByAdminUserId String?                  @map("decided_by_admin_user_id") @db.Uuid
-  decisionNotes        String?                  @map("decision_notes")
+  id                    String                   @id @default(uuid()) @db.Uuid
+  sellerId              String                   @map("seller_id") @db.Uuid
+  programType           ReferralProgramType      @map("program_type")
+  status                ProgramParticipantStatus @default(pending)
+  referralCode          String?                  @unique @map("referral_code")
+  appliedAt             DateTime                 @default(now()) @map("applied_at") @db.Timestamptz
+  decidedAt             DateTime?                @map("decided_at") @db.Timestamptz
+  decidedByAdminUserId  String?                  @map("decided_by_admin_user_id") @db.Uuid
+  decisionNotes         String?                  @map("decision_notes")
   // Module 79 (SRS §5.33, FR-33.6 pre-Module-78-numbering / "Ambassador
   // Program repricing") - how many of this ambassador's OWN stores are
   // plan-fee-exempt (PlanFeeDebitService/ProgramCommissionService). Set
@@ -2955,8 +2977,8 @@ model ProgramParticipant {
   // afterward. Null/unset for every non-ambassador participant - never
   // meaningful for student_referral/creator.
   freeStoreSlotsGranted Int?                     @map("free_store_slots_granted")
-  createdAt            DateTime                 @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt            DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
 
   seller       Seller                     @relation(fields: [sellerId], references: [id])
   attributions ReferralAttribution[]
