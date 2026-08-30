@@ -107,6 +107,7 @@ export class TeamsService {
       member = await this.prisma.teamMember.update({
         where: { id: teamMemberId },
         data: { status: "active", consentAcceptedAt: new Date(), joinedAt: new Date() },
+        include: { team: { include: { plan: true, leader: { select: { businessName: true } } } } },
       });
     } catch (err) {
       // FR-7.11 - the partial unique index (idx_team_members_one_active_sponsorship,
@@ -140,6 +141,7 @@ export class TeamsService {
     return this.prisma.teamMember.update({
       where: { id: teamMemberId },
       data: { status: "declined", leftAt: new Date() },
+      include: { team: { include: { plan: true, leader: { select: { businessName: true } } } } },
     });
   }
 
@@ -151,6 +153,7 @@ export class TeamsService {
     const member = await this.prisma.teamMember.update({
       where: { id: membership.id },
       data: { status: "left", leftAt: new Date() },
+      include: { team: { include: { plan: true, leader: { select: { businessName: true } } } } },
     });
     await this.subscriptions.scheduleDowngradeToFallbackTierAtPeriodEnd(sellerId);
 

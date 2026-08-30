@@ -142,6 +142,7 @@ export class SubscriptionsService {
         planId: newPlanId,
         currentPeriodEnd: newPlan.billingInterval === "none" ? null : addInterval(new Date(), newPlan.billingInterval),
       },
+      include: { plan: true },
     });
   }
 
