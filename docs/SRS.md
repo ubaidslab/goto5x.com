@@ -1,10 +1,11 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.48 (Build-phase amendment — Honest Delivery Tracking,
-FR-38.7-38.10, extending §5.38; founder-added Part B item, "the platform
-cannot show real courier GPS so tracking must be honest, not
-fake-precise" — new functional feature, SRS amendment first per standing
-session instruction)
+**Version:** 0.49 (Build-phase amendment — Staff Accounts Overhaul,
+FR-52.7-52.13, extending §5.52; founder-added Part B item — expanded
+scopes, read/write permissions, role templates, time-limited access,
+activity log, device restriction (RISE+), corrected plan-tier limits.
+SRS amendment first per standing session instruction; implementation
+paused pending founder approval of the FR-52.9 Role Templates proposal)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -5510,6 +5511,124 @@ differentiator, at the founder's explicit direction)
   accounts are a paid-tier differentiator from day one, unlocked starting
   at Growth (`staff.max_accounts`'s plan-scoped default), never available
   below it.
+- FR-52.7: **(new, v0.49 — founder batch, "Staff Accounts Overhaul")
+  Expanded scope set.** `StaffScope` grows from 5 to 9 values: the
+  existing `orders`/`catalog`/`discounts`/`customers`/`design` plus new
+  `analytics` (view-only in every case — never a write action exists for
+  this scope, so it has no read/write distinction to make), `marketing`,
+  `reviews`, and `suppliers`. Same FR-52.2 discipline unchanged:
+  `billing`/`payment-instructions`/`wallet`/`plan` remain permanently
+  unassignable, no exceptions, enforced the same way (no
+  `@RequireStaffScope` value maps to them on any route).
+- FR-52.8: **(new, v0.49) Read vs. read+write per scope — a real,
+  enforced distinction, not a UI label.** Each scope a staff account
+  holds carries its own permission level, `read` or `write`
+  (`StaffAccount.scopes` moves from `StaffScope[]` to a small
+  `{scope, permission}[]` shape). `@RequireStaffScope(scope)` becomes
+  `@RequireStaffScope(scope, permission)`; every existing call site is
+  swept to declare its actual permission requirement per-route (a GET
+  list/detail route requires `read`; every mutating route requires
+  `write`) rather than the current all-or-nothing per-controller
+  grant. `StaffScopeGuard` is extended to check the held permission is
+  `write` when `write` is required (`read` alone never satisfies a
+  `write` requirement; holding `write` always satisfies a `read`
+  requirement — same "write implies read" convention `AdminRole`
+  already uses). `analytics` is always `read` (FR-52.7) — the DTO/UI
+  never offers a write option for it.
+- FR-52.9: **(new, v0.49) Role templates — pre-built scope+permission
+  bundles, fully customizable afterward.** A seller can apply a named
+  template in one click instead of hand-picking every scope/permission
+  pair; applying one simply pre-fills the same create/edit form
+  FR-52.2's UI already has, so a seller can still add, remove, or
+  flip any individual scope's permission immediately after applying one
+  — a template is a starting point, never a locked role. Stored as a
+  static, versioned catalog (a plain TS array, not a new DB table — same
+  "no new concept where a constant will do" discipline as the
+  D-Studio section catalog), so adding a 7th template later is a code
+  change, not a migration. The founder-approved initial set (six
+  templates, covering the spec's own named examples):
+  - **Order Manager** — orders: write, customers: read, suppliers: read.
+  - **Product Designer** — catalog: write, design: write.
+  - **Marketing Assistant** — marketing: write, discounts: write,
+    analytics: read.
+  - **Customer Support** — customers: write, reviews: write, orders: read.
+  - **Supplier Coordinator** — suppliers: write, orders: read.
+  - **Analyst** — analytics: read, orders: read, catalog: read (fully
+    view-only across the board — for an accountant or consultant who
+    should never be able to change anything).
+- FR-52.10: **(new, v0.49) Time-limited staff access — reuses the
+  existing time-limited-grant mechanism, not a new concept.** A new
+  optional `StaffAccount.expiresAt` column. The founder's spec calls for
+  the same "a grant with an expiry, checked lazily, no scheduler required
+  for correctness" discipline the D-Studio time-limited feature grants
+  established (`SettingsService.getValue()`'s own expiry check) —
+  `StaffAccount` isn't a `SettingsValue` row, so this is a new column
+  following that established discipline rather than a literal reuse of
+  the Settings Registry's expiry column. Checked at `StaffAuthService.
+  login()` (an expired account cannot log in, same rejection as
+  `status: revoked`) and swept by a new scheduler (same idiom as
+  `plan-cycle.scheduler.ts`/`cart-abandonment.scheduler.ts`) that flips
+  `status` to `revoked` once `expiresAt` passes — auto-expiring
+  (revoking, never deleting the account row), no manual cleanup needed,
+  and consistent with FR-52.4's existing "revoke, don't delete" shape.
+  A live JWT already issued before expiry remains bounded by the same
+  short access-token TTL every session in this platform already has -
+  no new revocation-latency gap beyond what manual revoke already
+  accepts today.
+- FR-52.11: **(new, v0.49) Staff activity log — reuses the Platform
+  Event Log verbatim, no new log.** `StaffAuditInterceptor` already
+  records every staff write as a `staff_account.action` `PlatformEvent`
+  tagged with `staffAccountId` and `{method, path}` (FR-52.4) — this FR
+  adds only a new seller-facing READ over that existing data: a plain-
+  language feed ("Ahmed edited 5 products today," "Sara marked 3 orders
+  shipped") built by mapping each event's path to the coarse resource it
+  touched (products/orders/discounts/etc.) and its HTTP method to a verb,
+  then grouping by staff member + calendar day + resource for a count.
+  No new write path, no new table — a derived read exactly like
+  `computeOrderTimeline()`'s own "one shared computation, not a second
+  source of truth" discipline elsewhere in this SRS.
+- FR-52.12: **(new, v0.49) Device-based access restriction — RISE+ only,
+  explicitly NOT IP-based.** IP address is unreliable on Pakistani mobile
+  networks (carrier-grade NAT rotates addresses), so this is a persisted
+  per-device identifier the staff login flow sets client-side (a random
+  token, not a fingerprint derived from anything network-level), not an
+  IP allowlist. A new `StaffDevice` model
+  (`staffAccountId, deviceId, approved, firstSeenAt, lastSeenAt,
+  approvedAt, revokedAt`). Optional per staff account
+  (`StaffAccount.deviceRestrictionEnabled`, settable only when the
+  seller's plan is RISE+ — same `getPlanContext()` tier check as
+  FR-52.5) — off by default even on RISE+, never forced on. When
+  enabled: a login from an unrecognized `deviceId` creates a new,
+  unapproved `StaffDevice` row and is rejected with a "pending your
+  approval" message (no partial access) rather than succeeding; the
+  seller sees pending devices on the staff-accounts screen and approves
+  or rejects each one explicitly; an approved device persists across
+  logins; the seller can revoke any device at any time (flips `approved`
+  back to `false` — the row itself is kept, not deleted, same audit-trail
+  discipline as everywhere else in this SRS), after which that device
+  needs fresh approval again. A one-click "revoke all staff devices"
+  emergency action (per seller, across every staff account) is provided
+  for a suspected compromise. Every new-device login attempt triggers an
+  immediate seller-owner email (new `EmailService.
+  sendNewStaffDeviceLoginEmail()`, same one-method-per-notification-type
+  convention as every other transactional email in this codebase) —
+  informational only, does not itself approve or deny.
+- FR-52.13: **(new, v0.49) Plan-tier staff-account limits, confirmed and
+  corrected.** Verified against the real `plans.seed.ts` data: the
+  individual-plan tier progression is **GO** (`tierOrder` 0), **RUN**
+  (`tierOrder` 1), **RISE** (`tierOrder` 2), **FLY** (`tierOrder` 3) —
+  the founder's GO/RUN/RISE/FLY naming maps onto `staff.max_accounts`
+  exactly in that order. This corrects the values `staff.seed.ts`
+  currently carries (RUN unset, defaulting to 0; FLY set to 10) to the
+  founder's explicit new figures: **GO 0 · RUN 2 · RISE 3 · FLY 5** — a
+  real decrease for FLY (10→5), not merely an addition; a seller already
+  above the new FLY cap keeps every existing staff account (this only
+  gates *new* creation, identical to `catalog.product_limit`'s own
+  "never retroactively revoke, only block new" precedent). Team-group
+  and Supplier-group plans keep their own existing, separate
+  `staff.max_accounts` mapping — unaffected by this correction, same
+  "individual-tier names only" scope every other per-tier founder change
+  in this batch has kept to.
 
 ### 5.53 Admin Email Section (new, v0.32 — UZEYN's own unified inbox in
 the admin terminal; admin-global, not tenant-scoped)
