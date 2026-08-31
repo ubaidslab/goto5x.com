@@ -4,6 +4,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { PlansModule } from "../plans/plans.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsModule } from "../settings-registry/settings.module";
+import { StaffAccountExpiryScheduler } from "./staff-account-expiry.scheduler";
 import { StaffAccountsController } from "./staff-accounts.controller";
 import { StaffAccountsService } from "./staff-accounts.service";
 import { StaffAuditInterceptor } from "./staff-audit.interceptor";
@@ -17,6 +18,7 @@ import { StaffAuthService } from "./staff-auth.service";
     StaffAccountsService,
     StaffAuthService,
     RateLimitService,
+    StaffAccountExpiryScheduler,
     { provide: APP_INTERCEPTOR, useClass: StaffAuditInterceptor },
   ],
 })

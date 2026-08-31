@@ -1,5 +1,6 @@
-import { ArrayMinSize, ArrayUnique, IsArray, IsEmail, IsEnum, IsOptional, IsString, MinLength } from "class-validator";
-import { StaffScope } from "@prisma/client";
+import { Type } from "class-transformer";
+import { ArrayMinSize, IsArray, IsDateString, IsEmail, IsOptional, IsString, MinLength, ValidateNested } from "class-validator";
+import { ScopePermissionDto } from "./scope-permission.dto";
 
 export class CreateStaffAccountDto {
   @IsEmail()
@@ -15,7 +16,12 @@ export class CreateStaffAccountDto {
 
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayUnique()
-  @IsEnum(StaffScope, { each: true })
-  scopes!: StaffScope[];
+  @ValidateNested({ each: true })
+  @Type(() => ScopePermissionDto)
+  scopePermissions!: ScopePermissionDto[];
+
+  // SRS §5.52/FR-52.10 - optional; omit for an account with no expiry.
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
 }

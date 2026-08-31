@@ -46,6 +46,8 @@ import { MonthlySellerReportService } from "../seller-notifications/monthly-sell
 import { MONTHLY_SELLER_REPORT_QUEUE_NAME } from "../seller-notifications/monthly-seller-report.queue";
 import { PlatformNewsletterService } from "../seller-notifications/platform-newsletter.service";
 import { PLATFORM_NEWSLETTER_QUEUE_NAME } from "../seller-notifications/platform-newsletter.queue";
+import { StaffAccountsService } from "../staff/staff-accounts.service";
+import { STAFF_ACCOUNT_EXPIRY_QUEUE_NAME } from "../staff/staff-account-expiry.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -78,6 +80,7 @@ async function main() {
   const dailySalesSummary = appContext.get(DailySalesSummaryService);
   const monthlySellerReport = appContext.get(MonthlySellerReportService);
   const platformNewsletter = appContext.get(PlatformNewsletterService);
+  const staffAccounts = appContext.get(StaffAccountsService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -393,9 +396,23 @@ async function main() {
     console.error(`platform-newsletter job ${job?.id} failed:`, err);
   });
 
+  // Module 97 (SRS §5.52/FR-52.10) - flips a past-expiry staff account to
+  // revoked; runExpirySweep() never throws for the whole sweep (a plain
+  // updateMany, no per-row branching that could fail individually).
+  const staffAccountExpiryWorker = new Worker(
+    STAFF_ACCOUNT_EXPIRY_QUEUE_NAME,
+    async () => staffAccounts.runExpirySweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  staffAccountExpiryWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`staff-account-expiry-sweep job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening; staff-account-expiry-sweep - Module 97, FR-52.10).",
   );
 
   const shutdown = async () => {

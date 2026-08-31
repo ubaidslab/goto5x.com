@@ -9,16 +9,17 @@ import { StoreThemeSettingsService } from "./store-theme-settings.service";
 /** A staff session needs the `design` scope to reach any route here (SRS §5.52/FR-52.2). */
 @Controller("stores/:storeId/theme-settings")
 @UseGuards(JwtAuthGuard, StaffScopeGuard)
-@RequireStaffScope("design")
 export class StoreThemeSettingsController {
   constructor(private readonly themeSettings: StoreThemeSettingsService) {}
 
   @Get()
+  @RequireStaffScope("design", "read")
   get(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.themeSettings.getForStore(sellerId, storeId);
   }
 
   @Patch()
+  @RequireStaffScope("design")
   update(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,

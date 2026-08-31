@@ -2617,6 +2617,21 @@ enum StaffScope {
   discounts
   customers
   design
+  // Module 97 (SRS §5.52/FR-52.7, founder batch "Staff Accounts Overhaul")
+  // - four new scopes. `analytics` is always read-only (FR-52.8) - no
+  // write action exists for it, so it has no read/write choice to make.
+  analytics
+  marketing
+  reviews
+  suppliers
+}
+
+// Module 97 (SRS §5.52/FR-52.8) - a real, enforced per-scope permission
+// level, not a UI label. `write` implies `read` (StaffScopeGuard's own
+// check), same convention AdminRole's own tiering already uses.
+enum StaffPermission {
+  read
+  write
 }
 
 enum StaffAccountStatus {
@@ -2640,15 +2655,59 @@ model StaffAccount {
   email        String             @unique
   passwordHash String             @map("password_hash")
   name         String?
-  scopes       StaffScope[]
   status       StaffAccountStatus @default(active)
   createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz
   revokedAt    DateTime?          @map("revoked_at") @db.Timestamptz
+  // Module 97 (SRS §5.52/FR-52.10) - an optional expiry; a scheduler flips
+  // `status` to `revoked` once passed (auto-expiring, never deleted).
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz
+  // Module 97 (SRS §5.52/FR-52.12) - RISE+ only, off by default; enforced
+  // at StaffAuthService.login() against StaffDevice rows below.
+  deviceRestrictionEnabled Boolean @default(false) @map("device_restriction_enabled")
 
-  seller Seller @relation(fields: [sellerId], references: [id])
+  seller           Seller                 @relation(fields: [sellerId], references: [id])
+  scopePermissions StaffScopePermission[]
+  devices          StaffDevice[]
 
   @@index([sellerId], name: "idx_staff_accounts_seller")
   @@map("staff_accounts")
+}
+
+// Module 97 (SRS §5.52/FR-52.8) - replaces the old bare `scopes: StaffScope[]`
+// column: one row per granted scope, carrying that scope's own permission
+// level. Pre-launch schema change (no real sellers on the old shape yet) -
+// no data-migration script needed.
+model StaffScopePermission {
+  id             String          @id @default(uuid()) @db.Uuid
+  staffAccountId String          @map("staff_account_id") @db.Uuid
+  scope          StaffScope
+  permission     StaffPermission @default(write)
+
+  staffAccount StaffAccount @relation(fields: [staffAccountId], references: [id])
+
+  @@unique([staffAccountId, scope], name: "uniq_staff_scope_permission")
+  @@map("staff_scope_permissions")
+}
+
+// Module 97 (SRS §5.52/FR-52.12) - a persisted per-device token the staff
+// login flow sets client-side (not a network fingerprint, not IP-based -
+// see the FR's own reasoning). `approved: false` blocks login outright
+// (pending); revoking flips it back to false rather than deleting the row,
+// same audit-trail-over-deletion discipline as everywhere else in this SRS.
+model StaffDevice {
+  id             String    @id @default(uuid()) @db.Uuid
+  staffAccountId String    @map("staff_account_id") @db.Uuid
+  deviceId       String    @map("device_id")
+  approved       Boolean   @default(false)
+  firstSeenAt    DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
+
+  staffAccount StaffAccount @relation(fields: [staffAccountId], references: [id])
+
+  @@unique([staffAccountId, deviceId], name: "uniq_staff_device")
+  @@map("staff_devices")
 }
 
 // Module 36 (SRS §5.53/FR-53.1-53.5) - UZEYN's own unified inbox in the

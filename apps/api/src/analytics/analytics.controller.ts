@@ -1,13 +1,17 @@
 import { BadRequestException, Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { RequireStaffScope } from "../common/decorators/require-staff-scope.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { StaffScopeGuard } from "../common/guards/staff-scope.guard";
 import { AnalyticsService } from "./analytics.service";
 import { SalesBucket } from "./analytics.util";
 
 const VALID_BUCKETS: SalesBucket[] = ["day", "week", "month"];
 
+/** SRS §5.52/FR-52.7-52.8 (Module 97) - `analytics` is always read-only, so every route here needs the same `read` grant. */
 @Controller("stores/:storeId/analytics")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, StaffScopeGuard)
+@RequireStaffScope("analytics", "read")
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 

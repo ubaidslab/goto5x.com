@@ -22,12 +22,35 @@ export async function seedStaffSettings(prisma: PrismaClient) {
     update: {},
   });
 
-  // v0.33 - First Month/Starter (individual tierOrder 0/1) carry no
-  // staff-account capacity (SRS "Plans & Pricing" launch defaults); Growth
-  // gets 3, Pro gets 10. Team-group tiers are untouched by the v0.33
-  // rework, so they keep their own (pre-existing) mapping by tierOrder.
+  // Module 97 (SRS §5.52/FR-52.10) - how often the expiry sweep checks for
+  // past-expiry staff accounts to revoke. Same "global-only, admin-tunable
+  // cadence" shape as every other sweep's own *_sweep_check_hours key.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "staff.expiry_sweep_check_hours" },
+    create: {
+      key: "staff.expiry_sweep_check_hours",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 1,
+      validation: { min: 1 },
+      description: "How often (hours) the sweep checks for staff accounts past their expiresAt and revokes them (FR-52.10).",
+    },
+    update: {},
+  });
+
+  // Module 97 (SRS §5.52/FR-52.13, founder batch "Staff Accounts
+  // Overhaul") - corrected against the real GO(0)/RUN(1)/RISE(2)/FLY(3)
+  // individual-tier progression: GO 0 (unset, falls through to the
+  // global default above) - RUN 2 - RISE 3 - FLY 5. Previously RUN was
+  // unset (0) and FLY was 10; FLY is a deliberate decrease, confirmed by
+  // the founder as safe pre-launch (no seller has legitimately held more
+  // than 5 under the old default yet) - existing accounts above the new
+  // cap are never revoked by this change, only new creation is blocked
+  // (same "never retroactively revoke, only block new" precedent as
+  // catalog.product_limit). Team-group tiers are untouched, unaffected
+  // by this correction - kept at their own separate mapping.
   const maxAccountsByTierAndGroup: Record<"individual" | "team", Record<number, number>> = {
-    individual: { 2: 3, 3: 10 },
+    individual: { 1: 2, 2: 3, 3: 5 },
     team: { 1: 2, 2: 5 },
   };
   const paidPlans = await prisma.plan.findMany({

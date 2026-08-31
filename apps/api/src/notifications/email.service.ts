@@ -146,6 +146,15 @@ export class EmailService {
     );
   }
 
+  /** Module 97 (SRS §5.52/FR-52.12) - fires on every login attempt from a device the staff account hasn't been approved on yet; informational only, does not itself approve or deny. */
+  async sendNewStaffDeviceLoginEmail(to: string, staffName: string, staffAccountsUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `New device sign-in attempt: ${staffName}`,
+      `${staffName} just tried to log in from a device that isn't approved yet. They can't access anything until you approve it (or reject it) from your staff accounts screen: ${staffAccountsUrl}`,
+    );
+  }
+
   /** Module 55 (FR-62.1) - the order-verification-specific counterpart to sendDormantStoreWarning/sendWalletLowBalanceWarning above; fires when a buyer exhausts their OTP attempts, since the order can't confirm until the seller or buyer acts. */
   async sendOrderVerificationFailedEmail(to: string, storeName: string, orderUrl: string): Promise<void> {
     await this.send(

@@ -21,10 +21,15 @@ import { UploadTrackingDto } from "./dto/upload-tracking.dto";
 import { OrdersOverviewService } from "./orders-overview.service";
 import { OrdersService } from "./orders.service";
 
-/** A staff session needs the `orders` scope to reach any route here (SRS §5.52/FR-52.2). */
+/**
+ * A staff session needs the `orders` scope to reach any route here (SRS
+ * §5.52/FR-52.2). FR-52.8 (Module 97) - each route now declares its own
+ * `read`/`write` requirement rather than one blanket class-level grant:
+ * every GET is `read`, every mutating route is `write` (the decorator's
+ * own default, so those are left unspecified below).
+ */
 @Controller("stores/:storeId/orders")
 @UseGuards(JwtAuthGuard, StaffScopeGuard)
-@RequireStaffScope("orders")
 export class OrdersController {
   constructor(
     private readonly orders: OrdersService,
@@ -34,17 +39,20 @@ export class OrdersController {
 
   /** SRS §5.38/FR-38.1 - the Orders Command Center's bucketed counts. Registered before ":orderId" so it isn't shadowed by that param route. */
   @Get("overview")
+  @RequireStaffScope("orders", "read")
   getOverview(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.overview.getOverview(sellerId, storeId);
   }
 
   /** SRS §5.38/FR-38.8-38.9 - registered before ":orderId" for the same reason as "overview" above. */
   @Get("settings/delivery-tracking")
+  @RequireStaffScope("orders", "read")
   getDeliveryTrackingSettings(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.orders.getDeliveryTrackingSettings(sellerId, storeId);
   }
 
   @Patch("settings/delivery-tracking")
+  @RequireStaffScope("orders")
   updateDeliveryTrackingSettings(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
@@ -54,17 +62,20 @@ export class OrdersController {
   }
 
   @Get()
+  @RequireStaffScope("orders", "read")
   list(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Query() query: OrderListQueryDto) {
     return this.orders.list(sellerId, storeId, query);
   }
 
   @Get(":orderId")
+  @RequireStaffScope("orders", "read")
   getOne(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Param("orderId") orderId: string) {
     return this.orders.getOne(sellerId, storeId, orderId);
   }
 
   /** FR-17.1 - dashboard-created order (phone/WhatsApp selling). */
   @Post()
+  @RequireStaffScope("orders")
   createManual(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
@@ -81,11 +92,13 @@ export class OrdersController {
   @Post(":orderId/mark-as-paid")
   @UseGuards(ImpersonationWriteGuard)
   @BlockDuringImpersonation()
+  @RequireStaffScope("orders")
   markAsPaid(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Param("orderId") orderId: string) {
     return this.orders.markAsPaid(sellerId, storeId, orderId);
   }
 
   @Post(":orderId/notes")
+  @RequireStaffScope("orders")
   addNote(
     @CurrentSellerId() sellerId: string,
     @CurrentUser() user: JwtAccessPayload,
@@ -97,6 +110,7 @@ export class OrdersController {
   }
 
   @Patch(":orderId/tags")
+  @RequireStaffScope("orders")
   updateTags(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
@@ -113,6 +127,7 @@ export class OrdersController {
    * see ChangeOrderStatusDto's own doc comment.
    */
   @Patch(":orderId/status")
+  @RequireStaffScope("orders")
   changeStatus(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
@@ -123,6 +138,7 @@ export class OrdersController {
   }
 
   @Patch(":orderId/costs")
+  @RequireStaffScope("orders")
   updateCosts(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
@@ -133,6 +149,7 @@ export class OrdersController {
   }
 
   @Patch(":orderId")
+  @RequireStaffScope("orders")
   edit(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,
@@ -150,6 +167,7 @@ export class OrdersController {
    * unchanged for a seller who needs different couriers per item.
    */
   @Post(":orderId/tracking")
+  @RequireStaffScope("orders")
   uploadTrackingForOrder(
     @CurrentSellerId() sellerId: string,
     @CurrentUser() user: JwtAccessPayload,
@@ -161,6 +179,7 @@ export class OrdersController {
   }
 
   @Post(":orderId/items/:itemId/tracking")
+  @RequireStaffScope("orders")
   uploadTracking(
     @CurrentSellerId() sellerId: string,
     @CurrentUser() user: JwtAccessPayload,
@@ -173,6 +192,7 @@ export class OrdersController {
   }
 
   @Post(":orderId/items/:itemId/deliver")
+  @RequireStaffScope("orders")
   markItemDelivered(
     @CurrentSellerId() sellerId: string,
     @Param("storeId") storeId: string,

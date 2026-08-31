@@ -15,16 +15,17 @@ import { UpdateBrandingDto } from "./dto/update-branding.dto";
  */
 @Controller("stores/:storeId/branding")
 @UseGuards(JwtAuthGuard, StaffScopeGuard)
-@RequireStaffScope("design")
 export class BrandingController {
   constructor(private readonly branding: BrandingService) {}
 
   @Get()
+  @RequireStaffScope("design", "read")
   get(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.branding.getForStore(sellerId, storeId);
   }
 
   @Patch()
+  @RequireStaffScope("design")
   update(
     @CurrentSellerId() sellerId: string,
     @CurrentUser() user: JwtAccessPayload,
