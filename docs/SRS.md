@@ -1,11 +1,13 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.49 (Build-phase amendment — Staff Accounts Overhaul,
+**Version:** 0.50 (Build-phase amendment — Staff Accounts Overhaul,
 FR-52.7-52.13, extending §5.52; founder-added Part B item — expanded
 scopes, read/write permissions, role templates, time-limited access,
 activity log, device restriction (RISE+), corrected plan-tier limits.
 SRS amendment first per standing session instruction; implementation
-paused pending founder approval of the FR-52.9 Role Templates proposal)
+paused pending founder approval of the FR-52.9 Role Templates proposal.
+v0.50 closes a gap FR-52.8's initial sweep left open: see the note
+appended to FR-52.8 below.)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -5535,6 +5537,26 @@ differentiator, at the founder's explicit direction)
   requirement — same "write implies read" convention `AdminRole`
   already uses). `analytics` is always `read` (FR-52.7) — the DTO/UI
   never offers a write option for it.
+  **v0.50 addendum:** live verification of the build above found that
+  the sweep, though real for the six scopes it touched
+  (`orders`/`design`/`analytics`/`marketing`/`reviews`/`suppliers`),
+  never reached three scopes that FR-52.2 declared since Module 35's
+  original build — `catalog`, `discounts`, and `customers` were
+  accepted by the create/update DTO but enforced by no controller,
+  so a seller setting any of the three to `None` was silently
+  ignored. Closed by wiring the identical `@RequireStaffScope`
+  pattern onto each scope's primary controller(s): `catalog` →
+  `ProductsController`, `ProductVariantsController`, and
+  `InventoryController` (FR-2.1 groups inventory tracking under the
+  same catalog concept, so it shares the scope rather than getting
+  its own); `discounts` → `DiscountCodesController`; `customers` →
+  `CustomersController` (every route there is read-only today, gated
+  `read` at the class level — unlike `analytics`, a `write` grant on
+  `customers` is *not* rejected by the DTO, since the founder-approved
+  "Customer Support" role template (FR-52.9) already grants it in
+  anticipation of a future write action; write-implies-read still
+  clears every route that exists now). No new scope, DTO, or UI
+  change — the gap was purely in controller wiring.
 - FR-52.9: **(new, v0.49) Role templates — pre-built scope+permission
   bundles, fully customizable afterward.** A seller can apply a named
   template in one click instead of hand-picking every scope/permission

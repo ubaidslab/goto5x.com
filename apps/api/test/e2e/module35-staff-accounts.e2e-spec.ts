@@ -465,4 +465,105 @@ describe("Staff Accounts (e2e) - SRS §5.52, §14.52", () => {
       .send({ email: "soon-gone@example.com", password: STAFF_PASSWORD });
     expect(reLogin.status).toBe(401);
   });
+
+  it("FR-52.8 v0.50 addendum: catalog scope now actually gates products, variants, and inventory", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("staff-catalog@example.com", "staff-catalog-store");
+    await app.get(SettingsService).setValue("staff.max_accounts", "global", null, 5, ADMIN_ID);
+
+    const product = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Catalog-scope test product" });
+    expect(product.status).toBe(201);
+    const productId = product.body.id as string;
+
+    const none = await createStaff(token, "catalog-none@example.com", [scopeWrite("orders")]);
+    const readOnly = await createStaff(token, "catalog-read@example.com", [{ scope: "catalog", permission: "read" }]);
+    const readWrite = await createStaff(token, "catalog-write@example.com", [scopeWrite("catalog")]);
+
+    // No catalog scope at all -> blocked outright, even on a read route.
+    const noneBlocked = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${none.staffToken}`);
+    expect(noneBlocked.status).toBe(403);
+
+    // Read-only can list/view products and inventory, but not mutate either.
+    const readOnlyList = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${readOnly.staffToken}`);
+    expect(readOnlyList.status).toBe(200);
+    const readOnlyInventory = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/inventory`)
+      .set("Authorization", `Bearer ${readOnly.staffToken}`);
+    expect(readOnlyInventory.status).toBe(200);
+    const readOnlyUpdate = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/products/${productId}`)
+      .set("Authorization", `Bearer ${readOnly.staffToken}`)
+      .send({ title: "Should be blocked" });
+    expect(readOnlyUpdate.status).toBe(403);
+
+    // Write can do both.
+    const readWriteUpdate = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/products/${productId}`)
+      .set("Authorization", `Bearer ${readWrite.staffToken}`)
+      .send({ title: "Updated by write staff" });
+    expect(readWriteUpdate.status).toBe(200);
+  });
+
+  it("FR-52.8 v0.50 addendum: discounts scope now actually gates discount codes", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("staff-discounts@example.com", "staff-discounts-store");
+    await app.get(SettingsService).setValue("staff.max_accounts", "global", null, 5, ADMIN_ID);
+
+    const none = await createStaff(token, "discounts-none@example.com", [scopeWrite("orders")]);
+    const readOnly = await createStaff(token, "discounts-read@example.com", [{ scope: "discounts", permission: "read" }]);
+    const readWrite = await createStaff(token, "discounts-write@example.com", [scopeWrite("discounts")]);
+
+    const noneBlocked = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/discount-codes`)
+      .set("Authorization", `Bearer ${none.staffToken}`);
+    expect(noneBlocked.status).toBe(403);
+
+    const readOnlyList = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/discount-codes`)
+      .set("Authorization", `Bearer ${readOnly.staffToken}`);
+    expect(readOnlyList.status).toBe(200);
+    const readOnlyCreate = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/discount-codes`)
+      .set("Authorization", `Bearer ${readOnly.staffToken}`)
+      .send({ code: "BLOCKED10", type: "percentage", value: 10 });
+    expect(readOnlyCreate.status).toBe(403);
+
+    const readWriteCreate = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/discount-codes`)
+      .set("Authorization", `Bearer ${readWrite.staffToken}`)
+      .send({ code: "ALLOWED10", type: "percentage", value: 10 });
+    expect(readWriteCreate.status).toBe(201);
+  });
+
+  it("FR-52.8 v0.50 addendum: customers scope now actually gates the customers list/detail", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("staff-customers@example.com", "staff-customers-store");
+    await app.get(SettingsService).setValue("staff.max_accounts", "global", null, 5, ADMIN_ID);
+
+    const none = await createStaff(token, "customers-none@example.com", [scopeWrite("orders")]);
+    const readOnly = await createStaff(token, "customers-read@example.com", [{ scope: "customers", permission: "read" }]);
+    // The founder-approved "Customer Support" template grants customers:write (anticipating a
+    // future write action) even though every route today is read-only - write implies read,
+    // so a write grant must still clear the read-gated routes below, same as read does.
+    const readWrite = await createStaff(token, "customers-write@example.com", [scopeWrite("customers")]);
+
+    const noneBlocked = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/customers`)
+      .set("Authorization", `Bearer ${none.staffToken}`);
+    expect(noneBlocked.status).toBe(403);
+
+    const readOnlyList = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/customers`)
+      .set("Authorization", `Bearer ${readOnly.staffToken}`);
+    expect(readOnlyList.status).toBe(200);
+
+    const readWriteList = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/customers`)
+      .set("Authorization", `Bearer ${readWrite.staffToken}`);
+    expect(readWriteList.status).toBe(200);
+  });
 });
