@@ -277,7 +277,8 @@ describe("Staff Accounts (e2e) - SRS §5.52, §14.52", () => {
     expect(activity.status).toBe(200);
     expect(activity.body.length).toBeGreaterThanOrEqual(1);
     expect(activity.body[0].summary).toContain("Ahmed");
-    expect(activity.body[0].summary).toContain("orders");
+    // Singular "order", not "orders" - a single write is grammatically singular (FR-52.11 display polish).
+    expect(activity.body[0].summary).toContain("order");
   });
 
   it("FR-52.12 (Module 97): RISE+ device restriction blocks an unrecognized device pending approval, then allows it once approved", async () => {

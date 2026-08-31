@@ -75,6 +75,7 @@ export function summarizeStaffActivity(
     .map((g) => {
       const staffName = staffNames.get(g.staffAccountId) ?? "A staff member";
       const dateLabel = g.date === today ? "today" : g.date;
+      const resource = g.count === 1 ? g.resource.replace(/s$/, "") : g.resource;
       return {
         staffAccountId: g.staffAccountId,
         staffName,
@@ -82,7 +83,7 @@ export function summarizeStaffActivity(
         resource: g.resource,
         verb: g.verb,
         count: g.count,
-        summary: `${staffName} ${g.verb} ${g.count} ${g.resource} ${dateLabel}`,
+        summary: `${staffName} ${g.verb} ${g.count} ${resource} ${dateLabel}`,
       };
     });
 }
