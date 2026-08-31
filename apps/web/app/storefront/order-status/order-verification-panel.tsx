@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PublicOrderStatus } from "../../../lib/storefront-api";
+import type { PublicOrderStatusFull } from "../../../lib/storefront-api";
 import { chargePartialAdvance, getPartialAdvanceOptions, resendVerificationCode, submitVerificationCode } from "./actions";
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -28,7 +28,7 @@ export function OrderVerificationPanel({
   verification,
 }: {
   token: string;
-  verification: PublicOrderStatus["verification"];
+  verification: PublicOrderStatusFull["verification"];
 }) {
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);

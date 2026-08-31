@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
@@ -40,6 +40,13 @@ interface TaxSettings {
   taxInclusive: boolean;
   taxLabel: string;
 }
+interface DeliveryTrackingSettings {
+  messagePending: string;
+  messageSubmitted: string;
+  messageDelivered: string;
+  messageCancelled: string;
+  archiveDays: number;
+}
 
 const BUCKET_LABELS: { bucket: OrderBucket; label: string }[] = [
   { bucket: "pending", label: "Pending" },
@@ -66,9 +73,11 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
 
   const [shipping, setShipping] = useState<ShippingSettings | null>(null);
   const [tax, setTax] = useState<TaxSettings | null>(null);
+  const [deliveryTracking, setDeliveryTracking] = useState<DeliveryTrackingSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingShipping, setSavingShipping] = useState(false);
   const [savingTax, setSavingTax] = useState(false);
+  const [savingDeliveryTracking, setSavingDeliveryTracking] = useState(false);
 
   const [trackingDrafts, setTrackingDrafts] = useState<Record<string, { trackingId: string; carrier: string }>>({});
   const [savingTrackingFor, setSavingTrackingFor] = useState<string | null>(null);
@@ -97,6 +106,10 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
   useEffect(() => {
     api.get<ShippingSettings>(`/stores/${params.storeId}/shipping-settings`).then(setShipping).catch(() => setShipping(null));
     api.get<TaxSettings>(`/stores/${params.storeId}/tax-settings`).then(setTax).catch(() => setTax(null));
+    api
+      .get<DeliveryTrackingSettings>(`/stores/${params.storeId}/orders/settings/delivery-tracking`)
+      .then(setDeliveryTracking)
+      .catch(() => setDeliveryTracking(null));
   }, [params.storeId]);
 
   function trackingDraft(orderId: string) {
@@ -168,7 +181,28 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
     }
   }
 
-  if (!shipping || !tax || !overview || !awaitingTracking) return <PageSpinner />;
+  async function saveDeliveryTracking(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setSavingDeliveryTracking(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      const updated = await api.patch<DeliveryTrackingSettings>(`/stores/${params.storeId}/orders/settings/delivery-tracking`, {
+        messagePending: form.get("messagePending") as string,
+        messageSubmitted: form.get("messageSubmitted") as string,
+        messageDelivered: form.get("messageDelivered") as string,
+        messageCancelled: form.get("messageCancelled") as string,
+        archiveDays: Number(form.get("archiveDays")),
+      });
+      setDeliveryTracking(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save buyer messages.");
+    } finally {
+      setSavingDeliveryTracking(false);
+    }
+  }
+
+  if (!shipping || !tax || !overview || !awaitingTracking || !deliveryTracking) return <PageSpinner />;
 
   const flaggedCount = awaitingTracking.filter((o) => o.missingTrackingAlertedAt).length;
 
@@ -182,6 +216,7 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
         <TabsList>
           <TabsTrigger value="tracking">Tracking</TabsTrigger>
           <TabsTrigger value="settings">Shipping & tax</TabsTrigger>
+          <TabsTrigger value="buyer-messages">Buyer messages</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tracking">
@@ -307,6 +342,50 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
                   </label>
                   <Button type="submit" loading={savingTax}>
                     Save tax
+                  </Button>
+                </form>
+              </CardBody>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="buyer-messages">
+          <div className="max-w-2xl space-y-6">
+            <Card>
+              <CardHeader
+                title="Buyer tracking messages"
+                description="What buyers see on their order-status page for each stage. We only ever show 4 honest states - we can't fake real-time courier GPS, so this is the door we give buyers, not fake precision behind it."
+              />
+              <CardBody>
+                <form onSubmit={saveDeliveryTracking} className="space-y-4">
+                  <Field label="Pending" hint="Shown while the order is being packed, before it's handed to the courier.">
+                    <Textarea name="messagePending" rows={2} maxLength={500} defaultValue={deliveryTracking.messagePending} required />
+                  </Field>
+                  <Field label="Submitted to Courier" hint="Shown once tracking has been uploaded and the order is handed off.">
+                    <Textarea name="messageSubmitted" rows={2} maxLength={500} defaultValue={deliveryTracking.messageSubmitted} required />
+                  </Field>
+                  <Field label="Delivered">
+                    <Textarea name="messageDelivered" rows={2} maxLength={500} defaultValue={deliveryTracking.messageDelivered} required />
+                  </Field>
+                  <Field label="Cancelled">
+                    <Textarea name="messageCancelled" rows={2} maxLength={500} defaultValue={deliveryTracking.messageCancelled} required />
+                  </Field>
+                  <Field
+                    label="Archive delivered orders after"
+                    hint="Days after delivery before the buyer's page collapses to a simple 'Delivered on [date]' summary. Your own order records are never affected - this only simplifies what buyers see."
+                  >
+                    <Input
+                      name="archiveDays"
+                      type="number"
+                      min="1"
+                      max="90"
+                      defaultValue={deliveryTracking.archiveDays}
+                      required
+                      className="w-32"
+                    />
+                  </Field>
+                  <Button type="submit" loading={savingDeliveryTracking}>
+                    Save buyer messages
                   </Button>
                 </form>
               </CardBody>

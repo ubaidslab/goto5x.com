@@ -2746,6 +2746,11 @@ model TrackingUpdate {
   orderItemId String   @map("order_item_id") @db.Uuid
   trackingId  String   @map("tracking_id")
   carrier     String?
+  // SRS §5.38/FR-38.7 (founder batch, "Honest Delivery Tracking") - an
+  // optional link to the courier's own tracking page, so the buyer's
+  // simplified 4-state page can offer real-time precision from the
+  // source that actually has it, instead of faking any ourselves.
+  trackingUrl String?  @map("tracking_url")
   uploadedBy  String   @map("uploaded_by") @db.Uuid
   uploadedAt  DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
 

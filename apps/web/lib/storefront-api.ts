@@ -207,8 +207,13 @@ export async function fetchStorefrontSearch(
 export interface PublicOrderTrackingUpdate {
   trackingId: string;
   carrier: string | null;
+  trackingUrl: string | null;
   uploadedAt: string;
 }
+
+// SRS §5.38/FR-38.7 (founder batch, "Honest Delivery Tracking") - the
+// buyer-facing 4-state bucket, a pure mapping of the real order status.
+export type BuyerFacingTrackingState = "pending" | "submitted_to_courier" | "delivered" | "cancelled";
 
 export interface PublicOrderItem {
   productId: string;
@@ -236,19 +241,44 @@ export interface PublicReturnRequest {
   resolvedAt: string | null;
 }
 
-export interface PublicOrderStatus {
-  status:
-    | "pending"
-    | "confirmed"
-    | "shipped"
-    | "delivered"
-    | "completed"
-    | "cancelled"
-    | "disputed"
-    | "refunded"
-    | "partially_refunded";
+type PublicOrderStatusValue =
+  | "pending"
+  | "confirmed"
+  | "shipped"
+  | "delivered"
+  | "completed"
+  | "cancelled"
+  | "disputed"
+  | "refunded"
+  | "partially_refunded";
+
+/**
+ * SRS §5.38/FR-38.9 (founder batch, "Honest Delivery Tracking") - once a
+ * delivered order sits past `orders.delivered_archive_days`, the API
+ * collapses this response to this minimal shape instead of the full one
+ * below. Display simplification only - the underlying order is untouched.
+ */
+export interface PublicOrderStatusArchived {
+  archived: true;
+  status: PublicOrderStatusValue;
+  placedAt: string;
+  trackingState: BuyerFacingTrackingState;
+  trackingMessage: string;
+  deliveredAt: string | null;
+  currency: string;
+  totalAmount: string;
+  invoicePdfUrl: string | null;
+  canRequestReturn: boolean;
+  returnRequests: PublicReturnRequest[];
+}
+
+export interface PublicOrderStatusFull {
+  archived: false;
+  status: PublicOrderStatusValue;
   placedAt: string;
   timeline: OrderTimelineStage[];
+  trackingState: BuyerFacingTrackingState;
+  trackingMessage: string;
   currency: string;
   invoicePdfUrl: string | null;
   totalAmount: string;
@@ -280,6 +310,8 @@ export interface PublicOrderStatus {
   canRequestReturn: boolean;
   returnRequests: PublicReturnRequest[];
 }
+
+export type PublicOrderStatus = PublicOrderStatusFull | PublicOrderStatusArchived;
 
 /** FR-5.4 - the buyer's only post-checkout reference; public, keyed purely by the unguessable token. */
 export async function fetchStorefrontOrderStatus(token: string): Promise<PublicOrderStatus | null> {

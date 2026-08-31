@@ -66,12 +66,19 @@ export class SupplierOrdersService {
   }
 
   /** FR-3.4 - "supplier uploads tracking ID; system relays it to the buyer." */
-  async uploadTracking(supplierId: string, orderItemId: string, input: { trackingId: string; carrier?: string }) {
+  async uploadTracking(supplierId: string, orderItemId: string, input: { trackingId: string; carrier?: string; trackingUrl?: string }) {
     const item = await this.prismaAdmin.orderItem.findUnique({ where: { id: orderItemId } });
     if (!item || item.supplierId !== supplierId) throw new NotFoundException("Order item not found.");
 
     await this.prismaAdmin.trackingUpdate.create({
-      data: { storeId: item.storeId, orderItemId, trackingId: input.trackingId, carrier: input.carrier, uploadedBy: supplierId },
+      data: {
+        storeId: item.storeId,
+        orderItemId,
+        trackingId: input.trackingId,
+        carrier: input.carrier,
+        trackingUrl: input.trackingUrl,
+        uploadedBy: supplierId,
+      },
     });
     await this.prismaAdmin.orderItem.update({ where: { id: orderItemId }, data: { fulfillmentStatus: "shipped" } });
     await this.prismaAdmin.orderTimelineEvent.create({

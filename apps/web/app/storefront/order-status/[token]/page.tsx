@@ -23,7 +23,60 @@ export default async function OrderStatusPage({ params }: { params: { token: str
 
   const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
   const navigation = await fetchStorefrontNavigation(host);
+
+  const trackingStateLabel: Record<string, string> = {
+    pending: "Pending",
+    submitted_to_courier: "Submitted to Courier",
+    delivered: "Delivered",
+    cancelled: "Cancelled",
+  };
+
+  // SRS §5.38/FR-38.9 - the collapsed, archived shape. Display
+  // simplification only; the underlying order is untouched.
+  if (order.archived) {
+    return (
+      <>
+        <AnnouncementBar theme={theme} />
+        <SiteHeader navigation={navigation} theme={theme} store={store} />
+        <main style={{ padding: 24, maxWidth: 720 }}>
+          <h1>Order status</h1>
+          <p style={{ fontWeight: 600, fontSize: 18 }}>{trackingStateLabel[order.trackingState]}</p>
+          <p>{order.trackingMessage}</p>
+          {order.deliveredAt && <p>Delivered on {new Date(order.deliveredAt).toLocaleDateString()}</p>}
+          <p>
+            {order.currency} {order.totalAmount}
+          </p>
+          {order.invoicePdfUrl && (
+            <p>
+              <a href={order.invoicePdfUrl} target="_blank" rel="noreferrer">
+                Download invoice (PDF)
+              </a>
+            </p>
+          )}
+          {(order.canRequestReturn || order.returnRequests.length > 0) && (
+            <>
+              <h2>Return &amp; refund</h2>
+              <ReturnRequestForm
+                token={params.token}
+                canRequestReturn={order.canRequestReturn}
+                currency={order.currency}
+                returnRequests={order.returnRequests}
+              />
+            </>
+          )}
+        </main>
+        <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
+        <WhatsappButton theme={theme} />
+      </>
+    );
+  }
+
   const address = order.shippingAddress;
+  // FR-38.7 - "we provide the door, not fake data behind it": whenever any
+  // item has a courier tracking update, surface the courier's own name +
+  // tracking ID/link so the buyer can check real-time precision on the
+  // courier's own site if they want it.
+  const trackingUpdates = order.items.flatMap((item) => item.trackingUpdates);
 
   return (
     <>
@@ -32,10 +85,28 @@ export default async function OrderStatusPage({ params }: { params: { token: str
       <main style={{ padding: 24, maxWidth: 720 }}>
         <h1>Order status</h1>
         <p style={{ color: "#6b7280" }}>Check your order's payment status, items, and shipping progress any time using this link.</p>
-        <p>
-          Status: <strong>{order.status === "pending" ? "Awaiting payment" : order.status}</strong>
-        </p>
+        <p style={{ fontWeight: 600, fontSize: 18 }}>{trackingStateLabel[order.trackingState]}</p>
+        <p>{order.trackingMessage}</p>
         <p>Placed {new Date(order.placedAt).toLocaleString()}</p>
+
+        {trackingUpdates.length > 0 && (
+          <ul>
+            {trackingUpdates.map((t, i) => (
+              <li key={i}>
+                {t.carrier ? `${t.carrier} - ` : ""}
+                Tracking ID: {t.trackingId}
+                {t.trackingUrl && (
+                  <>
+                    {" - "}
+                    <a href={t.trackingUrl} target="_blank" rel="noreferrer">
+                      Track on courier's site
+                    </a>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
 
         <OrderVerificationPanel token={params.token} verification={order.verification} />
         <ModelAdvancePanel token={params.token} paymentModel={order.paymentModel} orderStatus={order.status} />

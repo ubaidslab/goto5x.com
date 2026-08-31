@@ -16,6 +16,11 @@ import { ApiError, api } from "@/lib/dashboard-api";
 type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
 type OrderBucket = "pending" | "awaitingVerification" | "prepaidReceived" | "awaitingTracking" | "shipped" | "delivered" | "cancelledReturned";
 type OrderItemFulfillmentStatus = "pending" | "confirmed" | "shipped" | "delivered" | "completed";
+// SRS §5.38/FR-38.7/38.10 - the buyer-facing 4-state bucket, computed
+// server-side by the same mapping function the buyer's status page uses
+// (buyerFacingTrackingState() in order-timeline.util.ts) so the two can
+// never show two different buckets for one order.
+type BuyerFacingTrackingState = "pending" | "submitted_to_courier" | "delivered" | "cancelled";
 
 interface OrderItem {
   id: string;
@@ -26,6 +31,7 @@ interface Order {
   orderNumber: number;
   buyerEmail: string;
   status: OrderStatus;
+  trackingState: BuyerFacingTrackingState;
   totalAmount: string;
   currency: string;
   tags: string[];
@@ -56,14 +62,18 @@ interface ImportJob {
   createdAt: string;
 }
 
-const statusTone: Record<OrderStatus, "neutral" | "success" | "warning" | "danger" | "info"> = {
+// FR-38.10 - the same 4-state at-a-glance badge the buyer sees.
+const trackingStateTone: Record<BuyerFacingTrackingState, "neutral" | "success" | "warning" | "info"> = {
   pending: "warning",
-  confirmed: "info",
-  shipped: "info",
+  submitted_to_courier: "info",
   delivered: "success",
-  completed: "success",
   cancelled: "neutral",
-  disputed: "danger",
+};
+const trackingStateLabel: Record<BuyerFacingTrackingState, string> = {
+  pending: "Pending",
+  submitted_to_courier: "Submitted to Courier",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 const BUCKET_LABELS: { bucket: OrderBucket; label: string }[] = [
@@ -522,7 +532,7 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
                             {order.tags.length > 0 && ` · ${order.tags.join(", ")}`}
                           </p>
                         </div>
-                        <Badge tone={statusTone[order.status]}>{order.status === "pending" ? "awaiting payment" : order.status}</Badge>
+                        <Badge tone={trackingStateTone[order.trackingState]}>{trackingStateLabel[order.trackingState]}</Badge>
                       </Link>
                     </div>
                     {order.status === "confirmed" && (

@@ -13,6 +13,7 @@ import { ChangeOrderStatusDto } from "./dto/change-order-status.dto";
 import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
 import { EditOrderDto } from "./dto/edit-order.dto";
 import { OrderListQueryDto } from "./dto/order-list-query.dto";
+import { UpdateDeliveryTrackingSettingsDto } from "./dto/update-delivery-tracking-settings.dto";
 import { UpdateOrderCostsDto } from "./dto/update-order-costs.dto";
 import { UpdateOrderTagsDto } from "./dto/update-order-tags.dto";
 import { UploadOrderTrackingDto } from "./dto/upload-order-tracking.dto";
@@ -35,6 +36,21 @@ export class OrdersController {
   @Get("overview")
   getOverview(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
     return this.overview.getOverview(sellerId, storeId);
+  }
+
+  /** SRS §5.38/FR-38.8-38.9 - registered before ":orderId" for the same reason as "overview" above. */
+  @Get("settings/delivery-tracking")
+  getDeliveryTrackingSettings(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string) {
+    return this.orders.getDeliveryTrackingSettings(sellerId, storeId);
+  }
+
+  @Patch("settings/delivery-tracking")
+  updateDeliveryTrackingSettings(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Body() dto: UpdateDeliveryTrackingSettingsDto,
+  ) {
+    return this.orders.updateDeliveryTrackingSettings(sellerId, storeId, dto);
   }
 
   @Get()

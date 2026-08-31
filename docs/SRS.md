@@ -1,9 +1,10 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.47 (Build-phase amendment — Suppliers as a permanent
-top-level nav item + mini-dashboard, FR-4.11-4.12, Module 96; founder
-batch item B13, fourth item of Part B — new functional features, each
-getting its own SRS amendment first per standing session instruction)
+**Version:** 0.48 (Build-phase amendment — Honest Delivery Tracking,
+FR-38.7-38.10, extending §5.38; founder-added Part B item, "the platform
+cannot show real courier GPS so tracking must be honest, not
+fake-precise" — new functional feature, SRS amendment first per standing
+session instruction)
 **Date:** 2026-08-30
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -4938,6 +4939,76 @@ it, governed by the SIMPLICITY INVARIANT, §3.13)
   totals, or in admin real-time analytics. This is a reaffirmation of
   §3.12/§5.37's existing invariant applied to a new read surface, not a
   new rule.
+- FR-38.7: **(new, v0.48 — founder batch, "Honest Delivery Tracking")
+  Buyer-facing 4-state simplification — display only, no new state
+  machine.** The platform cannot show a courier's real-time GPS location
+  (that data belongs to the courier, not the platform), so the buyer's
+  public order-status page stops presenting fake precision and instead
+  shows exactly four buyer-facing states, each a **pure derived mapping**
+  of the existing `Order.status` (no new column, no second copy of
+  state — same discipline FR-38.5 already established for the granular
+  timeline this sits alongside, not replaces):
+  - **Pending** ("being packed") ← `pending`, `confirmed`.
+  - **Submitted to Courier** ← `shipped`.
+  - **Delivered** ← `delivered`, `completed`, `refunded`,
+    `partially_refunded` (the order did reach the buyer; a later refund
+    doesn't reopen an earlier bucket).
+  - **Cancelled** ← `cancelled`, and `disputed` (consistent with
+    FR-38.5's own existing treatment of `disputed` as a terminal,
+    cancelled-shaped timeline stage — this amendment does not invent a
+    new judgment call, it reuses that one).
+
+  Whenever at least one `TrackingUpdate` exists for the order, the courier's
+  own name (`TrackingUpdate.carrier`) and tracking ID are always shown,
+  plus a tracking link when the seller supplied one — a new optional
+  `TrackingUpdate.trackingUrl` column (nullable, seller/supplier-entered
+  at upload time alongside the existing `trackingId`/`carrier` fields, all
+  three of today's tracking-upload paths — `OrdersService.uploadTracking`,
+  `uploadTrackingForOrder`, `SupplierOrdersService.uploadTracking` —
+  accept it identically). This is the platform's actual honesty
+  mechanism: "we provide the door" (the courier's own name + link, so the
+  buyer can check real-time precision on the courier's own site if they
+  want it) "not fake data behind it." The granular
+  placed→confirmed→shipped→delivered timeline (FR-38.5) keeps rendering
+  underneath, unchanged — this is an additional, simpler top-level status
+  line, not a replacement.
+- FR-38.8: **(new, v0.48) Seller-editable per-state buyer messages.** Each
+  of the four FR-38.7 states carries a friendly, default buyer-facing
+  message (e.g. "Your order is being packed and will be handed to the
+  courier soon!"), fully seller-editable per store via four new
+  Settings Registry keys (`store`/`global` scope, same
+  seller-editable-template idiom already established by
+  `whatsapp.order_confirmation_template` et al., §5.41/FR-41.3):
+  `orders.tracking_message_pending`, `orders.tracking_message_submitted`,
+  `orders.tracking_message_delivered`, `orders.tracking_message_cancelled`.
+- FR-38.9: **(new, v0.48) Delivered-order display archival — "archive,
+  never delete," same discipline as plan-downgrades and D-Studio expiry.**
+  Once an order has sat in the FR-38.7 "Delivered" bucket for longer than
+  a configurable window (new Settings Registry key
+  `orders.delivered_archive_days`, `store`/`global` scope, numeric,
+  default 7, min 1/max 90), the buyer-facing tracking page collapses to a
+  simple summary ("Delivered on [date]") instead of the full item/timeline
+  detail. This is computed at read time in
+  `OrderStatusLookupService.lookup()` only — purely a display
+  simplification of what that one endpoint returns. The underlying
+  `Order`, `OrderItem`, and `TrackingUpdate` rows are never touched,
+  deleted, or excluded from any other read (seller order-detail,
+  admin, analytics, P&L, disputes/refunds, reconciliation all keep
+  reading the exact same full rows they always have — this FR constrains
+  one buyer-facing endpoint's response shape, nothing else).
+- FR-38.10: **(new, v0.48) Seller Orders list adopts the same 4-state
+  badge; the order-detail click-through is unaffected.** The seller
+  Orders list (`(dashboard)/stores/:storeId/orders`) replaces its
+  per-row raw-status badge with the FR-38.7 buyer-facing bucket label,
+  for the same at-a-glance clarity the buyer now gets (SIMPLICITY
+  INVARIANT, §3.13) — computed with the identical mapping function, so
+  the seller list and the buyer page can never show two different
+  buckets for the same order. Clicking through to the order-detail page
+  (`orders/:orderId`) is completely unchanged: full granular status,
+  fulfillment-per-item detail, and the existing inline tracking-upload
+  controls (which already key off the real `Order.status`, e.g.
+  `status === "confirmed"`, not the new display bucket) all keep working
+  exactly as they do today.
 
 ### 5.39 Inventory Management (new, v0.29 — a dedicated screen; no new
 stock-tracking concept, reuses `stockQuantity` and the existing oversell-

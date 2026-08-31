@@ -20,7 +20,11 @@ export const dynamic = "force-dynamic";
 export default async function OrderConfirmationPage({ params }: { params: { token: string } }) {
   const host = headers().get("host") ?? "";
   const [store, order] = await Promise.all([fetchStorefrontStore(host), fetchStorefrontOrderStatus(params.token)]);
-  if (!store || !order) notFound();
+  // FR-38.9's archived shape only ever applies to a long-delivered order;
+  // this page is reached immediately after checkout (FR-32.3 - always
+  // `pending` here), so `archived` is impossible in practice. Narrowing on
+  // it satisfies the type and is a reasonable defensive fallback either way.
+  if (!store || !order || order.archived) notFound();
 
   const theme = resolveThemeSettings(store.theme?.name ?? "Editorial", store.theme?.settings as ThemeSettings | undefined);
   const navigation = await fetchStorefrontNavigation(host);

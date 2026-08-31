@@ -9,6 +9,7 @@ import { OrderVerificationService } from "../order-verification/order-verificati
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { MilestonesService } from "../seller-notifications/milestones.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { PrintifyAdapter } from "../suppliers/printify/printify.adapter";
 import { ChangeOrderStatusDto } from "./dto/change-order-status.dto";
@@ -16,7 +17,7 @@ import { EditOrderDto } from "./dto/edit-order.dto";
 import { OrderListQueryDto } from "./dto/order-list-query.dto";
 import { round2 } from "./money.util";
 import { isOrderStatusTransitionAllowed } from "./order-status-transitions.util";
-import { computeOrderTimeline } from "./order-timeline.util";
+import { buyerFacingTrackingState, computeOrderTimeline } from "./order-timeline.util";
 import { computeOrderTotals } from "./order-totals.util";
 import { OrderBucket, orderBucketWhereClause } from "./orders-overview.service";
 
@@ -56,7 +57,51 @@ export class OrdersService {
     private readonly walletGraceLadder: WalletGraceLadderService,
     private readonly orderVerification: OrderVerificationService,
     private readonly milestones: MilestonesService,
+    private readonly settings: SettingsService,
   ) {}
+
+  /** SRS §5.38/FR-38.8-38.9 - a seller's editable buyer-facing tracking messages + the delivered-archival window. */
+  async getDeliveryTrackingSettings(sellerId: string, storeId: string) {
+    await this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+    });
+    const [messagePending, messageSubmitted, messageDelivered, messageCancelled, archiveDays] = await Promise.all([
+      this.settings.resolve<string>("orders.tracking_message_pending", { storeId }),
+      this.settings.resolve<string>("orders.tracking_message_submitted", { storeId }),
+      this.settings.resolve<string>("orders.tracking_message_delivered", { storeId }),
+      this.settings.resolve<string>("orders.tracking_message_cancelled", { storeId }),
+      this.settings.resolve<number>("orders.delivered_archive_days", { storeId }),
+    ]);
+    return { messagePending, messageSubmitted, messageDelivered, messageCancelled, archiveDays };
+  }
+
+  async updateDeliveryTrackingSettings(
+    sellerId: string,
+    storeId: string,
+    input: { messagePending?: string; messageSubmitted?: string; messageDelivered?: string; messageCancelled?: string; archiveDays?: number },
+  ) {
+    await this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+    });
+    if (input.messagePending !== undefined) {
+      await this.settings.setValue("orders.tracking_message_pending", "store", storeId, input.messagePending, sellerId);
+    }
+    if (input.messageSubmitted !== undefined) {
+      await this.settings.setValue("orders.tracking_message_submitted", "store", storeId, input.messageSubmitted, sellerId);
+    }
+    if (input.messageDelivered !== undefined) {
+      await this.settings.setValue("orders.tracking_message_delivered", "store", storeId, input.messageDelivered, sellerId);
+    }
+    if (input.messageCancelled !== undefined) {
+      await this.settings.setValue("orders.tracking_message_cancelled", "store", storeId, input.messageCancelled, sellerId);
+    }
+    if (input.archiveDays !== undefined) {
+      await this.settings.setValue("orders.delivered_archive_days", "store", storeId, input.archiveDays, sellerId);
+    }
+    return this.getDeliveryTrackingSettings(sellerId, storeId);
+  }
 
   /**
    * SRS §5.59/FR-59.4 - date+time range, status, payment state, verification
@@ -128,7 +173,13 @@ export class OrdersService {
         tx.order.count({ where }),
       ]);
 
-      return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
+      // SRS §5.38/FR-38.10 - the same mapping function the buyer's status
+      // page uses (OrderStatusLookupService.lookup()), so the seller list's
+      // at-a-glance badge and the buyer page can never show two different
+      // buckets for one order.
+      const itemsWithTrackingState = items.map((order) => ({ ...order, trackingState: buyerFacingTrackingState(order.status) }));
+
+      return { items: itemsWithTrackingState, page, limit, total, totalPages: Math.ceil(total / limit) };
     });
   }
 
@@ -423,7 +474,7 @@ export class OrdersService {
     orderId: string,
     orderItemId: string,
     uploadedBy: string,
-    input: { trackingId: string; carrier?: string },
+    input: { trackingId: string; carrier?: string; trackingUrl?: string },
   ) {
     const { order, storeName, domains, storeSlug } = await this.tenantPrisma.run(sellerId, async (tx) => {
       const item = await tx.orderItem.findUnique({ where: { id: orderItemId } });
@@ -455,7 +506,7 @@ export class OrdersService {
     storeId: string,
     orderId: string,
     uploadedBy: string,
-    input: { trackingId: string; carrier?: string },
+    input: { trackingId: string; carrier?: string; trackingUrl?: string },
   ) {
     const { order, storeName, domains, storeSlug } = await this.tenantPrisma.run(sellerId, async (tx) => {
       const orderRow = await tx.order.findUnique({ where: { id: orderId } });
@@ -487,10 +538,10 @@ export class OrdersService {
     orderId: string,
     orderItemId: string,
     uploadedBy: string,
-    input: { trackingId: string; carrier?: string },
+    input: { trackingId: string; carrier?: string; trackingUrl?: string },
   ) {
     await tx.trackingUpdate.create({
-      data: { storeId, orderItemId, trackingId: input.trackingId, carrier: input.carrier, uploadedBy },
+      data: { storeId, orderItemId, trackingId: input.trackingId, carrier: input.carrier, trackingUrl: input.trackingUrl, uploadedBy },
     });
     await tx.orderItem.update({ where: { id: orderItemId }, data: { fulfillmentStatus: "shipped" } });
     await tx.orderTimelineEvent.create({
