@@ -2,9 +2,11 @@
 
 **Version:** 0.53 (Build-phase amendment — FR-8.20, new; founder batch
 B17, "Support Center subdomain (support.uzeyn.com)," seller-only, per
-founder confirmation. SRS amendment first per standing session
-instruction; implementation paused pending founder confirmation of the
-subdomain-routing architecture proposed in FR-8.20's own text.)
+founder confirmation. Subdomain-routing architecture approved; the
+double-login friction it introduces is deliberately deferred, logged
+in FR-8.20's own text as a future-polish item (a shared parent-domain
+auth cookie), not silently accepted as permanent. Implementation
+proceeds.)
 **Date:** 2026-09-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -3046,6 +3048,16 @@ can actually be enforced against.
     with the same account and the same `/auth/login` endpoint, not a
     second identity. Worth stating plainly here so it is never mistaken
     for a bug later.
+    **Deliberately accepted for v1.0, not silently normalized as
+    permanent — logged here as a known future-polish item:** the fix
+    is a shared parent-domain auth cookie (`Domain=.uzeyn.com`) so a
+    session on `app.uzeyn.com` is automatically recognized on
+    `support.uzeyn.com` too, removing the second login prompt
+    entirely. That's a real architecture change — moving session
+    storage from per-origin `localStorage` to a shared-domain cookie,
+    touching every existing auth call site, not just this one — so it
+    doesn't belong in B17 itself. Deferred on purpose; pick up
+    whenever the next auth-related pass happens, not before.
   - **Subdomain-routing architecture — the platform's first-ever second
     platform-owned subdomain, no existing precedent to lean on (see the
     research this FR is based on).** Today `apps/web/middleware.ts`'s
