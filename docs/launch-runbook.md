@@ -33,7 +33,10 @@ calls, real third-party services).
 - [ ] Also point the Support Center subdomain (e.g. `support.uzeyn.com`,
       per `SUPPORT_CENTER_HOSTNAMES` — SRS FR-8.20, Module 99) at the same
       IP, and add its static Traefik router rule (`docker-compose.yml`,
-      mirroring the `app`/`api` rules) before relying on it.
+      mirroring the `app`/`api` rules) before relying on it. Since it's a
+      separate origin from `api.uzeyn.com`, also add it to
+      `CORS_ALLOWED_ORIGINS` — otherwise its login/ticket pages fail with a
+      CORS error even though the routing itself works.
 - [ ] Confirm propagation (`dig +short <domain>` from an external network)
       before proceeding — Traefik's Let's Encrypt HTTP-01 challenge will
       fail silently-but-repeatedly if DNS isn't live yet.
