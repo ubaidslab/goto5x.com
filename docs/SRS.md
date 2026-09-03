@@ -1,9 +1,10 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.52 (Build-phase amendment — founder batch B16b, a
-same-day date-range bug found during FR-8.19's live verification and
-traced back to FR-61.2's own endpoint, which it mirrors. See the
-addendum on FR-61.2 below.)
+**Version:** 0.53 (Build-phase amendment — FR-8.20, new; founder batch
+B17, "Support Center subdomain (support.uzeyn.com)," seller-only, per
+founder confirmation. SRS amendment first per standing session
+instruction; implementation paused pending founder confirmation of the
+subdomain-routing architecture proposed in FR-8.20's own text.)
 **Date:** 2026-09-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -2992,6 +2993,78 @@ can actually be enforced against.
     not a date range) is unaffected. Neither was named in the founder's
     request and both are a materially different, riskier change than
     what "date-range granularity" asks for.
+- FR-8.20 (Module 99, new v0.53 — founder batch B17): **Support Center,
+  seller-only, on its own subdomain (`support.uzeyn.com`).** Extends
+  FR-8.18's ticket system — real for over a year now (Module 90), but
+  API-only: no seller-facing UI was ever built for it, and it had no
+  buyer, no anonymous-visitor, and no self-service-content concept at
+  all. Confirmed scope with the founder before writing this: **seller-
+  only** (an existing UZEYN account, not anonymous), **not** a buyer
+  help-desk (buyer support already lives on the storefront itself —
+  WhatsApp widget, order-status page — and stays there, untouched by
+  this FR), and **not** live chat.
+  - **Ticket submission, finally given a real UI.** The seller-facing
+    create/list/view surface FR-8.18 always specified but never got
+    built now ships, at `support.uzeyn.com` rather than inside the
+    existing dashboard nav — a deliberate placement matching the
+    founder's framing of this as its own destination, not a dashboard
+    tab. No change to the underlying `SupportTicket`/`TicketMessage`
+    model, `BlockStaffSessionsGuard` (still owner-only, staff excluded),
+    or the admin-facing respond/resolve side — this FR is the missing
+    frontend plus the two additions below, not a rework.
+  - **New: a downloadable PDF receipt on submission**, confirming the
+    ticket number, subject, submitted time, and computed SLA deadline.
+    Reuses FR-19.1's existing self-hosted HTML→PDF pipeline (Playwright-
+    rendered, no paid invoicing service) exactly as `subscription-
+    invoice-template.ts`/`finance-summary-template.ts` already do — a
+    new `support-ticket-receipt-template.ts` following that same
+    pattern, not a new rendering mechanism.
+  - **New: a lightweight, admin-editable knowledge-base/FAQ section**,
+    reusing FR-12.1's existing versioned content-pages system verbatim —
+    `ContentPagesService`'s `slug`/`title`/`bodyHtml` is already a
+    free-form, admin-writable, publicly-readable, versioned store (not
+    hardcoded to the 5 legal/marketing pages it happens to hold today).
+    Articles are content pages under a `support-kb/*` slug prefix; the
+    Support Center lists them by that prefix and renders the same way
+    any other content page already does. No new content model, table,
+    or admin editor — the existing admin content-pages screen gains
+    nothing new to build here beyond using this prefix convention.
+    Starting article set (founder's own examples): connecting a payment
+    gateway, adding staff, enabling D-Studio — real seller pain points,
+    not filler.
+  - **Explicitly out of scope, matching the founder's own scoping:** no
+    anonymous/visitor ticket submission; no buyer-facing surface of any
+    kind; no live chat; no rich text/attachments/multi-department
+    routing/canned responses (FR-8.18's original exclusions stand
+    unchanged).
+  - **Authentication note, a real constraint, not a design choice:**
+    `support.uzeyn.com` is a different origin from `app.uzeyn.com`
+    (where the seller dashboard's own session already lives), and this
+    platform's auth tokens are stored in per-origin `localStorage` (the
+    same pattern the dashboard/admin split already relies on) — so a
+    seller visiting the Support Center authenticates there separately,
+    with the same account and the same `/auth/login` endpoint, not a
+    second identity. Worth stating plainly here so it is never mistaken
+    for a bug later.
+  - **Subdomain-routing architecture — the platform's first-ever second
+    platform-owned subdomain, no existing precedent to lean on (see the
+    research this FR is based on).** Today `apps/web/middleware.ts`'s
+    `PLATFORM_HOSTNAMES` check is a strict binary: a recognized platform
+    host renders the app as authored; anything else is rewritten to
+    `/storefront` and resolved as a tenant-store lookup — which would
+    404 for `support.uzeyn.com` today, since no such store exists.
+    Recommended approach, reusing the existing single-deployment-many-
+    hostnames architecture rather than standing up a separate app:
+    extend the current hostname check from a boolean into a small
+    hostname→route-group map, add `support.uzeyn.com` (and its dev
+    equivalent) as a third recognized bucket rewritten to a new
+    `apps/web/app/(support-center)/...` route group, and add one static
+    Traefik router rule for it (mirroring the existing static
+    `app.uzeyn.com`/`api.uzeyn.com` rules, not the dynamic per-seller-
+    domain generation path built for tenant custom domains). **This
+    architectural approach is presented for confirmation before the
+    routing infrastructure itself is built** — a genuinely new class of
+    platform hostname, not a pattern this codebase has done before.
 
 ### 5.6l Store-Wide Payment Model (new, v0.46 — Module 95, founder batch B12)
 A single, mutually-exclusive choice per store — **Prepaid / COD /
