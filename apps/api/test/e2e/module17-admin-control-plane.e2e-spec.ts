@@ -310,6 +310,90 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
         .set("Authorization", `Bearer ${adminToken}`);
       expect(analytics.body.gmv).toBe(5000);
     });
+
+    it("FR-8.19 (Module 98, founder batch B16): optional start/end scopes GMV to a range; omitted, it stays all-time", async () => {
+      const adminToken = await createAndLoginAdmin("range-admin@example.com");
+      const seller = await signupLoginAndCreateStore("range-seller@example.com", "range-seller-store");
+
+      const product = await request(app.getHttpServer())
+        .post(`/stores/${seller.storeId}/products`)
+        .set("Authorization", `Bearer ${seller.token}`)
+        .send({ title: "Widget", status: "active" });
+      const variant = await request(app.getHttpServer())
+        .post(`/stores/${seller.storeId}/products/${product.body.id}/variants`)
+        .set("Authorization", `Bearer ${seller.token}`)
+        .send({ sku: `SKU-${Date.now()}`, price: 3000, stockQuantity: 100 });
+
+      async function placePaidOrder(quantity: number) {
+        const order = await request(app.getHttpServer())
+          .post(`/stores/${seller.storeId}/orders`)
+          .set("Authorization", `Bearer ${seller.token}`)
+          .send({ buyerEmail: "buyer@example.com", shippingAddress, items: [{ productId: product.body.id, variantId: variant.body.id, quantity }] });
+        await request(app.getHttpServer())
+          .post(`/stores/${seller.storeId}/orders/${order.body.id}/mark-as-paid`)
+          .set("Authorization", `Bearer ${seller.token}`);
+        return order.body.id as string;
+      }
+
+      await placePaidOrder(1); // 3000, placed "now"
+      const oldOrderId = await placePaidOrder(1); // 3000, backdated below
+      await superuser.order.update({ where: { id: oldOrderId }, data: { placedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) } });
+
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const rangeScoped = await request(app.getHttpServer())
+        .get(`/admin/analytics?start=${yesterday}&end=${tomorrow}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(rangeScoped.status).toBe(200);
+      expect(rangeScoped.body.gmv).toBe(3000); // only the recent order - the backdated one falls outside the range
+
+      const allTime = await request(app.getHttpServer())
+        .get("/admin/analytics")
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(allTime.status).toBe(200);
+      expect(allTime.body.gmv).toBe(6000); // both orders - omitting start/end preserves the old all-time behavior
+
+      const lopsided = await request(app.getHttpServer())
+        .get(`/admin/analytics?start=${yesterday}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(lopsided.status).toBe(400); // start without end is rejected outright, not silently treated as unbounded on one side
+    });
+
+    it("FR-8.19 (Module 98, founder batch B16): platform-wide sales-over-time buckets confirmed orders by day/week/month", async () => {
+      const adminToken = await createAndLoginAdmin("bucket-admin@example.com");
+      const seller = await signupLoginAndCreateStore("bucket-seller@example.com", "bucket-seller-store");
+
+      const product = await request(app.getHttpServer())
+        .post(`/stores/${seller.storeId}/products`)
+        .set("Authorization", `Bearer ${seller.token}`)
+        .send({ title: "Widget", status: "active" });
+      const variant = await request(app.getHttpServer())
+        .post(`/stores/${seller.storeId}/products/${product.body.id}/variants`)
+        .set("Authorization", `Bearer ${seller.token}`)
+        .send({ sku: `SKU-${Date.now()}`, price: 2000, stockQuantity: 100 });
+
+      const order = await request(app.getHttpServer())
+        .post(`/stores/${seller.storeId}/orders`)
+        .set("Authorization", `Bearer ${seller.token}`)
+        .send({ buyerEmail: "buyer@example.com", shippingAddress, items: [{ productId: product.body.id, variantId: variant.body.id, quantity: 1 }] });
+      await request(app.getHttpServer())
+        .post(`/stores/${seller.storeId}/orders/${order.body.id}/mark-as-paid`)
+        .set("Authorization", `Bearer ${seller.token}`);
+
+      const series = await request(app.getHttpServer())
+        .get("/admin/analytics/sales-over-time?bucket=day")
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(series.status).toBe(200);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const todayPoint = series.body.find((p: { bucketStart: string }) => p.bucketStart === todayKey);
+      expect(todayPoint?.revenue).toBe(2000);
+
+      const invalidRange = await request(app.getHttpServer())
+        .get("/admin/analytics/sales-over-time?bucket=day&start=not-a-date&end=2026-01-01")
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(invalidRange.status).toBe(400);
+    });
   });
 
   describe("Seller impersonation + view-any-store, incl. v0.23 transparency amendment (FR-8.4)", () => {

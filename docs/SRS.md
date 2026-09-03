@@ -1,14 +1,9 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.50 (Build-phase amendment — Staff Accounts Overhaul,
-FR-52.7-52.13, extending §5.52; founder-added Part B item — expanded
-scopes, read/write permissions, role templates, time-limited access,
-activity log, device restriction (RISE+), corrected plan-tier limits.
-SRS amendment first per standing session instruction; implementation
-paused pending founder approval of the FR-52.9 Role Templates proposal.
-v0.50 closes a gap FR-52.8's initial sweep left open: see the note
-appended to FR-52.8 below.)
-**Date:** 2026-08-30
+**Version:** 0.51 (Build-phase amendment — FR-8.19, new; founder batch
+B16, "Admin analytics date-range granularity." SRS amendment first per
+standing session instruction, written before implementation.)
+**Date:** 2026-08-31
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -2946,6 +2941,56 @@ can actually be enforced against.
   scope, matching the original disclosure's spirit: no rich text, no
   attachments, no multi-department routing, no canned responses — a
   ticket is a subject, a body, and a thread of plain-text replies.
+- FR-8.19 (Module 98, new v0.51 — founder batch B16): **Admin analytics
+  date-range & granularity.** Extends FR-8.10's real-time platform
+  analytics with the same date-range capability FR-61.2 (Module 54)
+  already gave the seller-facing store analytics page — today's admin
+  surface (`GET admin/analytics`, `admin/analytics/mrr`,
+  `admin/analytics/seller-funnel`, `admin/unit-economics`) has **no**
+  date-range control anywhere: the top-line figures (GMV, revenue,
+  commission, active store count, top sellers) are unbounded all-time
+  aggregates, and there is no charted-over-time view at all (FR-61.2's
+  own text already flags this in passing: "neither Module 17's admin
+  analytics nor Module 31's P&L engine has any bucketing logic today").
+  Two additions, both platform-wide (no store filter — that's what the
+  existing seller-facing FR-61.2 chart is for):
+  - **Optional `start`/`end` on the existing snapshot figures** (`GET
+    admin/analytics`) — GMV (`Order.placedAt`-filtered), revenue/
+    commission earned and top sellers (`LedgerEntry.createdAt`-filtered)
+    can now be computed for a caller-chosen range instead of only
+    all-time. Omitting both params preserves today's all-time behavior
+    exactly (non-breaking; every existing consumer of this endpoint
+    keeps working unchanged). **Active store count is deliberately left
+    a live snapshot** ("how many stores are active right now"), not
+    range-filtered — the schema has no store-status-history table to
+    answer "how many were active during a past range," and treating a
+    point-in-time count as if it were range-scoped would just be wrong,
+    not merely unfiltered.
+  - **A new charted time-series endpoint**, `GET
+    admin/analytics/sales-over-time`, mirroring FR-61.2's
+    `bucket`/`start`/`end` query shape exactly (`day`/`week`/`month`,
+    server-validated against the same whitelist; a 30-day default
+    window when no range is given) and reusing FR-61.2's own bucketing
+    utility (`analytics.util.ts`'s `bucketKey`/`stepBucket` — one
+    shared computation, not a second implementation) rather than
+    reimplementing day/week/month stepping for the admin side.
+  - **Frontend:** the admin Platform Analytics page
+    (`(admin)/admin/analytics/page.tsx`) gains the same UI pattern the
+    seller-facing Analytics page already has — From/To date inputs, a
+    "reset to last 30 days" link, and a day/week/month bucket toggle
+    for the new chart — so an admin can finally ask "GMV this quarter
+    vs last," not only "GMV since launch."
+  - **Explicitly out of scope, disclosed rather than silently
+    expanded:** `MrrAnalyticsService`'s hardcoded windows (trailing
+    30-day churn, current calendar month, current calendar quarter,
+    next-7/30-day renewal forecast) are accounting-period figures —
+    "this month's MRR," "this quarter's churn" — not a generic
+    caller-chosen range, and redefining them would change subscription-
+    revenue semantics rather than add a range control; and the seller
+    health funnel's `growth.funnel_stuck_days` (a staleness threshold,
+    not a date range) is unaffected. Neither was named in the founder's
+    request and both are a materially different, riskier change than
+    what "date-range granularity" asks for.
 
 ### 5.6l Store-Wide Payment Model (new, v0.46 — Module 95, founder batch B12)
 A single, mutually-exclusive choice per store — **Prepaid / COD /

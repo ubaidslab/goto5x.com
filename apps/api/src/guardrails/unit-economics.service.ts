@@ -1,6 +1,15 @@
 import { Injectable } from "@nestjs/common";
+import { OrderStatus } from "@prisma/client";
+import { bucketSalesOverTime, SalesBucket } from "../analytics/analytics.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
+
+/**
+ * Same Financial Truth Invariant gate every other analytics reader in this
+ * codebase keeps a local copy of (no shared constants module exists for it
+ * - see analytics.util.ts's own comment on this).
+ */
+const CONFIRMED_OR_BEYOND: OrderStatus[] = ["confirmed", "shipped", "delivered", "completed"];
 
 /**
  * SRS §5.23/FR-23.4 - unit-economics data, extending FR-8.10 (real-time
@@ -58,8 +67,16 @@ export class UnitEconomicsService {
    * by construction (LedgerService never writes a `commission_accrued` row
    * for one); revenue in this business model (Direct Seller Collection) IS
    * commission earned - UZEYN never touches order money itself.
+   *
+   * SRS FR-8.19 (Module 98) - `start`/`end` are optional; omitted, every
+   * figure below is all-time (unchanged from before this FR). Active store
+   * count is deliberately NOT range-filtered - see FR-8.19's own text on
+   * why a point-in-time count has no "during a past range" meaning here.
    */
-  async computeRealTimeAnalytics() {
+  async computeRealTimeAnalytics(start?: Date, end?: Date) {
+    const orderDateFilter = start && end ? { placedAt: { gte: start, lte: end } } : {};
+    const ledgerDateFilter = start && end ? { createdAt: { gte: start, lte: end } } : {};
+
     const [gmv, activeStoreCount, commissionResult, topSellerRows] = await Promise.all([
       this.prismaAdmin.order.aggregate({
         // Module 53 (FR-60.4) - a fully refunded order stops counting as
@@ -67,17 +84,17 @@ export class UnitEconomicsService {
         // (the ledger reversal below); partially_refunded is excluded too,
         // same "one signal, applied uniformly" simplification PnLService's
         // CONFIRMED_OR_BEYOND already applies to both statuses.
-        where: { status: { notIn: ["pending", "refunded", "partially_refunded"] } },
+        where: { status: { notIn: ["pending", "refunded", "partially_refunded"] }, ...orderDateFilter },
         _sum: { totalAmount: true },
       }),
       this.prismaAdmin.store.count({ where: { status: "active" } }),
       this.prismaAdmin.ledgerEntry.aggregate({
-        where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] } },
+        where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] }, ...ledgerDateFilter },
         _sum: { amount: true },
       }),
       this.prismaAdmin.ledgerEntry.groupBy({
         by: ["sellerId"],
-        where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] } },
+        where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] }, ...ledgerDateFilter },
         _sum: { amount: true },
         orderBy: { _sum: { amount: "desc" } },
         take: 5,
@@ -102,6 +119,26 @@ export class UnitEconomicsService {
         commissionEarned: Number(row._sum.amount ?? 0),
       })),
     };
+  }
+
+  /**
+   * SRS FR-8.19 (Module 98) - platform-wide sales-over-time, day/week/month,
+   * mirroring FR-61.2's seller-facing shape exactly and reusing its own
+   * bucketing utility (bucketSalesOverTime) rather than a second
+   * implementation. No storeId filter - that's the whole point over
+   * FR-61.2's per-store chart.
+   */
+  async getSalesOverTime(bucket: SalesBucket, start: Date, end: Date) {
+    const orders = await this.prismaAdmin.order.findMany({
+      where: { status: { in: CONFIRMED_OR_BEYOND }, placedAt: { gte: start, lte: end } },
+      select: { placedAt: true, totalAmount: true },
+    });
+    return bucketSalesOverTime(
+      orders.map((o) => ({ placedAt: o.placedAt, totalAmount: Number(o.totalAmount) })),
+      bucket,
+      start,
+      end,
+    );
   }
 
   private async commissionForStores(storeIds: string[]): Promise<number> {
