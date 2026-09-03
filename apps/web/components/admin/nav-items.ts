@@ -68,6 +68,7 @@ export const adminNavItems: AdminNavItem[] = [
   { href: "/admin/payment-instructions", label: "Payment instructions", icon: Receipt, group: "commerce" },
   { href: "/admin/platform-gateway", label: "Platform merchant", icon: CreditCard, group: "commerce" },
   { href: "/admin/commission-invoices", label: "Commission invoices", icon: FileText, group: "commerce" },
+  { href: "/admin/dstudio-pack-purchases", label: "D-Studio Pack purchases", icon: Palette, group: "commerce" },
   { href: "/admin/plans", label: "Plans", icon: LayoutGrid, group: "commerce" },
   { href: "/admin/categories", label: "Categories", icon: LayoutGrid, group: "commerce" },
   { href: "/admin/supplier-adapters", label: "Supplier adapters", icon: Truck, group: "commerce" },

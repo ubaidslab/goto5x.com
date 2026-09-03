@@ -133,6 +133,36 @@ export async function seedModule4Settings(prisma: PrismaClient) {
     update: {},
   });
 
+  // FR-8.21 (Module 100, founder batch B18) - D-Studio Pack pricing/
+  // duration, admin-configurable rather than hardcoded (this codebase's
+  // standing discipline for every tunable business number). Global scope
+  // only - there's no per-seller/per-plan reason to vary the Pack's own
+  // price or duration.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "dstudio.pack_price" },
+    create: {
+      key: "dstudio.pack_price",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 1499,
+      validation: { min: 0 },
+      description: "D-Studio Pack price in PKR, charged for pack_duration_days of full-catalog access regardless of the seller's real plan tier.",
+    },
+    update: {},
+  });
+  await prisma.settingsDefinition.upsert({
+    where: { key: "dstudio.pack_duration_days" },
+    create: {
+      key: "dstudio.pack_duration_days",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 90,
+      validation: { min: 1 },
+      description: "D-Studio Pack validity window in days (default 90 = 3 months) from the moment a purchase is verified.",
+    },
+    update: {},
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "storefront.unlock_rate_limit_per_hour" },
     create: {

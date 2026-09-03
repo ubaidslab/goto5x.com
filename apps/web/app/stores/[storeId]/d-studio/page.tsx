@@ -73,6 +73,15 @@ interface Theme {
   entitled: boolean;
 }
 
+/** FR-8.21 (Module 100, founder batch B18) - D-Studio Pack purchase-request shape, mirroring the API's own. */
+interface DstudioPackRequest {
+  id: string;
+  amount: string;
+  currency: string;
+  status: "pending" | "verified" | "rejected";
+  requestedAt: string;
+}
+
 const CATEGORIES = ["Marketing", "Catalog", "Content", "Social proof", "Structural"] as const;
 
 function SortableRow({
@@ -173,6 +182,16 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [galleryCat, setGalleryCat] = useState<(typeof CATEGORIES)[number] | "All">("All");
+  // FR-8.21 (Module 100, founder batch B18) - D-Studio Pack: a seller-
+  // purchasable, time-boxed full-catalog unlock, orthogonal to the tier
+  // ladder above. `packModalOpen` gates a lightweight fetch of the
+  // seller's own request history so it isn't loaded on every page visit,
+  // only when they actually open the panel.
+  const [packModalOpen, setPackModalOpen] = useState(false);
+  const [packRequests, setPackRequests] = useState<DstudioPackRequest[] | null>(null);
+  const [packInstructions, setPackInstructions] = useState<string | null>(null);
+  const [packSubmitting, setPackSubmitting] = useState(false);
+  const [packError, setPackError] = useState<string | null>(null);
   // D-Studio close-out (founder-requested undo/redo + autosave + version
   // safety) - "idle" here specifically means "edited, autosave pending" (see
   // the autosave effect below), not "nothing has happened yet"; the
@@ -411,7 +430,62 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
   // silently doing nothing (the founder-flagged failure mode of a plain
   // `disabled` attribute).
   function notifyLocked(name: string, requiredTier: number) {
-    toast({ tone: "default", title: `${name} requires ${tierName(requiredTier)}`, description: `Upgrade to ${tierName(requiredTier)} or above to use it.` });
+    // FR-8.21 (Module 100, founder batch B18) - a locked item at RISE's
+    // ceiling or below can also be unlocked by the Pack (an orthogonal,
+    // temporary alternative to upgrading the whole plan), so the toast
+    // offers both paths. A FLY-exclusive item (requiredTier 3) isn't
+    // helped by the Pack (it deliberately grants RISE, not FLY) - plain
+    // upgrade copy only, same as before this FR.
+    if (requiredTier <= 2) {
+      toast({
+        tone: "default",
+        title: `${name} requires ${tierName(requiredTier)}`,
+        description: `Upgrade to ${tierName(requiredTier)} or above, or get the D-Studio Pack for temporary full-catalog access.`,
+        action: (
+          <button onClick={() => setPackModalOpen(true)} className="text-xs font-semibold underline">
+            Get Pack
+          </button>
+        ),
+      });
+    } else {
+      toast({ tone: "default", title: `${name} requires ${tierName(requiredTier)}`, description: `Upgrade to ${tierName(requiredTier)} or above to use it.` });
+    }
+  }
+
+  function loadPackRequests() {
+    api
+      .get<DstudioPackRequest[]>("/sellers/me/dstudio-pack-purchases")
+      .then(setPackRequests)
+      .catch(() => setPackRequests([]));
+  }
+
+  // Loads on every open regardless of entry point (toolbar button, or the
+  // toast action on a locked item) - a single source of truth instead of
+  // duplicating this call at each place that can set packModalOpen(true).
+  useEffect(() => {
+    if (packModalOpen) loadPackRequests();
+  }, [packModalOpen]);
+
+  async function requestPack() {
+    setPackSubmitting(true);
+    setPackError(null);
+    try {
+      const res = await api.post<{ request: DstudioPackRequest; instructions: string; autoVerified: boolean }>("/sellers/me/dstudio-pack-purchases");
+      setPackInstructions(res.instructions);
+      loadPackRequests();
+      if (res.autoVerified) {
+        // The grant is seller-scoped and folded into effectiveTierOrder on
+        // the next theme-settings fetch - a full reload is the simplest way
+        // to reflect it immediately without duplicating that resolution
+        // logic client-side.
+        toast({ tone: "success", title: "D-Studio Pack activated", description: "Reloading to reflect your new access…" });
+        setTimeout(() => window.location.reload(), 1200);
+      }
+    } catch {
+      setPackError("Couldn't submit that purchase request. Please try again.");
+    } finally {
+      setPackSubmitting(false);
+    }
   }
 
   function applyTemplate(newThemeId: string) {
@@ -572,6 +646,15 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
         <div className="mx-2 h-4 w-px" style={{ background: CHROME.border }} />
         <span className="text-xs font-medium">{store.name}</span>
         <div className="flex-1" />
+        {tierOrder < 2 && (
+          <button
+            onClick={() => setPackModalOpen(true)}
+            className="rounded-full px-3 py-1 text-[11px] font-semibold"
+            style={{ background: CHROME.accentDim, color: CHROME.tierRise, border: `1px solid ${CHROME.tierRise}` }}
+          >
+            Get full access
+          </button>
+        )}
         <div className="flex overflow-hidden rounded-full p-0.5" style={{ background: CHROME.surfaceRaised, border: `1px solid ${CHROME.border}` }}>
           {(["mobile", "tablet", "desktop"] as const).map((d) => (
             <button
@@ -1006,6 +1089,83 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
                   </p>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* D-Studio Pack modal - FR-8.21 (Module 100, founder batch B18) */}
+      {packModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-10" style={{ background: "rgba(10,10,14,0.7)" }} onClick={() => setPackModalOpen(false)}>
+          <div className="w-full max-w-md rounded-xl" style={{ background: CHROME.surface, border: `1px solid ${CHROME.border}` }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: `1px solid ${CHROME.border}` }}>
+              <h2 className="text-base font-semibold">D-Studio Pack</h2>
+              <button onClick={() => setPackModalOpen(false)} style={{ color: CHROME.inkFaint }}>
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4 p-6">
+              <p className="text-xs" style={{ color: CHROME.inkMuted }}>
+                Rs. 1,499 for 3 months of the full 22-section/14-preset catalog - the same content RISE and FLY sellers already get, on any
+                plan. No plan change, no lock-in; access reverts to your real plan automatically when it expires.
+              </p>
+
+              {packError && (
+                <p className="rounded-md px-3 py-2 text-xs" style={{ background: "rgba(255,107,107,0.12)", color: "#ff6b6b" }}>
+                  {packError}
+                </p>
+              )}
+
+              {packInstructions && (
+                <div className="rounded-md p-3 text-xs" style={{ background: CHROME.surfaceRaised, color: CHROME.inkMuted, whiteSpace: "pre-wrap" }}>
+                  {packInstructions}
+                </div>
+              )}
+
+              {packRequests === null ? (
+                <p className="text-xs" style={{ color: CHROME.inkFaint }}>
+                  Loading…
+                </p>
+              ) : (
+                <>
+                  {packRequests.some((r) => r.status === "pending") ? (
+                    <p className="rounded-md px-3 py-2 text-xs" style={{ background: CHROME.accentDim, color: CHROME.tierRise }}>
+                      You have a pending Pack purchase awaiting admin verification.
+                    </p>
+                  ) : (
+                    <button
+                      onClick={requestPack}
+                      disabled={packSubmitting}
+                      className="w-full rounded-md py-2 text-xs font-semibold"
+                      style={{ background: CHROME.accent, color: "#0d1526", opacity: packSubmitting ? 0.6 : 1 }}
+                    >
+                      {packSubmitting ? "Submitting…" : "Request D-Studio Pack"}
+                    </button>
+                  )}
+
+                  {packRequests.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[10px] uppercase tracking-wide" style={{ color: CHROME.inkFaint, fontFamily: "monospace" }}>
+                        Your requests
+                      </p>
+                      {packRequests.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between text-[11px]" style={{ color: CHROME.inkMuted }}>
+                          <span>{new Date(r.requestedAt).toLocaleDateString()}</span>
+                          <span
+                            className="rounded-full px-2 py-0.5 capitalize"
+                            style={{
+                              background: r.status === "verified" ? "rgba(85,199,147,0.15)" : r.status === "rejected" ? "rgba(255,107,107,0.12)" : CHROME.accentDim,
+                              color: r.status === "verified" ? CHROME.good : r.status === "rejected" ? "#ff6b6b" : CHROME.tierRise,
+                            }}
+                          >
+                            {r.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

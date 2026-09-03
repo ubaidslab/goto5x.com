@@ -92,13 +92,21 @@ export class SettingsService {
     return row.value;
   }
 
-  /** Admin-only write path - see SettingsAdminController for the AdminAuthGuard gate. */
+  /**
+   * Admin-only write path - see SettingsAdminController for the
+   * AdminAuthGuard gate. `updatedByAdminUserId` is nullable (matching
+   * `settings_values.updated_by`'s own nullability) so a system/gateway-
+   * triggered grant - e.g. D-Studio Pack's auto-verify fast path,
+   * FR-8.21 - can record "no human admin" the same way AuditLogService.
+   * record() and TemplatePurchaseService.verify() already do, rather
+   * than forcing every caller to invent a fake admin id.
+   */
   async setValue(
     key: string,
     scopeType: SettingsScopeType,
     scopeId: string | null,
     value: unknown,
-    updatedByAdminUserId: string,
+    updatedByAdminUserId: string | null,
     // D-Studio close-out - a time-limited grant. undefined leaves an
     // existing row's expiry untouched on update (so a plain re-save of
     // some other field never accidentally clears a grant's countdown);

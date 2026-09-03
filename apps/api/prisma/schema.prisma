@@ -354,6 +354,7 @@ model Seller {
   promoRedemptions            PlatformPromoCodeRedemption[]
   templateEntitlements        TemplateEntitlement[]
   templatePurchaseRequests    TemplatePurchaseRequest[]
+  dstudioPackPurchases        DstudioPackPurchase[]
   apiTokens                   SellerApiToken[]
   impersonationSessions       ImpersonationSession[]
   // Module 22 (SRS §5.33) - a seller may hold participation in more than one
@@ -425,6 +426,7 @@ model AdminUser {
   impersonationSessions     ImpersonationSession[]
   verifiedWalletTopUps      WalletTopUpRequest[]
   verifiedTemplatePurchases TemplatePurchaseRequest[]
+  verifiedDstudioPacks      DstudioPackPurchase[]
   decidedVerifiedStoreApps  VerifiedStoreApplication[]
   linkedEmailAccounts       AdminEmailAccount[]
   platformNewsletters       PlatformNewsletter[]
@@ -1484,6 +1486,31 @@ model TemplatePurchaseRequest {
 
   @@index([sellerId, status], name: "idx_template_purchases_seller_status")
   @@map("template_purchase_requests")
+}
+
+// FR-8.21 (Module 100, founder batch B18) - D-Studio Pack: a seller-
+// purchasable, time-boxed (default 90-day) full-catalog unlock, stacked
+// orthogonally on top of the existing GO/RUN/RISE/FLY tier ladder
+// (FR-7.23) rather than replacing it. Deliberately NOT theme-scoped (no
+// themeId, unlike TemplatePurchaseRequest which this model otherwise
+// mirrors) - the grant this feeds is dstudio.tier_override_order, a
+// seller-scoped Settings Registry override with an expiresAt, not a
+// per-theme entitlement row.
+model DstudioPackPurchase {
+  id          String             @id @default(uuid()) @db.Uuid
+  sellerId    String             @map("seller_id") @db.Uuid
+  amount      Decimal            @db.Decimal(12, 2)
+  currency    String             @default("PKR")
+  status      TopUpRequestStatus @default(pending)
+  requestedAt DateTime           @default(now()) @map("requested_at") @db.Timestamptz
+  verifiedAt  DateTime?          @map("verified_at") @db.Timestamptz
+  verifiedBy  String?            @map("verified_by") @db.Uuid
+
+  seller          Seller     @relation(fields: [sellerId], references: [id])
+  verifiedByAdmin AdminUser? @relation(fields: [verifiedBy], references: [id])
+
+  @@index([sellerId, status], name: "idx_dstudio_pack_purchases_seller_status")
+  @@map("dstudio_pack_purchases")
 }
 
 // Module 18 (SRS §5.24b, FR-24.9-24.11) - the Product Feed API's own
