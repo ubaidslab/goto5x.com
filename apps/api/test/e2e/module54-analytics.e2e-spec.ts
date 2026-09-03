@@ -134,6 +134,24 @@ describe("Analytics Depth (e2e) - SRS §5.61/§14.60 (Module 54)", () => {
     expect(todayBucket.revenue).toBe(200);
   });
 
+  it("FR-61.2 (v0.52 fix): a same-day custom range - start and end both 'today' - still includes an order placed today", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("same-day-range@example.com", "same-day-range-store");
+    const widget = await createSelfProduct(token, storeId, "Widget", 150);
+    await placeOrder(token, storeId, hostname, widget.productId, widget.variantId, 1, "buyer1@example.com");
+
+    // A bare "today" date used to parse as UTC midnight; a real order
+    // placed any time later that same day was silently excluded by the
+    // `lte` filter, so "To: today" showed none of today's sales.
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/analytics/sales-over-time?bucket=day&start=${today}&end=${today}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].orderCount).toBe(1);
+    expect(res.body[0].revenue).toBe(150);
+  });
+
   it("FR-61.5: average order value is the mean totalAmount over confirmed+ orders", async () => {
     const { token, storeId, hostname } = await signupLoginAndCreateStore("aov@example.com", "aov-store");
     const widget = await createSelfProduct(token, storeId, "Widget", 100);

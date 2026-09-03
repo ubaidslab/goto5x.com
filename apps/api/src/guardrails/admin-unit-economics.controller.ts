@@ -1,23 +1,11 @@
 import { BadRequestException, Controller, Get, Query, UseGuards } from "@nestjs/common";
-import { SalesBucket } from "../analytics/analytics.util";
+import { endOfUtcDay, SalesBucket } from "../analytics/analytics.util";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { MrrAnalyticsService } from "./mrr-analytics.service";
 import { SellerHealthFunnelService } from "./seller-health-funnel.service";
 import { UnitEconomicsService } from "./unit-economics.service";
 
 const VALID_BUCKETS: SalesBucket[] = ["day", "week", "month"];
-
-/**
- * FR-8.19 - a caller-supplied `end` is a bare date ("2026-09-03" from an
- * `<input type="date">`), which `new Date()` parses as that day's UTC
- * midnight - a `lte` filter against it would exclude everything from later
- * that same day, so "To: today" would silently show none of today's data.
- * Pushed to the last instant of that UTC day so "To: today" means through
- * today, not "before today started."
- */
-function endOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
-}
 
 /** SRS §5.23/FR-23.4 - unit-economics data (free-vs-paid split, break-even). */
 @Controller("admin/unit-economics")

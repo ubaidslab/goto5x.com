@@ -11,6 +11,21 @@ export const CONFIRMED_OR_BEYOND = ["confirmed", "shipped", "delivered", "comple
 
 export type SalesBucket = "day" | "week" | "month";
 
+/**
+ * FR-8.19/FR-61.2 (v0.52 fix) - a caller-supplied `end` query param is a
+ * bare date ("2026-09-03" from an `<input type="date">`), which `new
+ * Date()` parses as that day's UTC midnight - a `lte` filter against it
+ * silently excludes everything from later that same day, so "To: today"
+ * would show none of today's sales. Pushed to the last instant of that
+ * UTC day so "To: today" means through today, not "before today started."
+ * Shared here (not duplicated per-controller) since both the seller-facing
+ * (FR-61.2) and admin-facing (FR-8.19) sales-over-time endpoints need the
+ * exact same correction.
+ */
+export function endOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
+}
+
 export interface OrderForBucketing {
   placedAt: Date;
   totalAmount: number;

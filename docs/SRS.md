@@ -1,9 +1,10 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.51 (Build-phase amendment — FR-8.19, new; founder batch
-B16, "Admin analytics date-range granularity." SRS amendment first per
-standing session instruction, written before implementation.)
-**Date:** 2026-08-31
+**Version:** 0.52 (Build-phase amendment — founder batch B16b, a
+same-day date-range bug found during FR-8.19's live verification and
+traced back to FR-61.2's own endpoint, which it mirrors. See the
+addendum on FR-61.2 below.)
+**Date:** 2026-09-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
 Theme Engine & Storefront Rendering; Discovery & Merchandising; Listing
@@ -6068,6 +6069,15 @@ to exist)
   query code; neither Module 17's admin analytics nor Module 31's P&L
   engine has any bucketing logic today (P&L returns one aggregate total
   per requested range, not a series).
+  **v0.52 fix (founder batch B16b):** found during FR-8.19's live
+  verification and confirmed present here too — a caller-supplied `end`
+  is a bare date ("2026-09-03"), which parses as that day's UTC midnight,
+  and the `lte` filter against it silently excluded every order placed
+  later that same day. "To: today" showed none of today's sales. Fixed
+  by pushing `end` to the last instant of that UTC day
+  (`endOfUtcDay()`, now shared in `analytics.util.ts` rather than
+  duplicated per-controller, since FR-8.19's admin endpoint needs the
+  identical correction).
 - FR-61.3: **Repeat-customer rate.** Derived directly from the existing
   `Customer.ordersCount`/`totalSpent` columns (`count(ordersCount >= 2) /
   count(*)`, store-scoped) — no new schema, Module 33 already maintains

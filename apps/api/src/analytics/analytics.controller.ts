@@ -4,7 +4,7 @@ import { RequireStaffScope } from "../common/decorators/require-staff-scope.deco
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { StaffScopeGuard } from "../common/guards/staff-scope.guard";
 import { AnalyticsService } from "./analytics.service";
-import { SalesBucket } from "./analytics.util";
+import { endOfUtcDay, SalesBucket } from "./analytics.util";
 
 const VALID_BUCKETS: SalesBucket[] = ["day", "week", "month"];
 
@@ -43,7 +43,7 @@ export class AnalyticsController {
     const defaultStart = new Date(now);
     defaultStart.setUTCDate(defaultStart.getUTCDate() - 30);
     const startDate = start ? new Date(start) : defaultStart;
-    const endDate = end ? new Date(end) : now;
+    const endDate = end ? endOfUtcDay(new Date(end)) : now;
     if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       throw new BadRequestException("start/end must be valid dates.");
     }
