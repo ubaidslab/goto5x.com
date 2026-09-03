@@ -1,12 +1,15 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.53 (Build-phase amendment — FR-8.20, new; founder batch
-B17, "Support Center subdomain (support.uzeyn.com)," seller-only, per
-founder confirmation. Subdomain-routing architecture approved; the
-double-login friction it introduces is deliberately deferred, logged
-in FR-8.20's own text as a future-polish item (a shared parent-domain
-auth cookie), not silently accepted as permanent. Implementation
-proceeds.)
+**Version:** 0.54 (Build-phase amendment — FR-8.21, new; founder batch
+B18, "D-Studio repositioning (free tier + Rs.1,499/3mo pack)." Confirmed
+with the founder before writing: the existing GO/RUN/RISE/FLY per-item
+tier ladder (FR-7.23) is unchanged and is the "free tier" — the Pack is
+an orthogonal, temporary full-catalog unlock stacked on top of it, not
+a replacement of it. Reuses the existing seller-scoped
+`dstudio.tier_override_order` + `SettingsValue.expiresAt` time-limited-
+grant mechanism (D-Studio close-out, Module 53), now seller-purchasable
+via a purchase-request flow structurally modeled on Premium Motion
+Templates (FR-52.x). Implementation proceeds.)
 **Date:** 2026-09-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -3080,6 +3083,108 @@ can actually be enforced against.
     architectural approach is presented for confirmation before the
     routing infrastructure itself is built** — a genuinely new class of
     platform hostname, not a pattern this codebase has done before.
+- FR-8.21 (Module 100, new v0.54 — founder batch B18): **D-Studio
+  Pack — a seller-purchasable, time-boxed full-catalog unlock (Rs.
+  1,499 / 90 days), stacked orthogonally on top of the existing plan-
+  tier ladder, not a replacement of it.** Confirmed with the founder
+  before writing this, since "free tier + Rs.1,499/3mo pack" reads two
+  structurally different ways and the wrong one would mean rewriting
+  `section-catalog.ts`'s tier semantics platform-wide: the existing
+  GO/RUN/RISE/FLY per-item `tierFloor`/`maxVariantIndexByTier` ladder
+  (FR-7.23, Module 75 — the FR that actually turned D-Studio's tier
+  gating on) is **unchanged** and stays the permanent free floor every
+  seller already gets from their subscription plan. The Pack is a
+  **separate, temporary ceiling-raiser** on top — purchasable by any
+  seller regardless of GO/RUN/RISE/FLY plan tier, elevating them to the
+  full 22-section/14-preset catalog for its duration, then silently
+  falling back to whatever their real plan already provides. (D-Studio
+  itself has no route-level gate to begin with — every tier already
+  renders the fullscreen Studio shell; this FR only changes what
+  content is unlockable inside it.)
+  - **Reuses the exact time-limited-grant mechanism already built for
+    this** (D-Studio close-out, Module 53) rather than inventing a
+    second one: the `dstudio.tier_override_order` Settings Registry key
+    (seller-scoped, `-1` = no override) paired with `SettingsValue.
+    expiresAt`, resolved by the existing `getEffectiveTierOrder()` =
+    `max(realTierOrder, override)` that already feeds both what the
+    Studio UI renders and what `validateSections()` enforces server-
+    side — so UI and enforcement can never drift, exactly as today.
+    This FR's only change to that mechanism is *who* can trigger a
+    write to it: previously admin-only (Seller-360's "Grant D-Studio
+    access" control, unchanged, still available for goodwill/comp
+    grants), now also reachable through a seller-initiated purchase.
+  - **Deliberately grants RISE-equivalent (tier order 2), not FLY
+    (tier order 3).** RISE already contains the full 22-section/14-
+    preset catalog per FR-7.23's matrix — that *is* "the full catalog"
+    the Pack promises. FLY's `flyExclusiveVariant` premium layout
+    variants and its 30-day early-access window are a separate FLY-
+    subscription perk, not part of the standard catalog, and are
+    deliberately **not** granted by the Pack — granting them would
+    erase any reason to actually subscribe to FLY. A GO/RUN-tier
+    seller who buys the Pack gets everything a RISE-tier seller has
+    for free; a real FLY subscription remains the only way to get
+    FLY's own exclusives.
+  - **Purchase flow reuses the Premium Motion Templates precedent**
+    (FR-52.x, Module 77) structurally — pending request → manual
+    bank-transfer instructions via the existing `WalletService.
+    topUpInstructions()` (reused verbatim, not a second copy of that
+    copy) → optional `PlatformGatewayService.tryAutoVerify()` fast
+    path if the seller supplies a payment reference (Platform Merchant
+    Connection, dormant unless an admin has connected and activated a
+    real gateway — unchanged) → admin verify/reject queue, same shape
+    as `admin-template-purchases.controller.ts`. What differs is the
+    **grant step on verify**: instead of upserting a `TemplateEntitlement`
+    row (a permanent, theme-scoped grant — wrong shape for a time-
+    boxed, non-theme-scoped one), it calls `SettingsService.setValue(
+    "dstudio.tier_override_order", "seller", sellerId, 2, adminUserId,
+    expiresAt: verifiedAt + pack_duration_days)`.
+  - **New `DstudioPackPurchase` model**, mirroring
+    `TemplatePurchaseRequest`'s shape (`sellerId`, `amount`, `currency`,
+    `status`, `requestedAt`, `verifiedAt`, `verifiedBy`) minus
+    `themeId` — the Pack isn't theme-scoped, so reusing that model
+    directly would carry a meaningless foreign key. Scoped to the
+    seller (`/sellers/me/d-studio-pack-purchases`), not any one store,
+    matching `dstudio.tier_override_order`'s existing seller-level
+    scope — a seller with multiple stores gets the unlock across all
+    of them, same as an admin-granted comp already does today.
+  - **Price and duration are admin-configurable, not hardcoded** — two
+    new global-scope Settings Registry keys, `dstudio.pack_price`
+    (decimal, default `1499.00`) and `dstudio.pack_duration_days`
+    (number, default `90`) — matching this codebase's standing
+    discipline of never hardcoding a tunable business number (SLA
+    hours, thresholds, etc. all follow this same pattern already).
+  - **Eligibility guard:** a purchase request is rejected (400) if the
+    seller's *real* plan tier already provides tier order ≥ 2
+    (RISE/FLY) — there is no marginal benefit to sell them, and letting
+    the request through would mean charging a seller for something
+    that does nothing.
+  - **Renewal is a plain repeat purchase, not a subscription.** Each
+    verified Pack purchase sets `expiresAt` to `verifiedAt +
+    pack_duration_days` fresh — not additive/stacking with any
+    remaining time on a still-active Pack. A simple, learnable rule
+    for v1: a seller who wants to extend can buy again any time,
+    including before the current Pack expires, and the clock simply
+    resets. No auto-renewal/recurring billing is introduced by this
+    FR (disclosed, not silently expanded) — stacking and auto-renewal
+    are both left as possible future refinements if renewal-timing
+    complaints actually arise, not built pre-emptively.
+  - **On natural expiry, no lockout and no deletion.** The existing
+    lazy-expiry check already in `SettingsService.getValue()` (an
+    expired row is treated as absent and opportunistically deleted on
+    its next read — no new sweeper/cron needed) means
+    `getEffectiveTierOrder()` silently falls back to the seller's real
+    plan-tier floor. Any sections/animations/pages already built while
+    the Pack was active are **never deleted** — `validateSections()`'s
+    tier check only blocks *new* edits that would introduce content
+    above the seller's now-lower effective tier, the exact same code
+    path already exercised whenever an ordinary plan downgrade drops a
+    seller's tier today. No new logic needed for this — it already
+    works this way.
+  - **Explicitly out of scope for v1 (disclosed, not silently
+    expanded):** no refund mechanism for a Pack purchase (matching
+    Premium Motion Templates, which has none either); no stacking of
+    simultaneous Packs; no auto-renewal/subscription billing for the
+    Pack itself (see above).
 
 ### 5.6l Store-Wide Payment Model (new, v0.46 — Module 95, founder batch B12)
 A single, mutually-exclusive choice per store — **Prepaid / COD /
