@@ -126,6 +126,10 @@ pinned). No Docker required for this path.
     `app.localhost(:3000)` — override it if you run `next dev`/`next start`
     on a different port, or requests to your own hostname will 404 as an
     unresolvable storefront instead of showing the platform site.
+    `SUPPORT_CENTER_HOSTNAMES` (Module 99, `apps/web`) works the same way
+    for the Support Center subdomain (SRS FR-8.20) — checked before the
+    storefront fallback, routed to `apps/web/app/support-center` rather
+    than the dashboard/marketing route tree.
 
 **Important — `prisma migrate reset`:** this command drops and recreates the
 entire `public` schema, which wipes the schema-level grants
@@ -373,6 +377,7 @@ visitor out, which is the same intended blast radius as a session.
 | `TRAEFIK_DYNAMIC_CONFIG_DIR` | Any writable directory the API can write to and (in production) Traefik can read from - a shared Docker volume in `docker-compose.yml` |
 | `ACME_EMAIL` | A real email address - Let's Encrypt requires one for expiry/problem notices. Read only by the `traefik` service, not the app |
 | `PLATFORM_HOSTNAMES` (`apps/web`) | Comma-separated hostnames (with port, if non-default) that serve the platform's own site rather than a tenant storefront (Module 4). Not a secret - no default outside local dev needed since production always sets it to the platform's real domain(s) |
+| `SUPPORT_CENTER_HOSTNAMES` (`apps/web`) | Comma-separated hostnames for the Support Center subdomain (Module 99, SRS FR-8.20), checked before the storefront fallback. Not a secret - production sets it to the real support subdomain (e.g. `support.uzeyn.com`) |
 | `EXTERNAL_API_SECRET_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts each `external_api_clients` row's HMAC signing secret at rest (SRS §5.24/§6.5), same mechanism/key-management discipline as `DRIVE_TOKEN_ENCRYPTION_KEY`, kept as its own key |
 | `API_BASE_URL` (`apps/web`, its own `apps/web/.env.local` — see `apps/web/.env.example`) | The `apps/api` base URL this Next.js app calls for every live data fetch. `next.config.js` maps it into the client-visible `NEXT_PUBLIC_API_BASE_URL`. Not a secret |
 

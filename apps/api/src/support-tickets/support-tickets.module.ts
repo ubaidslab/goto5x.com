@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
+import { InvoicesModule } from "../invoices/invoices.module";
+import { MediaModule } from "../media/media.module";
 import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { SupportTicketsController } from "./support-tickets.controller";
@@ -10,7 +12,7 @@ import { SupportTicketSlaScheduler } from "./support-ticket-sla.scheduler";
 
 /** SRS §5.6k/FR-6.45 (Module 68) + FR-8.18 (Module 90) - built together since Module 68's SLA hours need a real ticket to enforce against. */
 @Module({
-  imports: [AdminModule, PlansModule, SettingsModule],
+  imports: [AdminModule, PlansModule, SettingsModule, InvoicesModule, MediaModule],
   controllers: [SupportTicketsController, AdminSupportTicketsController],
   providers: [SupportTicketsService, SupportTicketSlaService, SupportTicketSlaScheduler],
   exports: [SupportTicketsService, SupportTicketSlaService],

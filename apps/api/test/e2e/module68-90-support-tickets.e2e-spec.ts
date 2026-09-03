@@ -4,10 +4,13 @@ import request from "supertest";
 import { EmailService } from "../../src/notifications/email.service";
 import { SupportTicketSlaService } from "../../src/support-tickets/support-ticket-sla.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { startTestS3Server, TestS3Server } from "./s3-test-server";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
 const HOUR_MS = 60 * 60 * 1000;
+const S3_TEST_PORT = 4569;
+const BUCKET = "uzeyn-media-test";
 
 /**
  * SRS §5.6k (v0.41), FR-6.45 (Module 68) + FR-8.18 (Module 90) - support
@@ -19,8 +22,15 @@ const HOUR_MS = 60 * 60 * 1000;
 describe("Support SLA + minimal ticket system (e2e) - SRS §5.6k/§14.66 (Module 68/90, FR-6.45/FR-8.18)", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
+  let s3: TestS3Server;
 
   beforeAll(async () => {
+    // FR-8.20 (Module 99) - ticket creation now also generates a PDF
+    // receipt via ObjectStorageService.putObject(); without a fake S3
+    // server listening on MINIO_ENDPOINT that put fails (best-effort,
+    // caught) and receiptPdfUrl silently stays null, same pattern
+    // module57's own S3-touching e2e file already follows.
+    s3 = await startTestS3Server(S3_TEST_PORT, BUCKET);
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
@@ -31,6 +41,7 @@ describe("Support SLA + minimal ticket system (e2e) - SRS §5.6k/§14.66 (Module
   afterAll(async () => {
     await app.close();
     await superuser.$disconnect();
+    await s3.close();
   });
 
   afterEach(async () => {
@@ -113,6 +124,25 @@ describe("Support SLA + minimal ticket system (e2e) - SRS §5.6k/§14.66 (Module
 
     const auditRow = await superuser.adminAuditLog.findFirst({ where: { action: "support.ticket_resolved", targetId: ticketId } });
     expect(auditRow).not.toBeNull();
+  });
+
+  it("FR-8.20 (Module 99, founder batch B17): ticket creation generates a downloadable PDF receipt", async () => {
+    const seller = await signup("ticket-receipt@example.com");
+    const store = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${seller.token}`).send({ name: "Store", slug: "ticket-receipt-store" });
+    const storeId = store.body.id as string;
+
+    const create = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/support-tickets`)
+      .set("Authorization", `Bearer ${seller.token}`)
+      .send({ subject: "Need help", body: "Something is wrong." });
+    expect(create.status).toBe(201);
+    expect(create.body.receiptPdfUrl).toBeTruthy();
+
+    // Also present on a subsequent read, not just the create response.
+    const detail = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/support-tickets/${create.body.id}`)
+      .set("Authorization", `Bearer ${seller.token}`);
+    expect(detail.body.receiptPdfUrl).toBe(create.body.receiptPdfUrl);
   });
 
   it("FR-6.45: a FLY-tier ticket gets the founder-specified 4h SLA deadline, not GO's 48h", async () => {

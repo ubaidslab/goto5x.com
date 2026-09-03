@@ -1,9 +1,12 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { AuditLogService } from "../admin/audit-log.service";
+import { InvoicePdfService } from "../invoices/invoice-pdf.service";
+import { ObjectStorageService } from "../media/object-storage.service";
+import { renderSupportTicketReceiptHtml } from "./support-ticket-receipt-template";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -18,16 +21,20 @@ const HOUR_MS = 60 * 60 * 1000;
  */
 @Injectable()
 export class SupportTicketsService {
+  private readonly logger = new Logger(SupportTicketsService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
     private readonly subscriptions: SubscriptionsService,
     private readonly auditLog: AuditLogService,
+    private readonly invoicePdf: InvoicePdfService,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   async create(sellerId: string, storeId: string, userId: string, subject: string, body: string) {
-    return this.tenantPrisma.run(sellerId, async (tx) => {
+    const { store, ...ticket } = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
 
@@ -42,9 +49,47 @@ export class SupportTicketsService {
           slaDeadline: new Date(now.getTime() + slaHours * HOUR_MS),
           messages: { create: { storeId, authorType: "seller", authorId: userId, body } },
         },
-        include: { messages: { orderBy: { createdAt: "asc" } } },
+        include: { messages: { orderBy: { createdAt: "asc" } }, store: { select: { name: true } } },
       });
     });
+
+    // FR-8.20 (Module 99) - best-effort, same "must never block the
+    // triggering action" discipline as InvoicePdfService's other callers: a
+    // rendering failure leaves receiptPdfUrl unset rather than failing the
+    // ticket submission itself.
+    const receiptPdfUrl = await this.generateReceiptPdf(ticket, store.name);
+    if (!receiptPdfUrl) return ticket;
+
+    return this.tenantPrisma.run(sellerId, (tx) => tx.supportTicket.update({
+      where: { id: ticket.id },
+      data: { receiptPdfUrl },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+    }));
+  }
+
+  private async generateReceiptPdf(
+    ticket: { id: string; storeId: string; subject: string; createdAt: Date; slaDeadline: Date },
+    storeName: string,
+  ): Promise<string | null> {
+    const html = renderSupportTicketReceiptHtml({
+      storeName,
+      ticketId: ticket.id,
+      subject: ticket.subject,
+      createdAt: ticket.createdAt,
+      slaDeadline: ticket.slaDeadline,
+    });
+    const buffer = await this.invoicePdf.renderToBuffer(html);
+    if (!buffer) return null;
+    // Same "must never block the triggering action" discipline as
+    // InvoicePdfService's own generate() - a storage failure here must
+    // leave receiptPdfUrl unset, not fail the ticket submission itself.
+    try {
+      const key = `stores/${ticket.storeId}/support-tickets/${ticket.id}-receipt.pdf`;
+      return await this.objectStorage.putObject(key, buffer, "application/pdf");
+    } catch (err) {
+      this.logger.warn(`Support-ticket receipt upload failed for ticket ${ticket.id}: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   async listForStore(sellerId: string, storeId: string) {

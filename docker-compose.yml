@@ -102,6 +102,16 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.web.rule=Host(`app.localhost`)"
       - "traefik.http.services.web.loadbalancer.server.port=3000"
+      # SRS FR-8.20 (Module 99, founder batch B17) - support.uzeyn.com, the
+      # platform's first-ever second platform-owned subdomain. A second
+      # static router (not the dynamic per-seller-domain path Module 3
+      # generates for tenant custom domains), explicitly pointed at the
+      # SAME `web` service above rather than defining a second one -
+      # apps/web/middleware.ts's own SUPPORT_CENTER_HOSTNAMES check is what
+      # actually routes it to the /support-center pages, this just gets the
+      # request there.
+      - "traefik.http.routers.support-center.rule=Host(`support.localhost`)"
+      - "traefik.http.routers.support-center.service=web"
 
   traefik:
     image: traefik:v3.1

@@ -3509,6 +3509,12 @@ model SupportTicket {
   nearBreachNotifiedAt DateTime?    @map("near_breach_notified_at") @db.Timestamptz
   resolvedAt           DateTime?    @map("resolved_at") @db.Timestamptz
   createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  // FR-8.20 (Module 99) - a downloadable confirmation, generated best-effort
+  // at creation via the same Playwright HTML->PDF pipeline every other PDF
+  // in this codebase uses (InvoicePdfService.renderToBuffer) - never null
+  // by design, may be null if rendering failed, same "must never block the
+  // triggering action" discipline as Order.invoicePdfUrl.
+  receiptPdfUrl        String?      @map("receipt_pdf_url")
 
   store    Store           @relation(fields: [storeId], references: [id])
   messages TicketMessage[]

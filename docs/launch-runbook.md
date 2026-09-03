@@ -30,6 +30,10 @@ calls, real third-party services).
 - [ ] Point the platform's apex/`www` domain (or your chosen platform
       subdomain, e.g. `app.uzeyn.com` / `api.uzeyn.com` per
       `PLATFORM_HOSTNAMES`) at the VPS's IP with an A/AAAA record.
+- [ ] Also point the Support Center subdomain (e.g. `support.uzeyn.com`,
+      per `SUPPORT_CENTER_HOSTNAMES` — SRS FR-8.20, Module 99) at the same
+      IP, and add its static Traefik router rule (`docker-compose.yml`,
+      mirroring the `app`/`api` rules) before relying on it.
 - [ ] Confirm propagation (`dig +short <domain>` from an external network)
       before proceeding — Traefik's Let's Encrypt HTTP-01 challenge will
       fail silently-but-repeatedly if DNS isn't live yet.

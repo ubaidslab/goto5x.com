@@ -3026,10 +3026,13 @@ can actually be enforced against.
     `ContentPagesService`'s `slug`/`title`/`bodyHtml` is already a
     free-form, admin-writable, publicly-readable, versioned store (not
     hardcoded to the 5 legal/marketing pages it happens to hold today).
-    Articles are content pages under a `support-kb/*` slug prefix; the
-    Support Center lists them by that prefix and renders the same way
-    any other content page already does. No new content model, table,
-    or admin editor — the existing admin content-pages screen gains
+    Articles are content pages under a `support-kb-` slug prefix
+    (hyphenated, not `support-kb/` — `ContentPagesController`'s
+    `:slug` route param is a single path segment; a literal `/` inside
+    it would break routing, not just be a style choice) — the Support
+    Center lists them by that prefix and renders the same way any
+    other content page already does. No new content model, table, or
+    admin editor — the existing admin content-pages screen gains
     nothing new to build here beyond using this prefix convention.
     Starting article set (founder's own examples): connecting a payment
     gateway, adding staff, enabling D-Studio — real seller pain points,
