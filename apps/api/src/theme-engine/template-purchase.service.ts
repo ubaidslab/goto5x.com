@@ -45,20 +45,24 @@ export class TemplatePurchaseService {
       throw new BadRequestException("You already own this template.");
     }
 
-    const pending = await this.tenantPrisma.run(sellerId, (tx) =>
-      tx.templatePurchaseRequest.findFirst({ where: { sellerId, themeId, status: "pending" } }),
-    );
-    if (pending) throw new BadRequestException("You already have a pending purchase request for this template.");
-
     // Retry-storm guard - see PlatformGatewayService.claimSubmissionCooldown's
     // own comment; only applies when a reference is present (the only path
-    // that makes an outbound gateway call).
+    // that makes an outbound gateway call). Must run BEFORE the "already
+    // pending" check below: that check is itself a non-atomic
+    // check-then-create race, so two concurrent requests can both observe
+    // no pending row and both reach this point - claiming the atomic Redis
+    // cooldown first guarantees only one of them proceeds past this line.
     if (reference) {
       const allowed = await this.platformGateway.claimSubmissionCooldown(sellerId, `template_purchase:${themeId}`);
       if (!allowed) {
         throw new HttpException("Please wait a moment before resubmitting a payment reference.", HttpStatus.TOO_MANY_REQUESTS);
       }
     }
+
+    const pending = await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.templatePurchaseRequest.findFirst({ where: { sellerId, themeId, status: "pending" } }),
+    );
+    if (pending) throw new BadRequestException("You already have a pending purchase request for this template.");
 
     const amount = Number(theme.price);
     const currency = "PKR";

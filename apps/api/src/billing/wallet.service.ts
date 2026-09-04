@@ -313,22 +313,27 @@ export class WalletService {
    * cycle, not a block on the next one).
    */
   async requestPlanFeePayment(sellerId: string, currency: string, reference?: string) {
-    const existing = await this.prismaAdmin.walletTopUpRequest.findFirst({
-      where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "pending" },
-    });
-    if (existing) {
-      throw new BadRequestException("A plan-fee payment request is already pending for this account.");
-    }
-
     // Retry-storm guard - only applies to a real auto-verify attempt
     // (a reference present), which is the only path that makes an outbound
-    // gateway call; closes the race the check above alone can't (see
+    // gateway call. Must run BEFORE the "already pending" check below: that
+    // check is itself a non-atomic check-then-create race, so two
+    // concurrent requests can both observe no pending row and both reach
+    // this point - claiming the atomic Redis cooldown first guarantees only
+    // one of them proceeds past this line, closing the race the "already
+    // pending" check alone can't (see
     // PlatformGatewayService.claimSubmissionCooldown's own comment).
     if (reference) {
       const allowed = await this.platformGateway.claimSubmissionCooldown(sellerId, "plan_fee");
       if (!allowed) {
         throw new HttpException("Please wait a moment before resubmitting a payment reference.", HttpStatus.TOO_MANY_REQUESTS);
       }
+    }
+
+    const existing = await this.prismaAdmin.walletTopUpRequest.findFirst({
+      where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "pending" },
+    });
+    if (existing) {
+      throw new BadRequestException("A plan-fee payment request is already pending for this account.");
     }
 
     const preview = await this.getPlanFeePaymentPreview(sellerId, currency);

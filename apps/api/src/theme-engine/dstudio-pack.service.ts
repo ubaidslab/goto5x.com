@@ -45,20 +45,24 @@ export class DstudioPackService {
       throw new BadRequestException("Your plan already includes the full D-Studio catalog - the Pack has no effect for you.");
     }
 
-    const pending = await this.tenantPrisma.run(sellerId, (tx) =>
-      tx.dstudioPackPurchase.findFirst({ where: { sellerId, status: "pending" } }),
-    );
-    if (pending) throw new BadRequestException("You already have a pending D-Studio Pack purchase request.");
-
     // Retry-storm guard - same as TemplatePurchaseService's own use of this,
     // only applies when a reference is present (the only path that makes an
-    // outbound gateway call).
+    // outbound gateway call). Must run BEFORE the "already pending" check
+    // below: that check is itself a non-atomic check-then-create race, so
+    // two concurrent requests can both observe no pending row and both
+    // reach this point - claiming the atomic Redis cooldown first
+    // guarantees only one of them proceeds past this line.
     if (reference) {
       const allowed = await this.platformGateway.claimSubmissionCooldown(sellerId, "dstudio_pack_purchase");
       if (!allowed) {
         throw new HttpException("Please wait a moment before resubmitting a payment reference.", HttpStatus.TOO_MANY_REQUESTS);
       }
     }
+
+    const pending = await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.dstudioPackPurchase.findFirst({ where: { sellerId, status: "pending" } }),
+    );
+    if (pending) throw new BadRequestException("You already have a pending D-Studio Pack purchase request.");
 
     const amount = await this.settings.resolve<number>("dstudio.pack_price");
     const currency = "PKR";
