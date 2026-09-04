@@ -239,6 +239,31 @@ Work through this in order — earlier steps stop the bleeding, later steps clea
       database — `pg_dump` output that was never restored is unverified.
       `createdb uzeyn_restore_test && gunzip -c backup-*.sql.gz | psql -d
       uzeyn_restore_test`, then spot-check a few rows exist.
+- [ ] **Always pass `psql -v ON_ERROR_STOP=1` for the restore, never a bare
+      `psql -f`/piped restore.** Milestone A's real, destructive drop-and-
+      restore drill (Sept 2026 - first time this was ever actually tested,
+      not just documented) ran the restore without this flag, and it bit:
+      5 `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` statements failed
+      silently partway through the restore (transient statement-ordering
+      issue, not a data problem) and `psql` just kept going - the restore
+      "succeeded," every row count matched, the app booted and worked fine
+      end-to-end, and it was still missing 5 FK constraints
+      (`admin_audit_logs_admin_user_id_fkey`, `milestone_events_store_id_fkey`,
+      `subscription_abuse_flags_seller_id_fkey`,
+      `user_security_events_user_id_fkey`, `wallet_balances_seller_id_fkey`).
+      This stayed invisible for hours - `prisma migrate status` still
+      reported "schema is up to date" (it only checks the
+      `_prisma_migrations` ledger, not live constraints) - until an
+      unrelated e2e run happened to exercise one of the now-unenforced
+      relations and hit orphaned rows. `ON_ERROR_STOP=1` turns that class of
+      failure into a loud, immediate restore error instead of a silent gap
+      discovered days or weeks later. If you ever restore without it,
+      diff constraints afterward: compare
+      `grep -rhoE '"[a-z0-9_]+_fkey"' prisma/migrations/*/migration.sql | sort -u`
+      against `psql -t -A -c "SELECT conname FROM pg_constraint WHERE
+      contype='f' ORDER BY 1;"` and re-apply (`ALTER TABLE ... ADD
+      CONSTRAINT ...`, exact definition from the migration file) any name
+      present in the first list but missing from the second.
 - [ ] Confirm MinIO's `minio_data` volume is included in your VPS
       provider's disk-snapshot schedule (or add MinIO to the same backup
       script via `mc mirror`) — product media lives there, not in
@@ -313,10 +338,46 @@ real running production stack from step 4, not local dev.
       still drowned in `http_429`s within seconds and never produced real
       latency data. Revert the env var and restart `api` again once the
       run (steps below) is done.
+- [ ] Also raise (via the Settings Registry, `PUT /admin/settings/values`
+      — no restart needed, unlike the throttle env var above) two
+      per-IP-keyed `RateLimitService` limits for the duration of the run,
+      for the exact same reason: `auth.signup_rate_limit_per_hour`
+      (default 10/hour) and `orders.cart_create_rate_limit_per_hour`
+      (default 60/hour) — found during Milestone A's real 25-seller/
+      concurrency-20 run, where seeding stalled at exactly 10 sellers and
+      a later traffic phase's storefront add-to-cart calls drowned in
+      `http_429` past the 60th, both because every simulated seller/buyer
+      shares this one load-generator's IP. Revert both to their real
+      defaults afterward, same as the throttle env var — real distributed
+      signups/carts never hit these at production traffic patterns. If a
+      simulation run was ever interrupted mid-flight, also clear the
+      stale Redis counters before the next attempt: `redis-cli --scan
+      --pattern "ratelimit:*" | xargs -r redis-cli DEL` (safe — these
+      keys carry no state worth preserving).
+- [ ] If a media/product-image upload step is part of your seed run,
+      confirm MinIO is actually reachable at `MINIO_ENDPOINT` first — a
+      seed run against a box where MinIO isn't up yet fails every
+      `dashboard:upload-media` call with `ECONNREFUSED` (logged, not
+      fatal to the seed's own completion, but every affected product
+      ends up without its media asset). Not a concern on a real
+      docker-compose deployment (MinIO is a `depends_on: condition:
+      service_healthy` dependency of `api` there), only relevant if
+      running the simulation against a bare `pnpm start:dev` instance
+      with no MinIO container.
 - [ ] Seed: `pnpm run simulate seed --count 100 --api-base-url
       https://<platform-api-domain>` (adjust `--count`/`--concurrency` to
       match how much load you want to generate; 100 is the default,
       matched to the founder's own real-hardware test plan).
+- [ ] Optional: `pnpm run simulate lifecycle --run <runId>` — progresses
+      a realistic fraction of `seed`'s confirmed orders through
+      shipped/delivered (tracking upload + item-delivery), and exercises
+      a subscription plan-fee payment and a D-Studio Pack purchase for a
+      fraction of sellers (both via the same manual/admin-verify path
+      `seed`'s own wallet top-up already uses). `seed` alone only ever
+      reaches "confirmed" — run this first if you want the traffic/report
+      phase below (or a subsequent backup/restore drill) to reflect the
+      platform's full order lifecycle and money-flow surface, not just
+      its first step.
 - [ ] Run traffic: `pnpm run simulate run --run <runId> --duration 300
       --api-base-url https://<platform-api-domain>` (seconds; raise this
       for a longer soak).

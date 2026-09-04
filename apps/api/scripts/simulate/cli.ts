@@ -7,6 +7,7 @@ import { assertNotProduction } from "./safety";
  *
  * Usage:
  *   ts-node scripts/simulate/cli.ts seed [--count 100] [--concurrency 10]
+ *   ts-node scripts/simulate/cli.ts lifecycle --run <runId>
  *   ts-node scripts/simulate/cli.ts run --run <runId> [--duration 300] [--concurrency 20]
  *   ts-node scripts/simulate/cli.ts report --run <runId>
  *   ts-node scripts/simulate/cli.ts teardown --run <runId>
@@ -25,6 +26,8 @@ async function main() {
   switch (command) {
     case "seed":
       return (await import("./seed")).main();
+    case "lifecycle":
+      return (await import("./lifecycle")).main();
     case "run":
       return (await import("./traffic")).main();
     case "report":
@@ -37,10 +40,11 @@ async function main() {
           `Unknown command: "${command ?? ""}"`,
           "",
           "Usage:",
-          "  seed     [--count 100] [--concurrency 10]",
-          "  run      --run <runId> [--duration 300] [--concurrency 20]",
-          "  report   --run <runId>",
-          "  teardown --run <runId>",
+          "  seed      [--count 100] [--concurrency 10]",
+          "  lifecycle --run <runId>",
+          "  run       --run <runId> [--duration 300] [--concurrency 20]",
+          "  report    --run <runId>",
+          "  teardown  --run <runId>",
         ].join("\n"),
       );
       process.exit(1);

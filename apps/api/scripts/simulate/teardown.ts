@@ -64,12 +64,26 @@ async function teardown(runId: string): Promise<void> {
       await tx.$executeRawUnsafe(`DELETE FROM import_jobs WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM listing_reviews WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM store_supplier_links WHERE store_id = ANY($1::uuid[])`, storeIds);
+      // Milestone A load/soak run (Sept 2026) - found the hard way: this was
+      // missing, so `sellers`/`stores` below got deleted (replica-mode
+      // bypasses the RESTRICT constraint) while a milestone_events row kept
+      // pointing at the now-gone store, breaking any admin/analytics read
+      // that assumes the relation always resolves.
+      await tx.$executeRawUnsafe(`DELETE FROM milestone_events WHERE store_id = ANY($1::uuid[])`, storeIds);
     }
 
     if (sellerIds.length > 0) {
       await tx.$executeRawUnsafe(`DELETE FROM ledger_entries WHERE seller_id = ANY($1::uuid[])`, sellerIds);
       await tx.$executeRawUnsafe(`DELETE FROM seller_invoices WHERE seller_id = ANY($1::uuid[])`, sellerIds);
       await tx.$executeRawUnsafe(`DELETE FROM wallet_topup_requests WHERE owner_type = 'seller' AND owner_id = ANY($1::uuid[])`, sellerIds);
+      // Same Milestone A finding as milestone_events above, for the two
+      // other seller-scoped tables it turned up: wallet_balances (the
+      // WalletService balance cache) and subscription_abuse_flags (Module
+      // 71's durable abuse-signal log) - both reference `sellers` and were
+      // never in this list, so torn-down runs left orphaned rows that later
+      // crashed the real admin trust-safety/wallet reads that join against them.
+      await tx.$executeRawUnsafe(`DELETE FROM wallet_balances WHERE seller_id = ANY($1::uuid[])`, sellerIds);
+      await tx.$executeRawUnsafe(`DELETE FROM subscription_abuse_flags WHERE seller_id = ANY($1::uuid[])`, sellerIds);
       await tx.$executeRawUnsafe(`DELETE FROM subscriptions WHERE seller_id = ANY($1::uuid[])`, sellerIds);
       await tx.$executeRawUnsafe(`DELETE FROM google_drive_connections WHERE seller_id = ANY($1::uuid[])`, sellerIds);
       // seller_agreement_versions is NOT seller-scoped - it's the global,
