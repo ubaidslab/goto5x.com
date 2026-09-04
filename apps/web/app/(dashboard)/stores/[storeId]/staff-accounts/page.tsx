@@ -18,7 +18,9 @@ import { planTierSubtitle } from "@/lib/plan-tier-copy";
 // SRS §5.52/FR-52.7 (Module 97) - grew from 5 to 9 scopes.
 type StaffScope = "orders" | "catalog" | "discounts" | "customers" | "design" | "analytics" | "marketing" | "reviews" | "suppliers";
 type StaffPermission = "read" | "write";
-type StaffAccountStatus = "active" | "revoked";
+// FR-52.14 (Module 101, founder batch B14) - suspended/blocked are
+// admin-initiated states the owner can see but not cause or reverse.
+type StaffAccountStatus = "active" | "revoked" | "suspended" | "blocked";
 
 interface ScopePermission {
   scope: StaffScope;
@@ -35,7 +37,16 @@ interface StaffAccount {
   expiresAt: string | null;
   deviceRestrictionEnabled: boolean;
   scopePermissions: ScopePermission[];
+  // FR-52.14 - admin-set, read-only from the owner's side.
+  suspendedUntil: string | null;
 }
+
+const STATUS_TONE: Record<StaffAccountStatus, "success" | "warning" | "danger"> = {
+  active: "success",
+  suspended: "warning",
+  blocked: "danger",
+  revoked: "danger",
+};
 
 interface RoleTemplate {
   key: string;
@@ -342,9 +353,17 @@ export default function StaffAccountsPage() {
                       {account.expiresAt && (
                         <p className="mt-1.5 text-xs text-ink-muted">Access expires {new Date(account.expiresAt).toLocaleDateString()}</p>
                       )}
+                      {account.status === "suspended" && account.suspendedUntil && (
+                        <p className="mt-1.5 text-xs text-ink-muted">
+                          Suspended by platform admin until {new Date(account.suspendedUntil).toLocaleDateString()}
+                        </p>
+                      )}
+                      {account.status === "blocked" && (
+                        <p className="mt-1.5 text-xs text-ink-muted">Blocked by platform admin - contact support for details.</p>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
-                      <Badge tone={account.status === "active" ? "success" : "danger"}>{account.status}</Badge>
+                      <Badge tone={STATUS_TONE[account.status]}>{account.status}</Badge>
                       {account.status === "active" && (
                         <Button variant="secondary" size="sm" onClick={() => handleRevoke(account.id)}>
                           Revoke

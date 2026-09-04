@@ -2664,6 +2664,12 @@ enum StaffPermission {
 enum StaffAccountStatus {
   active
   revoked
+  // FR-52.14 (Module 101, founder batch B14) - admin-initiated, distinct
+  // from owner-initiated `revoked`: suspended is time-boxed and auto-
+  // lifts (see StaffAccount.suspendedUntil), blocked is permanent until
+  // an admin explicitly reverses it.
+  suspended
+  blocked
 }
 
 // Module 35 (SRS §5.52/FR-52.1-52.6) - pulls the previously Phase-3-deferred
@@ -2691,6 +2697,22 @@ model StaffAccount {
   // Module 97 (SRS §5.52/FR-52.12) - RISE+ only, off by default; enforced
   // at StaffAuthService.login() against StaffDevice rows below.
   deviceRestrictionEnabled Boolean @default(false) @map("device_restriction_enabled")
+  // Module 101 (SRS §5.52/FR-52.14, founder batch B14) - admin-initiated,
+  // reversible lifecycle actions, distinct from expiresAt/revokedAt above
+  // (owner-facing, terminal). suspendedUntil is required to enter
+  // `suspended`; a reversing sweep (StaffAccountsService.
+  // runSuspensionLiftSweep(), the first of its kind in this codebase)
+  // flips back to `active` once it passes. blockedAt has no matching
+  // "until" - permanent until an admin explicitly reactivates.
+  suspendedAt    DateTime? @map("suspended_at") @db.Timestamptz
+  suspendedUntil DateTime? @map("suspended_until") @db.Timestamptz
+  blockedAt      DateTime? @map("blocked_at") @db.Timestamptz
+  // Module 101 (SRS §5.52/FR-52.15, founder batch B14) - "reset-not-
+  // reveal": mirrors User.passwordResetTokenHash/passwordResetExpiresAt
+  // exactly (a hash, never the secret itself). Set only by an admin-
+  // triggered reset; cleared on successful single-use completion.
+  passwordResetTokenHash String?   @map("password_reset_token_hash")
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at") @db.Timestamptz
 
   seller           Seller                 @relation(fields: [sellerId], references: [id])
   scopePermissions StaffScopePermission[]

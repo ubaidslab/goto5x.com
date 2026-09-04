@@ -1,6 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
+import { AuditLogService } from "../admin/audit-log.service";
+import { generateToken } from "../auth/token.util";
 import { EventsService } from "../events/events.service";
+import { EmailService } from "../notifications/email.service";
+import { ConfigService } from "@nestjs/config";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
@@ -22,6 +26,7 @@ const SAFE_SELECT = {
   revokedAt: true,
   expiresAt: true,
   deviceRestrictionEnabled: true,
+  suspendedUntil: true,
   scopePermissions: { select: { scope: true, permission: true } },
 } as const;
 
@@ -51,6 +56,9 @@ export class StaffAccountsService {
     private readonly subscriptions: SubscriptionsService,
     private readonly settings: SettingsService,
     private readonly events: EventsService,
+    private readonly auditLog: AuditLogService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   getRoleTemplates() {
@@ -154,6 +162,13 @@ export class StaffAccountsService {
   async revoke(sellerId: string, id: string) {
     const staff = await this.prismaAdmin.staffAccount.findUnique({ where: { id } });
     if (!staff || staff.sellerId !== sellerId) throw new NotFoundException("Staff account not found.");
+    // FR-52.14 - an owner can no longer silently overwrite an admin's
+    // suspend/block by revoking over it; only a currently-active account
+    // can be revoked, same as before this FR for the only case that
+    // mattered (revoking twice was always a harmless no-op).
+    if (staff.status !== "active") {
+      throw new BadRequestException(`This account is already ${staff.status} - nothing to revoke.`);
+    }
 
     const updated = await this.prismaAdmin.staffAccount.update({
       where: { id },
@@ -265,5 +280,123 @@ export class StaffAccountsService {
       .filter((e): e is NonNullable<typeof e> => e !== null);
 
     return summarizeStaffActivity(parsed, staffNames);
+  }
+
+  // --- FR-52.14/FR-52.15 (Module 101, founder batch B14) - admin-only lifecycle actions ---
+
+  private async findForAdmin(sellerId: string, id: string) {
+    const staff = await this.prismaAdmin.staffAccount.findUnique({ where: { id } });
+    if (!staff || staff.sellerId !== sellerId) throw new NotFoundException("Staff account not found.");
+    return staff;
+  }
+
+  /** Admin visibility into a seller's staff roster - no such route existed before this FR. */
+  listForAdmin(sellerId: string) {
+    return this.prismaAdmin.staffAccount.findMany({ where: { sellerId }, select: SAFE_SELECT, orderBy: { createdAt: "desc" } });
+  }
+
+  async suspend(adminUserId: string, sellerId: string, id: string, until: Date, reason: string) {
+    const staff = await this.findForAdmin(sellerId, id);
+    if (staff.status !== "active") throw new BadRequestException(`This account is ${staff.status}, not active - cannot suspend.`);
+    if (until.getTime() <= Date.now()) throw new BadRequestException("`until` must be in the future.");
+
+    const updated = await this.prismaAdmin.staffAccount.update({
+      where: { id },
+      data: { status: "suspended", suspendedAt: new Date(), suspendedUntil: until },
+      select: SAFE_SELECT,
+    });
+    await this.auditLog.record({
+      adminUserId,
+      action: "staff_account.suspended",
+      targetType: "staff_account",
+      targetId: id,
+      beforeValue: { status: "active" },
+      afterValue: { status: "suspended", until: until.toISOString(), reason },
+    });
+    return updated;
+  }
+
+  async block(adminUserId: string, sellerId: string, id: string, reason: string) {
+    const staff = await this.findForAdmin(sellerId, id);
+    if (staff.status !== "active") throw new BadRequestException(`This account is ${staff.status}, not active - cannot block.`);
+
+    const updated = await this.prismaAdmin.staffAccount.update({
+      where: { id },
+      data: { status: "blocked", blockedAt: new Date() },
+      select: SAFE_SELECT,
+    });
+    await this.auditLog.record({
+      adminUserId,
+      action: "staff_account.blocked",
+      targetType: "staff_account",
+      targetId: id,
+      beforeValue: { status: "active" },
+      afterValue: { status: "blocked", reason },
+    });
+    return updated;
+  }
+
+  /** Reverses either a suspend or a block early - the same lifecycle action either way. */
+  async reactivate(adminUserId: string, sellerId: string, id: string) {
+    const staff = await this.findForAdmin(sellerId, id);
+    if (staff.status !== "suspended" && staff.status !== "blocked") {
+      throw new BadRequestException(`This account is ${staff.status} - only a suspended or blocked account can be reactivated.`);
+    }
+
+    const updated = await this.prismaAdmin.staffAccount.update({
+      where: { id },
+      data: { status: "active", suspendedUntil: null },
+      select: SAFE_SELECT,
+    });
+    await this.auditLog.record({
+      adminUserId,
+      action: "staff_account.reactivated",
+      targetType: "staff_account",
+      targetId: id,
+      beforeValue: { status: staff.status },
+      afterValue: { status: "active" },
+    });
+    return updated;
+  }
+
+  /**
+   * FR-52.15 - "reset-not-reveal": this method's return value never
+   * contains the new password or the raw token - only the staff
+   * member's own email ever receives it, via a one-time link. Mirrors
+   * auth.service.ts's requestPasswordReset() token-hash discipline.
+   */
+  async triggerPasswordReset(adminUserId: string, sellerId: string, id: string) {
+    const staff = await this.findForAdmin(sellerId, id);
+    const ttlMinutes = await this.settings.resolve<number>("auth.password_reset_token_ttl_minutes");
+    const { token, tokenHash } = generateToken();
+    await this.prismaAdmin.staffAccount.update({
+      where: { id },
+      data: { passwordResetTokenHash: tokenHash, passwordResetExpiresAt: new Date(Date.now() + ttlMinutes * 60_000) },
+    });
+    const resetUrl = `${this.config.getOrThrow<string>("APP_BASE_URL")}/staff/reset-password?token=${token}`;
+    await this.email.sendStaffPasswordResetEmail(staff.email, resetUrl);
+    await this.auditLog.record({
+      adminUserId,
+      action: "staff_account.password_reset_triggered",
+      targetType: "staff_account",
+      targetId: id,
+      beforeValue: {},
+      afterValue: {},
+    });
+    return { triggered: true };
+  }
+
+  /**
+   * FR-52.14 - the first REVERSING sweep in this codebase: every prior
+   * sweep (this file's own runExpirySweep() included) only ever moves a
+   * row toward a terminal state. Run on the same existing scheduler tick
+   * as runExpirySweep() - see worker.main.ts.
+   */
+  async runSuspensionLiftSweep(): Promise<{ lifted: number }> {
+    const result = await this.prismaAdmin.staffAccount.updateMany({
+      where: { status: "suspended", suspendedUntil: { lte: new Date() } },
+      data: { status: "active", suspendedUntil: null },
+    });
+    return { lifted: result.count };
   }
 }

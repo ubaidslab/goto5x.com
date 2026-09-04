@@ -222,6 +222,39 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
     expect(entitlement?.revokedAt).toBeNull();
   });
 
+  it("active connection + verified response: a D-Studio Pack purchase auto-verifies and grants full-catalog access instantly (FR-8.21)", async () => {
+    const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-dpack@example.com");
+    await request(app.getHttpServer())
+      .post("/admin/platform-gateway")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ provider: "easypaisa", apiKey: "real-api-key" });
+    await request(app.getHttpServer())
+      .patch("/admin/platform-gateway/easypaisa/active")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: true });
+    fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-DPACK-1" });
+
+    const { token, sellerId } = await signupLoginSeller("platform-gw-dpack@example.com", "platform-gw-dpack-store");
+
+    const before = new Date();
+    const res = await request(app.getHttpServer())
+      .post("/sellers/me/dstudio-pack-purchases")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reference: "EP-TXN-DPACK-1" });
+    expect(res.status).toBe(201);
+    expect(res.body.autoVerified).toBe(true);
+    expect(res.body.request.status).toBe("verified");
+
+    // The real grant - not just a status flip on the request row - applied
+    // instantly, no admin step: RISE-equivalent (2), time-limited.
+    const grantRow = await superuser.settingsValue.findFirst({
+      where: { definitionKey: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId },
+    });
+    expect(grantRow?.value).toBe(2);
+    expect(grantRow?.expiresAt).not.toBeNull();
+    expect(grantRow!.expiresAt!.getTime()).toBeGreaterThan(before.getTime());
+  });
+
   it("admin can deactivate a connection (back to dormant) and remove it entirely", async () => {
     const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-5@example.com");
     await request(app.getHttpServer())
@@ -332,6 +365,54 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
       const afterResolve = await superuser.platformGatewayFlaggedVerification.findUniqueOrThrow({ where: { id: flags[0].id } });
       expect(afterResolve.resolved).toBe(true);
       expect(afterResolve.resolvedByAdminId).not.toBeNull();
+    });
+
+    it("amount mismatch on a D-Studio Pack purchase: flagged, never auto-activated, falls to the admin queue like every other ambiguous signal (FR-8.21)", async () => {
+      const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-dpack-mismatch@example.com");
+      await request(app.getHttpServer())
+        .post("/admin/platform-gateway")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ provider: "easypaisa", apiKey: "real-api-key" });
+      await request(app.getHttpServer())
+        .patch("/admin/platform-gateway/easypaisa/active")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ isActive: true });
+      // Gateway reports the transaction as verified, but for a materially different amount than the Rs. 1,499 Pack price.
+      fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-DPACK-MISMATCH", amount: 1 });
+
+      const { token, sellerId } = await signupLoginSeller("platform-gw-dpack-mismatch@example.com", "platform-gw-dpack-mismatch-store");
+      const res = await request(app.getHttpServer())
+        .post("/sellers/me/dstudio-pack-purchases")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ reference: "EP-TXN-DPACK-MISMATCH" });
+      expect(res.status).toBe(201);
+      expect(res.body.autoVerified).toBe(false);
+      expect(res.body.request.status).toBe("pending");
+
+      // No grant of any kind - an ambiguous signal never auto-activates,
+      // the same guarantee already proven for plan-fee payments and
+      // Premium Motion Templates above.
+      const grantRow = await superuser.settingsValue.findFirst({
+        where: { definitionKey: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId },
+      });
+      expect(grantRow).toBeNull();
+
+      const flags = await superuser.platformGatewayFlaggedVerification.findMany({ where: { reason: "amount_mismatch", orderRef: res.body.request.id } });
+      expect(flags).toHaveLength(1);
+      expect(flags[0].resolved).toBe(false);
+
+      // The request sits in the same real admin queue as every manual
+      // request - verifying it there grants the Pack exactly as usual.
+      const pending = await request(app.getHttpServer()).get("/admin/dstudio-pack-purchases").set("Authorization", `Bearer ${adminToken}`);
+      expect(pending.body.map((r: { id: string }) => r.id)).toContain(res.body.request.id);
+      const verify = await request(app.getHttpServer())
+        .post(`/admin/dstudio-pack-purchases/${res.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(verify.status).toBe(201);
+      const grantedAfterAdmin = await superuser.settingsValue.findFirst({
+        where: { definitionKey: "dstudio.tier_override_order", scopeType: "seller", scopeId: sellerId },
+      });
+      expect(grantedAfterAdmin?.value).toBe(2);
     });
 
     it("timeout/failure-safe fallback: a thrown gateway error never surfaces as a 500 - falls back to the unchanged manual flow", async () => {

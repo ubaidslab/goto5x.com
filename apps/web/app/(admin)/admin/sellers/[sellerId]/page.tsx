@@ -54,6 +54,22 @@ const lifecycleTone: Record<LifecycleStatus, "success" | "warning" | "danger" | 
 // facing surfaces (this is an internal admin control, not a seller surface).
 const TIER_LABELS = ["GO", "RUN", "RISE", "FLY"] as const;
 
+// FR-52.14/FR-52.15 (Module 101, founder batch B14)
+type StaffAccountAdminStatus = "active" | "suspended" | "blocked" | "revoked";
+interface StaffAccountAdminRow {
+  id: string;
+  email: string;
+  name: string | null;
+  status: StaffAccountAdminStatus;
+  suspendedUntil: string | null;
+}
+const STAFF_STATUS_TONE: Record<StaffAccountAdminStatus, "success" | "warning" | "danger" | "neutral"> = {
+  active: "success",
+  suspended: "warning",
+  blocked: "danger",
+  revoked: "neutral",
+};
+
 /**
  * Phase 6c (Admin Terminal re-skin) - Seller-360 (Module 25's per-seller
  * cross-linked view), restyled onto DashCard sections. Every control
@@ -87,6 +103,12 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   const [dstudioGrantDays, setDstudioGrantDays] = useState("14");
   const [dstudioGrantError, setDstudioGrantError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  // FR-52.14/FR-52.15 (Module 101, founder batch B14)
+  const [staffAccounts, setStaffAccounts] = useState<StaffAccountAdminRow[] | null>(null);
+  const [staffActionError, setStaffActionError] = useState<string | null>(null);
+  const [staffActionPanel, setStaffActionPanel] = useState<{ id: string; type: "suspend" | "block" } | null>(null);
+  const [staffSuspendDays, setStaffSuspendDays] = useState("7");
+  const [staffActionReason, setStaffActionReason] = useState("");
 
   function load() {
     adminApi
@@ -119,6 +141,114 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   }
 
   useEffect(loadDstudioGrant, [params.sellerId]);
+
+  /** FR-52.14/FR-52.15 - admin visibility + lifecycle actions on this seller's staff roster (no such route existed before this FR). */
+  function loadStaffAccounts() {
+    adminApi
+      .get<StaffAccountAdminRow[]>(`/admin/sellers/${params.sellerId}/staff-accounts`)
+      .then(setStaffAccounts)
+      .catch(() => setStaffAccounts([]));
+  }
+
+  useEffect(loadStaffAccounts, [params.sellerId]);
+
+  async function suspendStaff(id: string, email: string) {
+    setStaffActionError(null);
+    const days = Number(staffSuspendDays);
+    if (!days || days <= 0) {
+      setStaffActionError("Duration must be a positive number of days.");
+      return;
+    }
+    if (!staffActionReason.trim()) {
+      setStaffActionError("A reason is required.");
+      return;
+    }
+    const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const ok = await confirm({
+      title: `Suspend ${email} for ${days} day(s)?`,
+      description: "They cannot log in until this lifts (automatically) or an admin reactivates it early.",
+      changes: [{ label: "Status", from: "active", to: `suspended until ${new Date(until).toLocaleString()}` }],
+      confirmLabel: "Suspend",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setPendingAction(`suspend-${id}`);
+    try {
+      await adminApi.post(`/admin/sellers/${params.sellerId}/staff-accounts/${id}/suspend`, { until, reason: staffActionReason });
+      setStaffActionPanel(null);
+      setStaffActionReason("");
+      loadStaffAccounts();
+    } catch (err) {
+      setStaffActionError(err instanceof AdminApiError ? err.message : "Couldn't suspend that staff account.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function blockStaff(id: string, email: string) {
+    setStaffActionError(null);
+    if (!staffActionReason.trim()) {
+      setStaffActionError("A reason is required.");
+      return;
+    }
+    const ok = await confirm({
+      title: `Permanently block ${email}?`,
+      description: "They cannot log in until an admin explicitly reactivates this account. This does not auto-expire.",
+      changes: [{ label: "Status", from: "active", to: "blocked" }],
+      confirmLabel: "Block",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setPendingAction(`block-${id}`);
+    try {
+      await adminApi.post(`/admin/sellers/${params.sellerId}/staff-accounts/${id}/block`, { reason: staffActionReason });
+      setStaffActionPanel(null);
+      setStaffActionReason("");
+      loadStaffAccounts();
+    } catch (err) {
+      setStaffActionError(err instanceof AdminApiError ? err.message : "Couldn't block that staff account.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function reactivateStaff(id: string, email: string, from: StaffAccountAdminStatus) {
+    setStaffActionError(null);
+    const ok = await confirm({
+      title: `Reactivate ${email}?`,
+      description: "Restores normal login immediately.",
+      changes: [{ label: "Status", from, to: "active" }],
+      confirmLabel: "Reactivate",
+    });
+    if (!ok) return;
+    setPendingAction(`reactivate-${id}`);
+    try {
+      await adminApi.post(`/admin/sellers/${params.sellerId}/staff-accounts/${id}/reactivate`, {});
+      loadStaffAccounts();
+    } catch (err) {
+      setStaffActionError(err instanceof AdminApiError ? err.message : "Couldn't reactivate that staff account.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function resetStaffPassword(id: string, email: string) {
+    setStaffActionError(null);
+    const ok = await confirm({
+      title: `Reset ${email}'s password?`,
+      description: "Emails a one-time reset link to their own registered address. You will never see or set the new password yourself.",
+      confirmLabel: "Send reset link",
+    });
+    if (!ok) return;
+    setPendingAction(`reset-${id}`);
+    try {
+      await adminApi.post(`/admin/sellers/${params.sellerId}/staff-accounts/${id}/reset-password`, {});
+    } catch (err) {
+      setStaffActionError(err instanceof AdminApiError ? err.message : "Couldn't trigger a password reset for that staff account.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
 
   async function grantDStudioAccess() {
     setDstudioGrantError(null);
@@ -637,6 +767,94 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
             Grant access
           </Button>
         </div>
+      </DashCard>
+
+      <DashCard>
+        <DashCardHeader
+          title="Staff accounts"
+          description="FR-52.14/FR-52.15 - suspend (time-boxed, auto-lifts) or permanently block a staff account, or trigger a reset-not-reveal password reset. Distinct from the seller's own device/expiry controls - these are platform-admin actions."
+        />
+        {staffActionError && <Alert tone="danger">{staffActionError}</Alert>}
+        {!staffAccounts ? (
+          <p className="text-sm text-ink-muted">Loading…</p>
+        ) : staffAccounts.length === 0 ? (
+          <p className="text-sm text-ink-muted">This seller has no staff accounts.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {staffAccounts.map((s) => (
+              <div key={s.id} className="py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-ink">{s.name || s.email}</p>
+                    <p className="text-xs text-ink-muted">{s.email}</p>
+                    {s.status === "suspended" && s.suspendedUntil && (
+                      <p className="text-xs text-ink-muted">Until {new Date(s.suspendedUntil).toLocaleString()}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={STAFF_STATUS_TONE[s.status]}>{s.status}</Badge>
+                    {s.status === "active" && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setStaffActionPanel(staffActionPanel?.id === s.id && staffActionPanel.type === "suspend" ? null : { id: s.id, type: "suspend" })}
+                        >
+                          Suspend
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setStaffActionPanel(staffActionPanel?.id === s.id && staffActionPanel.type === "block" ? null : { id: s.id, type: "block" })}
+                        >
+                          Block
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => resetStaffPassword(s.id, s.email)} loading={pendingAction === `reset-${s.id}`} disabled={pendingAction !== null && pendingAction !== `reset-${s.id}`}>
+                          Reset password
+                        </Button>
+                      </>
+                    )}
+                    {(s.status === "suspended" || s.status === "blocked") && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => reactivateStaff(s.id, s.email, s.status)}
+                        loading={pendingAction === `reactivate-${s.id}`}
+                        disabled={pendingAction !== null && pendingAction !== `reactivate-${s.id}`}
+                      >
+                        Reactivate
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {staffActionPanel?.id === s.id && (
+                  <div className="mt-2 flex flex-wrap items-end gap-3 rounded-md bg-canvas p-3">
+                    {staffActionPanel.type === "suspend" && (
+                      <div className="w-24">
+                        <Field label="Days">
+                          <Input type="number" min={1} value={staffSuspendDays} onChange={(e) => setStaffSuspendDays(e.target.value)} />
+                        </Field>
+                      </div>
+                    )}
+                    <div className="flex-1" style={{ minWidth: "12rem" }}>
+                      <Field label="Reason">
+                        <Input value={staffActionReason} onChange={(e) => setStaffActionReason(e.target.value)} placeholder="Why is this account being actioned?" />
+                      </Field>
+                    </div>
+                    <Button
+                      variant={staffActionPanel.type === "block" ? "danger" : "primary"}
+                      onClick={() => (staffActionPanel.type === "suspend" ? suspendStaff(s.id, s.email) : blockStaff(s.id, s.email))}
+                      loading={pendingAction === `${staffActionPanel.type}-${s.id}`}
+                      disabled={pendingAction !== null && pendingAction !== `${staffActionPanel.type}-${s.id}`}
+                    >
+                      Confirm {staffActionPanel.type}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </DashCard>
 
       <DashCard>

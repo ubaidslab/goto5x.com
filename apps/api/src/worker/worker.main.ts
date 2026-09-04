@@ -401,7 +401,14 @@ async function main() {
   // updateMany, no per-row branching that could fail individually).
   const staffAccountExpiryWorker = new Worker(
     STAFF_ACCOUNT_EXPIRY_QUEUE_NAME,
-    async () => staffAccounts.runExpirySweep(),
+    // FR-52.14 (Module 101) - runSuspensionLiftSweep() rides the same
+    // existing tick rather than a second queue/scheduler: both are plain
+    // updateMany sweeps with no per-row branching that could fail
+    // independently.
+    async () => {
+      await staffAccounts.runExpirySweep();
+      await staffAccounts.runSuspensionLiftSweep();
+    },
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
 

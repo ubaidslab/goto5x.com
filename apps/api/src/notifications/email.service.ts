@@ -51,6 +51,15 @@ export class EmailService {
     );
   }
 
+  /** FR-52.15 (Module 101, founder batch B14) - "reset-not-reveal": sent only to the staff member's own email, never the admin who triggered it. */
+  async sendStaffPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+    await this.send(
+      to,
+      "Reset your uzeyn.com staff account password",
+      `A platform administrator has triggered a password reset for your staff account. Click to set a new password (this link expires soon): ${resetUrl}`,
+    );
+  }
+
   /**
    * FR-5.4 - the order confirmation email is what actually delivers the
    * buyer's unguessable status-lookup link (Module 9, CheckoutService).

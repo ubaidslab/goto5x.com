@@ -1,14 +1,18 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
+import { hashToken } from "../auth/token.util";
 import { JwtAccessPayload, StaffPermission, StaffScope } from "../common/types";
 import { EmailService } from "../notifications/email.service";
 import { EventsService } from "../events/events.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
+import { CompleteStaffPasswordResetDto } from "./dto/complete-staff-password-reset.dto";
 import { StaffLoginDto } from "./dto/staff-login.dto";
+
+const BCRYPT_ROUNDS = 12;
 
 /**
  * SRS §5.52/FR-52.3. A staff account logs in with its own credentials,
@@ -119,5 +123,30 @@ export class StaffAuthService {
     if (!seller) return;
     const loginUrl = `${this.config.getOrThrow<string>("APP_BASE_URL")}/login`;
     await this.email.sendNewStaffDeviceLoginEmail(seller.user.email, staffName, loginUrl);
+  }
+
+  /**
+   * FR-52.15 (Module 101, founder batch B14) - the self-service half of
+   * "reset-not-reveal": only the staff member holding the emailed token
+   * ever sets the new password, structurally identical to auth.service.
+   * ts's own completePasswordReset() (single-use token-hash clearing,
+   * same rate-limit key).
+   */
+  async completePasswordReset(dto: CompleteStaffPasswordResetDto): Promise<void> {
+    const tokenHash = hashToken(dto.token);
+    const staff = await this.prismaAdmin.staffAccount.findFirst({ where: { passwordResetTokenHash: tokenHash } });
+
+    if (!staff || !staff.passwordResetExpiresAt || staff.passwordResetExpiresAt < new Date()) {
+      throw new BadRequestException("This password reset link is invalid or has expired.");
+    }
+
+    const rateLimitPerHour = await this.settings.resolve<number>("auth.password_reset_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`staff-password-reset-complete:${staff.id}`, rateLimitPerHour);
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prismaAdmin.staffAccount.update({
+      where: { id: staff.id },
+      data: { passwordHash, passwordResetTokenHash: null, passwordResetExpiresAt: null },
+    });
   }
 }
