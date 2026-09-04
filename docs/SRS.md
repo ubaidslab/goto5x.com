@@ -9964,25 +9964,28 @@ v0.38 wording item-for-item, same FR/module numbers)
       Center until resolved; tracking-upload responsibility itself stays
       exactly split as already built (FR-66.8, Module 88).
 
-### 14.69 Deals & Bundles (new, v0.42, §5.67, not yet built)
-- [ ] `Deal`/`DealItem` Prisma models exist, store-scoped, with a uniform
+### 14.69 Deals & Bundles (§5.67, BUILT as Module 91 — checklist corrected
+during the B10-B18 SRS-amendments audit; the frontend build (Module 91,
+storefront + seller UI) had already shipped but this section was never
+flipped from its original "not yet built" placeholder)
+- [x] `Deal`/`DealItem` Prisma models exist, store-scoped, with a uniform
       `discountPercent` per deal and unique `[dealId, variantId]` on
       `DealItem` (FR-67.1, Module 91).
-- [ ] Deal discounts are computed live against current variant price at
+- [x] Deal discounts are computed live against current variant price at
       purchase time, never snapshotted (FR-67.1, Module 91).
-- [ ] `POST /storefront/deals/:dealId/buy-now` pre-populates a cart and
+- [x] `POST /storefront/deals/:dealId/buy-now` pre-populates a cart and
       hands off into the existing checkout pipeline — no parallel order-
       creation path — and blocks the whole purchase if any single item is
       out of stock, using the same atomic stock-decrement guard as
       Module 46 (FR-67.2, Module 91).
-- [ ] `Order.dealId` is a nullable FK, same pattern as `discountCodeId`
+- [x] `Order.dealId` is a nullable FK, same pattern as `discountCodeId`
       (FR-67.2, Module 91).
-- [ ] Buyer-facing deal listing and detail pages render on the storefront
+- [x] Buyer-facing deal listing and detail pages render on the storefront
       (FR-67.3, Module 91).
-- [ ] Seller dashboard has a Deals management view (create/edit/archive
+- [x] Seller dashboard has a Deals management view (create/edit/archive
       deals and items) and a "in an active deal" product-list filter chip
       (FR-67.4, Module 91).
-- [ ] A deal-performance card (units sold, revenue) appears on the
+- [x] A deal-performance card (units sold, revenue) appears on the
       seller Analytics page (FR-67.5, Module 91).
 
 ---
