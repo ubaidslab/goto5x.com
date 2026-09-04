@@ -38,6 +38,8 @@ interface PlaceOrderParams {
   currency: string;
   buyerEmail: string;
   buyerWhatsapp: string | null;
+  /** FR-66.1 (Module 81) - set only when the buyer was logged into an optional buyer account at checkout; guest checkout (the unchanged default) leaves this undefined. */
+  buyerId?: string;
   items: { productId: string; variantId: string; quantity: number }[];
   shippingAddress: ShippingAddressLike;
   discountCode?: string;
@@ -76,7 +78,7 @@ export class CheckoutService {
     private readonly config: ConfigService,
   ) {}
 
-  async checkout(dto: CheckoutDto, ip: string) {
+  async checkout(dto: CheckoutDto, ip: string, buyerId?: string) {
     // Phase B pre-launch audit finding - public, unauthenticated; creates a
     // real order (decrements stock, sends email, renders a PDF invoice) and
     // is the entry point for gift-card/discount-code guessing. Was the
@@ -104,6 +106,7 @@ export class CheckoutService {
       currency: store.currency,
       buyerEmail: cart.buyerEmail,
       buyerWhatsapp: dto.buyerWhatsapp ?? null,
+      buyerId,
       items,
       shippingAddress: dto.shippingAddress,
       discountCode: dto.discountCode,
@@ -382,6 +385,7 @@ export class CheckoutService {
             storeId: params.storeId,
             orderNumber,
             customerId: customer.id,
+            buyerId: params.buyerId,
             buyerEmail: params.buyerEmail,
             buyerWhatsapp: params.buyerWhatsapp,
             statusLookupToken: randomBytes(24).toString("hex"),

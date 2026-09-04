@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { JwtModule } from "@nestjs/jwt";
 import { BillingModule } from "../billing/billing.module";
 import { CustomersModule } from "../customers/customers.module";
 import { EventsModule } from "../events/events.module";
@@ -29,6 +30,7 @@ import { OrdersService } from "./orders.service";
 
 @Module({
   imports: [
+    JwtModule.register({}),
     SettingsModule,
     StorefrontModule,
     StoreSettingsModule,

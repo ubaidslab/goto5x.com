@@ -1,6 +1,24 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.55 (Build-phase amendment — FR-52.14/FR-52.15, new;
+**Version:** 0.56 (Build-phase amendment — clarifies FR-66.1's "separate
+identity space from `User`/seller auth" phrase, ahead of building it:
+buyer accounts are a new one-to-one `BuyerProfile` model on the existing
+shared `users` table (mirroring the `Seller`/`Supplier`/`AdminUser`
+pattern), not a second, disconnected identity table — consistent with
+§3.2a's stated intent for `User` to remain the platform's one shared
+identity table. Separation is behavioral/architectural (a dedicated
+`BuyerAuthController`/`BuyerAuthGuard`, a `buyerId` JWT-payload field, no
+buyer ever receiving seller/admin `roleFlags` or dashboard access), the
+same guard-level separation already used between `Seller`, `Supplier`,
+and `AdminUser` on that one shared table. Buyer accounts are global/
+platform-wide (one login across every store), not store-scoped — a
+buyer's per-store order history is a filter on a platform-wide `Order.
+buyerId`, not a separate account per store. `Order.buyerId` (nullable
+since v0.4, "schema-ready" per FR-22.1) gets its real FK constraint and
+an index added as part of this build, closing the gap where it was
+previously an unenforced, unindexed column. Implementation proceeds.
+
+Prior amendment — FR-52.14/FR-52.15, new;
 founder batch B14, "Admin staff account lifecycle (suspend/block/
 reset)." Genuinely new admin-facing surface, distinct from FR-52.10's
 seller-owner-facing time-limited access grant: two new `StaffAccount`
@@ -6529,7 +6547,15 @@ AI store design, or a customizable/build-your-own plan (§5.6j).
   the default path, unchanged. A buyer may optionally create an account
   (signup/login, separate identity space from `User`/seller auth) for
   order history, saved details, and faster reorder — never a requirement
-  to complete a purchase.
+  to complete a purchase. **v0.56 architecture clarification:** "separate
+  identity space" means behavioral/guard-level separation on the existing
+  shared `users` table (new one-to-one `BuyerProfile`, its own
+  `BuyerAuthController`/`BuyerAuthGuard`, a `buyerId` JWT-payload field),
+  the same pattern `Seller`/`Supplier`/`AdminUser` already use — not a
+  second, disconnected identity table. A buyer's `roleFlags` is `["buyer"]`
+  only; no code path ever grants a buyer seller/admin access. Accounts are
+  global/platform-wide (one login across every store), and `Order.buyerId`
+  finally gets a real FK constraint + index (previously unenforced).
 - FR-66.2 (Module 82): **Product reviews with media.** Extends §5.14's
   review model with up to 3 photos + 1 video per review (capped size,
   e.g. 12MB), stored via the seller's connected Google Drive (Module 24's
@@ -9941,9 +9967,12 @@ v0.38 wording item-for-item, same FR/module numbers)
       typecheck/build pass but an actually-rendered page.
 
 ### 14.68 Buyer Experience Batch (new, v0.39, §5.66, not yet built)
-- [ ] Guest checkout stays the default; an optional buyer account gives
+- [x] Guest checkout stays the default; an optional buyer account gives
       order history, saved details, and faster reorder (FR-66.1,
-      Module 81).
+      Module 81). BUILT: `BuyerProfile`/`BuyerSavedAddress` on the shared
+      `users` table, `BuyerAuthController`/`BuyerAuthGuard`, a real FK on
+      `Order.buyerId`, storefront account/login/orders pages. Guest
+      checkout confirmed unaffected (buyerId stays null with no token).
 - [ ] A review may include up to 3 photos + 1 video (capped size),
       Drive-stored with a generated video thumbnail, and review media
       flows through the existing moderation queue (FR-66.2, Module 82).

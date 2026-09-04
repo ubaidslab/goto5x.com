@@ -11,16 +11,19 @@ import { AdminAuthController } from "./admin-auth.controller";
 import { AdminAuthService } from "./admin-auth.service";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { BuyerAuthController } from "./buyer-auth.controller";
+import { BuyerAuthService } from "./buyer-auth.service";
 import { SecurityEventService } from "./security-event.service";
 import { SessionService } from "./session.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
   imports: [PassportModule, JwtModule.register({}), SettingsModule, AdminModule, TrustSafetyModule, PlansModule, GrowthProgramsModule],
-  controllers: [AuthController, AdminAuthController],
+  controllers: [AuthController, AdminAuthController, BuyerAuthController],
   providers: [
     AuthService,
     AdminAuthService,
+    BuyerAuthService,
     SessionService,
     SecurityEventService,
     RateLimitService,

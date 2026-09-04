@@ -1,5 +1,6 @@
 import { NavigationItem, PublicNavigation } from "../../lib/storefront-api";
 import { ResolvedThemeSettings } from "../../lib/theme-presets";
+import { AccountLink } from "./account-link";
 import { CartLink } from "./cart-link";
 
 // FR-16.3 - header/footer navigation, rendered from live data with no
@@ -121,6 +122,7 @@ export function SiteHeader({
       </a>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         {navigation.header.length > 0 && <NavItems items={navigation.header} theme={theme} />}
+        <AccountLink theme={theme} />
         <CartLink theme={theme} />
       </div>
     </header>

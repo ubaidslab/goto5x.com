@@ -250,10 +250,56 @@ model User {
   seller             Seller?
   supplier           Supplier?
   adminUser          AdminUser?
+  buyerProfile       BuyerProfile?
+  orders             Order[]
   securityEvents     UserSecurityEvent[]
   targetedPromoCodes PlatformPromoCode[]
 
   @@map("users")
+}
+
+// FR-66.1 (Module 81, v0.56) - a one-to-one profile row on the shared
+// `users` table, exactly the same pattern Seller/Supplier/AdminUser
+// already use - not a second, disconnected identity table (see the v0.56
+// SRS amendment header for the full reasoning). Guest checkout stays the
+// unchanged default; this only exists for a buyer who opts into an
+// account for order history/saved details/faster reorder. Global across
+// every store on the platform - one login, not one per store.
+model BuyerProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  displayName String?  @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user      User                @relation(fields: [userId], references: [id])
+  addresses BuyerSavedAddress[]
+
+  @@map("buyer_profiles")
+}
+
+// FR-66.1 - a buyer's saved shipping/contact details, same field shape as
+// ShippingAddressDto (checkout.dto.ts) so a saved address can be applied
+// directly at checkout with no translation.
+model BuyerSavedAddress {
+  id         String   @id @default(uuid()) @db.Uuid
+  buyerId    String   @map("buyer_id") @db.Uuid
+  label      String?
+  fullName   String   @map("full_name")
+  line1      String
+  line2      String?
+  city       String
+  country    String
+  postalCode String?  @map("postal_code")
+  phone      String
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  buyer BuyerProfile @relation(fields: [buyerId], references: [id])
+
+  @@index([buyerId], name: "idx_buyer_saved_addresses_buyer")
+  @@map("buyer_saved_addresses")
 }
 
 model UserSecurityEvent {
@@ -2170,6 +2216,13 @@ model Order {
   customer            Customer?            @relation(fields: [customerId], references: [id])
   discountCode        DiscountCode?        @relation(fields: [discountCodeId], references: [id])
   deal                Deal?                @relation(fields: [dealId], references: [id])
+  // v0.56 (FR-66.1, Module 81) - was a bare, unconstrained/unindexed UUID
+  // column ("schema-ready since v0.4" per FR-22.1) until optional buyer
+  // accounts were actually built; now a real FK to the same shared `users`
+  // table Seller/Supplier/AdminUser already use. Set only when the buyer
+  // was logged in at checkout - guest checkout (the unchanged default
+  // path) leaves this null, same as before.
+  buyer               User?                @relation(fields: [buyerId], references: [id])
   items               OrderItem[]
   notes               OrderNote[]
   timelineEvents      OrderTimelineEvent[]
@@ -2194,6 +2247,7 @@ model Order {
   @@index([discountCodeId], name: "idx_orders_discount_code")
   @@index([dealId], name: "idx_orders_deal")
   @@index([customerId], name: "idx_orders_customer")
+  @@index([buyerId], name: "idx_orders_buyer")
   @@map("orders")
 }
 

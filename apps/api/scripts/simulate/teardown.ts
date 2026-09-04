@@ -64,13 +64,19 @@ async function teardown(runId: string): Promise<void> {
       await tx.$executeRawUnsafe(`DELETE FROM import_jobs WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM listing_reviews WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM store_supplier_links WHERE store_id = ANY($1::uuid[])`, storeIds);
-      // Milestone A load/soak run (Sept 2026) - found the hard way: this was
-      // missing, so `sellers`/`stores` below got deleted (replica-mode
-      // bypasses the RESTRICT constraint) while a milestone_events row kept
-      // pointing at the now-gone store, breaking any admin/analytics read
-      // that assumes the relation always resolves.
-      await tx.$executeRawUnsafe(`DELETE FROM milestone_events WHERE store_id = ANY($1::uuid[])`, storeIds);
     }
+    // milestone_events is NOT deleted here, deliberately: its own migration
+    // (20260821150000_module47_milestone_events) explicitly `REVOKE UPDATE,
+    // DELETE ON milestone_events FROM app_runtime, app_admin` - a reached
+    // milestone is meant to be permanent/unmanipulable, same immutability
+    // reasoning as admin_audit_logs/user_security_events further below.
+    // Trying to DELETE it (an earlier version of this script did, briefly,
+    // before this comment) fails outright with a permission error and
+    // aborts the whole teardown transaction - confirmed by actually
+    // running it. replica-mode bypasses the FK's RESTRICT when `stores` is
+    // deleted below, leaving a handful of orphaned milestone_events rows
+    // behind - harmless audit clutter, not business data, exactly like
+    // those other two tables.
 
     if (sellerIds.length > 0) {
       await tx.$executeRawUnsafe(`DELETE FROM ledger_entries WHERE seller_id = ANY($1::uuid[])`, sellerIds);

@@ -26,6 +26,13 @@ export interface JwtAccessPayload {
   // StaffScopeGuard can check `write` is actually held, not merely that
   // the scope is present at all.
   scopePermissions?: Partial<Record<StaffScope, StaffPermission>>;
+  // FR-66.1 (Module 81, v0.56) - set only on a token issued by
+  // BuyerAuthService, same "guard checks which optional field is present"
+  // discipline as every other role above (no separate Passport strategy).
+  // This is `BuyerProfile.id` (the profile row, mirroring how `sellerId`
+  // is `Seller.id` not `User.id`) - `sub` remains the raw `users.id`,
+  // which is what `Order.buyerId` actually references.
+  buyerId?: string;
 }
 
 // Module 35 (SRS §5.52/FR-52.2), expanded by Module 97 (FR-52.7) - coarse,

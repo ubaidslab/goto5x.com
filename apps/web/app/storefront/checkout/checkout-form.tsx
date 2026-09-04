@@ -13,22 +13,35 @@ const labelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, 
  * FR-15.1 (locked UX) - step 1 is email, and only email; nothing else is
  * collected (and no server-side cart exists) until it's submitted.
  */
-export function CheckoutForm({ hostname, currency, theme }: { hostname: string; currency: string; theme: ResolvedThemeSettings }) {
+export function CheckoutForm({
+  hostname,
+  currency,
+  theme,
+  savedAddress,
+}: {
+  hostname: string;
+  currency: string;
+  theme: ResolvedThemeSettings;
+  /** FR-66.1 (Module 81) - "faster reorder": the logged-in buyer's default saved address, if any. */
+  savedAddress?: ShippingAddressInput | null;
+}) {
   const router = useRouter();
   const [items, setItems] = useState<LocalCartItem[] | null>(null);
   const [step, setStep] = useState<"email" | "shipping">("email");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [address, setAddress] = useState<ShippingAddressInput>({
-    fullName: "",
-    line1: "",
-    line2: "",
-    city: "",
-    country: "PK",
-    postalCode: "",
-    phone: "",
-  });
+  const [address, setAddress] = useState<ShippingAddressInput>(
+    savedAddress ?? {
+      fullName: "",
+      line1: "",
+      line2: "",
+      city: "",
+      country: "PK",
+      postalCode: "",
+      phone: "",
+    },
+  );
   const [discountCode, setDiscountCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

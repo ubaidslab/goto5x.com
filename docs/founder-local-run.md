@@ -312,7 +312,7 @@ web browser to these addresses. (Docker path: use the addresses without
 |---|---|---|
 | **Admin** (you) | `http://app.localhost:3001/admin/login` | Log in with `admin@local.test` / `ChangeMe123!` (or whatever you used in the create-admin step). **First login only:** you'll see a QR code — scan it with any authenticator app on your phone (Google Authenticator, Authy, or your phone's built-in one) to finish setup. Every admin login after that needs a fresh 6-digit code from that app. |
 | **Seller** (a store owner) | `http://app.localhost:3001/signup` | This is the real seller sign-up form — fill it out as if you were a new merchant joining the platform. After signing up you land on your own seller dashboard. |
-| **Buyer** (a shopper) | `http://<your-store-slug>.localhost:3001/` | Replace `<your-store-slug>` with the store address you picked during seller sign-up above. This is the public storefront anyone could visit — no login needed to browse, only to check out. |
+| **Buyer** (a shopper) | `http://<your-store-slug>.localhost:3001/` | Replace `<your-store-slug>` with the store address you picked during seller sign-up above. This is the public storefront anyone could visit — no login needed to browse, only to check out. A "Sign in" link in the top-right lets a buyer optionally create an account too (saved addresses, order history at `/account/orders`) — this is always optional; checking out as a guest still works exactly the same. |
 
 **Want a store that's already got products, orders, and customers in it,
 instead of starting from a totally empty one?** There's a built-in tool

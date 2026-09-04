@@ -1,6 +1,7 @@
 "use server";
 
 import { LocalCartItem } from "../../../lib/local-cart";
+import { getBuyerSession } from "../account/actions";
 
 /**
  * FR-32.1/FR-15.1 - server-to-server calls, same CORS reasoning as
@@ -50,16 +51,28 @@ export async function createCartSession(
   return { ok: true, sessionToken: body.sessionToken };
 }
 
-/** FR-32.1 - completes the order; the resulting order is always `pending` (Financial Truth Invariant, §3.12). */
+/**
+ * FR-32.1 - completes the order; the resulting order is always `pending`
+ * (Financial Truth Invariant, §3.12). FR-66.1 (Module 81) - if the buyer
+ * happens to be logged into an optional buyer account, best-effort
+ * attaches their access token so the order links to their account/order
+ * history; guest checkout (no cookie, or an expired token) is entirely
+ * unaffected - the API treats a missing/invalid token as "guest," never
+ * a checkout failure (see CheckoutController's own note on this).
+ */
 export async function submitCheckout(
   hostname: string,
   sessionToken: string,
   shippingAddress: ShippingAddressInput,
   discountCode?: string,
 ): Promise<{ ok: true; statusLookupToken: string } | ApiError> {
+  const buyerSession = await getBuyerSession();
   const res = await fetch(`${process.env.API_BASE_URL}/storefront/checkout`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(buyerSession ? { Authorization: `Bearer ${buyerSession.accessToken}` } : {}),
+    },
     body: JSON.stringify({ hostname, sessionToken, shippingAddress, discountCode: discountCode || undefined }),
   });
   const body = await res.json().catch(() => ({}) as { message?: string | string[] });

@@ -9,6 +9,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { BrandingModule } from "./branding/branding.module";
+import { BuyerAccountModule } from "./buyer-account/buyer-account.module";
 import { CampaignsModule } from "./campaigns/campaigns.module";
 import { CareersModule } from "./careers/careers.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -93,6 +94,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     DiscoveryModule,
     StorefrontModule,
     OrdersModule,
+    BuyerAccountModule,
     OrderVerificationModule,
     PaymentGatewayModule,
     PlatformGatewayModule,
