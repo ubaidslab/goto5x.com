@@ -1,15 +1,24 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.54 (Build-phase amendment — FR-8.21, new; founder batch
-B18, "D-Studio repositioning (free tier + Rs.1,499/3mo pack)." Confirmed
-with the founder before writing: the existing GO/RUN/RISE/FLY per-item
-tier ladder (FR-7.23) is unchanged and is the "free tier" — the Pack is
-an orthogonal, temporary full-catalog unlock stacked on top of it, not
-a replacement of it. Reuses the existing seller-scoped
+**Version:** 0.55 (Build-phase amendment — FR-52.14/FR-52.15, new;
+founder batch B14, "Admin staff account lifecycle (suspend/block/
+reset)." Genuinely new admin-facing surface, distinct from FR-52.10's
+seller-owner-facing time-limited access grant: two new `StaffAccount`
+statuses (`suspended`, time-boxed and auto-lifting; `blocked`,
+permanent), both admin-initiated and admin-reversible, plus an admin-
+triggered "reset-not-reveal" password-reset flow adapting the existing
+`User` forgot-password token pattern. Implementation proceeds.
+
+Prior amendment — FR-8.21, new; founder batch B18, "D-Studio
+repositioning (free tier + Rs.1,499/3mo pack)." Confirmed with the
+founder before writing: the existing GO/RUN/RISE/FLY per-item tier
+ladder (FR-7.23) is unchanged and is the "free tier" — the Pack is an
+orthogonal, temporary full-catalog unlock stacked on top of it, not a
+replacement of it. Reuses the existing seller-scoped
 `dstudio.tier_override_order` + `SettingsValue.expiresAt` time-limited-
 grant mechanism (D-Studio close-out, Module 53), now seller-purchasable
 via a purchase-request flow structurally modeled on Premium Motion
-Templates (FR-52.x). Implementation proceeds.)
+Templates (FR-52.x).)
 **Date:** 2026-09-03
 **Status:** v0.6 formally approved; documentation phase closed, build phase
 underway. Modules 1–9 (Foundation; Catalog & Media; Custom Domain & TLS;
@@ -5890,6 +5899,103 @@ differentiator, at the founder's explicit direction)
   `staff.max_accounts` mapping — unaffected by this correction, same
   "individual-tier names only" scope every other per-tier founder change
   in this batch has kept to.
+- FR-52.14 (Module 101, new v0.55 — founder batch B14): **Admin-initiated
+  staff-account lifecycle — suspend (time-boxed) and permanent block.**
+  Genuinely new, not a duplicate of FR-52.10's time-limited access: that
+  FR is a **seller-owner** self-service convenience, set once at creation/
+  edit time, terminal (auto-expires to `revoked`, never reversed). This FR
+  is a **platform-admin** disciplinary/lifecycle action taken *now*,
+  against an account already live, and — unlike every prior status
+  transition in this codebase — meant to be **reversible**, either
+  automatically (suspension) or by explicit admin action (either kind,
+  early).
+  - **New `StaffAccountStatus` values**: `suspended`, `blocked`, alongside
+    the existing `active`/`revoked`. `revoked` keeps its exact existing
+    meaning (owner-initiated revoke, or FR-52.10's auto-expiry sweep) —
+    unchanged, not reused for admin actions. `suspended` carries a new
+    `suspendedUntil` timestamp (required to enter this state); `blocked`
+    has none (permanent until an admin explicitly reverses it). Both carry
+    their own `suspendedAt`/`blockedAt` timestamp, mirroring the existing
+    `revokedAt` column's role.
+  - **Enforcement needs no new code at all**: `StaffAuthService.login()`
+    already rejects any `status !== "active"` with the same generic
+    "Invalid email or password" (no account-status enumeration) — adding
+    two new non-active values is enforced by that existing check
+    automatically.
+  - **New admin-only surface**, `admin/sellers/:sellerId/staff-accounts`
+    (`AdminAuthGuard`) — closing a real, disclosed gap: no admin route
+    has ever been able to see a seller's staff roster at all until now:
+    - `GET /` — list (admin visibility, new).
+    - `POST /:id/suspend` `{until, reason}` — only from `active`; `until`
+      must be in the future.
+    - `POST /:id/block` `{reason}` — only from `active`.
+    - `POST /:id/reactivate` — from `suspended` or `blocked` back to
+      `active`, clearing `suspendedUntil`; an admin can always reverse
+      their own (or another admin's) prior action early.
+    Every action is `AuditLogService`-recorded (`staff_account.suspended`/
+    `.blocked`/`.reactivated`), `reason` included in `afterValue` — same
+    shape as the existing `SellerLifecycleService.setLifecycleStatus()`
+    precedent (a plain string param, not a persisted column).
+  - **A new class of sweep for this codebase, disclosed as such**: every
+    existing scheduled sweep here (FR-52.10's own included) only ever
+    moves a row *toward* a terminal state. `StaffAccountsService.
+    runSuspensionLiftSweep()` is the first **reversing** sweep — flips
+    `suspended → active` (clearing `suspendedUntil`) once that timestamp
+    passes. Runs on the exact same existing queue/scheduler tick as
+    FR-52.10's `runExpirySweep()` (`staff-account-expiry-sweep`), not a
+    new queue — both are plain `updateMany` sweeps, no per-row branching.
+  - **The owner keeps visibility, not control, over an admin's action**:
+    the existing seller-facing `GET .../staff-accounts` response already
+    returns `status` unchanged, so `suspended`/`blocked` surface there
+    automatically; the existing owner-facing `revoke()` action is now
+    guarded to only accept a *currently-`active`* account (400 otherwise)
+    — an owner can no longer silently overwrite an admin's block/
+    suspension by revoking over it, which the prior unguarded revoke()
+    would have allowed.
+- FR-52.15 (Module 101, new v0.55 — founder batch B14): **Admin-triggered
+  password reset, reset-not-reveal.** No prior mechanism in this codebase
+  lets a platform admin reset a seller's staff member's password at all;
+  the closest existing pattern is the ordinary self-service `User`
+  forgot-password flow (`auth.service.ts`'s `requestPasswordReset`/
+  `completePasswordReset` — a token-hash-not-plaintext discipline, emailed
+  reset link, single-use), which this FR adapts rather than reinvents.
+  "Reset-not-reveal" is the literal guarantee: the admin's own action
+  never returns, displays, or logs the new password anywhere — only the
+  account holder ever sets it, via a one-time emailed link.
+  - **New `StaffAccount` columns**, mirroring `User`'s own exactly:
+    `passwordResetTokenHash`, `passwordResetExpiresAt`.
+  - **`POST /admin/sellers/:sellerId/staff-accounts/:id/reset-password`**
+    (admin-only, no request body) — generates a token via the existing
+    `generateToken()`/`hashToken()` utility (reused verbatim, not a second
+    implementation), stores only the hash + a Settings-Registry TTL
+    (reusing `auth.password_reset_token_ttl_minutes` — same semantics,
+    no new key needed), and emails the reset link to **the staff member's
+    own registered email** — never the admin, never the seller-owner.
+    The endpoint's response carries no token, no password, nothing
+    credential-shaped; success is a plain 200. Rate-limited by the same
+    existing `auth.password_reset_rate_limit_per_hour` key. The admin
+    action itself is audit-logged (`staff_account.password_reset_
+    triggered`) — visible in the platform's own audit trail without ever
+    containing the secret.
+  - **New self-service completion**, `POST /staff/auth/password-reset/
+    complete` `{token, newPassword}` on the existing `StaffAuthController`
+    — structurally identical to `AuthController`'s own completion
+    endpoint (single-use token-hash clearing, same rate limit).
+  - **New minimal frontend page**, `apps/web/app/staff/reset-password/
+    page.tsx` — deliberately as bare-functional as the existing seller
+    `/reset-password` page (no design investment, matching that page's
+    own tier of effort exactly), completion-only (no "request" form —
+    only an admin can trigger a staff reset; there is no staff self-
+    service forgot-password entry point, and building one is explicitly
+    out of scope here). **Worth stating plainly, not silently glossed
+    over**: this is the *only* staff-facing frontend surface that exists
+    anywhere in this codebase today — `StaffAuthService.login()` has
+    never had a UI built for it at all, a pre-existing gap this FR does
+    not fix (a full staff login/dashboard surface is a materially larger,
+    separate piece of work). This page exists solely so the reset-not-
+    reveal promise is a real, testable, end-to-end mechanism rather than
+    a backend-only stub half of a flow with nowhere for the other half
+    to go.
 
 ### 5.53 Admin Email Section (new, v0.32 — UZEYN's own unified inbox in
 the admin terminal; admin-global, not tenant-scoped)
