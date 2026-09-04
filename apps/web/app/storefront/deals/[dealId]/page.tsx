@@ -5,6 +5,7 @@ import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-prese
 import { ComingSoonPage, PasswordGate } from "../../access-gates";
 import { resolveAccess } from "../../access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { ChatWidget } from "../../chat/chat-widget";
 import { DealBuyNowForm } from "./deal-buy-now-form";
 
 export const dynamic = "force-dynamic";
@@ -116,6 +117,7 @@ export default async function StorefrontDealPage({ params }: { params: { dealId:
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
+      <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>
   );
 }

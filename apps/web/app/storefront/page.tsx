@@ -12,6 +12,7 @@ import { resolveThemeSettings, ThemeSettings } from "../../lib/theme-presets";
 import { ComingSoonPage, PasswordGate } from "./access-gates";
 import { resolveAccess } from "./access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "./chrome";
+import { ChatWidget } from "./chat/chat-widget";
 import { getTemplateSections } from "./templates/registry";
 
 // The Host header is different on every request (a different tenant per
@@ -137,6 +138,7 @@ export default async function StorefrontHomePage() {
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
+      <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>
   );
 }

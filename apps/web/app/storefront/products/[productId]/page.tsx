@@ -5,6 +5,7 @@ import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-prese
 import { ComingSoonPage, PasswordGate } from "../../access-gates";
 import { resolveAccess } from "../../access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { ChatWidget } from "../../chat/chat-widget";
 import { DeliveryBadge } from "../../delivery-badge";
 import { AddToCartForm } from "./add-to-cart-form";
 
@@ -143,6 +144,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
+      <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>
   );
 }

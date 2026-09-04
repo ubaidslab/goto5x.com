@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchStorefrontNavigation, fetchStorefrontStore } from "../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../chrome";
+import { ChatWidget } from "../chat/chat-widget";
 import { BuyerAddress } from "../account/account-view";
 import { buyerAuthedFetch } from "../account/actions";
 import { CheckoutForm } from "./checkout-form";
@@ -39,6 +40,7 @@ export default async function StorefrontCheckoutPage() {
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
+      <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>
   );
 }

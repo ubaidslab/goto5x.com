@@ -6,6 +6,7 @@ import * as bcrypt from "bcryptjs";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { BrandingService } from "../branding/branding.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { resolveAdvancedSeo, resolveSeoFallback } from "./seo-fallback.util";
 
@@ -65,6 +66,7 @@ export class StorefrontService {
     private readonly config: ConfigService,
     private readonly branding: BrandingService,
     private readonly rateLimit: RateLimitService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   /**
@@ -200,6 +202,13 @@ export class StorefrontService {
     // it), not a cosmetic preference.
     const poweredByVisible = await this.branding.getVisibleForStorefront(store.id);
 
+    // FR-66.3 (Module 83) - resolved server-side (same "never left to the
+    // client to decide" discipline as poweredByVisible just above), so
+    // the storefront only ever renders the chat widget when the seller's
+    // plan actually includes it.
+    const planContext = await this.subscriptions.getPlanContext(store.sellerId);
+    const chatEnabled = await this.settings.resolve<boolean>("buyer_chat.enabled", planContext);
+
     return {
       id: store.id,
       name: store.name,
@@ -218,6 +227,7 @@ export class StorefrontService {
       // no propagation delay beyond normal page-render freshness.
       verified: store.verifiedStatus === "verified",
       poweredByVisible,
+      chatEnabled,
       theme: store.themeSettings
         ? {
             name: store.themeSettings.theme.name,

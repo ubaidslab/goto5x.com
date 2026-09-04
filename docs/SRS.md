@@ -1,6 +1,12 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.56 (Build-phase amendment — clarifies FR-66.1's "separate
+**Version:** 0.57 (Build-phase amendment — pins down FR-66.3's plan-gate
+boundary ahead of building it: RISE+FLY (`buyer_chat.enabled`,
+tierOrder ≥ 2), the same boundary as the closest comparable seller-
+facing engagement features (customer segments, gift cards). Implementation
+proceeds.
+
+Prior amendment — 0.56, clarifies FR-66.1's "separate
 identity space from `User`/seller auth" phrase, ahead of building it:
 buyer accounts are a new one-to-one `BuyerProfile` model on the existing
 shared `users` table (mirroring the `Seller`/`Supplier`/`AdminUser`
@@ -6567,6 +6573,10 @@ AI store design, or a customizable/build-your-own plan (§5.6j).
   time-feeling (poll or a lightweight push mechanism, not necessarily a
   new WebSocket infrastructure investment), with a "seller is away"
   fallback state. Plan-gated (§5.6j's feature-gate ladder, FR-7.23).
+  **v0.56 boundary clarification:** RISE+FLY (`buyer_chat.enabled`,
+  tierOrder ≥ 2) — the same boundary already used for the closest
+  comparable seller-facing engagement features, customer segments and
+  gift cards (§5.6j).
 - FR-66.4 (Module 84): **Shipping cost calculator**, visible on product
   and cart pages, not only at checkout — reuses whatever shipping-rate
   computation checkout already performs, surfaced earlier in the buyer
@@ -9976,8 +9986,17 @@ v0.38 wording item-for-item, same FR/module numbers)
 - [ ] A review may include up to 3 photos + 1 video (capped size),
       Drive-stored with a generated video thumbnail, and review media
       flows through the existing moderation queue (FR-66.2, Module 82).
-- [ ] A live chat widget, distinct from the WhatsApp button, shows a
+- [x] A live chat widget, distinct from the WhatsApp button, shows a
       "seller is away" fallback and is plan-gated (FR-66.3, Module 83).
+      BUILT: `BuyerChatThread`/`BuyerChatMessage` (unguessable
+      `accessToken`, mirrors `Order.statusLookupToken`), polling-based
+      (5s), gated RISE+FLY via `buyer_chat.enabled` resolved server-side
+      in `StorefrontService.getStorePublic()`'s `chatEnabled` field so
+      the widget never renders unless the plan actually includes it;
+      seller inbox at `/stores/:storeId/buyer-chat` (list/reply/close,
+      RLS-scoped). Live-verified end-to-end via Playwright: buyer sends
+      from storefront widget → seller sees it in the dashboard inbox →
+      seller replies → buyer's widget polls and shows the reply.
 - [ ] A shipping cost calculator is visible on product and cart pages,
       not only checkout (FR-66.4, Module 84).
 - [ ] Wishlist/save-for-later exists and is plan-gated the same way as

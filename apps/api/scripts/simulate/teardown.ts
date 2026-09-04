@@ -64,6 +64,10 @@ async function teardown(runId: string): Promise<void> {
       await tx.$executeRawUnsafe(`DELETE FROM import_jobs WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM listing_reviews WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM store_supplier_links WHERE store_id = ANY($1::uuid[])`, storeIds);
+      // FR-66.3 (Module 83) buyer chat - messages before threads (FK direction).
+      // No REVOKE on these (confirmed via \dp), unlike milestone_events below.
+      await tx.$executeRawUnsafe(`DELETE FROM buyer_chat_messages WHERE store_id = ANY($1::uuid[])`, storeIds);
+      await tx.$executeRawUnsafe(`DELETE FROM buyer_chat_threads WHERE store_id = ANY($1::uuid[])`, storeIds);
     }
     // milestone_events is NOT deleted here, deliberately: its own migration
     // (20260821150000_module47_milestone_events) explicitly `REVOKE UPDATE,

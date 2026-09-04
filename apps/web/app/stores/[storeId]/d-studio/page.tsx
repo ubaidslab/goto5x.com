@@ -569,6 +569,7 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
     logoUrl: resolved.logoUrl ?? null,
     verified: false,
     poweredByVisible: true,
+    chatEnabled: false,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
     seoRobotsIndexDefault: true,
     seoRobotsFollowDefault: true,

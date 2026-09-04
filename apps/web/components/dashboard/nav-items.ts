@@ -6,6 +6,7 @@ import {
   Handshake,
   LayoutDashboard,
   Megaphone,
+  MessageCircle,
   Package,
   Palette,
   Settings as SettingsIcon,
@@ -97,6 +98,7 @@ export const navItems: NavItem[] = [
   { label: "Analytics", href: (id) => `/stores/${id}/analytics`, icon: BarChart3, group: "growth" },
   { label: "Marketing", href: (id) => `/stores/${id}/marketing`, icon: Megaphone, group: "growth" },
   { label: "Reviews", href: (id) => `/stores/${id}/reviews`, icon: Star, group: "growth" },
+  { label: "Live chat", href: (id) => `/stores/${id}/buyer-chat`, icon: MessageCircle, group: "growth" },
   // D-Studio v1 - a real standalone, fullscreen design workspace (no
   // Sidebar/topbar chrome), so this deliberately points outside the
   // (dashboard) route group's layout tree (app/stores/[storeId]/d-studio/,

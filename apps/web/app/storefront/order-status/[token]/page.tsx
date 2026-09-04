@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
+import { ChatWidget } from "../../chat/chat-widget";
 import { ModelAdvancePanel } from "../model-advance-panel";
 import { OrderVerificationPanel } from "../order-verification-panel";
 import { ReturnRequestForm } from "../return-request-form";
@@ -67,6 +68,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
         </main>
         <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
         <WhatsappButton theme={theme} />
+        <ChatWidget theme={theme} enabled={store.chatEnabled} />
       </>
     );
   }
@@ -213,6 +215,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
+      <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>
   );
 }

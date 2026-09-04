@@ -645,6 +645,7 @@ model Store {
   returnRequests            ReturnRequest[]
   milestoneEvents           MilestoneEvent[]
   supportTickets            SupportTicket[]
+  buyerChatThreads          BuyerChatThread[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
   @@map("stores")
@@ -3646,6 +3647,56 @@ model TicketMessage {
 
   @@index([ticketId], name: "idx_ticket_messages_ticket")
   @@map("ticket_messages")
+}
+
+// FR-66.3 (Module 83, v0.56) - live chat widget, a distinct surface from
+// the WhatsApp button (§5.41) and NOT a reuse of SupportTicket/
+// TicketMessage above (that pair is deliberately seller<->platform-admin
+// only, per FR-8.20's own text - "not a buyer help-desk"). Structurally
+// mirrors that pair's shape (thread + ordered messages, denormalized
+// store_id on the message row) since it's the closest applicable
+// precedent. No buyer-account requirement - identified by an
+// unguessable accessToken, same precedent as Order.statusLookupToken
+// (the only other "buyer-facing, no-login, unguessable-token" surface),
+// so guest checkout's buyers can use chat too, not just logged-in ones.
+// Poll-based, not a new WebSocket gateway - nothing in this codebase
+// runs one today, and the FR's own text says one isn't required
+// ("not necessarily a new WebSocket infrastructure investment").
+model BuyerChatThread {
+  id          String           @id @default(uuid()) @db.Uuid
+  storeId     String           @map("store_id") @db.Uuid
+  accessToken String           @unique @map("access_token")
+  buyerEmail  String?          @map("buyer_email")
+  status      ChatThreadStatus @default(open)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  store    Store              @relation(fields: [storeId], references: [id])
+  messages BuyerChatMessage[]
+
+  @@index([storeId], name: "idx_buyer_chat_threads_store")
+  @@map("buyer_chat_threads")
+}
+
+enum ChatThreadStatus {
+  open
+  closed
+}
+
+model BuyerChatMessage {
+  id         String   @id @default(uuid()) @db.Uuid
+  threadId   String   @map("thread_id") @db.Uuid
+  // Denormalized from thread.storeId - same single-level-RLS convention
+  // TicketMessage.storeId documents above.
+  storeId    String   @map("store_id") @db.Uuid
+  authorType String   @map("author_type")
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  thread BuyerChatThread @relation(fields: [threadId], references: [id])
+
+  @@index([threadId, createdAt], name: "idx_buyer_chat_messages_thread")
+  @@map("buyer_chat_messages")
 }
 
 // Module 71 (FR-6.48) - a durable record of a confirmed identity match

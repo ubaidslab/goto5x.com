@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { fetchStorefrontNavigation, fetchStorefrontStore } from "../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../chrome";
+import { ChatWidget } from "../chat/chat-widget";
 import { buyerAuthedFetch, getBuyerSession } from "./actions";
 import { AccountView, BuyerAddress, BuyerProfile } from "./account-view";
 
@@ -38,6 +39,7 @@ export default async function BuyerAccountPage() {
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />
+      <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>
   );
 }
