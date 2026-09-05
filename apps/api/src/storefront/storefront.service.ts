@@ -262,7 +262,7 @@ export class StorefrontService {
     this.assertAccessGranted(store, unlockToken);
     const products = await this.prismaAdmin.product.findMany({
       where: { storeId: store.id, status: "active", moderationStatus: { in: [...PUBLIC_MODERATION_STATUSES] } },
-      include: { variants: true, media: true, ogImage: { select: { url: true } } },
+      include: { variants: true, media: { orderBy: { sortOrder: "asc" }, include: { thumbnailMedia: { select: { id: true, url: true } } } }, ogImage: { select: { url: true } } },
       orderBy: { createdAt: "desc" },
     });
     const transparencyByProductId = await this.batchSupplierTransparency(products.map((p) => p.id));
@@ -274,7 +274,7 @@ export class StorefrontService {
     this.assertAccessGranted(store, unlockToken);
     const product = await this.prismaAdmin.product.findUnique({
       where: { id: productId },
-      include: { variants: true, media: true, ogImage: { select: { url: true } } },
+      include: { variants: true, media: { orderBy: { sortOrder: "asc" }, include: { thumbnailMedia: { select: { id: true, url: true } } } }, ogImage: { select: { url: true } } },
     });
     if (
       !product ||
@@ -369,7 +369,7 @@ export class StorefrontService {
 
     const products = await this.prismaAdmin.product.findMany({
       where: { id: { in: rankedIds.map((r) => r.id) } },
-      include: { variants: true, media: true, ogImage: { select: { url: true } } },
+      include: { variants: true, media: { orderBy: { sortOrder: "asc" }, include: { thumbnailMedia: { select: { id: true, url: true } } } }, ogImage: { select: { url: true } } },
     });
     const byId = new Map(products.map((p) => [p.id, p]));
     const transparencyByProductId = await this.batchSupplierTransparency(products.map((p) => p.id));
@@ -401,7 +401,7 @@ export class StorefrontService {
         ogImage: { select: { url: true } },
         products: {
           orderBy: { sortOrder: "asc" },
-          include: { product: { include: { variants: true, media: true, ogImage: { select: { url: true } } } } },
+          include: { product: { include: { variants: true, media: { orderBy: { sortOrder: "asc" }, include: { thumbnailMedia: { select: { id: true, url: true } } } }, ogImage: { select: { url: true } } } } },
         },
       },
     });
@@ -516,7 +516,7 @@ export class StorefrontService {
       averageRating: unknown;
       reviewCount: number;
       variants: unknown[];
-      media: unknown[];
+      media: { thumbnailMedia?: { url: string } | null; [key: string]: unknown }[];
       canonicalUrl: string | null;
       robotsIndex: boolean | null;
       robotsFollow: boolean | null;
@@ -562,7 +562,13 @@ export class StorefrontService {
       averageRating: product.averageRating,
       reviewCount: product.reviewCount,
       variants: product.variants,
-      media: product.media,
+      // FR-66.7 (Module 87) - a video asset's seller-chosen poster image,
+      // resolved to a URL here (never the raw thumbnailMediaId) the same
+      // way ogImage?.url is resolved into ogImageUrl above.
+      media: product.media.map(({ thumbnailMedia, ...asset }) => ({
+        ...asset,
+        thumbnailUrl: thumbnailMedia?.url ?? null,
+      })),
       seoTitle: seo.title,
       seoDescription: seo.description,
       canonicalUrl: advancedSeo.canonicalUrl,

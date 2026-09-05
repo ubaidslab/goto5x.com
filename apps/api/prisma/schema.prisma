@@ -1403,6 +1403,12 @@ model MediaAsset {
   sortOrder Int         @default(0) @map("sort_order") // Module 10 (FR-28.1) - display order within a product's image set
   isPrimary Boolean     @default(false) @map("is_primary") // Module 10 (FR-28.1) - at most one true per productId, enforced in MediaAssetsService, not the DB
   sizeBytes Int         @default(0) @map("size_bytes") // Module 14 (FR-23.1) - storage-quota metering; set at upload time, never recomputed from MinIO
+  // FR-66.7 (Module 87, v0.58) - a seller-chosen poster image for a video
+  // asset, same "seller-chosen, not auto-generated" pattern already
+  // precedented by Deal.thumbnailMediaId below (no ffmpeg/frame-extraction
+  // infra exists anywhere in this codebase). Only meaningful when this
+  // row's own type is "video"; enforced in MediaAssetsService, not the DB.
+  thumbnailMediaId String? @map("thumbnail_media_id") @db.Uuid
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
 
   product               Product?     @relation(fields: [productId], references: [id])
@@ -1410,6 +1416,8 @@ model MediaAsset {
   ogImageForProducts    Product[]    @relation("ProductOgImage")
   ogImageForCollections Collection[] @relation("CollectionOgImage")
   thumbnailForDeals     Deal[]       @relation("DealThumbnail")
+  thumbnailMedia        MediaAsset?  @relation("MediaAssetThumbnail", fields: [thumbnailMediaId], references: [id])
+  thumbnailForMedia     MediaAsset[] @relation("MediaAssetThumbnail")
 
   @@index([storeId], name: "idx_media_store_id")
   @@index([productId], name: "idx_media_product_id")

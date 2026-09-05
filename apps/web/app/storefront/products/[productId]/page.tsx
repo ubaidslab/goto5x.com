@@ -10,6 +10,7 @@ import { DeliveryBadge } from "../../delivery-badge";
 import { getBuyerSession, isWishlistedAction } from "../../account/actions";
 import { WishlistButton } from "../../wishlist/wishlist-button";
 import { AddToCartForm } from "./add-to-cart-form";
+import { ProductGallery } from "./product-gallery";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
     "@type": "Product",
     name: product.title,
     description: product.seoDescription ?? product.description ?? undefined,
-    image: product.media.map((m) => m.url),
+    image: product.media.filter((m) => m.type === "image").map((m) => m.url),
     ...(firstVariant && {
       offers: {
         "@type": "Offer",
@@ -109,12 +110,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
       <main style={{ padding: 24 }}>
         <a href="/">&larr; Back to store</a>
         <h1>{product.title}</h1>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {product.media.map((asset) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={asset.id} src={asset.url} alt={product.title} style={{ maxWidth: 320 }} />
-          ))}
-        </div>
+        <ProductGallery media={product.media} title={product.title} />
         {product.description && <p>{product.description}</p>}
         {/* SRS §5.69/FR-69.3 (Module 94) - buyer-facing by default, no seller
             opt-in required (contrast with tags' FR-57.4 opt-in). Absent

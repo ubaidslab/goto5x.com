@@ -37,7 +37,13 @@ export interface PublicProduct {
   averageRating: string | number;
   reviewCount: number;
   variants: { id: string; sku: string; price: string; stockQuantity: number; trackInventory: boolean }[];
-  media: { id: string; url: string; type: string }[];
+  media: {
+    id: string;
+    url: string;
+    type: "image" | "video";
+    /** FR-66.7 (Module 87) - a seller-chosen poster image; only ever set when type is "video". */
+    thumbnailUrl: string | null;
+  }[];
   seoTitle: string;
   seoDescription: string | null;
   /** FR-4.6/FR-40.1 - null for self-fulfilled products (no supplier listing behind them). */

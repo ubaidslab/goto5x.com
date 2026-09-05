@@ -79,7 +79,11 @@ export class MediaAssetsService {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.mediaAsset.findMany({ where: { storeId }, orderBy: { createdAt: "desc" } });
+      return tx.mediaAsset.findMany({
+        where: { storeId },
+        orderBy: { createdAt: "desc" },
+        include: { thumbnailMedia: { select: { id: true, url: true } } },
+      });
     });
   }
 
@@ -127,6 +131,32 @@ export class MediaAssetsService {
         mediaIds.map((id, index) => tx.mediaAsset.update({ where: { id }, data: { sortOrder: index } })),
       );
       return tx.mediaAsset.findMany({ where: { storeId, productId }, orderBy: { sortOrder: "asc" } });
+    });
+  }
+
+  /**
+   * FR-66.7 (Module 87) - a seller-chosen poster image for a video asset.
+   * `thumbnailMediaId: null` clears it. Both the video and its chosen
+   * thumbnail must belong to this store; the thumbnail itself must be an
+   * image, not another video.
+   */
+  async setThumbnail(sellerId: string, storeId: string, mediaId: string, thumbnailMediaId: string | null) {
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const existing = await tx.mediaAsset.findUnique({ where: { id: mediaId } });
+      if (!existing || existing.storeId !== storeId) throw new NotFoundException("Media asset not found.");
+      if (existing.type !== "video") {
+        throw new BadRequestException("Only a video asset can have a thumbnail set.");
+      }
+      if (thumbnailMediaId) {
+        const thumb = await tx.mediaAsset.findUnique({ where: { id: thumbnailMediaId } });
+        if (!thumb || thumb.storeId !== storeId) throw new NotFoundException("Thumbnail image not found.");
+        if (thumb.type !== "image") throw new BadRequestException("A video's thumbnail must be an image.");
+      }
+      return tx.mediaAsset.update({
+        where: { id: mediaId },
+        data: { thumbnailMediaId },
+        include: { thumbnailMedia: { select: { id: true, url: true } } },
+      });
     });
   }
 

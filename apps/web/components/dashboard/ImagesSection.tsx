@@ -15,6 +15,8 @@ interface MediaAsset {
   productId: string | null;
   sortOrder: number;
   isPrimary: boolean;
+  /** FR-66.7 (Module 87) - a seller-chosen poster image, only meaningful when type is "video". */
+  thumbnailMedia: { id: string; url: string } | null;
 }
 
 interface DriveFile {
@@ -161,6 +163,17 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
     }
   }
 
+  /** FR-66.7 (Module 87) - `thumbnailMediaId: null` clears the poster image. */
+  async function setThumbnail(assetId: string, thumbnailMediaId: string | null) {
+    setError(null);
+    try {
+      const asset = await api.patch<MediaAsset>(`/stores/${storeId}/media/${assetId}/thumbnail`, { thumbnailMediaId });
+      setImages((prev) => prev.map((img) => (img.id === assetId ? asset : img)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't set that thumbnail.");
+    }
+  }
+
   async function move(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= images.length) return;
@@ -194,14 +207,43 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
             {images.map((image, index) => (
               <div key={image.id} className="overflow-hidden rounded-md border border-border bg-canvas">
                 <div className="relative aspect-square">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- seller-uploaded external MinIO URLs, not a static/local asset */}
-                  <img src={image.url} alt="" className="h-full w-full object-cover" />
+                  {image.type === "video" ? (
+                    <video
+                      src={image.url}
+                      poster={image.thumbnailMedia?.url}
+                      muted
+                      preload="metadata"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element -- seller-uploaded external MinIO URLs, not a static/local asset
+                    <img src={image.url} alt="" className="h-full w-full object-cover" />
+                  )}
                   {image.isPrimary && (
                     <span className="absolute left-2 top-2 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-on-accent">
                       Primary
                     </span>
                   )}
                 </div>
+                {image.type === "video" && (
+                  <label className="flex items-center gap-1 border-t border-border p-2 text-xs text-ink-muted">
+                    Thumbnail
+                    <select
+                      value={image.thumbnailMedia?.id ?? ""}
+                      onChange={(e) => setThumbnail(image.id, e.target.value || null)}
+                      className="flex-1 rounded border border-border bg-canvas px-1 py-0.5 text-xs text-ink"
+                    >
+                      <option value="">None</option>
+                      {images
+                        .filter((candidate) => candidate.type === "image")
+                        .map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.isPrimary ? "Primary image" : `Image ${images.indexOf(candidate) + 1}`}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 <div className="flex items-center justify-between gap-1 p-2">
                   <div className="flex gap-1">
                     <button
@@ -257,7 +299,7 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
             id={`media-upload-input-${productId}`}
           />
           <Button type="button" variant="secondary" loading={uploading} onClick={() => fileInputRef.current?.click()}>
-            Upload image
+            Upload image or video
           </Button>
         </div>
 
@@ -267,8 +309,12 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
               {unattached.map((asset) => (
                 <div key={asset.id} className="overflow-hidden rounded-md border border-border bg-canvas">
                   <div className="aspect-square">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- seller-uploaded external MinIO URLs, not a static/local asset */}
-                    <img src={asset.url} alt="" className="h-full w-full object-cover" />
+                    {asset.type === "video" ? (
+                      <video src={asset.url} poster={asset.thumbnailMedia?.url} muted preload="metadata" className="h-full w-full object-cover" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element -- seller-uploaded external MinIO URLs, not a static/local asset
+                      <img src={asset.url} alt="" className="h-full w-full object-cover" />
+                    )}
                   </div>
                   <button
                     type="button"

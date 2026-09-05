@@ -16,6 +16,7 @@ import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AttachMediaDto } from "./dto/attach-media.dto";
 import { ReorderMediaDto } from "./dto/reorder-media.dto";
+import { SetThumbnailDto } from "./dto/set-thumbnail.dto";
 import { MediaAssetsService } from "./media-assets.service";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB - generous for product photos/short clips, bounded so one upload can't exhaust a request
@@ -66,6 +67,16 @@ export class MediaUploadController {
     @Param("mediaId") mediaId: string,
   ) {
     return this.media.setPrimary(sellerId, storeId, mediaId);
+  }
+
+  @Patch(":mediaId/thumbnail")
+  setThumbnail(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Param("mediaId") mediaId: string,
+    @Body() dto: SetThumbnailDto,
+  ) {
+    return this.media.setThumbnail(sellerId, storeId, mediaId, dto.thumbnailMediaId);
   }
 
   @Patch(":mediaId")

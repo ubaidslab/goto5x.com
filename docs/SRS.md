@@ -10035,8 +10035,24 @@ v0.38 wording item-for-item, same FR/module numbers)
       threshold and above zero (zero already reads "Out of stock").
       Live-verified via Playwright: a variant at 3 (threshold 5) shows
       the urgency message; a normal-stock variant shows none.
-- [ ] Product images support zoom, and a product video with thumbnail
-      renders on the product page (FR-66.7, Module 87).
+- [x] Product images support zoom, and a product video with thumbnail
+      renders on the product page (FR-66.7, Module 87). BUILT: click-to-
+      enlarge lightbox for images (no new dependency - a plain overlay,
+      matching this page's existing hand-rolled styling); a video plays
+      inline with a seller-chosen poster image
+      (`MediaAsset.thumbnailMediaId`, a nullable self-reference,
+      resolved to `thumbnailUrl` on the public response) - the same
+      "seller-chosen, not auto-generated" pattern already precedented
+      by `Deal.thumbnailMediaId`, since no video-frame-extraction infra
+      (ffmpeg etc.) exists anywhere in this codebase. Also fixed a real
+      gap this batch's research surfaced: the storefront's product-
+      media reads had no `orderBy: sortOrder`, so display order wasn't
+      actually guaranteed to match the seller's configured image/video
+      order - added across all four read sites. Live-verified via
+      Playwright: the seller dashboard's Images card shows a
+      "Thumbnail" picker on a video tile scoped to that product's own
+      images; the storefront product page renders the video inline
+      with its poster and opens a zoom lightbox on an image click.
 - [ ] A missing-tracking alert fires when an order has been confirmed/
       paid for longer than the configured window with no tracking on any
       item, notifying the responsible party (seller or supplier, per
