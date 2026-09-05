@@ -38,6 +38,13 @@ export class StorefrontController {
     return this.storefront.listProducts(hostname, unlockToken);
   }
 
+  /** FR-6.14 (Module 11) - the checkout page's pre-order payment-methods preview (launch-risk gap fix). */
+  @Get("payment-instructions")
+  getPaymentInstructions(@Query("hostname") hostname: string) {
+    this.assertHostname(hostname);
+    return this.storefront.getPaymentInstructionsPublic(hostname);
+  }
+
   @Get("products/:productId")
   getProduct(
     @Query("hostname") hostname: string,

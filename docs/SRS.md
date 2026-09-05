@@ -1,6 +1,18 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.59 (Build-phase amendment — Module 103: the seller
+**Version:** 0.60 (Build-phase amendment — adds FR-6.70 (Module 104):
+a pre-order payment-instructions preview on the storefront checkout
+page, closing a real launch-risk gap a pre-launch audit found (the
+seller's configured payment methods — bank/JazzCash/Easypaisa/COD —
+were only ever shown to a buyer AFTER placing an order, on the
+confirmation page; a buyer had no way to see how they'd actually pay
+before committing to checkout, a real source of cart-abandonment
+confusion). Every field involved is already buyer-safe by FR-6.14's
+own design (a seller configures these specifically to be shown to
+buyers) — this surfaces the identical data one step earlier, not new
+data. Implementation proceeds.
+
+Prior amendment — 0.59, Module 103: the seller
 dashboard's own Plans & Billing page (`billing/page.tsx`) gains the
 billing-cycle selector FR-7.20 already specified. FR-7.20's own text
 ("all three cycles are selectable on both the public pricing page and
@@ -2128,7 +2140,10 @@ seller.
   note) since the platform never holds money to deduct a commission from at
   the point of sale either way. At least one method must be configured before
   a store can go live; checkout/order-confirmation surfaces the seller's
-  configured instructions to the buyer once an order is placed.
+  configured instructions to the buyer once an order is placed. **v0.60
+  (FR-6.70, Module 104): also surfaced on the checkout page BEFORE the
+  order is placed** (a preview, not a replacement for the post-order
+  confirmation display) — see FR-6.70.
 - FR-6.15: **Order confirmation is unchanged from Module 9.** An order stays
   `pending` until the seller marks it paid (`OrdersService.markAsPaid()`,
   FR-17.1, already built) — this *is* the payment-confirmation step under
@@ -3417,6 +3432,20 @@ whole point is one rule per store, not per-order choice).
   considered and deferred (out of scope for this amendment, since
   `catalog.product_limit` is enforced per-store, not seller-wide, and
   no gap report named it).
+- FR-6.70 (Module 104): **Pre-order payment-instructions preview.**
+  Extends FR-6.14: the seller's configured payment methods
+  (bank/JazzCash/Easypaisa/COD) are now also shown on the storefront
+  checkout page, before the buyer places the order — not only on the
+  post-order confirmation page as before. A new public
+  `GET /storefront/payment-instructions?hostname=` endpoint returns
+  the identical buyer-safe fields `OrderStatusLookupService` already
+  exposes post-order (same `StorePaymentInstructions` row, same
+  shape) — no new data, no new disclosure, just disclosed a step
+  earlier. Rendered on the checkout page as a "How you'll pay" summary
+  before the "Place order" button, reusing the exact same
+  `formatPaymentInstructions()`-equivalent presentation the
+  confirmation page already uses (kept in sync deliberately, not a
+  second copy of the wording).
 
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans — **First Month, Starter, Growth, Pro** (v0.33: these
@@ -10223,6 +10252,43 @@ card's price to its 10x figure (RUN 14,999→149,990, RISE
 price; the plan-change request body sent on "Switch to this plan"
 carried `{"billingInterval":"yearly"}`; the page then correctly showed
 "Changing to RUN... " with the yearly price.
+
+### 14.72 Pre-Order Payment-Instructions Preview (new, v0.60, §5.6,
+launch-risk gap found in a pre-launch audit, BUILT)
+- [x] A new public `GET /storefront/payment-instructions?hostname=`
+      endpoint returns the store's configured payment methods (bank
+      transfer/JazzCash/Easypaisa/COD), the identical buyer-safe
+      fields `OrderStatusLookupService` already exposes post-order
+      from the same `StorePaymentInstructions` row (FR-6.70, Module
+      104) - no new data, disclosed one step earlier. BUILT:
+      `StorefrontService.getPaymentInstructionsPublic()` +
+      `StorefrontController`'s `GET /storefront/payment-instructions`
+      route; 404s for an unmatched hostname; v1.0 defaults
+      (null/false) for a store with no method configured yet;
+      confirmed cross-store isolation (store A's methods never leak
+      under store B's hostname).
+- [x] The storefront checkout page (`checkout/page.tsx`/
+      `checkout-form.tsx`) fetches and renders this as a "How you'll
+      pay" summary, visible before the "Place order" button - not
+      only on the post-order confirmation page as before. BUILT:
+      fetched server-side in `page.tsx` via
+      `fetchStorefrontPaymentInstructions()` (part of the page's
+      first render, no post-load layout shift) and passed to
+      `CheckoutForm`, which renders the box above the email/shipping
+      form, gated on at least one configured method being present.
+      Live-verified in-browser (screenshot confirmed the box with
+      bank/JazzCash/COD details positioned above the form).
+- [x] The preview's wording matches the confirmation page's existing
+      "How to pay" section (same field-by-field presentation) - kept
+      in sync deliberately, not a second, divergent copy. BUILT: same
+      field labels/order as `OrderStatusLookupService`'s post-order
+      section (bank transfer, JazzCash, Easypaisa, COD).
+
+Verified via `module104-checkout-payment-preview.e2e-spec.ts` (4
+tests: configured methods visible pre-order to an anonymous caller;
+v1.0 defaults for an unconfigured store; 404 for a nonexistent
+hostname; cross-store isolation) plus the full 100-file e2e regression
+suite (100/100 passed, zero failures).
 
 ---
 

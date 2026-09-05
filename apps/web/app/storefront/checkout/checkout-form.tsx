@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearLocalCart, getLocalCart, LocalCartItem } from "../../../lib/local-cart";
+import { PublicPaymentInstructions } from "../../../lib/storefront-api";
 import { ResolvedThemeSettings } from "../../../lib/theme-presets";
 import { createCartSession, ShippingAddressInput, submitCheckout } from "./actions";
 
@@ -18,12 +19,15 @@ export function CheckoutForm({
   currency,
   theme,
   savedAddress,
+  paymentInstructions,
 }: {
   hostname: string;
   currency: string;
   theme: ResolvedThemeSettings;
   /** FR-66.1 (Module 81) - "faster reorder": the logged-in buyer's default saved address, if any. */
   savedAddress?: ShippingAddressInput | null;
+  /** FR-6.70 (Module 104) - the pre-order "how you'll pay" preview; null hides the section entirely. */
+  paymentInstructions?: PublicPaymentInstructions | null;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<LocalCartItem[] | null>(null);
@@ -104,6 +108,35 @@ export function CheckoutForm({
           Shipping, tax, and any discount are calculated once you place your order.
         </p>
       </div>
+
+      {/* FR-6.70 (Module 104) - shown before the buyer commits to
+          checkout, not only after (the confirmation page keeps its own
+          copy of this same section post-order). Absent entirely when the
+          seller hasn't configured any method - same as the confirmation
+          page's own {order.paymentInstructions && ...} gate. */}
+      {paymentInstructions &&
+        (paymentInstructions.bankAccountNumber ||
+          paymentInstructions.jazzcashNumber ||
+          paymentInstructions.easypaisaNumber ||
+          paymentInstructions.codEnabled) && (
+          <div style={{ marginBottom: 24, padding: 16, border: "1px solid #e5e7eb", borderRadius: 12 }}>
+            <strong>How you&apos;ll pay</strong>
+            <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 8px" }}>
+              You&apos;ll pay the seller directly using one of the methods below once your order is placed.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14 }}>
+              {paymentInstructions.bankAccountNumber && (
+                <li>
+                  Bank transfer: {paymentInstructions.bankName} - {paymentInstructions.bankAccountTitle} -{" "}
+                  {paymentInstructions.bankAccountNumber}
+                </li>
+              )}
+              {paymentInstructions.jazzcashNumber && <li>JazzCash: {paymentInstructions.jazzcashNumber}</li>}
+              {paymentInstructions.easypaisaNumber && <li>Easypaisa: {paymentInstructions.easypaisaNumber}</li>}
+              {paymentInstructions.codEnabled && <li>Cash on delivery accepted</li>}
+            </ul>
+          </div>
+        )}
 
       {step === "email" && (
         <form onSubmit={continueFromEmail} style={{ display: "flex", flexDirection: "column", gap: 12 }}>

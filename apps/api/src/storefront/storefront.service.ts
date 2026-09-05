@@ -257,6 +257,32 @@ export class StorefrontService {
     };
   }
 
+  /**
+   * FR-6.14 (Module 11), extended (launch-risk gap found in a pre-launch
+   * audit): the same buyer-safe payment-method fields
+   * OrderStatusLookupService already surfaces AFTER checkout, exposed here
+   * so the checkout page can show them BEFORE the buyer places an order -
+   * every field here is already something a seller configures specifically
+   * to be shown to buyers (see payment-instructions.service.ts's own
+   * comment), so surfacing it a step earlier discloses nothing new, it
+   * just discloses it sooner. Returns null only if the row is somehow
+   * missing (shouldn't happen - StoresService.create() always creates one).
+   */
+  async getPaymentInstructionsPublic(hostname: string) {
+    const store = await this.loadActiveStoreOrThrow(hostname);
+    return this.prismaAdmin.storePaymentInstructions.findUnique({
+      where: { storeId: store.id },
+      select: {
+        bankAccountTitle: true,
+        bankAccountNumber: true,
+        bankName: true,
+        jazzcashNumber: true,
+        easypaisaNumber: true,
+        codEnabled: true,
+      },
+    });
+  }
+
   async listProducts(hostname: string, unlockToken?: string) {
     const store = await this.loadActiveStoreOrThrow(hostname);
     this.assertAccessGranted(store, unlockToken);

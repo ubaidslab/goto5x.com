@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { fetchStorefrontNavigation, fetchStorefrontStore } from "../../../lib/storefront-api";
+import { fetchStorefrontNavigation, fetchStorefrontPaymentInstructions, fetchStorefrontStore } from "../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../chrome";
 import { ChatWidget } from "../chat/chat-widget";
@@ -30,13 +30,24 @@ export default async function StorefrontCheckoutPage() {
   const savedAddresses = addressesRes && addressesRes.ok ? ((await addressesRes.json()) as BuyerAddress[]) : [];
   const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0] ?? null;
 
+  // FR-6.70 (Module 104) - the "how you'll pay" preview, fetched here (not
+  // client-side) so it's part of the page's first render, not a layout
+  // shift after a follow-up request.
+  const paymentInstructions = await fetchStorefrontPaymentInstructions(host);
+
   return (
     <>
       <AnnouncementBar theme={theme} />
       <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24, maxWidth: 560, margin: "0 auto" }}>
         <h1>Checkout</h1>
-        <CheckoutForm hostname={host} currency={store.currency} theme={theme} savedAddress={defaultAddress} />
+        <CheckoutForm
+          hostname={host}
+          currency={store.currency}
+          theme={theme}
+          savedAddress={defaultAddress}
+          paymentInstructions={paymentInstructions}
+        />
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />

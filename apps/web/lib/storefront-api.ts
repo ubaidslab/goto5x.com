@@ -30,6 +30,16 @@ export interface PublicStore {
   customHeadTags: string | null;
 }
 
+/** FR-6.14/FR-6.70 (Module 104) - the same buyer-safe fields shown post-order, now also fetchable pre-order. */
+export interface PublicPaymentInstructions {
+  bankAccountTitle: string | null;
+  bankAccountNumber: string | null;
+  bankName: string | null;
+  jazzcashNumber: string | null;
+  easypaisaNumber: string | null;
+  codEnabled: boolean;
+}
+
 export interface PublicProduct {
   id: string;
   title: string;
@@ -118,6 +128,20 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
  */
 export async function fetchStorefrontStore(hostname: string): Promise<PublicStore | null> {
   const res = await fetch(`${API_BASE}/storefront/store?hostname=${encodeURIComponent(hostname)}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/**
+ * FR-6.70 (Module 104) - the checkout page's pre-order "how you'll pay"
+ * preview. Returns null on a missing/misconfigured row (shouldn't happen -
+ * StoresService.create() always creates one) so the caller can just hide
+ * the preview section rather than erroring.
+ */
+export async function fetchStorefrontPaymentInstructions(hostname: string): Promise<PublicPaymentInstructions | null> {
+  const res = await fetch(`${API_BASE}/storefront/payment-instructions?hostname=${encodeURIComponent(hostname)}`, {
     cache: "no-store",
   });
   if (!res.ok) return null;
@@ -309,14 +333,7 @@ export interface PublicOrderStatusFull {
     channel: "whatsapp_otp" | "email_otp" | "prepaid_confirmation" | "prepaid_partial_advance";
     status: "pending" | "verified" | "failed" | "expired";
   } | null;
-  paymentInstructions: {
-    bankAccountTitle: string | null;
-    bankAccountNumber: string | null;
-    bankName: string | null;
-    jazzcashNumber: string | null;
-    easypaisaNumber: string | null;
-    codEnabled: boolean;
-  } | null;
+  paymentInstructions: PublicPaymentInstructions | null;
   items: PublicOrderItem[];
   // Module 53 (SRS §5.60/FR-60.2/60.6)
   canRequestReturn: boolean;
