@@ -21,8 +21,14 @@ interface Plan {
   price: string;
   seatPrice: string | null;
   currency: string;
-  billingInterval: "monthly" | "yearly" | "none";
+  billingInterval: "monthly" | "yearly" | "none" | "six_month";
   isActive: boolean;
+  // FR-7.20 (Module 61) - derived, not stored: the price for each cycle at
+  // this plan's current active price. Null for a non-monthly-billed plan
+  // group (team/supplier) - no cycle choice applies to those.
+  activePrice: number;
+  sixMonthPrice: number | null;
+  yearlyPrice: number | null;
 }
 
 interface Subscription {
@@ -30,9 +36,15 @@ interface Subscription {
   planId: string;
   pendingPlanId: string | null;
   currentPeriodEnd: string | null;
+  // FR-7.20 (Module 61) - which cycle this subscription is actually on;
+  // the billing-cycle selector below defaults to this, not always monthly.
+  billingInterval: "monthly" | "six_month" | "yearly";
   plan: Plan;
   pendingPlan: Plan | null;
 }
+
+type Cycle = "monthly" | "six_month" | "yearly";
+const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", six_month: "6 months", yearly: "Yearly" };
 
 interface Team {
   id: string;
@@ -88,6 +100,10 @@ export default function BillingPage() {
   const [plans, setPlans] = useState<{ individual: Plan[]; team: Plan[]; supplier: Plan[] } | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
+  // FR-7.20 (Module 61/103) - defaults to the seller's current cycle once
+  // the subscription loads (see the effect below), not always monthly.
+  const [cycle, setCycle] = useState<Cycle>("monthly");
+  const [cycleInitialized, setCycleInitialized] = useState(false);
 
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [memberships, setMemberships] = useState<TeamMembership[] | null>(null);
@@ -124,6 +140,26 @@ export default function BillingPage() {
 
   useEffect(loadAll, []);
 
+  // FR-7.20 (Module 61/103) - the selector defaults to the seller's actual
+  // current cycle, once, the first time the subscription arrives (never
+  // resets it back to monthly on a later refetch, e.g. after a plan change).
+  useEffect(() => {
+    if (subscription && !cycleInitialized) {
+      setCycle(subscription.billingInterval);
+      setCycleInitialized(true);
+    }
+  }, [subscription, cycleInitialized]);
+
+  function priceForCycle(plan: Plan, forCycle: Cycle): number {
+    if (forCycle === "six_month") return plan.sixMonthPrice ?? plan.activePrice;
+    if (forCycle === "yearly") return plan.yearlyPrice ?? plan.activePrice;
+    return plan.activePrice;
+  }
+
+  function cyclePriceFor(plan: Plan): number {
+    return priceForCycle(plan, cycle);
+  }
+
   async function submitPlanFeePayment() {
     setPaymentError(null);
     setPaymentInstructions(null);
@@ -139,7 +175,10 @@ export default function BillingPage() {
     }
   }
 
-  async function submitPlanChange(planId: string, body: { confirmed?: boolean; keepStoreIds?: string[] }): Promise<void> {
+  async function submitPlanChange(
+    planId: string,
+    body: { confirmed?: boolean; keepStoreIds?: string[]; billingInterval?: Cycle },
+  ): Promise<void> {
     const result = await api.post<ChangePlanResult>("/sellers/me/subscription/change", { planId, ...body });
 
     // FR-6.69 (Module 102) - informational and overridable: show exactly
@@ -183,7 +222,7 @@ export default function BillingPage() {
     setError(null);
     setChangingPlanId(planId);
     try {
-      await submitPlanChange(planId, {});
+      await submitPlanChange(planId, { billingInterval: cycle });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't change plan.");
     } finally {
@@ -242,6 +281,11 @@ export default function BillingPage() {
 
   const activeMembership = memberships?.find((m) => m.status === "active");
   const pendingInvites = memberships?.filter((m) => m.status === "pending_invite") ?? [];
+  // A team-sponsored member's subscription.plan is a team-group plan (no
+  // cycle-price fields, seat-based) - only an individual-group plan (looked
+  // up from /plans, which already computes activePrice/sixMonthPrice/
+  // yearlyPrice) has a per-cycle price to show.
+  const currentPlanWithCyclePrices = subscription ? plans?.individual.find((p) => p.id === subscription.planId) : undefined;
 
   return (
     <div>
@@ -260,7 +304,13 @@ export default function BillingPage() {
                     <span className="text-ink-muted"> — {planTierSubtitle(subscription.plan.name)}</span>
                   )}{" "}
                   <span className="text-ink-muted">
-                    ({subscription.plan.price === "0" ? "free" : `${subscription.plan.currency} ${subscription.plan.price}/${subscription.plan.billingInterval}`})
+                    (
+                    {subscription.plan.price === "0"
+                      ? "free"
+                      : currentPlanWithCyclePrices
+                        ? `${subscription.plan.currency} ${priceForCycle(currentPlanWithCyclePrices, subscription.billingInterval).toLocaleString()} / ${CYCLE_LABELS[subscription.billingInterval].toLowerCase()}`
+                        : `${subscription.plan.currency} ${subscription.plan.price}/${subscription.plan.billingInterval}`}
+                    )
                   </span>
                 </p>
                 {subscription.pendingPlan && (
@@ -327,11 +377,30 @@ export default function BillingPage() {
           <Card>
             <CardHeader title="Available plans" description="What each tier gets you - upgrading or downgrading takes effect at your next billing cycle." />
             <CardBody>
+              {/* FR-7.20 (Module 61/103) - the same three cycles the public
+                  pricing page's own toggle offers a signing-up seller,
+                  extended here to an existing seller switching plans. */}
+              <div className="mb-4 inline-flex rounded-full border border-border bg-canvas p-1">
+                {(["monthly", "six_month", "yearly"] as Cycle[]).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCycle(c)}
+                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                      cycle === c ? "bg-ink text-canvas" : "text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    {CYCLE_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {plans.individual.map((plan) => {
                   const isCurrent = subscription?.planId === plan.id;
                   const isPending = subscription?.pendingPlanId === plan.id;
                   const copyForTier = planTierCopy(plan.name);
+                  const cyclePrice = cyclePriceFor(plan);
                   return (
                     <div
                       key={plan.id}
@@ -357,7 +426,7 @@ export default function BillingPage() {
                       </ul>
 
                       <p className="mt-4 text-xs text-ink-faint">
-                        {plan.price === "0" ? "Free" : `${plan.currency} ${plan.price}/${plan.billingInterval}`}
+                        {cyclePrice === 0 ? "Free" : `${plan.currency} ${cyclePrice.toLocaleString()} / ${CYCLE_LABELS[cycle].toLowerCase()}`}
                       </p>
 
                       <div className="mt-2">

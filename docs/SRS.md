@@ -1,13 +1,25 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.58 (Build-phase amendment — adds FR-6.69 (Module 102):
+**Version:** 0.59 (Build-phase amendment — Module 103: the seller
+dashboard's own Plans & Billing page (`billing/page.tsx`) gains the
+billing-cycle selector FR-7.20 already specified. FR-7.20's own text
+("all three cycles are selectable on both the public pricing page and
+the admin plan editor") was fully built for those two surfaces — the
+public `/pricing` page's toggle and the admin plan editor — but never
+extended to the seller-dashboard page where an *existing* seller
+actually switches plans, so `ChangePlanDto.billingInterval` (built,
+end-to-end, since Module 61) had no UI path to reach it there: a
+seller could only ever submit a plan change at the default monthly
+cycle. Closing that gap, not adding new backend behavior. Implementation
+proceeds.
+
+Prior amendment — 0.58, adds FR-6.69 (Module 102):
 plan-downgrade confirmation with an explicit feature-loss warning,
 closing a real launch-risk gap an audit found (a plan switch that
 drops a seller below their current tier previously applied silently,
 with no disclosure of what they'd lose). Extends FR-7.5's plan-change
 flow with a second, informational-and-overridable request-time gate
-alongside FR-6.43's existing mandatory store-count gate. Implementation
-proceeds.
+alongside FR-6.43's existing mandatory store-count gate.
 
 Prior amendment — 0.57, pins down FR-66.3's plan-gate
 boundary ahead of building it: RISE+FLY (`buyer_chat.enabled`,
@@ -3643,7 +3655,16 @@ whole point is one rule per store, not per-order choice).
   on, so `PlanFeeDebitService`'s expiry sweep (FR-6.34) advances
   `currentPeriodEnd` by the correct span (1/6/12 months) and
   `SubscriptionPaymentClaim`'s amount-due reflects the correct multiplied
-  price.
+  price. **v0.59 (Module 103) note:** "selectable on both the public
+  pricing page and the admin plan editor" is extended to explicitly
+  include the third surface this always implied but never named — the
+  seller dashboard's own Plans & Billing page (`billing/page.tsx`),
+  where an *existing* seller switches plans (distinct from the public
+  pricing page's signup flow). The backend (`ChangePlanDto.
+  billingInterval`, threaded through `requestPlanChange()` since Module
+  61) already accepted this end-to-end; only that one UI surface never
+  sent it, silently defaulting every in-dashboard plan switch to
+  monthly regardless of the seller's selection elsewhere.
 - FR-7.21: **Pricing page psychology (new v0.35, extends FR-7.19's
   rendering rules; headline-benefit clause corrected v0.36).** The public
   pricing page must render: the struck-through `regularPrice` beside the
@@ -10164,6 +10185,44 @@ gap found in a pre-launch audit, BUILT)
       the local dev stack (FLY→RUN downgrade: loss list rendered
       correctly, "Switch anyway" staged the pending plan change and
       the page reflected "Scheduled"/"Changing to RUN...").
+
+### 14.71 Billing-Cycle Selector on the Seller Dashboard (new, v0.59,
+§5.7, closes an unbuilt piece of FR-7.20, BUILT)
+- [x] The seller dashboard's Plans & Billing page (`billing/page.tsx`)
+      gains a monthly/6-month/yearly cycle selector, the same three
+      cycles FR-7.20 already defines and the public `/pricing` page
+      already lets a signing-up seller choose — extended here to the
+      one remaining surface where an *existing* seller changes cycle:
+      switching plans in-dashboard (Module 103). BUILT: the same
+      segmented-toggle pattern as `/pricing`'s own cycle selector
+      (`Cycle`/`CYCLE_LABELS`), not a new component.
+- [x] The selected cycle is sent as `billingInterval` on the plan-change
+      request (`ChangePlanDto.billingInterval`, already accepted
+      end-to-end by `requestPlanChange()` since Module 61 - no backend
+      change needed). Defaults to the seller's current
+      `subscription.billingInterval`, not always monthly. BUILT:
+      confirmed by an already-passing backend e2e test
+      (`module73-subscription-only-renewal.e2e-spec.ts`) exercising
+      this exact request shape - no new backend test needed, since no
+      backend code changed (a zero-line `apps/api` diff for this item).
+- [x] Each plan card's price reflects the selected cycle (the same
+      `activePrice`/`sixMonthPrice`/`yearlyPrice` fields `GET /plans`
+      already computes and the public pricing page already consumes -
+      reused, not recomputed a second way). BUILT: the "Current plan"
+      card's own price line was also fixed in the same pass (it
+      previously always showed the monthly figure, ignoring the
+      subscription's actual live cycle) by looking up the matching
+      `/plans` entry for `subscription.planId`, since `GET /sellers/
+      me/subscription` doesn't itself return the derived cycle-price
+      fields.
+
+Live-verified via Playwright against the local dev stack: the
+selector defaults to Monthly, switching to Yearly updates every plan
+card's price to its 10x figure (RUN 14,999→149,990, RISE
+43,999→439,990, FLY 73,999→739,990) and the "Current plan" line's own
+price; the plan-change request body sent on "Switch to this plan"
+carried `{"billingInterval":"yearly"}`; the page then correctly showed
+"Changing to RUN... " with the yearly price.
 
 ---
 
