@@ -1,8 +1,36 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { MultiStoreDowngradeService } from "./multi-store-downgrade.service";
 import type { SettingsContext } from "../settings-registry/settings.types";
+
+export interface DowngradeLoss {
+  label: string;
+  detail: string;
+}
+
+/**
+ * FR-6.69 (Module 102) - every plan-scoped boolean feature gate this
+ * codebase has built so far, named for a seller-facing loss message. A key
+ * missing here just never appears in the warning - not a correctness bug,
+ * but keep this listed alongside each feature's own build as new plan-gated
+ * features are added, the same discipline settings seed files already
+ * follow for their own definitions.
+ */
+const DOWNGRADE_FEATURE_GATES: { key: string; label: string }[] = [
+  { key: "wishlist.enabled", label: "Wishlist / save-for-later" },
+  { key: "buyer_chat.enabled", label: "Live chat widget" },
+  { key: "customer_segments.enabled", label: "Customer segments" },
+  { key: "gift_cards.enabled", label: "Gift cards" },
+  { key: "seo.advanced_fields_enabled", label: "Advanced SEO fields" },
+  { key: "data_export.on_demand_enabled", label: "On-demand data export (CSV/PDF)" },
+  { key: "theme.premium_tier_enabled", label: "Premium Design Studio templates" },
+  { key: "theme.coded_mode_enabled", label: "Design Studio coded mode" },
+  { key: "teams.leader_eligible", label: "Team leader eligibility" },
+  { key: "social_media.meta_catalog_feed_enabled", label: "Facebook/Instagram catalog feed" },
+  { key: "whatsapp.product_share_enabled", label: "WhatsApp product-share links" },
+];
 
 /**
  * A billing-cycle-length step for FR-7.5's next-cycle math. Exported -
@@ -34,6 +62,7 @@ export class SubscriptionsService {
     private readonly prisma: PrismaRuntimeService,
     private readonly auditLog: AuditLogService,
     private readonly multiStoreDowngrade: MultiStoreDowngradeService,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -170,18 +199,69 @@ export class SubscriptionsService {
    * NEXT renewal's fee/multiplier and interval-advance, so unlike the tier
    * itself there is no mid-cycle proration concern to defer against.
    */
+  /**
+   * FR-6.69 (Module 102) - "what would this seller actually lose" for a
+   * candidate downgrade: every plan-scoped boolean feature gate that flips
+   * true -> false, plus a live staff-seat overage. Both resolved with the
+   * seller's own sellerId in context (not a bare planId lookup) so a
+   * seller-level Settings Registry override survives the comparison
+   * correctly in both directions - the same precedence SettingsService
+   * already applies everywhere else.
+   */
+  private async resolveDowngradeLosses(sellerId: string, currentPlanId: string, newPlanId: string): Promise<DowngradeLoss[]> {
+    const losses: DowngradeLoss[] = [];
+
+    await Promise.all(
+      DOWNGRADE_FEATURE_GATES.map(async ({ key, label }) => {
+        const [before, after] = await Promise.all([
+          this.settings.resolve<boolean>(key, { sellerId, planId: currentPlanId }),
+          this.settings.resolve<boolean>(key, { sellerId, planId: newPlanId }),
+        ]);
+        if (before && !after) {
+          losses.push({ label, detail: "No longer included on this plan." });
+        }
+      }),
+    );
+
+    const [staffLimitAfter, activeStaffCount] = await Promise.all([
+      this.settings.resolve<number>("staff.max_accounts", { sellerId, planId: newPlanId }),
+      this.prisma.staffAccount.count({ where: { sellerId, status: "active" } }),
+    ]);
+    if (activeStaffCount > staffLimitAfter) {
+      losses.push({
+        label: "Staff seats",
+        detail: `You have ${activeStaffCount} active staff account${activeStaffCount === 1 ? "" : "s"}; this plan allows only ${staffLimitAfter}.`,
+      });
+    }
+
+    return losses;
+  }
+
   async requestPlanChange(
     sellerId: string,
     newPlanId: string,
     billingInterval?: "monthly" | "six_month" | "yearly",
     keepStoreIds?: string[],
+    confirmed?: boolean,
   ) {
-    const subscription = await this.prisma.subscription.findUnique({ where: { sellerId } });
+    const subscription = await this.prisma.subscription.findUnique({ where: { sellerId }, include: { plan: true } });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
     const newPlan = await this.prisma.plan.findUnique({ where: { id: newPlanId } });
     if (!newPlan || !newPlan.isActive) throw new BadRequestException("That plan is not available.");
     if (newPlan.planGroup !== "individual") {
       throw new BadRequestException("A seller may only self-select an individual-group plan.");
+    }
+
+    // FR-6.69 (Module 102) - checked first, before FR-6.43's mandatory
+    // store-count gate below: informational and overridable (the seller
+    // can proceed after seeing it), unlike the store-choice gate, which
+    // can never be skipped. Only fires for an actual downgrade with an
+    // actual consequence - never an interruption with nothing to disclose.
+    if (newPlan.tierOrder < subscription.plan.tierOrder && !confirmed) {
+      const losses = await this.resolveDowngradeLosses(sellerId, subscription.planId, newPlanId);
+      if (losses.length > 0) {
+        return { requiresDowngradeConfirmation: true as const, losses };
+      }
     }
 
     // Module 66 (FR-6.43) - "the seller chooses ... via a new confirmation

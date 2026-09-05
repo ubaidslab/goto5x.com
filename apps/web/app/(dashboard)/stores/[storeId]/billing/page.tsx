@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { ApiError, api } from "@/lib/dashboard-api";
 import { planTierCopy, planTierSubtitle } from "@/lib/plan-tier-copy";
 
@@ -61,10 +62,27 @@ interface PlanFeePaymentPreview {
   instructions: string;
 }
 
+// FR-6.69 (Module 102) - the two non-terminal response shapes
+// requestPlanChange() can hand back instead of an updated Subscription: an
+// informational, overridable feature-loss warning, and Module 66's
+// pre-existing (previously unhandled by this page) mandatory store-choice
+// gate. Both are resolved via the same reusable useConfirm() dialog rather
+// than two bespoke ones.
+interface DowngradeLoss {
+  label: string;
+  detail: string;
+}
+
+type ChangePlanResult =
+  | Subscription
+  | { requiresDowngradeConfirmation: true; losses: DowngradeLoss[] }
+  | { requiresStoreChoice: true; maxStores: number; activeStores: { id: string; name: string; createdAt: string }[] };
+
 // FR-7.17 - the whole point: this page renders entirely from /plans data,
 // never a hard-coded tier list. Adding/reordering a tier changes what's
 // displayed here with no deploy.
 export default function BillingPage() {
+  const confirm = useConfirm();
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plans, setPlans] = useState<{ individual: Plan[]; team: Plan[]; supplier: Plan[] } | null>(null);
@@ -121,12 +139,51 @@ export default function BillingPage() {
     }
   }
 
+  async function submitPlanChange(planId: string, body: { confirmed?: boolean; keepStoreIds?: string[] }): Promise<void> {
+    const result = await api.post<ChangePlanResult>("/sellers/me/subscription/change", { planId, ...body });
+
+    // FR-6.69 (Module 102) - informational and overridable: show exactly
+    // what would be lost, and only resubmit with confirmed:true if the
+    // seller explicitly accepts. A cancel just leaves the current plan in
+    // place - no partial state to unwind.
+    if ("requiresDowngradeConfirmation" in result) {
+      const ok = await confirm({
+        title: "This plan doesn't include everything you're using",
+        description: "Switching will remove:",
+        changes: result.losses.map((loss) => ({ label: loss.label, from: "Included now", to: loss.detail })),
+        confirmLabel: "Switch anyway",
+        tone: "danger",
+      });
+      if (!ok) return;
+      return submitPlanChange(planId, { ...body, confirmed: true });
+    }
+
+    // Module 66 (FR-6.43) - previously unhandled by this page (silently
+    // misrendered). No custom multi-store picker here: mirrors
+    // applyDowngrade()'s own founder-specified default (oldest stores stay
+    // active) and makes it explicit/confirmable instead of silent.
+    if ("requiresStoreChoice" in result) {
+      const keep = result.activeStores.slice(0, result.maxStores);
+      const pause = result.activeStores.slice(result.maxStores);
+      const ok = await confirm({
+        title: `This plan allows only ${result.maxStores} active store${result.maxStores === 1 ? "" : "s"}`,
+        description: `You have ${result.activeStores.length} active stores. Your oldest ${keep.length} will stay active; the rest will be paused (orders paused, not deleted) unless you upgrade again within 30 days.`,
+        changes: pause.map((s) => ({ label: s.name, from: "Active", to: "Paused" })),
+        confirmLabel: "Continue",
+        tone: "danger",
+      });
+      if (!ok) return;
+      return submitPlanChange(planId, { ...body, keepStoreIds: keep.map((s) => s.id) });
+    }
+
+    setSubscription(result);
+  }
+
   async function changePlan(planId: string) {
     setError(null);
     setChangingPlanId(planId);
     try {
-      const updated = await api.post<Subscription>("/sellers/me/subscription/change", { planId });
-      setSubscription(updated);
+      await submitPlanChange(planId, {});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't change plan.");
     } finally {

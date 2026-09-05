@@ -1,10 +1,18 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.57 (Build-phase amendment — pins down FR-66.3's plan-gate
+**Version:** 0.58 (Build-phase amendment — adds FR-6.69 (Module 102):
+plan-downgrade confirmation with an explicit feature-loss warning,
+closing a real launch-risk gap an audit found (a plan switch that
+drops a seller below their current tier previously applied silently,
+with no disclosure of what they'd lose). Extends FR-7.5's plan-change
+flow with a second, informational-and-overridable request-time gate
+alongside FR-6.43's existing mandatory store-count gate. Implementation
+proceeds.
+
+Prior amendment — 0.57, pins down FR-66.3's plan-gate
 boundary ahead of building it: RISE+FLY (`buyer_chat.enabled`,
 tierOrder ≥ 2), the same boundary as the closest comparable seller-
-facing engagement features (customer segments, gift cards). Implementation
-proceeds.
+facing engagement features (customer segments, gift cards).
 
 Prior amendment — 0.56, clarifies FR-66.1's "separate
 identity space from `User`/seller auth" phrase, ahead of building it:
@@ -3366,6 +3374,37 @@ never holds either portion); no automatic reconciliation of the
 COD remainder collected at delivery (exactly as unreconciled as COD's
 full amount is today); no per-order override of the store's model (the
 whole point is one rule per store, not per-order choice).
+- FR-6.69 (Module 102): **Plan-downgrade confirmation, explicit
+  feature-loss warning.** Extends FR-7.5's plan-change flow with a
+  second request-time gate, alongside FR-6.43's existing store-count
+  gate (the two compose: this one runs first, is informational and
+  overridable by the seller; FR-6.43's remains mandatory and blocking).
+  When the requested plan's `tierOrder` is lower than the seller's
+  current plan, `requestPlanChange()` computes what the seller would
+  actually lose - every plan-scoped boolean Settings Registry feature
+  gate that resolves true on the current plan and false on the
+  candidate plan (resolved with the seller's own context both times,
+  so a seller-level override survives the comparison correctly), plus
+  a live comparison of the seller's active staff-account count against
+  the candidate plan's `staff.max_accounts` (the concrete example
+  named when this gap was found) - and returns
+  `{ requiresDowngradeConfirmation: true, losses: [...] }` instead of
+  applying the change. The seller dashboard's Billing & plan page
+  shows this as a confirm dialog (reusing the same
+  `ConfirmDialogProvider`/`useConfirm()` the admin confirm-dialog work
+  already built) listing every loss by name; only an explicit
+  re-submission with `confirmed: true` proceeds. A downgrade with no
+  losses (e.g. GO→never happens since GO is the floor, but RISE→RUN
+  with no gift cards/segments/chat/wishlist ever used) applies
+  immediately with no dialog, same as before this amendment - never an
+  interruption without an actual consequence to disclose. Scoped
+  deliberately to the two example categories named when this gap was
+  found (feature flags, staff seats) - the store-count case already has
+  its own dedicated, older mechanism (FR-6.43) and is not duplicated
+  into this loss list; a per-store product-count comparison was
+  considered and deferred (out of scope for this amendment, since
+  `catalog.product_limit` is enforced per-store, not seller-wide, and
+  no gap report named it).
 
 ### 5.7 Subscription Plans, Pricing & Billing
 - FR-7.1: Tiered plans — **First Month, Starter, Growth, Pro** (v0.33: these
@@ -10083,6 +10122,48 @@ flipped from its original "not yet built" placeholder)
       (FR-67.4, Module 91).
 - [x] A deal-performance card (units sold, revenue) appears on the
       seller Analytics page (FR-67.5, Module 91).
+
+### 14.70 Plan-Downgrade Confirmation (new, v0.58, §5.6, launch-risk
+gap found in a pre-launch audit, BUILT)
+- [x] `requestPlanChange()` gains a second request-time gate, checked
+      before FR-6.43's existing mandatory store-count gate: when the
+      candidate plan's `tierOrder` is lower than the seller's current
+      plan, every plan-scoped boolean Settings Registry feature gate
+      that resolves true on the current plan and false on the
+      candidate plan (resolved with the seller's own `sellerId` in
+      context both times, so a personal override survives the
+      comparison correctly) is collected into a loss list, plus a live
+      comparison of the seller's active staff-account count against
+      the candidate plan's `staff.max_accounts` (FR-6.69, Module 102).
+      BUILT: `resolveDowngradeLosses()` in `subscriptions.service.ts`,
+      checked in `requestPlanChange()` immediately after the
+      individual-plan-group validation and before the Module 66
+      store-choice check.
+- [x] A downgrade with a non-empty loss list returns
+      `{ requiresDowngradeConfirmation: true, losses: [...] }` instead
+      of applying the change; only an explicit re-submission with
+      `confirmed: true` proceeds. A downgrade with no actual losses
+      applies immediately, exactly as before this amendment (FR-6.69,
+      Module 102). BUILT: `ChangePlanDto.confirmed` (new, optional
+      boolean) threaded through `SubscriptionsController.change()`;
+      covered by `module102-plan-downgrade-confirmation.e2e-spec.ts`
+      (5 tests: loss list returned unconfirmed, confirmed resubmission
+      proceeds, zero-loss downgrade applies immediately, live
+      staff-seat comparison, composition with FR-6.43's store-choice
+      gate in the correct order).
+- [x] The seller dashboard's Billing & plan page shows the loss list in
+      a confirm dialog before submitting a downgrade, reusing the
+      existing `ConfirmDialogProvider`/`useConfirm()` component rather
+      than a new dialog implementation (FR-6.69, Module 102). BUILT:
+      `billing/page.tsx`'s `changePlan()`/`submitPlanChange()`; the
+      same pass also fixed a pre-existing, previously unhandled
+      `requiresStoreChoice` response shape on this page (Module 66),
+      now also confirmed via `useConfirm()` before resubmitting with
+      the founder-specified oldest-stores-stay-active default made
+      explicit. Live-verified in a real browser via Playwright against
+      the local dev stack (FLY→RUN downgrade: loss list rendered
+      correctly, "Switch anyway" staged the pending plan change and
+      the page reflected "Scheduled"/"Changing to RUN...").
 
 ---
 

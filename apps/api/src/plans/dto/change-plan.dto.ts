@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsUUID } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsOptional, IsUUID } from "class-validator";
 
 export class ChangePlanDto {
   @IsUUID()
@@ -20,4 +20,12 @@ export class ChangePlanDto {
   @IsArray()
   @IsUUID(undefined, { each: true })
   keepStoreIds?: string[];
+
+  // FR-6.69 (Module 102) - explicit re-submission after the seller has seen
+  // a requiresDowngradeConfirmation response's loss list. Omitted (or
+  // false) on the first request; a downgrade with no losses never requires
+  // this at all.
+  @IsOptional()
+  @IsBoolean()
+  confirmed?: boolean;
 }
