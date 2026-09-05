@@ -52,6 +52,13 @@ async function teardown(runId: string): Promise<void> {
       await tx.$executeRawUnsafe(`DELETE FROM collections WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM media_assets WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM product_variants WHERE store_id = ANY($1::uuid[])`, storeIds);
+      // FR-66.5 (Module 85) wishlist - no store_id column (only product_id),
+      // so scoped via a subquery; must run before products itself below.
+      // No REVOKE on this table (confirmed via \dp), same as buyer chat.
+      await tx.$executeRawUnsafe(
+        `DELETE FROM buyer_wishlist_items WHERE product_id IN (SELECT id FROM products WHERE store_id = ANY($1::uuid[]))`,
+        storeIds,
+      );
       await tx.$executeRawUnsafe(`DELETE FROM products WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM customers WHERE store_id = ANY($1::uuid[])`, storeIds);
       await tx.$executeRawUnsafe(`DELETE FROM discount_codes WHERE store_id = ANY($1::uuid[])`, storeIds);

@@ -208,6 +208,10 @@ export class StorefrontService {
     // plan actually includes it.
     const planContext = await this.subscriptions.getPlanContext(store.sellerId);
     const chatEnabled = await this.settings.resolve<boolean>("buyer_chat.enabled", planContext);
+    // FR-66.5 (Module 85) - same resolution, same RISE+FLY boundary as
+    // chatEnabled just above; the storefront wishlist button/nav link only
+    // ever renders when the seller's plan actually includes it.
+    const wishlistEnabled = await this.settings.resolve<boolean>("wishlist.enabled", planContext);
 
     return {
       id: store.id,
@@ -228,6 +232,7 @@ export class StorefrontService {
       verified: store.verifiedStatus === "verified",
       poweredByVisible,
       chatEnabled,
+      wishlistEnabled,
       theme: store.themeSettings
         ? {
             name: store.themeSettings.theme.name,

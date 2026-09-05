@@ -15,6 +15,8 @@ export interface PublicStore {
   poweredByVisible: boolean;
   /** FR-66.3 (Module 83) - server-resolved plan gate (RISE+FLY); the storefront only renders the chat widget when true. */
   chatEnabled: boolean;
+  /** FR-66.5 (Module 85) - same RISE+FLY plan gate as chatEnabled; the storefront only renders the wishlist button/nav link when true. */
+  wishlistEnabled: boolean;
   theme: { name: string; settings: Record<string, unknown> } | null;
   // Module 58 (SRS §5.65, FR-65.1/65.5) - store-level defaults product/
   // collection pages fall back to when their own toggle is unset.

@@ -10010,8 +10010,19 @@ v0.38 wording item-for-item, same FR/module numbers)
       cart shows the flat rate, and increasing quantity past the
       free-shipping threshold flips both the product-page and cart-page
       display to "Free shipping" in real time.
-- [ ] Wishlist/save-for-later exists and is plan-gated the same way as
-      the chat widget (FR-66.5, Module 85).
+- [x] Wishlist/save-for-later exists and is plan-gated the same way as
+      the chat widget (FR-66.5, Module 85). BUILT: `BuyerWishlistItem`
+      (account-gated only - no guest path, unlike buyer chat, since a
+      saved list is only useful if it persists across sessions/devices),
+      plan-gated RISE+FLY via `wishlist.enabled` resolved the same way
+      as `chatEnabled`, with a server-side re-check on add (defense in
+      depth, mirroring `BuyerChatService.startChat()`'s gate). A heart
+      toggle on the product page, a saved-items list at
+      `/account/wishlist`. Live-verified via Playwright: a GO-tier
+      store shows no wishlist affordance at all (even logged in); on a
+      RISE-tier store, saving from the product page immediately shows
+      up on the wishlist page, and removing it there resets the
+      product-page toggle back to unsaved.
 - [ ] A low-stock countdown indicator renders on product pages (FR-66.6,
       Module 86).
 - [ ] Product images support zoom, and a product video with thumbnail

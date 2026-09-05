@@ -174,3 +174,44 @@ export async function deleteAddressAction(id: string): Promise<{ ok: true } | Ap
   if (!res || !res.ok) return { ok: false, error: "Couldn't remove this address - please try again." };
   return { ok: true };
 }
+
+/** FR-66.5 (Module 85) - wishlist/save-for-later, account-gated (see BuyerWishlistItem's schema doc comment for why). */
+export interface WishlistItem {
+  productId: string;
+  addedAt: string;
+  title: string;
+  price: number | null;
+  imageUrl: string | null;
+  storeName: string;
+  storeSlug: string;
+}
+
+export async function getWishlistAction(): Promise<{ ok: true; items: WishlistItem[] } | ApiError> {
+  const res = await buyerAuthedFetch("/storefront/account/wishlist");
+  if (!res || !res.ok) return { ok: false, error: "Couldn't load your wishlist." };
+  return { ok: true, items: (await res.json()) as WishlistItem[] };
+}
+
+/** Server-side only (not a form action) - checks initial heart state for a product page render. Never throws; a guest or a request error both just read as "not wishlisted". */
+export async function isWishlistedAction(productId: string): Promise<boolean> {
+  const res = await buyerAuthedFetch(`/storefront/account/wishlist/${productId}`);
+  if (!res || !res.ok) return false;
+  const body = (await res.json()) as { wishlisted: boolean };
+  return body.wishlisted;
+}
+
+export async function addWishlistItemAction(productId: string): Promise<{ ok: true } | ApiError> {
+  const res = await buyerAuthedFetch("/storefront/account/wishlist", { method: "POST", body: JSON.stringify({ productId }) });
+  if (!res) return { ok: false, error: "Please sign in to save items to your wishlist." };
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { message?: string | string[] });
+    return { ok: false, error: extractError(body, "Couldn't save this item - please try again.") };
+  }
+  return { ok: true };
+}
+
+export async function removeWishlistItemAction(productId: string): Promise<{ ok: true } | ApiError> {
+  const res = await buyerAuthedFetch(`/storefront/account/wishlist/${productId}`, { method: "DELETE" });
+  if (!res || !res.ok) return { ok: false, error: "Couldn't remove this item - please try again." };
+  return { ok: true };
+}

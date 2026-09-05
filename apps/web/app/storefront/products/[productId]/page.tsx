@@ -7,6 +7,8 @@ import { resolveAccess } from "../../access";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
 import { ChatWidget } from "../../chat/chat-widget";
 import { DeliveryBadge } from "../../delivery-badge";
+import { getBuyerSession, isWishlistedAction } from "../../account/actions";
+import { WishlistButton } from "../../wishlist/wishlist-button";
 import { AddToCartForm } from "./add-to-cart-form";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +63,11 @@ export default async function StorefrontProductPage({ params }: { params: { prod
     fetchStorefrontNavigation(host),
   ]);
   if (!product) notFound();
+
+  // FR-66.5 (Module 85) - resolved server-side so the initial render
+  // already reflects the buyer's real saved state, no client-side flash.
+  const buyerSession = await getBuyerSession();
+  const initiallyWishlisted = buyerSession ? await isWishlistedAction(product.id) : false;
 
   // FR-16.6 - schema.org Product JSON-LD. One price (the first variant's) -
   // v1.0 has no "from $X" multi-variant-range convention to build yet.
@@ -128,13 +135,20 @@ export default async function StorefrontProductPage({ params }: { params: { prod
           </div>
         )}
         <DeliveryBadge supplierShipping={product.supplierShipping} theme={theme} />
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 16, display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <AddToCartForm
             hostname={host}
             productId={product.id}
             productTitle={product.title}
             variants={product.variants}
             currency={store.currency}
+            theme={theme}
+          />
+          <WishlistButton
+            productId={product.id}
+            enabled={store.wishlistEnabled}
+            loggedIn={Boolean(buyerSession)}
+            initiallyWishlisted={initiallyWishlisted}
             theme={theme}
           />
         </div>

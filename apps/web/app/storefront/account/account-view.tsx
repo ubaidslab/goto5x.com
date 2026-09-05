@@ -220,6 +220,11 @@ export function AccountView({ theme, profile, addresses }: { theme: ResolvedThem
           View order history &rarr;
         </a>
       </p>
+      <p style={{ marginTop: 8 }}>
+        <a href="/account/wishlist" style={{ color: theme.colors.primary, fontWeight: 600 }}>
+          View saved items &rarr;
+        </a>
+      </p>
     </div>
   );
 }

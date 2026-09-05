@@ -9,6 +9,7 @@ import { seedAdminEmailSettings } from "../../src/admin-email/admin-email.seed";
 import { seedCampaignsSettings } from "../../src/campaigns/campaigns.seed";
 import { seedCareersSettings } from "../../src/careers/careers.seed";
 import { seedBuyerChatSettings } from "../../src/buyer-chat/buyer-chat.seed";
+import { seedWishlistSettings } from "../../src/buyer-account/wishlist.seed";
 import { seedCustomerSegmentsSettings } from "../../src/customer-segments/customer-segments.seed";
 import { seedDataExportSettings } from "../../src/data-export/data-export.seed";
 import { seedDealsSettings } from "../../src/deals/deals.seed";
@@ -182,6 +183,8 @@ export async function seedSettings(prisma: PrismaClient): Promise<void> {
   await seedSellerNotificationsSettings(prisma);
   // Module 83 (SRS §5.66/FR-66.3) - same paid-plan-row dependency as gift cards/customer segments above.
   await seedBuyerChatSettings(prisma);
+  // Module 85 (SRS §5.66/FR-66.5) - same paid-plan-row dependency, same RISE+FLY boundary as buyer chat above.
+  await seedWishlistSettings(prisma);
 }
 
 /**

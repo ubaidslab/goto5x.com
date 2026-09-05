@@ -3,6 +3,7 @@ import { BuyerAuthGuard } from "../common/guards/buyer-auth.guard";
 import { CurrentBuyer } from "../common/decorators/current-buyer.decorator";
 import { BuyerAccountService } from "./buyer-account.service";
 import { BuyerAddressDto } from "./dto/buyer-address.dto";
+import { WishlistItemDto } from "./dto/wishlist-item.dto";
 
 /** FR-66.1 (Module 81) - buyer-facing profile/saved-address/order-history reads and writes, all behind BuyerAuthGuard. */
 @Controller("storefront/account")
@@ -48,5 +49,26 @@ export class BuyerAccountController {
   @Get("orders")
   listOrders(@CurrentBuyer() buyer: { userId: string }, @Query("storeId") storeId?: string) {
     return this.buyerAccount.listOrders(buyer.userId, storeId);
+  }
+
+  @Get("wishlist")
+  listWishlist(@CurrentBuyer() buyer: { buyerId: string }) {
+    return this.buyerAccount.listWishlist(buyer.buyerId);
+  }
+
+  @Get("wishlist/:productId")
+  isWishlisted(@CurrentBuyer() buyer: { buyerId: string }, @Param("productId") productId: string) {
+    return this.buyerAccount.isWishlisted(buyer.buyerId, productId);
+  }
+
+  @Post("wishlist")
+  addWishlistItem(@CurrentBuyer() buyer: { buyerId: string }, @Body() dto: WishlistItemDto) {
+    return this.buyerAccount.addWishlistItem(buyer.buyerId, dto.productId);
+  }
+
+  @Delete("wishlist/:productId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeWishlistItem(@CurrentBuyer() buyer: { buyerId: string }, @Param("productId") productId: string) {
+    return this.buyerAccount.removeWishlistItem(buyer.buyerId, productId);
   }
 }
