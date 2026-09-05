@@ -9997,8 +9997,19 @@ v0.38 wording item-for-item, same FR/module numbers)
       RLS-scoped). Live-verified end-to-end via Playwright: buyer sends
       from storefront widget → seller sees it in the dashboard inbox →
       seller replies → buyer's widget polls and shows the reply.
-- [ ] A shipping cost calculator is visible on product and cart pages,
-      not only checkout (FR-66.4, Module 84).
+- [x] A shipping cost calculator is visible on product and cart pages,
+      not only checkout (FR-66.4, Module 84). BUILT: `CartService.
+      quoteShipping()` reuses the exact flat-rate/free-threshold math
+      checkout itself computes (`computeOrderTotals`), exposed via a
+      public `POST /storefront/cart/shipping-quote` endpoint; the
+      product page (single selected variant/quantity) and cart page
+      (full item list) both call it through a shared `ShippingEstimate`
+      client component, replacing the prior static "calculated at
+      checkout" disclaimer with a live number and a free-shipping
+      progress hint. Live-verified via Playwright: a below-threshold
+      cart shows the flat rate, and increasing quantity past the
+      free-shipping threshold flips both the product-page and cart-page
+      display to "Free shipping" in real time.
 - [ ] Wishlist/save-for-later exists and is plan-gated the same way as
       the chat widget (FR-66.5, Module 85).
 - [ ] A low-stock countdown indicator renders on product pages (FR-66.6,

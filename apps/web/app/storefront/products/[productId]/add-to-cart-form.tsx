@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { addToLocalCart } from "../../../../lib/local-cart";
 import { ResolvedThemeSettings } from "../../../../lib/theme-presets";
+import { ShippingEstimate } from "../../shipping/shipping-estimate";
 
 interface VariantOption {
   id: string;
@@ -98,6 +99,11 @@ export function AddToCartForm({
       >
         {selected.stockQuantity === 0 ? "Out of stock" : `Add to cart - ${currency} ${(Number(selected.price) * quantity).toFixed(2)}`}
       </button>
+      <ShippingEstimate
+        hostname={hostname}
+        currency={currency}
+        items={[{ productId, variantId: selected.id, quantity }]}
+      />
       {added && (
         <p style={{ fontSize: 13, color: theme.colors.primary }}>
           Added to cart. <a href="/cart" style={{ color: theme.colors.primary, fontWeight: 600 }}>View cart &rarr;</a>

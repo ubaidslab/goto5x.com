@@ -5,8 +5,11 @@ import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { CreateCartDto } from "./dto/create-cart.dto";
+import { ShippingQuoteDto } from "./dto/shipping-quote.dto";
 import { UpdateCartDto } from "./dto/update-cart.dto";
+import { round2 } from "./money.util";
 import { OrderPricingService } from "./order-pricing.service";
+import { computeOrderTotals } from "./order-totals.util";
 
 /**
  * FR-15.1 (locked UX decision) - a `carts` row is only ever created once
@@ -72,6 +75,47 @@ export class CartService {
     const store = await this.storefront.loadActiveStoreOrThrow(hostname);
     const cart = await this.findOrThrow(store.id, sessionToken);
     return this.toPublicCart(cart, store.id);
+  }
+
+  /**
+   * FR-66.4 (Module 84) - surfaces shipping cost on product/cart pages,
+   * reusing the exact same flat-rate/free-threshold math checkout performs
+   * (CheckoutService.placeOrder(), see order-totals.util.ts) rather than a
+   * static disclaimer. Public/pre-auth - a product-page quote runs before a
+   * cart row even exists (single item, quantity 1), so this never touches
+   * a stored cart.
+   */
+  async quoteShipping(dto: ShippingQuoteDto) {
+    const store = await this.storefront.loadActiveStoreOrThrow(dto.hostname);
+    const [priced, shippingSettings] = await Promise.all([
+      this.pricing.priceItems(store.id, dto.items),
+      this.prismaAdmin.storeShippingSettings.findUniqueOrThrow({ where: { storeId: store.id } }),
+    ]);
+
+    const shippingFreeThreshold = shippingSettings.freeShippingThreshold
+      ? Number(shippingSettings.freeShippingThreshold)
+      : null;
+    const { subtotal, shippingAmount } = computeOrderTotals({
+      items: priced.map((i) => ({
+        unitPrice: i.unitPrice,
+        quantity: i.quantity,
+        lineShippingCost: i.supplierListingId ? round2(i.shippingCost * i.quantity) : 0,
+        isSupplierItem: Boolean(i.supplierListingId),
+      })),
+      discountAmount: 0,
+      shippingFlatRate: Number(shippingSettings.flatRate),
+      shippingFreeThreshold,
+      taxRate: 0,
+      taxInclusive: false,
+    });
+
+    return {
+      subtotal,
+      shippingAmount,
+      freeShippingThreshold: shippingFreeThreshold,
+      amountUntilFreeShipping:
+        shippingFreeThreshold !== null ? Math.max(0, round2(shippingFreeThreshold - subtotal)) : null,
+    };
   }
 
   private async findOrThrow(storeId: string, sessionToken: string) {

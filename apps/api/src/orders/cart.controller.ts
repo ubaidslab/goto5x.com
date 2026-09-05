@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Req } from "@nestjs/c
 import { Request } from "express";
 import { CartService } from "./cart.service";
 import { CreateCartDto } from "./dto/create-cart.dto";
+import { ShippingQuoteDto } from "./dto/shipping-quote.dto";
 import { UpdateCartDto } from "./dto/update-cart.dto";
 
 /**
@@ -26,5 +27,10 @@ export class CartController {
   @Patch(":sessionToken")
   update(@Param("sessionToken") sessionToken: string, @Body() dto: UpdateCartDto) {
     return this.cart.update(dto.hostname, sessionToken, dto);
+  }
+
+  @Post("shipping-quote")
+  quoteShipping(@Body() dto: ShippingQuoteDto) {
+    return this.cart.quoteShipping(dto);
   }
 }

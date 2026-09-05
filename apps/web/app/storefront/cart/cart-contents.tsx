@@ -9,6 +9,7 @@ import {
   updateLocalCartQuantity,
 } from "../../../lib/local-cart";
 import { ResolvedThemeSettings } from "../../../lib/theme-presets";
+import { ShippingEstimate } from "../shipping/shipping-estimate";
 
 export function CartContents({
   hostname,
@@ -88,7 +89,12 @@ export function CartContents({
           {currency} {subtotal.toFixed(2)}
         </span>
       </div>
-      <p style={{ fontSize: 13, color: "#6b7280" }}>Shipping, tax, and any discount are calculated at checkout.</p>
+      <ShippingEstimate
+        hostname={hostname}
+        currency={currency}
+        items={items.map((i) => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity }))}
+      />
+      <p style={{ fontSize: 13, color: "#6b7280" }}>Tax and any discount are calculated at checkout.</p>
       <a
         href="/checkout"
         style={{
