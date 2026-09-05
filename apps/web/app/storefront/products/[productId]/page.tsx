@@ -143,6 +143,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
             variants={product.variants}
             currency={store.currency}
             theme={theme}
+            lowStockThreshold={store.lowStockThreshold}
           />
           <WishlistButton
             productId={product.id}

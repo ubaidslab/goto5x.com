@@ -571,6 +571,7 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
     poweredByVisible: true,
     chatEnabled: false,
     wishlistEnabled: false,
+    lowStockThreshold: 5,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
     seoRobotsIndexDefault: true,
     seoRobotsFollowDefault: true,

@@ -17,6 +17,8 @@ export interface PublicStore {
   chatEnabled: boolean;
   /** FR-66.5 (Module 85) - same RISE+FLY plan gate as chatEnabled; the storefront only renders the wishlist button/nav link when true. */
   wishlistEnabled: boolean;
+  /** FR-66.6 (Module 86) - the same store-scoped inventory.low_stock_threshold Module 28 already uses for the seller's own low-stock alerting; a variant at or under this (and above 0) shows the stock-countdown urgency message. */
+  lowStockThreshold: number;
   theme: { name: string; settings: Record<string, unknown> } | null;
   // Module 58 (SRS §5.65, FR-65.1/65.5) - store-level defaults product/
   // collection pages fall back to when their own toggle is unset.
@@ -34,7 +36,7 @@ export interface PublicProduct {
   description: string | null;
   averageRating: string | number;
   reviewCount: number;
-  variants: { id: string; sku: string; price: string; stockQuantity: number }[];
+  variants: { id: string; sku: string; price: string; stockQuantity: number; trackInventory: boolean }[];
   media: { id: string; url: string; type: string }[];
   seoTitle: string;
   seoDescription: string | null;

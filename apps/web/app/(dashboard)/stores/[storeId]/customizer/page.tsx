@@ -243,6 +243,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     poweredByVisible: branding?.visible ?? true,
     chatEnabled: false,
     wishlistEnabled: false,
+    lowStockThreshold: 5,
     theme: { name: themeName, settings: settings as Record<string, unknown> },
     // Module 58 (SRS §5.65) - this preview panel doesn't render SEO/robots/
     // custom head-tag data, so the platform defaults are correct here.

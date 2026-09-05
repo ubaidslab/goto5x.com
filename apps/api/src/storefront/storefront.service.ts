@@ -212,6 +212,11 @@ export class StorefrontService {
     // chatEnabled just above; the storefront wishlist button/nav link only
     // ever renders when the seller's plan actually includes it.
     const wishlistEnabled = await this.settings.resolve<boolean>("wishlist.enabled", planContext);
+    // FR-66.6 (Module 86) - the exact same store-scoped threshold Module 28
+    // already uses for the seller's own Inventory screen/low-stock email
+    // (inventory.low_stock_threshold) - "no new tracked field" per the SRS
+    // text, so this is a store-level default, not a per-product field.
+    const lowStockThreshold = await this.settings.resolve<number>("inventory.low_stock_threshold", { storeId: store.id });
 
     return {
       id: store.id,
@@ -233,6 +238,7 @@ export class StorefrontService {
       poweredByVisible,
       chatEnabled,
       wishlistEnabled,
+      lowStockThreshold,
       theme: store.themeSettings
         ? {
             name: store.themeSettings.theme.name,

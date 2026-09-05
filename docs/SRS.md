@@ -10023,8 +10023,18 @@ v0.38 wording item-for-item, same FR/module numbers)
       RISE-tier store, saving from the product page immediately shows
       up on the wishlist page, and removing it there resets the
       product-page toggle back to unsaved.
-- [ ] A low-stock countdown indicator renders on product pages (FR-66.6,
-      Module 86).
+- [x] A low-stock countdown indicator renders on product pages (FR-66.6,
+      Module 86). BUILT: no new tracked field, exactly as specified -
+      reuses Module 28's existing `inventory.low_stock_threshold`
+      (now also exposed on the public store payload as
+      `lowStockThreshold`, the same store-scoped Settings Registry
+      value the seller's own Inventory screen/low-stock email already
+      use) against the storefront's already-public
+      `variants[].stockQuantity`/`trackInventory`. "Only N left in
+      stock" renders only for a trackable variant at or under the
+      threshold and above zero (zero already reads "Out of stock").
+      Live-verified via Playwright: a variant at 3 (threshold 5) shows
+      the urgency message; a normal-stock variant shows none.
 - [ ] Product images support zoom, and a product video with thumbnail
       renders on the product page (FR-66.7, Module 87).
 - [ ] A missing-tracking alert fires when an order has been confirmed/

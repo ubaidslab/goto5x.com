@@ -10,6 +10,7 @@ interface VariantOption {
   sku: string;
   price: string;
   stockQuantity: number;
+  trackInventory: boolean;
 }
 
 /**
@@ -24,6 +25,7 @@ export function AddToCartForm({
   variants,
   currency,
   theme,
+  lowStockThreshold,
 }: {
   hostname: string;
   productId: string;
@@ -31,6 +33,8 @@ export function AddToCartForm({
   variants: VariantOption[];
   currency: string;
   theme: ResolvedThemeSettings;
+  /** FR-66.6 (Module 86) - store-scoped, same threshold Module 28 already uses for the seller's own low-stock alerting. */
+  lowStockThreshold: number;
 }) {
   const inStock = variants.filter((v) => v.stockQuantity > 0);
   const [variantId, setVariantId] = useState(inStock[0]?.id ?? variants[0]?.id ?? "");
@@ -41,6 +45,11 @@ export function AddToCartForm({
   if (!selected) {
     return <p style={{ color: "#b91c1c" }}>Out of stock.</p>;
   }
+
+  // FR-66.6 (Module 86) - urgency messaging only for a trackable variant
+  // that's actually low (0 already reads "Out of stock" via the button
+  // below, never "Only 0 left!").
+  const isLowStock = selected.trackInventory && selected.stockQuantity > 0 && selected.stockQuantity <= lowStockThreshold;
 
   function addToCart() {
     if (!selected) return;
@@ -99,6 +108,11 @@ export function AddToCartForm({
       >
         {selected.stockQuantity === 0 ? "Out of stock" : `Add to cart - ${currency} ${(Number(selected.price) * quantity).toFixed(2)}`}
       </button>
+      {isLowStock && (
+        <p style={{ fontSize: 13, fontWeight: 600, color: "#b45309" }}>
+          Only {selected.stockQuantity} left in stock &mdash; order soon
+        </p>
+      )}
       <ShippingEstimate
         hostname={hostname}
         currency={currency}
