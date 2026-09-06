@@ -1,6 +1,21 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.61 (Build-phase amendment — adds FR-51.8 (Module 105):
+**Version:** 0.62 (Security-audit fix amendment — closes the two P0
+(launch-blocking) findings from `docs/security-audit-report.md`: (1)
+admin impersonation's "End session" now actually revokes the token
+(a live revocation-state lookup in `JwtStrategy`, not just a database
+flag nothing re-checked — FR-8.4), and (2) every upload path that
+lands in object storage (media, logo, review media, Careers CVs, the
+Google Drive import) now validates the file's real content against a
+fixed signature allow-list instead of trusting the client's declared
+mimetype, closing a plausible stored-XSS vector via a mislabeled
+upload (FR-9.2/FR-32.5/FR-14.1/FR-33.8). Both fixed, tested (2 new
+e2e tests for the impersonation fix; 15 test fixtures updated plus 1
+new dedicated test for the upload fix), and verified against the
+full 100-file e2e regression suite before this amendment. Implementation
+proceeds.
+
+Prior amendment — 0.61, Module 105: adds FR-51.8:
 an explicit confirm step before an email campaign actually sends,
 closing a real launch-risk gap a pre-launch audit found (the
 Campaigns composer's "Send campaign" button fired
@@ -3762,6 +3777,18 @@ requires the founder to ask an engineer for a deploy.
     instruction changes, and payout/invoice actions are blocked outright**
     while impersonating — support can fix a seller's settings, never move
     money or money-adjacent state on their behalf.
+  - **v0.62 security-audit fix (docs/security-audit-report.md, finding #4):
+    "time-boxed" and "an admin ends the session" now mean the token itself
+    stops working, not only a database row being flagged.** Previously,
+    ending a session (or its own `expiresAt` passing) only ever set
+    `endedAt`/relied on expiry in the `ImpersonationSession` row — nothing
+    re-checked that against the already-issued JWT, so the token kept
+    granting impersonated access for the rest of its cryptographic TTL
+    regardless. `JwtStrategy` now performs a live revocation-state lookup
+    against that same row on every request carrying an
+    `impersonationSessionId` claim, rejecting with 401 the instant the
+    session is ended or has expired — closing the gap between "the control
+    says it stopped" and "the token actually stopped."
 - FR-8.5: **Supplier lifecycle control** — the same approve/suspend/ban controls as
   FR-8.4, plus platform-level listing approve/reject for policy violations.
 - FR-8.6: **Template management** — publish/unpublish a template, mark it free or
@@ -3849,6 +3876,20 @@ requires the founder to ask an engineer for a deploy.
 - FR-9.2: Imported media is copied into platform object storage (self-hosted
   MinIO, §3.3) fronted by the CDN for storefront delivery — Drive is a source, not
   the runtime dependency.
+  - **v0.62 security-audit fix (docs/security-audit-report.md, finding
+    #14), applies to every upload path that ends up in this same object
+    storage — direct media upload (this FR), the Drive import above, store
+    logo (FR-32.5), and review media (§5.14/FR-14.1):** the file's actual
+    leading bytes are now sniffed against a fixed allow-list of real
+    image/video signatures (`apps/api/src/media/file-signature.util.ts`)
+    and a server-chosen, canonical Content-Type is what gets stored/served
+    — the client's declared mimetype is no longer trusted for either
+    classification or the object's served Content-Type. Previously, a file
+    whose real bytes were arbitrary but declared e.g. `image/svg+xml`
+    passed validation and was served back with that same executable
+    content type — a plausible stored-XSS vector. Careers CV uploads
+    (FR-33.8) get the equivalent fix against a separate PDF/DOC/DOCX
+    signature check.
 
 ### 5.10 Notifications
 - FR-10.1: Email notifications for order/payout/listing events at launch

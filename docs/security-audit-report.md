@@ -6,12 +6,16 @@ advanced, "top-class-hacker-resistant" security. It replaces what had
 previously existed only as scattered commit messages and an informal
 verbal summary — this document is the actual pre-launch security record.
 
-**Status as of this writing: incomplete.** Two of five phases never
-executed at all, a third is roughly a third done, and two real
-vulnerabilities were found and are **not yet fixed**. This report exists
-specifically so that gap is visible and actionable rather than quietly
-assumed away. Nothing in this document should be read as "the platform is
-secure" — it is the honest state of an audit that stalled partway through.
+**Status as of this writing: incomplete, but both P0 (launch-blocking)
+findings are now fixed.** Two of five phases never executed at all, a
+third is roughly a third done, and two of the phases that did run
+surfaced real vulnerabilities — both now fixed and verified (see §3,
+findings #4 and #14; commits `e4b1118` and `8319fe9`). Several
+lower-priority items remain open (§4). This report exists specifically
+so that gap is visible and actionable rather than quietly assumed away.
+Nothing in this document should be read as "the platform is
+comprehensively secure" — real launch-blocking gaps are closed, but
+whole phases of the intended audit never ran.
 
 ---
 
@@ -81,10 +85,10 @@ the five besides the secrets audit.
 - OTP verify/resend check-then-write race (see §3, #1)
 - Promo-code redemption check-then-write race (see §3, #3)
 
-**Found, confirmed real, NOT fixed:**
-- Admin impersonation "End session" does not revoke the already-issued
-  JWT (see §3, #4) — the single most important open item in this entire
-  report.
+**Found, confirmed real, fixed (2026-09-06):**
+- Admin impersonation "End session" did not revoke the already-issued
+  JWT (see §3, #4) — the single most important open item in this
+  report, now closed via commit `e4b1118`.
 
 **Investigated and confirmed already safe** (a real check was performed,
 not just assumed):
@@ -118,7 +122,7 @@ single largest named sub-scope of this phase. Two dispatch attempts were
 made and both were interrupted before producing a report, identically to
 Phase 1's failure pattern.
 
-### Phase 3 — File-upload security: **never executed; independently confirmed a real gap exists**
+### Phase 3 — File-upload security: **never executed by the audit; the gap it was scoped to find is now fixed (2026-09-06, commit `8319fe9`)**
 
 Two dispatch attempts were made for this phase. The first was killed by
 the same container restart that hit Phase 1. The second hit an
@@ -144,14 +148,21 @@ checked the current code directly rather than leave the question open:
   unverified mimetype, with no `Content-Disposition` header set on
   upload.
 
-**Net effect (see §3, #14): a file whose actual bytes are anything can be
-uploaded labeled `Content-Type: image/svg+xml` — it passes the
-`startsWith("image/")` check — and the storage layer serves it back with
-that same executable content type.** This is a plausible stored-XSS
-vector via a mislabeled SVG upload (or similar), and it is currently
-**unmitigated**. This is precisely the class of issue Phase 3 was scoped
-to catch; the phase never ran, and the gap was found only by this
-report's own follow-up check.
+**Net effect (see §3, #14): a file whose actual bytes were anything could be
+uploaded labeled `Content-Type: image/svg+xml` — it passed the
+`startsWith("image/")` check — and the storage layer served it back with
+that same executable content type.** This was a plausible stored-XSS
+vector via a mislabeled SVG upload (or similar). This is precisely the
+class of issue Phase 3 was scoped to catch; the phase never ran, and the
+gap was found only by this report's own follow-up check — **now fixed**
+via `apps/api/src/media/file-signature.util.ts` (magic-byte sniffing
+against a fixed image/video/document allow-list), wired into every
+upload path that shares this object-storage pipeline (direct media
+upload, store logo, review media, Careers CVs, Google Drive import).
+Commit `8319fe9`; 15 existing test fixtures updated to real
+signature-prefixed bytes, plus one new dedicated test proving the exact
+spoofing vector above is now rejected. Full 100-file e2e regression:
+100/100 passed.
 
 ### Phase 4 — Rate-limit verification under real concurrency: **partially done — 2 of 6 named endpoints actually tested**
 
@@ -215,7 +226,7 @@ the entire pass, regardless of phase or whether it was fixed.
 | 1 | OTP verify/resend check-then-write race | 4 (found) / 2 | **Fixed & verified** | Commit `2dd4e408d4f80f354e189cceaf1aeaf06c068c71`. Atomic `updateMany({ where: { status: "pending", attemptCount: { lt: maxAttempts } } })` confirmed at `apps/api/src/order-verification/order-verification.service.ts:260`. Live race-proof before/after; 2 new tests in `module26-order-verification.e2e-spec.ts`, run 5x stable; full regression green; CI-confirmed. | A concurrent burst of guesses could defeat the 5-attempt brute-force lockout, letting an attacker brute-force the buyer order-verification OTP. |
 | 2 | `trust proxy: true` / X-Forwarded-For rate-limit bypass | 4 | **Fixed & verified** | Commit `98c45a3481c42bdaa33a377291840e19b9f14892`. Confirmed at `apps/api/src/main.ts:36`: `trust proxy` set to `1` in production, `true` otherwise. Live curl proof before/after; 43 tests green. | Rotating the `X-Forwarded-For` header on every request bypassed *every* per-IP rate limit in the app (signup, login, OTP, checkout, etc.) with no botnet required. |
 | 3 | Promo-code redemption check-then-write race | 2 | **Fixed & verified** | Commit `6ae1dd73eecfdf40b2be96dd89477f0fee65bd64`. Atomic `updateMany({ where: { redeemedCount: { lt: maxRedemptions } } })` confirmed at `apps/api/src/plans/promo-codes.service.ts:81-82`. 27 tests green, CI-confirmed. | Concurrent redemptions from different sellers could exceed a promo code's global `maxRedemptions` cap. |
-| 4 | Admin impersonation "End session" doesn't revoke the JWT | 2 | **Found, NOT fixed** | `apps/api/src/impersonation/impersonation.service.ts`'s `end()` only sets `endedAt` in the database. `apps/api/src/common/guards/impersonation-write.guard.ts` only checks whether the JWT's `impersonationSessionId` claim is *present* — it never re-checks that session's `endedAt` against the database. Both confirmed directly in current code. | An admin's already-issued impersonation token keeps working as that seller for the rest of its TTL (configurable 5–240 minutes) after "End impersonation session" is clicked. The safety control does not do what its name implies. **Recommended next step, not yet done.** |
+| 4 | Admin impersonation "End session" doesn't revoke the JWT | 2 | **Fixed & verified** | Commit `e4b1118`. `apps/api/src/auth/strategies/jwt.strategy.ts`'s `validate()` now performs a live lookup against `ImpersonationSession` (`endedAt IS NULL AND expiresAt > now`) on every request carrying an `impersonationSessionId` claim, rejecting with 401 if the session has been ended or expired. 2 new e2e tests in `module17-admin-control-plane.e2e-spec.ts`: one proves the token is rejected immediately after `POST /admin/impersonation/:id/end`; one forces `expiresAt` into the past directly and proves the same rejection independent of an explicit "end." Full 100-file e2e regression: 100/100 passed. | Previously: an admin's already-issued impersonation token kept working as that seller for the rest of its TTL (5–240 configurable minutes) after "End impersonation session" was clicked. Now: the token stops working the instant the session ends or expires. |
 | 5 | Discount-code redemption race | 2 | **Confirmed already safe** | Atomic `updateMany` guarded by `usageCount: { lt: usageLimit }`, confirmed at `apps/api/src/store-settings/discount-codes.service.ts:61`. | No fix needed. |
 | 6 | Gift-card balance-draining race | 2 | **Confirmed already safe** | Atomic `updateMany` guarded by `remainingBalance: { gte: amount }`, confirmed at `apps/api/src/gift-cards/gift-cards.service.ts:184-186`. | No fix needed. |
 | 7 | Mass-assignment via DTOs | 1 / 2 | **Confirmed mostly safe, one caveat** | Global `ValidationPipe({ whitelist: true })`; 10 sensitive DTOs spot-checked, none map a client field onto `role`/`isAdmin`/`balance`/etc. Caveat: `forbidNonWhitelisted` is unset (silently strips instead of loudly rejecting), and `auth.controller.ts`'s `refresh`/`logout` plus `admin-auth.controller.ts`'s `beginMfaEnrollment` use an untyped `@Body()` object literal that bypasses the pipe entirely. | Low — no direct exploit path found on the three untyped-body routes, but they sit outside the validation pipe's protection entirely and were never deliberately checked. |
@@ -225,41 +236,54 @@ the entire pass, regardless of phase or whether it was fixed.
 | 11 | Access-token (JWT) has no live revocation check | 2 | **Confirmed as an accepted, deliberate tradeoff** | `apps/api/src/auth/jwt.strategy.ts` — stateless, 15-minute TTL, no per-request DB/Redis lookup. Refresh-token sessions are separately, genuinely revocable. | Low — standard short-TTL access-token design; not treated as a bug. |
 | 12 | Input-validation sweep across all endpoints | 1 | **Never tested** | Both dispatch attempts failed or were interrupted before producing any findings. | Unknown severity. Negative-number/boundary handling, XSS sanitization of every free-text field, ReDoS in validation regexes, and any raw-SQL usage were never audited. |
 | 13 | IDOR full sweep across every resource type | 2 | **Never tested** | Both dispatch attempts failed or were interrupted before producing any findings. | Unknown severity. This was explicitly framed as "a full fresh sweep across every resource type" and never ran once. |
-| 14 | File-upload content-type spoofing (no magic-byte check) | 3 | **Never tested by this audit; independently confirmed to exist** | `apps/api/src/media/media.util.ts` trusts the client-supplied `mimetype` string only (`startsWith("image/")`/`"video/"`); `apps/api/src/media/object-storage.service.ts`'s `putObject()` echoes that same untrusted value as the stored object's served `Content-Type`, with no `Content-Disposition` set. No magic-byte-sniffing library exists anywhere in `apps/api`. | Plausible stored-XSS via a file whose real bytes are arbitrary but is labeled e.g. `image/svg+xml`, served back with that same executable content type. **Currently unmitigated.** |
+| 14 | File-upload content-type spoofing (no magic-byte check) | 3 | **Fixed & verified** | Commit `8319fe9`. New `apps/api/src/media/file-signature.util.ts` sniffs real magic bytes (JPEG/PNG/GIF/WEBP images; MP4/MOV/WEBM video; PDF/DOC/DOCX documents) and returns a server-chosen, canonical Content-Type; `media.util.ts`'s `mediaTypeFromMimetype(mimetype)` replaced with `detectMediaTypeOrThrow(buffer)`, wired into direct media upload, store logo, review media, Google Drive import, and (via a parallel document check) Careers CVs — the client's declared mimetype is no longer read for classification or the stored `Content-Type` anywhere in this pipeline. 15 test fixtures updated across 8 e2e files; 1 new dedicated test proves the exact spoofing vector (declared `image/png`, real bytes `<script>...`) is rejected, and that a real file declared with a generic/wrong mimetype is still correctly classified. Full 100-file e2e regression: 100/100 passed. | Previously: a file whose real bytes were arbitrary but labeled e.g. `image/svg+xml` passed validation and was served back with that same executable content type — a plausible stored-XSS vector. Now: only recognized real image/video/document content is accepted, and the served Content-Type is always server-chosen. |
 | 15 | Checkout / MFA / campaign-send / gift-card-purchase burst-concurrency | 4 | **Never burst-tested** | Zero concurrent-traffic tests exist for these four endpoints anywhere in this session, despite each being named explicitly in the phase's own scope. Only signup and login actually received the "real concurrency" treatment the phase promised. | Unknown severity — these are exactly the endpoints a founder explicitly flagged as sensitive, and none of them were re-verified under real burst traffic. |
 | 16 | Secrets committed to git history | 5 | **Confirmed already safe** | Full-history `gitleaks` scan, 9 hits, all individually triaged as non-issues (Settings Registry key names / disposable CI-only keys). Both `.env.example` files confirmed placeholder-only. | No fix needed. |
 
 ## 4. What this means for launch readiness
 
-**Do not represent this platform as "secure" or "hardened" on the
-strength of this pass alone.** Two of five phases (Input validation,
-File-upload security) never actually ran — their task-tracker status of
-"in progress" is misleading in the ordinary sense of the phrase; the
-honest description is "not started." Phase 2's one large missing
-sub-scope (the IDOR sweep) is the same story. Phase 4 tested 2 of the 6
-endpoints it named.
+**Do not represent this platform as comprehensively "secure" or
+"hardened" on the strength of this pass alone — but the two
+launch-blocking (P0) gaps it surfaced are now closed.** Two of five
+phases (Input validation, File-upload security) never actually ran as
+audits — their task-tracker status of "in progress" was misleading in
+the ordinary sense of the phrase; the honest description was "not
+started." Phase 2's one large missing sub-scope (the IDOR sweep) is the
+same story. Phase 4 tested 2 of the 6 endpoints it named. None of that
+changes with the two fixes below — what changes is that the two real,
+concrete vulnerabilities this incomplete pass *did* manage to surface
+are no longer open.
 
-Two concrete, currently-live gaps exist and should be prioritized before
-any claim of launch-readiness:
+**Fixed (2026-09-06):**
 
-- **#4 — impersonation "End session" doesn't revoke the token.** This is
-  the more serious of the two: it defeats a control whose entire purpose
-  is operator-facing trust and safety.
-- **#14 — file-upload content-type spoofing.** A plausible stored-XSS
-  vector via mislabeled upload content, with no magic-byte validation
-  anywhere in the upload path.
+- **#4 — impersonation "End session" doesn't revoke the token.** Fixed
+  in commit `e4b1118`. This was the more serious of the two: it defeated
+  a control whose entire purpose is operator-facing trust and safety.
+  `JwtStrategy` now performs a live revocation-state lookup; verified by
+  2 new e2e tests and the full 100-file regression suite.
+- **#14 — file-upload content-type spoofing.** Fixed in commit
+  `8319fe9`. A plausible stored-XSS vector via mislabeled upload
+  content is now closed by real magic-byte validation across every
+  upload path, with a server-chosen Content-Type never taken from the
+  client. Verified by 15 updated test fixtures, 1 new dedicated test,
+  and the full 100-file regression suite.
+
+**Still open, in priority order (per the founder's own P1/P2
+sequencing):**
+
+- **P1 (complete before launch):** the IDOR full sweep (#13), the input-
+  validation sweep (#12), and burst-concurrency testing on checkout/MFA/
+  campaign-send/gift-card-purchase (#15) — none of these have ever
+  actually run.
+- **P2 (consistency, not urgent):** the supplier wallet debit's
+  read-then-recompute pattern (#9) should be converted to a true atomic
+  update to match every other money-path in this codebase.
 
 Everything marked "confirmed already safe" in §3 was independently
 checked against the live code for this report (not merely assumed), and
 holds up: the discount/gift-card race guards, the money-rounding
 discipline, the password-reset/email-verification token handling, and
 the full-history secrets scan.
-
-The recommended next step is to actually complete Phases 1 and 3 (which
-never ran), finish the IDOR sweep from Phase 2, extend Phase 4's
-concurrency testing to the four untested named endpoints, and fix
-findings #4, #9, and #14 above — at which point this document should be
-updated in place (not superseded) to reflect the completed state.
 
 ---
 
