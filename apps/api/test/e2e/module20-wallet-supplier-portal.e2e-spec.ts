@@ -503,6 +503,68 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     });
   });
 
+  describe("Cross-tenant wallet isolation (P1.3 IDOR sweep)", () => {
+    // SellerWalletController/SupplierWalletController never take an ownerId
+    // from a route/body param - balance, transactions, and topup-requests
+    // are always scoped by @CurrentSellerId()/@CurrentSupplierId(), which
+    // read only request.user.sellerId/supplierId off the verified JWT. This
+    // proves that guarantee with real data on both sides, not just code
+    // inspection - the same rigor already applied to orders/products/staff.
+    it("seller A's wallet balance/transactions/topup-requests are invisible from seller B's own session, and vice versa", async () => {
+      const a = await signupLoginAndCreatePublishedStore("wallet-isolation-a@example.com", "wallet-isolation-a-store");
+      const b = await signupLoginAndCreatePublishedStore("wallet-isolation-b@example.com", "wallet-isolation-b-store");
+      const adminToken = await createAndLoginAdmin("wallet-isolation-admin@example.com");
+
+      await topUpAndVerify(a.token, adminToken, 5000);
+
+      const aBalance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${a.token}`);
+      expect(aBalance.body.balance).toBe(5000);
+      const bBalance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${b.token}`);
+      expect(bBalance.body.balance).toBe(0);
+
+      const aTransactions = await request(app.getHttpServer()).get("/sellers/me/wallet/transactions").set("Authorization", `Bearer ${a.token}`);
+      expect(aTransactions.body.items.length).toBeGreaterThan(0);
+      const bTransactions = await request(app.getHttpServer()).get("/sellers/me/wallet/transactions").set("Authorization", `Bearer ${b.token}`);
+      expect(bTransactions.body.items).toHaveLength(0);
+
+      const aTopUps = await request(app.getHttpServer()).get("/sellers/me/wallet/topup-requests").set("Authorization", `Bearer ${a.token}`);
+      expect(aTopUps.body.length).toBeGreaterThan(0);
+      const bTopUps = await request(app.getHttpServer()).get("/sellers/me/wallet/topup-requests").set("Authorization", `Bearer ${b.token}`);
+      expect(bTopUps.body).toHaveLength(0);
+    });
+
+    it("supplier A's wallet balance/transactions/topup-requests are invisible from supplier B's own session", async () => {
+      async function signupSupplier(email: string) {
+        await request(app.getHttpServer())
+          .post("/auth/signup")
+          .send({ email, password: PASSWORD, businessName: `Supplier for ${email}`, role: "supplier" });
+        const login = await request(app.getHttpServer()).post("/auth/login").send({ email, password: PASSWORD });
+        return login.body.accessToken as string;
+      }
+      const supplierAToken = await signupSupplier("wallet-isolation-supplier-a@example.com");
+      const supplierBToken = await signupSupplier("wallet-isolation-supplier-b@example.com");
+      const adminToken = await createAndLoginAdmin("wallet-isolation-supplier-admin@example.com");
+
+      const topUp = await request(app.getHttpServer())
+        .post("/suppliers/me/wallet/topup-requests")
+        .set("Authorization", `Bearer ${supplierAToken}`)
+        .send({ amount: 2000 });
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${topUp.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      const aBalance = await request(app.getHttpServer()).get("/suppliers/me/wallet").set("Authorization", `Bearer ${supplierAToken}`);
+      expect(aBalance.body.balance).toBe(2000);
+      const bBalance = await request(app.getHttpServer()).get("/suppliers/me/wallet").set("Authorization", `Bearer ${supplierBToken}`);
+      expect(bBalance.body.balance).toBe(0);
+
+      const bTransactions = await request(app.getHttpServer()).get("/suppliers/me/wallet/transactions").set("Authorization", `Bearer ${supplierBToken}`);
+      expect(bTransactions.body.items).toHaveLength(0);
+      const bTopUps = await request(app.getHttpServer()).get("/suppliers/me/wallet/topup-requests").set("Authorization", `Bearer ${supplierBToken}`);
+      expect(bTopUps.body).toHaveLength(0);
+    });
+  });
+
   describe("Dormant invoicing mechanism (FR-6.28)", () => {
     it("the old commission-invoice generation job produces no new rows going forward (unscheduled, not deleted)", async () => {
       const { token, storeId } = await signupLoginAndCreatePublishedStore("dormant-invoice@example.com", "dormant-invoice-store");
