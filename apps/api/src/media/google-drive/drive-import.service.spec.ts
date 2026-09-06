@@ -20,14 +20,20 @@ describe("DriveImportService", () => {
       exchangeCodeForTokens: jest.fn(),
       refreshAccessToken: jest.fn().mockResolvedValue({ accessToken: "fresh-access-token", expiresInSeconds: 3600 }),
       listImportableFiles: jest.fn().mockResolvedValue(files),
-      // Mirrors the real GoogleDriveClientService: the downloaded bytes'
-      // mimeType comes from the download response, not assumed from the
-      // file listing - so the fake looks it up per-file rather than
-      // hardcoding one value, or a bad-mimetype test case would never
-      // actually exercise mediaTypeFromMimetype's rejection path.
+      // Security-audit fix (docs/security-audit-report.md, finding #14):
+      // classification now inspects real bytes (detectMediaTypeOrThrow), not
+      // the declared mimeType - so a file the fixture wants to succeed needs
+      // a genuine PNG signature, and a file it wants to fail (e.g. the
+      // "bad.pdf" case) can keep arbitrary bytes, which are correctly
+      // rejected as unrecognized content regardless of the declared mimeType.
       downloadFile: jest.fn().mockImplementation(async (_token: string, fileId: string) => {
         const file = files.find((f) => f.id === fileId);
-        return { buffer: Buffer.from(`bytes-for-${fileId}`), mimeType: file?.mimeType ?? "application/octet-stream" };
+        const raw = Buffer.from(`bytes-for-${fileId}`);
+        const buffer =
+          file?.mimeType === "image/png"
+            ? Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), raw])
+            : raw;
+        return { buffer, mimeType: file?.mimeType ?? "application/octet-stream" };
       }),
       revoke: jest.fn(),
       createFolder: jest.fn(),
@@ -113,14 +119,14 @@ describe("DriveImportService", () => {
   it("isolates a per-file failure - one bad file does not abort the rest of the batch", async () => {
     const files: DriveFile[] = [
       { id: "good", name: "good.png", mimeType: "image/png" },
-      { id: "bad", name: "bad.pdf", mimeType: "application/pdf" }, // unsupported mimetype -> mediaTypeFromMimetype throws
+      { id: "bad", name: "bad.pdf", mimeType: "application/pdf" }, // non-image content -> detectMediaTypeOrThrow throws
     ];
     const { service, createdAssets, events } = buildHarness(files);
 
     const result = await service.importFiles(SELLER_ID, STORE_ID);
 
     expect(result.succeeded).toEqual([{ fileId: "good", mediaAssetId: expect.any(String) }]);
-    expect(result.failed).toEqual([{ fileId: "bad", reason: expect.stringContaining("Unsupported media type") }]);
+    expect(result.failed).toEqual([{ fileId: "bad", reason: expect.stringContaining("Unsupported file") }]);
     expect(createdAssets).toHaveLength(1);
     // Only the successfully-imported file emits an event - the failed one never got as far as a media_asset row.
     expect(events.emit).toHaveBeenCalledTimes(1);
