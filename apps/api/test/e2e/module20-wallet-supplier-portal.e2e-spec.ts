@@ -468,6 +468,51 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       expect(anySellerLedgerEntries).toBe(0);
     });
 
+    it("P2 fix (docs/security-audit-report.md #9): two genuinely concurrent debit sweeps for the same supplier never both debit an exactly-sufficient balance", async () => {
+      const supplierEmail = "wallet-supplier-race@example.com";
+      await request(app.getHttpServer())
+        .post("/auth/signup")
+        .send({ email: supplierEmail, password: PASSWORD, businessName: "Race Supplier Co", role: "supplier" });
+      const supplierLogin = await request(app.getHttpServer()).post("/auth/login").send({ email: supplierEmail, password: PASSWORD });
+      const supplierToken = supplierLogin.body.accessToken as string;
+
+      const premiumPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "supplier", tierOrder: 1 } });
+      await request(app.getHttpServer())
+        .post("/suppliers/me/subscription/change")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ planId: premiumPlan.id });
+
+      const adminToken = await createAndLoginAdmin("wallet-supplier-race-admin@example.com");
+      const fee = Number(premiumPlan.price);
+      // Top up EXACTLY the fee - enough for one debit, not two. Pre-fix,
+      // two concurrent sweeps would each independently read this same
+      // balance, both see it as sufficient, and both debit - driving the
+      // wallet to -fee instead of 0.
+      const topUp = await request(app.getHttpServer())
+        .post("/suppliers/me/wallet/topup-requests")
+        .set("Authorization", `Bearer ${supplierToken}`)
+        .send({ amount: fee });
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${topUp.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      const supplierRow = await superuser.supplier.findFirstOrThrow({ where: { user: { email: supplierEmail } } });
+      const supplierSubscription = await superuser.subscription.findUniqueOrThrow({ where: { supplierId: supplierRow.id } });
+      await superuser.subscription.update({ where: { id: supplierSubscription.id }, data: { currentPeriodEnd: new Date() } });
+
+      const planFeeDebit = app.get(PlanFeeDebitService);
+      const now = new Date();
+      // The actual race: two real, simultaneous sweep invocations, not one
+      // after the other.
+      await Promise.all([planFeeDebit.runMonthlyDebitSweep(now), planFeeDebit.runMonthlyDebitSweep(now)]);
+
+      const debitEntries = await superuser.supplierWalletEntry.count({ where: { supplierId: supplierRow.id, type: "plan_fee_debit" } });
+      expect(debitEntries).toBe(1); // never both, even though both sweeps ran genuinely concurrently
+
+      const balance = await request(app.getHttpServer()).get("/suppliers/me/wallet").set("Authorization", `Bearer ${supplierToken}`);
+      expect(balance.body.balance).toBe(0); // fee - fee, never driven negative by a double-debit
+    });
+
     it("a free-tier supplier linked to more than one store must filter to a single store; Premium unlocks the aggregated view", async () => {
       const supplierEmail = "multi-store-supplier@example.com";
       await request(app.getHttpServer())

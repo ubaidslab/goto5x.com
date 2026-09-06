@@ -94,22 +94,30 @@ export class PlanFeeDebitService {
 
     for (const subscription of due) {
       if (Number(subscription.plan.price) <= 0) continue;
-
-      const balance = await this.supplierWallet.getBalance(subscription.supplierId!);
       const fee = Number(subscription.plan.price);
 
-      if (balance >= fee) {
-        await this.prismaAdmin.supplierWalletEntry.create({
-          data: { supplierId: subscription.supplierId!, type: "plan_fee_debit", amount: round2(fee), currency: subscription.plan.currency },
-        });
-        await this.prismaAdmin.subscription.update({
+      // P2 fix (docs/security-audit-report.md #9) - the balance check and
+      // the debit/subscription-advance now happen inside one transaction,
+      // serialized per-supplier via SupplierWalletService.
+      // debitIfSufficientBalance()'s row lock, closing the check-then-write
+      // race a separate getBalance() + create() pair had no protection
+      // against.
+      const wasDebited = await this.prismaAdmin.$transaction(async (tx) => {
+        const ok = await this.supplierWallet.debitIfSufficientBalance(
+          tx,
+          subscription.supplierId!,
+          fee,
+          subscription.plan.currency,
+        );
+        if (!ok) return false; // insufficient balance - leave the subscription overdue, no downgrade, no pause.
+
+        await tx.subscription.update({
           where: { id: subscription.id },
           data: { currentPeriodEnd: addInterval(subscription.currentPeriodEnd!, subscription.plan.billingInterval as "monthly" | "yearly") },
         });
-        debited += 1;
-      }
-      // else: insufficient balance - leave the subscription overdue
-      // (currentPeriodEnd stays in the past); no downgrade, no pause.
+        return true;
+      });
+      if (wasDebited) debited += 1;
     }
 
     onDowngrade(0);

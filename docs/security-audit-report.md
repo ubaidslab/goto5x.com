@@ -7,29 +7,30 @@ previously existed only as scattered commit messages and an informal
 verbal summary — this document is the actual pre-launch security record.
 
 **Status as of this writing (2026-09-06): all 5 phases of the original
-pass have now run to completion, and every real finding they surfaced is
-fixed and verified.** This closes the security-hardening thread opened
-by the founder's standing request for advanced, "top-class-hacker-
-resistant" security. Six genuine vulnerabilities/races were found and
-fixed across the full pass: the two P0 launch-blockers (impersonation-
-token revocation, upload content-type spoofing - §3 #4/#14), the two
-Phase-2 races found before this final push (OTP verify/resend, promo-
-code redemption - §3 #1/#3), a stored-XSS vector in the storefront
-product page's JSON-LD block found by the input-validation sweep (§3
-#12), and a monthly-quota check-then-act race in campaign creation found
-by the concurrency-burst sweep (§3 #17). The IDOR sweep (§3 #13) and
-input-validation sweep (§3 #12) each additionally closed one lower-
-severity gap (a missing wallet cross-tenant test; four robustness-class
-input bugs). Two items remain open by deliberate, disclosed choice, not
-oversight (§4): the supplier wallet's non-atomic debit pattern (#9) and
-the sibling `ProductsService.create()` quota-race this pass's own
-campaign-quota fix surfaced as a related but out-of-scope pattern (#17's
-follow-up note) - both P2, consistency-not-urgency items. This report
-exists specifically so that distinction stays visible and actionable
-rather than quietly assumed away. Nothing in this document should be
-read as "the platform is comprehensively secure in every dimension
-forever" - it is the honest, evidence-backed record of exactly this
-5-phase pass, current as of the date above.
+pass have now run to completion, every real finding they surfaced is
+fixed and verified, and both P2 consistency follow-ups they surfaced
+have since been closed too — zero open items remain from this
+thread.** This concludes the security-hardening thread opened by the
+founder's standing request for advanced, "top-class-hacker-resistant"
+security. Eight genuine vulnerabilities/races were found and fixed
+across the full pass: the two P0 launch-blockers (impersonation-token
+revocation, upload content-type spoofing - §3 #4/#14), the two Phase-2
+races found before this final push (OTP verify/resend, promo-code
+redemption - §3 #1/#3), a stored-XSS vector in the storefront product
+page's JSON-LD block found by the input-validation sweep (§3 #12), a
+monthly-quota check-then-act race in campaign creation found by the
+concurrency-burst sweep (§3 #17), and the two related P2 races the
+campaign-quota fix's own pattern surfaced and was then applied to: the
+supplier wallet's non-atomic debit (§3 #9) and `ProductsService.
+create()`'s product-limit gate (§3 #17's follow-up). The IDOR sweep (§3
+#13) and input-validation sweep (§3 #12) each additionally closed one
+lower-severity gap (a missing wallet cross-tenant test; four
+robustness-class input bugs). This report exists specifically so this
+record stays visible and actionable rather than quietly assumed away.
+Nothing in this document should be read as "the platform is
+comprehensively secure in every dimension forever" - it is the honest,
+evidence-backed record of exactly this 5-phase pass plus its two P2
+follow-ups, current as of the date above.
 
 ---
 
@@ -380,7 +381,7 @@ the entire pass, regardless of phase or whether it was fixed.
 | 6 | Gift-card balance-draining race | 2 | **Confirmed already safe** | Atomic `updateMany` guarded by `remainingBalance: { gte: amount }`, confirmed at `apps/api/src/gift-cards/gift-cards.service.ts:184-186`. | No fix needed. |
 | 7 | Mass-assignment via DTOs | 1 / 2 | **Confirmed mostly safe; the one caveat is now closed by #12** | Global `ValidationPipe({ whitelist: true })`; 10 sensitive DTOs spot-checked, none map a client field onto `role`/`isAdmin`/`balance`/etc. The caveat noted here originally - `auth.controller.ts`'s `refresh`/`logout` and `admin-auth.controller.ts`'s `beginMfaEnrollment` bypassing the pipe via an untyped `@Body()` object literal - turned out to be 7 routes, not 3 (the buyer-facing pair and a buyer-profile update were missed), and all 7 are now behind real DTOs per #12's fix. `forbidNonWhitelisted` remains unset (silently strips unknown fields instead of loudly rejecting) - a real but low-severity defense-in-depth gap, not itself an exploit path. | Low - no direct exploit path was ever found on the untyped-body routes, but they sat outside the validation pipe's protection entirely; now closed. |
 | 8 | Money rounding/precision abuse | 2 | **Confirmed already safe** | 24 files route arithmetic through a shared `round2()` (`apps/api/src/orders/money.util.ts`); no unrounded float math found feeding a persisted/charged amount. | No fix needed (a theoretical IEEE-754 boundary case exists in principle but was not found to be exploitable in practice). |
-| 9 | Supplier wallet debit — read-then-recompute, not atomic | 2 (incidental) | **Found, not fixed** | `apps/api/src/.../plan-fee-debit.service.ts` reads a JS-recomputed balance from `supplier-wallet.service.ts` rather than using a true atomic increment/decrement, unlike `WalletService`'s pattern elsewhere. | Exploitable only if the monthly debit-sweep cron can run concurrently for the same supplier — plausible under a scheduler misconfiguration or manual re-trigger, but not demonstrated live. Was surfaced as a side-observation, not itself investigated as a primary finding. |
+| 9 | Supplier wallet debit — read-then-recompute, not atomic | 2 (incidental) | **Fixed & verified (2026-09-06)** | `PlanFeeDebitService.debitDueSupplierPlanFees()` used to read `SupplierWalletService.getBalance()` (a ledger SUM) in one step, then separately create the debit entry - a check-then-write race. There's no cached balance column here to `updateMany` against (unlike `WalletService`'s real `WalletBalance.balance` column), so the fix instead adds `SupplierWalletService.debitIfSufficientBalance(tx, ...)`, which takes a `SELECT ... FOR UPDATE` lock on the supplier's own Subscription row (one per supplier, `@unique`, always exists) for the duration of the caller's transaction - the same technique proven on the campaign-quota race (#17) - before re-checking the balance and creating the debit entry, all inside one transaction with the subscription-period advance. Live-proven: topped up a supplier's wallet to exactly one fee's worth, then fired two genuinely concurrent `runMonthlyDebitSweep()` calls via `Promise.all` - pre-fix reasoning would have both succeed (driving the balance to `-fee`); post-fix, exactly one `plan_fee_debit` entry is created and the balance lands at exactly 0, never negative. Verified by 1 new e2e test plus the full existing `module20-wallet-supplier-portal.e2e-spec.ts` suite (14/14, unaffected). | Exploitable only under genuine concurrent/re-triggered sweep execution - now closed rather than merely disclosed, at the founder's explicit request not to let a "found, not urgent" item go stale. |
 | 10 | Password-reset / email-verification token reuse | 2 | **Confirmed already safe** | Token hash cleared atomically on first use in the same `update()` call, both flows, `apps/api/src/auth/auth.service.ts`. No clock-skew grace period on either expiry check. | No fix needed. |
 | 11 | Access-token (JWT) has no live revocation check | 2 | **Confirmed as an accepted, deliberate tradeoff** | `apps/api/src/auth/jwt.strategy.ts` — stateless, 15-minute TTL, no per-request DB/Redis lookup. Refresh-token sessions are separately, genuinely revocable. | Low — standard short-TTL access-token design; not treated as a bug. |
 | 12 | Input-validation sweep across all endpoints | 1 | **Swept (2026-09-06), 5 real gaps found and fixed** | See §2 Phase 1 for the full writeup. Summary: 7 untyped `@Body()` routes now behind real DTOs (`RefreshTokenDto`/`LogoutDto`/`AdminMfaEnrollDto`/`UpdateProfileDto`); 6 money-amount DTOs given an upper bound matching `Decimal(12,2)` (`PurchaseGiftCardDto` was the highest-exposure - public, unauthenticated, previously unbounded); cart quantity/array-size capped against resource amplification; `PayloadTooLargeError` now correctly surfaces as 413 not 500 (`HttpExceptionFilter`); a real stored-XSS vector in the storefront product page's JSON-LD block fixed (`apps/web/lib/safe-json-ld.ts`). Verified via 9 new live e2e tests (`input-validation-sweep.e2e-spec.ts`) plus a clean web build for the frontend fix. ReDoS and raw-SQL usage were also checked and confirmed already safe. | The stored-XSS finding was the most serious - any seller could have targeted every buyer viewing their product page. Now closed; everything else was a 500-instead-of-400/413 robustness gap or a DoS-adjacent amplification bound, not a data-exposure or auth-bypass path. |
@@ -388,7 +389,7 @@ the entire pass, regardless of phase or whether it was fixed.
 | 14 | File-upload content-type spoofing (no magic-byte check) | 3 | **Fixed & verified** | Commit `8319fe9`. New `apps/api/src/media/file-signature.util.ts` sniffs real magic bytes (JPEG/PNG/GIF/WEBP images; MP4/MOV/WEBM video; PDF/DOC/DOCX documents) and returns a server-chosen, canonical Content-Type; `media.util.ts`'s `mediaTypeFromMimetype(mimetype)` replaced with `detectMediaTypeOrThrow(buffer)`, wired into direct media upload, store logo, review media, Google Drive import, and (via a parallel document check) Careers CVs — the client's declared mimetype is no longer read for classification or the stored `Content-Type` anywhere in this pipeline. 15 test fixtures updated across 8 e2e files; 1 new dedicated test proves the exact spoofing vector (declared `image/png`, real bytes `<script>...`) is rejected, and that a real file declared with a generic/wrong mimetype is still correctly classified. Full 100-file e2e regression: 100/100 passed. | Previously: a file whose real bytes were arbitrary but labeled e.g. `image/svg+xml` passed validation and was served back with that same executable content type — a plausible stored-XSS vector. Now: only recognized real image/video/document content is accepted, and the served Content-Type is always server-chosen. |
 | 15 | Checkout / MFA / campaign-send / gift-card-purchase burst-concurrency | 4 | **Burst-tested (2026-09-06), all four confirmed safe under genuine concurrency** | `p15-concurrency-burst.e2e-spec.ts` fires real `Promise.all` bursts (not sequential loops) at all four. Checkout/MFA-verify/gift-card-purchase: the rate limiter's atomic Redis `INCR` holds under a genuine 3-way simultaneous burst against a limit of 2 (at least one 429 each time). Gift-card purchase additionally burst-tested at/past the new P1.4 `Decimal(12,2)` bound concurrently - each request independently correct, no cross-request interference. Campaign creation initially failed this burst test for a different reason - see #17. | None of the four rate limiters themselves were racy - `RateLimitService.enforcePerHour()`'s single atomic `INCR` was already structurally safe, now empirically proven so under real concurrency, not just sequential requests. |
 | 16 | Secrets committed to git history | 5 | **Confirmed already safe** | Full-history `gitleaks` scan, 9 hits, all individually triaged as non-issues (Settings Registry key names / disposable CI-only keys). Both `.env.example` files confirmed placeholder-only. | No fix needed. |
-| 17 | Campaign-creation monthly-quota check-then-act race | 4 (found via burst-test) | **Fixed & verified** | `EmailCampaignsService.create()`'s quota check read a SUM aggregate over already-*sent* campaigns in one transaction, then inserted the new campaign in a separate one - two concurrent create() calls for the same seller (or even a fast sequential burst, since a "queued" campaign was never counted as reserved before the async worker marked it sent) could each pass a quota check that only one should have. Live-proven with a quota of 3 and two concurrent 2-recipient creates (4 total, over quota): pre-fix both would have succeeded. Fixed by a `SELECT ... FOR UPDATE` lock on the seller's Subscription row (serializes concurrent create() calls per seller) plus reserving against every campaign *created* this month, not just ones already sent. Post-fix: the same burst produces exactly one 201 and one 400. Verified by the new burst test plus the full existing `module34-email-campaigns.e2e-spec.ts` suite (unaffected, still 5/5). | Business-logic/revenue-integrity, not a data-exposure or auth-bypass path - a seller could have sent more marketing email in a month than their plan entitles them to. **Follow-up, not fixed in this pass:** `ProductsService.create()`'s `catalog.product_limit` gate is built on the same non-atomic-aggregate foundation (count-then-insert, no lock) - its window is narrower (one transaction, not two) so harder to hit, but the same class of gap. Out of this pass's named scope (checkout/MFA/campaign-send/gift-card-purchase); proposed as a P2 consistency follow-up alongside #9. |
+| 17 | Campaign-creation monthly-quota check-then-act race | 4 (found via burst-test) | **Fixed & verified** | `EmailCampaignsService.create()`'s quota check read a SUM aggregate over already-*sent* campaigns in one transaction, then inserted the new campaign in a separate one - two concurrent create() calls for the same seller (or even a fast sequential burst, since a "queued" campaign was never counted as reserved before the async worker marked it sent) could each pass a quota check that only one should have. Live-proven with a quota of 3 and two concurrent 2-recipient creates (4 total, over quota): pre-fix both would have succeeded. Fixed by a `SELECT ... FOR UPDATE` lock on the seller's Subscription row (serializes concurrent create() calls per seller) plus reserving against every campaign *created* this month, not just ones already sent. Post-fix: the same burst produces exactly one 201 and one 400. Verified by the new burst test plus the full existing `module34-email-campaigns.e2e-spec.ts` suite (unaffected, still 5/5). | Business-logic/revenue-integrity, not a data-exposure or auth-bypass path - a seller could have sent more marketing email in a month than their plan entitles them to. **Follow-up, also fixed (2026-09-06):** `ProductsService.create()`'s `catalog.product_limit` gate was built on the same non-atomic-aggregate foundation (count-then-insert, no lock) - narrower window (one transaction, not two) so harder to hit, but the same class of gap. Closed with the identical technique: a `SELECT ... FOR UPDATE` lock on the store's own row (already being fetched at that point in `create()` anyway) for the duration of the transaction, serializing concurrent create() calls per store. Live-proven: with a plan-scoped limit of 3 and 2 pre-existing products, two genuinely concurrent creates (each individually within the limit) now produce exactly one 201 and one 400, and the store never exceeds 3 products. Verified by 1 new e2e test plus the full existing `catalog.e2e-spec.ts` suite (16/16, unaffected). |
 
 ## 4. What this means for launch readiness
 
@@ -451,20 +452,35 @@ genuine simultaneous-request bursts, not just sequential ones.
   created this month, not just ones already sent. Verified by 5 new e2e
   tests (`p15-concurrency-burst.e2e-spec.ts`) plus the full existing
   `module34-email-campaigns.e2e-spec.ts` suite (unaffected).
+- **#9 — supplier wallet debit's read-then-recompute race.** Fixed
+  (2026-09-06), the same day the campaign-quota fix established the
+  pattern. `SupplierWalletService.debitIfSufficientBalance()` now locks
+  the supplier's Subscription row (`SELECT ... FOR UPDATE`) inside one
+  Prisma transaction shared with the balance re-check and the debit-
+  entry insert and the subscription-period advance, closing the
+  previous separate-`getBalance()`-then-separate-`create()` gap. Verified
+  by a new `Promise.all` dual-sweep e2e test in
+  `module20-wallet-supplier-portal.e2e-spec.ts` (tops a supplier's
+  balance up to exactly the plan fee, fires two genuinely concurrent
+  `runMonthlyDebitSweep()` calls, and asserts exactly one debit entry
+  and a final balance of zero) plus the full 14-test file passing.
+- **#17's follow-up — `ProductsService.create()`'s product-limit gate.**
+  Fixed (2026-09-06), same pass as #9. The existing `store.findUnique()`
+  read inside `create()`'s transaction is now preceded by a `SELECT ...
+  FOR UPDATE` lock on that same Store row, serializing concurrent
+  creates against the same store so two individually-within-limit
+  concurrent requests can no longer both pass the count check. Verified
+  by a new `Promise.all` two-concurrent-create e2e test in
+  `guardrails.e2e-spec.ts` (limit set to 3, 2 products seeded
+  sequentially, then 2 concurrent creates asserted to resolve as exactly
+  one `201` and one `400`, with the store's final product count staying
+  at 3, never 4) plus the full 6-test file passing.
 
-**Still open (per the founder's own P2 sequencing - consistency, not
-urgent, not launch-blocking):**
-
-- **#9** — the supplier wallet debit's read-then-recompute pattern
-  should be converted to a true atomic update to match every other
-  money-path in this codebase.
-- **#17's follow-up** — `ProductsService.create()`'s `catalog.
-  product_limit` gate is built on the same non-atomic-aggregate
-  foundation as the campaign-quota race just fixed (count-then-insert,
-  no lock), just with a narrower window (one transaction, not two) that
-  makes it harder to hit. Not itself re-verified or fixed in this pass -
-  out of P1.5's named scope (checkout/MFA/campaign-send/gift-card-
-  purchase) - proposed as a P2 consistency follow-up alongside #9.
+**Still open: none.** Both P2 consistency follow-ups above were closed
+the same day they were raised, per the founder's explicit instruction not
+to let them become deferred/forgotten items. This concludes the entire
+security-hardening thread — all 5 original phases plus both P2
+follow-ups are fixed and verified with real evidence and CI green.
 
 Everything marked "confirmed already safe" in §3 was independently
 checked against the live code for this report (not merely assumed), and

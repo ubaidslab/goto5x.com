@@ -73,6 +73,20 @@ export class ProductsService {
     assertUniqueAttributeKeys(dto.customAttributes);
     let queuedReason: string | undefined;
     const product = await this.tenantPrisma.run(sellerId, async (tx) => {
+      // P2 fix (docs/security-audit-report.md #17's follow-up) - this
+      // count-then-insert product-limit gate rests on the same non-atomic-
+      // aggregate foundation the campaign-quota race (#17) was built on:
+      // two genuinely concurrent create() calls for the same store, under
+      // READ COMMITTED, can each count the same existingCount before either
+      // commits, so both can pass a limit check that only one of them
+      // should have. Locking this store's row for the duration of the
+      // transaction serializes concurrent create() calls for that store,
+      // the same technique proven on #17 - a second call sees the first's
+      // already-committed product row before deciding whether the limit is
+      // still available. `FOR UPDATE` against a nonexistent id simply
+      // locks nothing, so the not-found check below is unaffected.
+      await tx.$queryRawUnsafe(`SELECT id FROM stores WHERE id = $1::uuid FOR UPDATE`, storeId);
+
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
 

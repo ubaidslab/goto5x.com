@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { SupplierLedgerEntryType } from "@prisma/client";
+import { Prisma, SupplierLedgerEntryType } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { round2 } from "../orders/money.util";
@@ -48,7 +48,49 @@ export class SupplierWalletService {
       where: { supplierId },
       select: { type: true, amount: true },
     });
+    return this.sumEntries(entries);
+  }
+
+  private sumEntries(entries: { type: SupplierLedgerEntryType; amount: unknown }[]): number {
     return round2(entries.reduce((sum, e) => sum + signedContribution(e.type, Number(e.amount)), 0));
+  }
+
+  /**
+   * P2 fix (docs/security-audit-report.md #9) - this used to be a plain
+   * read-then-recompute in `PlanFeeDebitService.debitDueSupplierPlanFees()`
+   * (getBalance(), then a separate create() if sufficient): a genuine
+   * check-then-write race, unlike every other money-path in this codebase
+   * (WalletService.postLedgerEntry()'s atomic `increment` on a real balance
+   * column; the discount-code/gift-card atomic conditional `updateMany`).
+   * There's no cached balance column here to `updateMany` against - the
+   * balance is a ledger SUM - so the fix instead takes a `SELECT ... FOR
+   * UPDATE` lock on the supplier's own Subscription row (one per supplier,
+   * `@unique`, always exists - the same technique proven on the campaign-
+   * quota race, docs/security-audit-report.md #17) for the duration of the
+   * caller's transaction, serializing concurrent debit attempts for that
+   * supplier so a second one sees the first's already-committed entry
+   * before deciding whether the balance is still sufficient. Returns
+   * false (no entry created) on insufficient balance - same "leave it
+   * overdue, never go negative" behavior as before.
+   */
+  async debitIfSufficientBalance(
+    tx: Prisma.TransactionClient,
+    supplierId: string,
+    amount: number,
+    currency: string,
+    type: SupplierLedgerEntryType = "plan_fee_debit",
+  ): Promise<boolean> {
+    await tx.$queryRawUnsafe(`SELECT id FROM subscriptions WHERE supplier_id = $1::uuid FOR UPDATE`, supplierId);
+
+    const entries = await tx.supplierWalletEntry.findMany({
+      where: { supplierId },
+      select: { type: true, amount: true },
+    });
+    const balance = this.sumEntries(entries);
+    if (balance < amount) return false;
+
+    await tx.supplierWalletEntry.create({ data: { supplierId, type, amount: round2(amount), currency } });
+    return true;
   }
 
   /** Phase B pre-launch audit finding - same unbounded-growth fix as WalletService.getTransactionHistory(). */

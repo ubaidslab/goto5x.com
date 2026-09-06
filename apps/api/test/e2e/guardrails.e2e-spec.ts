@@ -85,6 +85,47 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
         .send({ title: "Second product", categoryId: category.id, status: "active" });
       expect(second.status).toBe(400);
     });
+
+    it("P2 fix (docs/security-audit-report.md #17's follow-up): two genuinely concurrent creates, each individually within the limit but together over it, no longer both succeed", async () => {
+      const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await app.get(SettingsService).setValue("catalog.product_limit", "plan", firstMonthPlan.id, 3, ADMIN_ID);
+      const { token, storeId } = await signupAndCreateStore("product-limit-race@example.com", "product-limit-race-store");
+      const category = await superuser.category.create({ data: { name: "Race", slug: `race-${Date.now()}` } });
+
+      // Two existing products, created sequentially (uncontested) so the
+      // race under test is purely on the two concurrent creates below -
+      // existingCount is 2 against a limit of 3, so each individually
+      // still fits.
+      await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Existing 1", categoryId: category.id, status: "active" });
+      await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Existing 2", categoryId: category.id, status: "active" });
+
+      // The actual race: two real, simultaneous create requests, not one
+      // after the other. Without the fix, both would independently count
+      // existingCount=2 (< limit 3) and both succeed, landing at 4 products
+      // against a limit of 3.
+      const [productA, productB] = await Promise.all([
+        request(app.getHttpServer())
+          .post(`/stores/${storeId}/products`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ title: "Race A", categoryId: category.id, status: "active" }),
+        request(app.getHttpServer())
+          .post(`/stores/${storeId}/products`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ title: "Race B", categoryId: category.id, status: "active" }),
+      ]);
+
+      const statuses = [productA.status, productB.status].sort();
+      expect(statuses).toEqual([201, 400]);
+
+      const totalProducts = await superuser.product.count({ where: { storeId } });
+      expect(totalProducts).toBe(3); // never 4 - the limit was never actually exceeded
+    });
   });
 
   describe("Storage quota (FR-23.1)", () => {
