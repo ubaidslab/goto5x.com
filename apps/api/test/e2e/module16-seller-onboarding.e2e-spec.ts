@@ -9,6 +9,13 @@ const PASSWORD = "correct-horse-battery";
 const S3_TEST_PORT = 4569; // must match .env.test's MINIO_ENDPOINT - see media.e2e-spec.ts's comment on why this is safe under --runInBand
 const BUCKET = "uzeyn-media-test";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need a real PNG signature.
+function realPngBytes(payload: string): Buffer {
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(payload)]);
+}
+
 describe("Seller Onboarding Wizard (e2e) - SRS §5.20/§5.25, FR-20.1/FR-25.5, §14.20", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
@@ -151,7 +158,7 @@ describe("Seller Onboarding Wizard (e2e) - SRS §5.20/§5.25, FR-20.1/FR-25.5, �
       await request(app.getHttpServer())
         .post(`/stores/${storeId}/logo`)
         .set("Authorization", `Bearer ${token}`)
-        .attach("file", Buffer.from("fake-png-bytes"), { filename: "logo.png", contentType: "image/png" });
+        .attach("file", realPngBytes("fake-png-bytes"), { filename: "logo.png", contentType: "image/png" });
 
       const progress = await request(app.getHttpServer())
         .get(`/stores/${storeId}/onboarding`)
@@ -201,7 +208,7 @@ describe("Seller Onboarding Wizard (e2e) - SRS §5.20/§5.25, FR-20.1/FR-25.5, �
       await request(app.getHttpServer())
         .post(`/stores/${storeId}/logo`)
         .set("Authorization", `Bearer ${token}`)
-        .attach("file", Buffer.from("fake-png-bytes"), { filename: "logo.png", contentType: "image/png" });
+        .attach("file", realPngBytes("fake-png-bytes"), { filename: "logo.png", contentType: "image/png" });
       const product = await request(app.getHttpServer())
         .post(`/stores/${storeId}/products`)
         .set("Authorization", `Bearer ${token}`)

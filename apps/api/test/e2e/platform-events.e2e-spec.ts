@@ -11,6 +11,13 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 const S3_TEST_PORT = 4569; // must match .env.test's MINIO_ENDPOINT - see media.e2e-spec.ts's comment on why this is safe under --runInBand
 const BUCKET = "uzeyn-media-test";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need a real JPEG signature.
+function realJpegBytes(payload: string): Buffer {
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from(payload)]);
+}
+
 /**
  * SRS §3.11/FR-26.x, §14.23 - proves the six lifecycle events backfilled
  * into Modules 1-3 are actually recorded, with no PII in `metadata`, and
@@ -44,7 +51,7 @@ describe("Platform Event Log (e2e) - SRS §3.11/FR-26.x, §14.23", () => {
       listImportableFiles: jest
         .fn()
         .mockResolvedValue([{ id: "drive-file-1", name: "vacation.jpg", mimeType: "image/jpeg" }]),
-      downloadFile: jest.fn().mockResolvedValue({ buffer: Buffer.from("drive-bytes"), mimeType: "image/jpeg" }),
+      downloadFile: jest.fn().mockResolvedValue({ buffer: realJpegBytes("drive-bytes"), mimeType: "image/jpeg" }),
       revoke: jest.fn(),
       createFolder: jest.fn(),
       uploadFile: jest.fn(),
@@ -121,7 +128,7 @@ describe("Platform Event Log (e2e) - SRS §3.11/FR-26.x, §14.23", () => {
     const upload = await request(app.getHttpServer())
       .post(`/stores/${storeId}/media`)
       .set("Authorization", `Bearer ${token}`)
-      .attach("file", Buffer.from("photo-bytes"), { filename: "p.jpg", contentType: "image/jpeg" });
+      .attach("file", realJpegBytes("photo-bytes"), { filename: "p.jpg", contentType: "image/jpeg" });
 
     const event = await superuser.platformEvent.findFirstOrThrow({ where: { eventType: "media.imported" } });
     expect(event.entityId).toBe(upload.body.id);

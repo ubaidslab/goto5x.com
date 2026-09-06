@@ -8,6 +8,13 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 const S3_TEST_PORT = 4569; // must match .env.test's MINIO_ENDPOINT - see media.e2e-spec.ts's comment on why this is safe under --runInBand
 const BUCKET = "uzeyn-media-test";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need a real PNG signature.
+function realPngBytes(payload: string): Buffer {
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(payload)]);
+}
+
 const shippingAddress = {
   fullName: "Ayesha Khan",
   line1: "House 12, Street 3",
@@ -79,7 +86,7 @@ describe("Storefront Buyer Purchase Flow & Store Branding (e2e) - SRS §5.32, §
     const before = await request(app.getHttpServer()).get(`/stores/${storeId}`).set("Authorization", `Bearer ${token}`);
     expect(before.body.logoUrl).toBeNull();
 
-    const firstLogo = Buffer.from("first-logo-bytes");
+    const firstLogo = realPngBytes("first-logo-bytes");
     const upload = await request(app.getHttpServer())
       .post(`/stores/${storeId}/logo`)
       .set("Authorization", `Bearer ${token}`)
@@ -98,7 +105,7 @@ describe("Storefront Buyer Purchase Flow & Store Branding (e2e) - SRS §5.32, §
     expect(publicStore.body.logoUrl).toBe(upload.body.logoUrl);
 
     // Replacing the logo cleans up the previous object, not just the DB row.
-    const secondLogo = Buffer.from("second-logo-bytes");
+    const secondLogo = realPngBytes("second-logo-bytes");
     const replace = await request(app.getHttpServer())
       .post(`/stores/${storeId}/logo`)
       .set("Authorization", `Bearer ${token}`)
@@ -129,7 +136,7 @@ describe("Storefront Buyer Purchase Flow & Store Branding (e2e) - SRS §5.32, §
     const crossUpload = await request(app.getHttpServer())
       .post(`/stores/${a.storeId}/logo`)
       .set("Authorization", `Bearer ${b.token}`)
-      .attach("file", Buffer.from("intrusion"), { filename: "x.png", contentType: "image/png" });
+      .attach("file", realPngBytes("intrusion"), { filename: "x.png", contentType: "image/png" });
     expect(crossUpload.status).toBe(404);
 
     const crossRemove = await request(app.getHttpServer())
@@ -143,7 +150,7 @@ describe("Storefront Buyer Purchase Flow & Store Branding (e2e) - SRS §5.32, §
     await request(app.getHttpServer())
       .post(`/stores/${storeId}/logo`)
       .set("Authorization", `Bearer ${token}`)
-      .attach("file", Buffer.from("logo-bytes"), { filename: "logo.png", contentType: "image/png" });
+      .attach("file", realPngBytes("logo-bytes"), { filename: "logo.png", contentType: "image/png" });
 
     const product = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products`)

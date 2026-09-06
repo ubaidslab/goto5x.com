@@ -8,6 +8,15 @@ const S3_TEST_PORT = 4569;
 const BUCKET = "uzeyn-media-test";
 const PASSWORD = "correct-horse-battery";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need real signatures.
+function realMediaBytes(kind: "image" | "video", payload: string): Buffer {
+  return kind === "image"
+    ? Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(payload)])
+    : Buffer.concat([Buffer.alloc(4), Buffer.from("ftyp"), Buffer.from(payload)]);
+}
+
 /**
  * FR-66.7 (Module 87) - image zoom + product video with thumbnail. Image
  * zoom is a pure frontend interaction (no backend surface to test); this
@@ -60,7 +69,7 @@ describe("Product video thumbnail (e2e) - FR-66.7 (Module 87)", () => {
       .post(`/stores/${storeId}/media`)
       .set("Authorization", `Bearer ${token}`)
       .field("productId", productId)
-      .attach("file", Buffer.from(`fake-${kind}-bytes`), {
+      .attach("file", realMediaBytes(kind, `fake-${kind}-bytes`), {
         filename,
         contentType: kind === "image" ? "image/png" : "video/mp4",
       });

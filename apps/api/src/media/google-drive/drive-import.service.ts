@@ -2,7 +2,7 @@ import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantPrismaService } from "../../prisma/tenant-prisma.service";
 import { RedisService } from "../../common/redis/redis.service";
 import { EventsService } from "../../events/events.service";
-import { mediaTypeFromMimetype, sanitizeFilename } from "../media.util";
+import { detectMediaTypeOrThrow, sanitizeFilename } from "../media.util";
 import { ObjectStorageService } from "../object-storage.service";
 import { DRIVE_CLIENT, IDriveClient } from "./drive-client.interface";
 import { DriveConnectionsService } from "./drive-connections.service";
@@ -53,9 +53,9 @@ export class DriveImportService {
     for (const file of targets) {
       try {
         const downloaded = await this.driveClient.downloadFile(accessToken, file.id);
-        const type = mediaTypeFromMimetype(downloaded.mimeType);
+        const { type, contentType } = detectMediaTypeOrThrow(downloaded.buffer);
         const key = `stores/${storeId}/media/drive-${file.id}-${sanitizeFilename(file.name)}`;
-        const url = await this.objectStorage.putObject(key, downloaded.buffer, downloaded.mimeType);
+        const url = await this.objectStorage.putObject(key, downloaded.buffer, contentType);
         const asset = await this.tenantPrisma.run(sellerId, (tx) =>
           tx.mediaAsset.create({
             data: { storeId, url, source: "google_drive_import", type },

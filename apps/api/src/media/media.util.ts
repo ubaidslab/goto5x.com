@@ -1,10 +1,19 @@
 import { BadRequestException } from "@nestjs/common";
-import { MediaType } from "@prisma/client";
+import { detectImageOrVideo, DetectedMedia } from "./file-signature.util";
 
-export function mediaTypeFromMimetype(mimetype: string): MediaType {
-  if (mimetype.startsWith("image/")) return "image";
-  if (mimetype.startsWith("video/")) return "video";
-  throw new BadRequestException(`Unsupported media type "${mimetype}" - only images and videos are accepted.`);
+/**
+ * Security-audit fix (docs/security-audit-report.md, finding #14): this
+ * used to trust the client-supplied mimetype string alone. Now inspects
+ * the file's actual bytes and returns a server-chosen, canonical
+ * Content-Type - the caller's own declared mimetype is no longer read at
+ * all for classification or storage.
+ */
+export function detectMediaTypeOrThrow(buffer: Buffer): DetectedMedia {
+  const detected = detectImageOrVideo(buffer);
+  if (!detected) {
+    throw new BadRequestException("Unsupported file - only real image or video content is accepted.");
+  }
+  return detected;
 }
 
 export function sanitizeFilename(name: string): string {

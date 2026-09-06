@@ -12,6 +12,13 @@ const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 const S3_TEST_PORT = 4569;
 const BUCKET = "uzeyn-media-test";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need a real PNG signature.
+function realPngBytes(payload: string): Buffer {
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(payload)]);
+}
+
 /** SRS §5.23/§14.21 - Business Guard-Rails & Platform Economics. */
 describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
   let app: INestApplication;
@@ -85,22 +92,25 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
       await app.get(SettingsService).setValue("catalog.storage_quota_bytes", "global", null, 20, ADMIN_ID);
       const { token, storeId } = await signupAndCreateStore("storage-quota@example.com", "storage-quota-store");
 
+      // realPngBytes()'s 8-byte signature counts toward the quota like any
+      // other content - "01" brings each file to exactly 10 bytes, same
+      // boundary arithmetic the original fake-byte fixture exercised.
       const first = await request(app.getHttpServer())
         .post(`/stores/${storeId}/media`)
         .set("Authorization", `Bearer ${token}`)
-        .attach("file", Buffer.from("0123456789"), { filename: "a.png", contentType: "image/png" });
+        .attach("file", realPngBytes("01"), { filename: "a.png", contentType: "image/png" });
       expect(first.status).toBe(201);
 
       const second = await request(app.getHttpServer())
         .post(`/stores/${storeId}/media`)
         .set("Authorization", `Bearer ${token}`)
-        .attach("file", Buffer.from("0123456789"), { filename: "b.png", contentType: "image/png" });
+        .attach("file", realPngBytes("01"), { filename: "b.png", contentType: "image/png" });
       expect(second.status).toBe(201); // exactly at the 20-byte quota
 
       const third = await request(app.getHttpServer())
         .post(`/stores/${storeId}/media`)
         .set("Authorization", `Bearer ${token}`)
-        .attach("file", Buffer.from("x"), { filename: "c.png", contentType: "image/png" });
+        .attach("file", realPngBytes(""), { filename: "c.png", contentType: "image/png" });
       expect(third.status).toBe(400);
     });
   });

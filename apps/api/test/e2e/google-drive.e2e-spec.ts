@@ -16,6 +16,11 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 const S3_TEST_PORT = 4569;
 const BUCKET = "uzeyn-media-test";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// (including this Google Drive import path) now validates real magic
+// bytes rather than trusting Drive's own declared mimeType.
+const REAL_DRIVE_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from("real-drive-bytes")]);
+
 /**
  * The real Google OAuth/Drive endpoints are unreachable from this sandbox
  * (see google-drive-client.service.ts's disclosure) - so this spec overrides
@@ -52,7 +57,7 @@ describe("Google Drive connect/status/revoke (e2e, with a fake Google client) - 
       listImportableFiles: jest
         .fn()
         .mockResolvedValue([{ id: "drive-file-1", name: "vacation.jpg", mimeType: "image/jpeg" }]),
-      downloadFile: jest.fn().mockResolvedValue({ buffer: Buffer.from("real-drive-bytes"), mimeType: "image/jpeg" }),
+      downloadFile: jest.fn().mockResolvedValue({ buffer: REAL_DRIVE_BYTES, mimeType: "image/jpeg" }),
       revoke: jest.fn().mockResolvedValue(undefined),
       createFolder: jest.fn().mockResolvedValue("fake-export-folder-id"),
       uploadFile: jest.fn().mockResolvedValue("fake-export-file-id"),
@@ -208,6 +213,6 @@ describe("Google Drive connect/status/revoke (e2e, with a fake Google client) - 
     const key = mediaAsset.url.split(`${BUCKET}/`)[1];
     const fetched = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
     const body = await fetched.Body!.transformToByteArray();
-    expect(Buffer.from(body).toString()).toBe("real-drive-bytes");
+    expect(Buffer.from(body).equals(REAL_DRIVE_BYTES)).toBe(true);
   });
 });

@@ -8,6 +8,19 @@ import { startTestS3Server, TestS3Server } from "./s3-test-server";
 const S3_TEST_PORT = 4569;
 const BUCKET = "uzeyn-media-test";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need a real PNG signature (89 50 4E 47
+// 0D 0A 1A 0A) prefixed onto whatever filler payload the test cares about.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
+function realPngBytes(payload: string): Buffer {
+  return Buffer.concat([PNG_SIGNATURE, Buffer.from(payload)]);
+}
+function realJpegBytes(payload: string): Buffer {
+  return Buffer.concat([JPEG_SIGNATURE, Buffer.from(payload)]);
+}
+
 describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
@@ -60,7 +73,7 @@ describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", ()
 
   it("uploads an image, creates a media_assets row, and the bytes are really retrievable from object storage", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("media-owner@example.com", "media-owner-store");
-    const fileBytes = Buffer.from("fake-png-bytes-for-testing");
+    const fileBytes = realPngBytes("fake-png-bytes-for-testing");
 
     const upload = await request(app.getHttpServer())
       .post(`/stores/${storeId}/media`)
@@ -89,6 +102,39 @@ describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", ()
     expect(upload.status).toBe(400);
   });
 
+  it("Security-audit fix (finding #14): a mislabeled upload is rejected on its real content, not its declared content-type, and the stored Content-Type is server-chosen rather than client-supplied", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("media-spoofed@example.com", "media-spoofed-store");
+
+    // The exact vector the audit found: the client declares a "safe"
+    // image mimetype, but the actual bytes are arbitrary (here, HTML that
+    // would execute as script if ever served with an executable
+    // Content-Type) - this must be rejected on content, not on the
+    // client's own say-so.
+    const spoofed = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/media`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", Buffer.from("<script>alert(1)</script>"), { filename: "innocent.png", contentType: "image/png" });
+    expect(spoofed.status).toBe(400);
+
+    // The same declared-mimetype lie in the other direction: real JPEG
+    // bytes declared as a generic octet-stream must still be accepted and
+    // correctly classified - the server decides from content, not the
+    // client's mimetype, in both directions.
+    const realFile = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/media`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", realJpegBytes("actually-a-jpeg"), { filename: "photo.bin", contentType: "application/octet-stream" });
+    expect(realFile.status).toBe(201);
+    expect(realFile.body.type).toBe("image");
+
+    // The object actually stored in S3 carries the server-detected
+    // Content-Type (image/jpeg), never the client's declared
+    // "application/octet-stream".
+    const key = realFile.body.url.split(`${BUCKET}/`)[1];
+    const fetched = await rawS3Client().send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+    expect(fetched.ContentType).toBe("image/jpeg");
+  });
+
   it("lists media for a store, attaches one to a product, then detaches it", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("media-attach@example.com", "media-attach-store");
     const product = await request(app.getHttpServer())
@@ -98,7 +144,7 @@ describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", ()
     const upload = await request(app.getHttpServer())
       .post(`/stores/${storeId}/media`)
       .set("Authorization", `Bearer ${token}`)
-      .attach("file", Buffer.from("photo-bytes"), { filename: "p.jpg", contentType: "image/jpeg" });
+      .attach("file", realJpegBytes("photo-bytes"), { filename: "p.jpg", contentType: "image/jpeg" });
     const mediaId = upload.body.id;
 
     const list = await request(app.getHttpServer())
@@ -125,7 +171,7 @@ describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", ()
     const upload = await request(app.getHttpServer())
       .post(`/stores/${storeId}/media`)
       .set("Authorization", `Bearer ${token}`)
-      .attach("file", Buffer.from("delete-me"), { filename: "d.png", contentType: "image/png" });
+      .attach("file", realPngBytes("delete-me"), { filename: "d.png", contentType: "image/png" });
     const mediaId = upload.body.id;
     const key = upload.body.url.split(`${BUCKET}/`)[1];
 
@@ -152,7 +198,7 @@ describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", ()
     const crossUpload = await request(app.getHttpServer())
       .post(`/stores/${a.storeId}/media`)
       .set("Authorization", `Bearer ${b.token}`)
-      .attach("file", Buffer.from("intrusion"), { filename: "x.png", contentType: "image/png" });
+      .attach("file", realPngBytes("intrusion"), { filename: "x.png", contentType: "image/png" });
     expect(crossUpload.status).toBe(404);
   });
 });

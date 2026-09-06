@@ -38,7 +38,7 @@ export class MediaUploadController {
     return this.media.uploadDirect(
       sellerId,
       storeId,
-      { buffer: file.buffer, mimetype: file.mimetype, originalname: file.originalname },
+      { buffer: file.buffer, originalname: file.originalname },
       productId || undefined,
     );
   }

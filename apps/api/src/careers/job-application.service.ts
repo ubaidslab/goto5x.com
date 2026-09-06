@@ -1,16 +1,23 @@
 import { randomUUID } from "crypto";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { JobApplication, JobApplicationStatus } from "@prisma/client";
 import { AuditLogService } from "../admin/audit-log.service";
+import { detectDocument } from "../media/file-signature.util";
+import { sanitizeFilename } from "../media/media.util";
 import { ObjectStorageService } from "../media/object-storage.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { JobPostingService } from "./job-posting.service";
 
+const DOCUMENT_CONTENT_TYPES: Record<ReturnType<typeof detectDocument> & string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
 export interface CvFile {
   buffer: Buffer;
-  mimetype: string;
   originalname: string;
 }
 
@@ -46,8 +53,18 @@ export class JobApplicationService {
 
     await this.jobPostings.requireOpen(jobPostingId);
 
-    const key = `careers/${jobPostingId}/${randomUUID()}-${cv.originalname}`;
-    const cvUrl = await this.objectStorage.putObject(key, cv.buffer, cv.mimetype);
+    // Security-audit fix (docs/security-audit-report.md, finding #14) -
+    // the client-supplied mimetype is never trusted; the file's actual
+    // bytes must match one of the accepted document formats, and the
+    // canonical, server-chosen content type (never the client's) is what
+    // gets stored/served.
+    const documentType = detectDocument(cv.buffer);
+    if (!documentType) {
+      throw new BadRequestException("CV must be a real PDF or Word document (.pdf, .doc, .docx).");
+    }
+
+    const key = `careers/${jobPostingId}/${randomUUID()}-${sanitizeFilename(cv.originalname)}`;
+    const cvUrl = await this.objectStorage.putObject(key, cv.buffer, DOCUMENT_CONTENT_TYPES[documentType]);
 
     return this.prismaAdmin.jobApplication.create({
       data: { jobPostingId, applicantName, applicantEmail, applicantPhone, cvUrl },

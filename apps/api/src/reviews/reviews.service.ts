@@ -6,7 +6,7 @@ import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { ObjectStorageService } from "../media/object-storage.service";
-import { mediaTypeFromMimetype, sanitizeFilename } from "../media/media.util";
+import { detectMediaTypeOrThrow, sanitizeFilename } from "../media/media.util";
 import { EventsService } from "../events/events.service";
 
 function round1(n: number): number {
@@ -110,15 +110,15 @@ export class ReviewsService {
     // Validate every file's type before uploading any of them - a rejection
     // on file 3 of 5 must never leave files 1-2 orphaned in object storage
     // with nothing pointing at them.
-    const types = files.map((file) => mediaTypeFromMimetype(file.mimetype));
+    const detected = files.map((file) => detectMediaTypeOrThrow(file.buffer));
 
     let sortOrder = review.media.length;
     const rows = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const key = `reviews/${review.id}/${randomUUID()}-${sanitizeFilename(file.originalname)}`;
-      const url = await this.objectStorage.putObject(key, file.buffer, file.mimetype);
-      rows.push({ storeId: review.storeId, reviewId: review.id, type: types[i], url, sortOrder: sortOrder++ });
+      const url = await this.objectStorage.putObject(key, file.buffer, detected[i].contentType);
+      rows.push({ storeId: review.storeId, reviewId: review.id, type: detected[i].type, url, sortOrder: sortOrder++ });
     }
 
     await this.prismaAdmin.reviewMedia.createMany({ data: rows });

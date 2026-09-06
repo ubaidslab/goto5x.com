@@ -10,11 +10,6 @@ import { JobPostingService } from "./job-posting.service";
 // this SRS (e.g. FR-9.2)." A CV is a document, not media - its own limit,
 // separate from MediaUploadController's 25MB image/clip limit.
 const MAX_CV_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
-const ALLOWED_CV_MIME_TYPES = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
 
 /** SRS §5.33 FR-33.8 - the public careers listing + application flow. No auth - candidates are not platform users. */
 @Controller("careers")
@@ -38,15 +33,15 @@ export class CareersController {
     @Req() req: Request,
   ) {
     if (!cv) throw new BadRequestException('No file uploaded (expected multipart field "cv").');
-    if (!ALLOWED_CV_MIME_TYPES.has(cv.mimetype)) {
-      throw new BadRequestException("CV must be a PDF or Word document (.pdf, .doc, .docx).");
-    }
+    // Content itself is validated in JobApplicationService.apply() -
+    // docs/security-audit-report.md finding #14 - never the client's
+    // declared mimetype alone.
     return this.applications.apply(
       jobPostingId,
       dto.applicantName,
       dto.applicantEmail,
       dto.applicantPhone,
-      { buffer: cv.buffer, mimetype: cv.mimetype, originalname: cv.originalname },
+      { buffer: cv.buffer, originalname: cv.originalname },
       req.ip ?? "unknown",
     );
   }

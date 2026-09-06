@@ -45,7 +45,7 @@ export class StoresController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file").');
-    return this.stores.setLogo(sellerId, id, { buffer: file.buffer, mimetype: file.mimetype, originalname: file.originalname });
+    return this.stores.setLogo(sellerId, id, { buffer: file.buffer, originalname: file.originalname });
   }
 
   @Delete(":id/logo")

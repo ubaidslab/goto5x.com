@@ -4,12 +4,11 @@ import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
 import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
-import { mediaTypeFromMimetype, sanitizeFilename } from "./media.util";
+import { detectMediaTypeOrThrow, sanitizeFilename } from "./media.util";
 import { ObjectStorageService } from "./object-storage.service";
 
 export interface UploadableFile {
   buffer: Buffer;
-  mimetype: string;
   originalname: string;
 }
 
@@ -32,7 +31,7 @@ export class MediaAssetsService {
   ) {}
 
   async uploadDirect(sellerId: string, storeId: string, file: UploadableFile, productId?: string) {
-    const type = mediaTypeFromMimetype(file.mimetype);
+    const { type, contentType } = detectMediaTypeOrThrow(file.buffer);
     const url = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
@@ -54,7 +53,7 @@ export class MediaAssetsService {
       return null; // ownership/quota validated; the actual upload happens outside the DB transaction below
     }).then(async () => {
       const key = `stores/${storeId}/media/${randomUUID()}-${sanitizeFilename(file.originalname)}`;
-      return this.objectStorage.putObject(key, file.buffer, file.mimetype);
+      return this.objectStorage.putObject(key, file.buffer, contentType);
     });
 
     const asset = await this.tenantPrisma.run(sellerId, (tx) =>

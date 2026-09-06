@@ -8,6 +8,17 @@ const S3_TEST_PORT = 4569;
 const BUCKET = "uzeyn-media-test";
 const PASSWORD = "correct-horse-battery";
 
+// Security-audit fix (docs/security-audit-report.md, finding #14) - upload
+// validation now checks real magic bytes, not the client-declared
+// content-type, so test fixtures need real signatures.
+function realJpegBytes(payload: string): Buffer {
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from(payload)]);
+}
+function realMp4Bytes(payload: string): Buffer {
+  // ISO base media file format: 4-byte box size (unused by the sniffer) then the ASCII box type "ftyp" at offset 4.
+  return Buffer.concat([Buffer.alloc(4), Buffer.from("ftyp"), Buffer.from(payload)]);
+}
+
 /**
  * Phase 4 close-out (FR-14.1) - the review-media (photo/video) attachment
  * feature the original UI/UX audit found genuinely missing end-to-end (no
@@ -98,8 +109,8 @@ describe("Review media - photos/video (e2e) - Phase 4 close-out, FR-14.1", () =>
 
     const upload = await request(app.getHttpServer())
       .post(`/storefront/order-status/${statusLookupToken}/reviews/${reviewId}/media`)
-      .attach("media", Buffer.from("fake-jpeg-bytes"), { filename: "photo1.jpg", contentType: "image/jpeg" })
-      .attach("media", Buffer.from("fake-mp4-bytes"), { filename: "clip.mp4", contentType: "video/mp4" });
+      .attach("media", realJpegBytes("fake-jpeg-bytes"), { filename: "photo1.jpg", contentType: "image/jpeg" })
+      .attach("media", realMp4Bytes("fake-mp4-bytes"), { filename: "clip.mp4", contentType: "video/mp4" });
     expect(upload.status).toBe(201);
     expect(upload.body).toHaveLength(2);
     expect(upload.body.map((m: any) => m.type).sort()).toEqual(["image", "video"]);
@@ -139,7 +150,7 @@ describe("Review media - photos/video (e2e) - Phase 4 close-out, FR-14.1", () =>
 
     let req = request(app.getHttpServer()).post(`/storefront/order-status/${statusLookupToken}/reviews/${submit.body.id}/media`);
     for (let i = 0; i < 5; i++) {
-      req = req.attach("media", Buffer.from(`img-${i}`), { filename: `img${i}.jpg`, contentType: "image/jpeg" });
+      req = req.attach("media", realJpegBytes(`img-${i}`), { filename: `img${i}.jpg`, contentType: "image/jpeg" });
     }
     const firstBatch = await req;
     expect(firstBatch.status).toBe(201);
@@ -147,7 +158,7 @@ describe("Review media - photos/video (e2e) - Phase 4 close-out, FR-14.1", () =>
 
     const overCap = await request(app.getHttpServer())
       .post(`/storefront/order-status/${statusLookupToken}/reviews/${submit.body.id}/media`)
-      .attach("media", Buffer.from("one-more"), { filename: "onemore.jpg", contentType: "image/jpeg" });
+      .attach("media", realJpegBytes("one-more"), { filename: "onemore.jpg", contentType: "image/jpeg" });
     expect(overCap.status).toBe(400);
 
     const media = await superuser.reviewMedia.findMany({ where: { reviewId: submit.body.id } });
@@ -166,7 +177,7 @@ describe("Review media - photos/video (e2e) - Phase 4 close-out, FR-14.1", () =>
 
     const crossUpload = await request(app.getHttpServer())
       .post(`/storefront/order-status/${b.statusLookupToken}/reviews/${submitA.body.id}/media`)
-      .attach("media", Buffer.from("intrusion"), { filename: "x.jpg", contentType: "image/jpeg" });
+      .attach("media", realJpegBytes("intrusion"), { filename: "x.jpg", contentType: "image/jpeg" });
     expect(crossUpload.status).toBe(404);
   });
 
@@ -180,7 +191,7 @@ describe("Review media - photos/video (e2e) - Phase 4 close-out, FR-14.1", () =>
       .send({ productId, buyerName: "Buyer", rating: 5, body: "review" });
     await request(app.getHttpServer())
       .post(`/storefront/order-status/${statusLookupToken}/reviews/${submit.body.id}/media`)
-      .attach("media", Buffer.from("photo"), { filename: "p.jpg", contentType: "image/jpeg" });
+      .attach("media", realJpegBytes("photo"), { filename: "p.jpg", contentType: "image/jpeg" });
 
     // Same RLS-enforced "store not found" shape as every other cross-tenant
     // access attempt in this codebase (listForModeration() looks the store
