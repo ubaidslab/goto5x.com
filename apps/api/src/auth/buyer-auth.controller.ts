@@ -3,6 +3,8 @@ import { Request } from "express";
 import { BuyerAuthService } from "./buyer-auth.service";
 import { BuyerSignupDto } from "./dto/buyer-signup.dto";
 import { LoginDto } from "./dto/login.dto";
+import { LogoutDto } from "./dto/logout.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
 
 /**
  * FR-66.1 (Module 81) - a dedicated route prefix distinct from
@@ -30,13 +32,13 @@ export class BuyerAuthController {
 
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() body: { sessionId: string; refreshToken: string }) {
-    return this.buyerAuth.refresh(body.sessionId, body.refreshToken);
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.buyerAuth.refresh(dto.sessionId, dto.refreshToken);
   }
 
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
-  logout(@Body() body: { sessionId: string }) {
-    return this.buyerAuth.logout(body.sessionId);
+  logout(@Body() dto: LogoutDto) {
+    return this.buyerAuth.logout(dto.sessionId);
   }
 }

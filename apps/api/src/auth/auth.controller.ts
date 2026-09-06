@@ -3,8 +3,10 @@ import { Request } from "express";
 import { AuthService } from "./auth.service";
 import { CompletePasswordResetDto, RequestPasswordResetDto } from "./dto/password-reset.dto";
 import { LoginDto } from "./dto/login.dto";
+import { LogoutDto } from "./dto/logout.dto";
 import { MfaEnrollDto } from "./dto/mfa-enroll.dto";
 import { MfaVerifyDto } from "./dto/mfa-verify.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { SignupDto } from "./dto/signup.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 
@@ -45,14 +47,14 @@ export class AuthController {
 
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() body: { sessionId: string; refreshToken: string }) {
-    return this.auth.refresh(body.sessionId, body.refreshToken);
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.auth.refresh(dto.sessionId, dto.refreshToken);
   }
 
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
-  logout(@Body() body: { sessionId: string }) {
-    return this.auth.logout(body.sessionId);
+  logout(@Body() dto: LogoutDto) {
+    return this.auth.logout(dto.sessionId);
   }
 
   @Post("password-reset/request")

@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsString, ValidateNested } from "class-validator";
-import { CartItemDto } from "./cart-item.dto";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsString, ValidateNested } from "class-validator";
+import { CartItemDto, MAX_ITEMS_PER_REQUEST } from "./cart-item.dto";
 
 export class UpdateCartDto {
   @IsString()
@@ -8,6 +8,7 @@ export class UpdateCartDto {
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_ITEMS_PER_REQUEST)
   @ValidateNested({ each: true })
   @Type(() => CartItemDto)
   items!: CartItemDto[];

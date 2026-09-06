@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Req } from "@nestjs/common";
 import { Request } from "express";
 import { AdminAuthService } from "./admin-auth.service";
-import { AdminLoginDto, AdminMfaVerifyDto } from "./dto/admin-login.dto";
+import { AdminLoginDto, AdminMfaEnrollDto, AdminMfaVerifyDto } from "./dto/admin-login.dto";
 
 @Controller("admin/auth")
 export class AdminAuthController {
@@ -15,8 +15,8 @@ export class AdminAuthController {
 
   @Post("mfa/enroll")
   @HttpCode(HttpStatus.OK)
-  beginMfaEnrollment(@Body() body: { preAuthToken: string }) {
-    return this.adminAuth.beginMfaEnrollment(body.preAuthToken);
+  beginMfaEnrollment(@Body() dto: AdminMfaEnrollDto) {
+    return this.adminAuth.beginMfaEnrollment(dto.preAuthToken);
   }
 
   @Post("mfa/verify")

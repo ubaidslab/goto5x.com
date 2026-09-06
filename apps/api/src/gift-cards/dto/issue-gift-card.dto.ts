@@ -1,9 +1,11 @@
-import { IsNumber, IsOptional, IsPositive, IsString, Matches, MaxLength } from "class-validator";
+import { IsNumber, IsOptional, IsPositive, IsString, Matches, Max, MaxLength } from "class-validator";
+import { MAX_MONEY_VALUE } from "../../common/validation/money.constants";
 
 /** FR-49.2 - the seller-issued path (goodwill/store credit); never a revenue event. */
 export class IssueGiftCardDto {
   @IsNumber()
   @IsPositive()
+  @Max(MAX_MONEY_VALUE)
   amount!: number;
 
   @IsOptional()

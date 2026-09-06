@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsEmail, IsOptional, IsString, ValidateNested } from "class-validator";
-import { CartItemDto } from "./cart-item.dto";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsOptional, IsString, ValidateNested } from "class-validator";
+import { CartItemDto, MAX_ITEMS_PER_REQUEST } from "./cart-item.dto";
 
 /**
  * FR-15.1 (locked UX decision) - this is the request that creates the one
@@ -25,6 +25,7 @@ export class CreateCartDto {
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_ITEMS_PER_REQUEST)
   @ValidateNested({ each: true })
   @Type(() => CartItemDto)
   items!: CartItemDto[];

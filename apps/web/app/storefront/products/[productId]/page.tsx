@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { safeJsonLdString } from "../../../../lib/safe-json-ld";
 import { fetchStorefrontNavigation, fetchStorefrontProduct, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { ComingSoonPage, PasswordGate } from "../../access-gates";
@@ -103,7 +104,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
           rendered now instead of unconditionally. */}
       {product.structuredDataEnabled && (
         // eslint-disable-next-line react/no-danger
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLdString(structuredData) }} />
       )}
       <AnnouncementBar theme={theme} />
       <SiteHeader navigation={navigation} theme={theme} store={store} />

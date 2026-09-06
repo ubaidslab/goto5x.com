@@ -3,6 +3,7 @@ import { BuyerAuthGuard } from "../common/guards/buyer-auth.guard";
 import { CurrentBuyer } from "../common/decorators/current-buyer.decorator";
 import { BuyerAccountService } from "./buyer-account.service";
 import { BuyerAddressDto } from "./dto/buyer-address.dto";
+import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { WishlistItemDto } from "./dto/wishlist-item.dto";
 
 /** FR-66.1 (Module 81) - buyer-facing profile/saved-address/order-history reads and writes, all behind BuyerAuthGuard. */
@@ -17,8 +18,8 @@ export class BuyerAccountController {
   }
 
   @Patch("me")
-  updateProfile(@CurrentBuyer() buyer: { buyerId: string }, @Body() body: { displayName?: string }) {
-    return this.buyerAccount.updateProfile(buyer.buyerId, body.displayName);
+  updateProfile(@CurrentBuyer() buyer: { buyerId: string }, @Body() dto: UpdateProfileDto) {
+    return this.buyerAccount.updateProfile(buyer.buyerId, dto.displayName);
   }
 
   @Get("addresses")

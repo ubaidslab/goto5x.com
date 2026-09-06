@@ -1,5 +1,6 @@
 import { DiscountType } from "@prisma/client";
-import { IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsPositive, IsString, Matches, MaxLength, Min } from "class-validator";
+import { IsEnum, IsISO8601, IsInt, IsNumber, IsOptional, IsPositive, IsString, Matches, Max, MaxLength, Min } from "class-validator";
+import { MAX_MONEY_VALUE } from "../../common/validation/money.constants";
 
 export class CreateDiscountCodeDto {
   @IsString()
@@ -15,6 +16,7 @@ export class CreateDiscountCodeDto {
   // rather than a shape constraint.
   @IsNumber()
   @IsPositive()
+  @Max(MAX_MONEY_VALUE)
   value!: number;
 
   @IsOptional()

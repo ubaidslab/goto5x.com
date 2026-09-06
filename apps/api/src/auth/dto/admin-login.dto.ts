@@ -15,3 +15,9 @@ export class AdminMfaVerifyDto {
   @IsString()
   code!: string;
 }
+
+/** P1.4 input-validation sweep fix - previously an untyped @Body() object literal bypassed the global ValidationPipe entirely. */
+export class AdminMfaEnrollDto {
+  @IsString()
+  preAuthToken!: string;
+}

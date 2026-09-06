@@ -29,6 +29,22 @@ function mapPrismaError(exception: Prisma.PrismaClientKnownRequestError): { stat
   return null;
 }
 
+/**
+ * P1.4 input-validation sweep finding - body-parser's own PayloadTooLargeError
+ * (thrown by the `raw-body`/`http-errors` chain before Nest's routing layer
+ * even runs, so it's never an HttpException instance) fell through to the
+ * generic 500 branch below - the oversized-body protection itself was
+ * already working, but a normal "your request is too big" client mistake
+ * surfaced as a server-fault status. Duck-typed on `.type` (the stable
+ * signal `raw-body` sets) rather than importing that package directly.
+ */
+function isPayloadTooLargeError(exception: unknown): exception is { message: string } {
+  return (
+    exception instanceof Error &&
+    (exception as { type?: string }).type === "entity.too.large"
+  );
+}
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger("HttpException");
@@ -39,17 +55,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const prismaMapping =
       exception instanceof Prisma.PrismaClientKnownRequestError ? mapPrismaError(exception) : null;
+    const payloadTooLarge = isPayloadTooLargeError(exception);
 
     const status = prismaMapping
       ? prismaMapping.status
-      : exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+      : payloadTooLarge
+        ? HttpStatus.PAYLOAD_TOO_LARGE
+        : exception instanceof HttpException
+          ? exception.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
     const message = prismaMapping
       ? prismaMapping.message
-      : exception instanceof HttpException
-        ? exception.getResponse()
-        : "Internal server error";
+      : payloadTooLarge
+        ? "Request body too large."
+        : exception instanceof HttpException
+          ? exception.getResponse()
+          : "Internal server error";
 
     if (status >= 500) {
       // Never log request bodies/headers here - see pii-redaction.interceptor.ts

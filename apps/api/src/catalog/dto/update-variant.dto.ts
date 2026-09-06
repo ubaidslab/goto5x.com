@@ -1,24 +1,29 @@
-import { IsBoolean, IsInt, IsNumber, IsObject, IsOptional, IsString, Min, MinLength } from "class-validator";
+import { IsBoolean, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
+import { MAX_MONEY_VALUE } from "../../common/validation/money.constants";
 
 export class UpdateVariantDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(100)
   sku?: string;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(MAX_MONEY_VALUE)
   price?: number;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(MAX_MONEY_VALUE)
   compareAtPrice?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(2147483647)
   stockQuantity?: number;
 
   /** Module 46 (SRS §5.39, FR-39.5) - a seller sets false for untracked/unlimited stock. */
@@ -34,5 +39,6 @@ export class UpdateVariantDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(MAX_MONEY_VALUE)
   baseCost?: number;
 }

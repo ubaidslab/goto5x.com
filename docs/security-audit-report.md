@@ -46,38 +46,123 @@ Five phases were opened as tracked tasks:
 
 ## 2. What actually happened, phase by phase
 
-### Phase 1 — Input validation sweep: **never executed**
+### Phase 1 — Input validation sweep: **executed (2026-09-06), 3 real gaps found and fixed**
 
-Two dispatch attempts were made. The first was silently killed by a
-sandbox container restart roughly an hour in, undiscovered until much
-later. The second was interrupted before it could produce any findings.
-**No endpoint was ever tested under this phase, and no findings — fixed or
-otherwise — exist for it.**
+Two earlier dispatch attempts never produced findings (the first was
+silently killed by a sandbox container restart roughly an hour in,
+undiscovered until much later; the second was interrupted). The sweep
+finally ran to completion as P1.4, using the same code-inspection +
+live-request evidence standard as the P0/P1.3 fixes.
 
-The only two adjacent facts on record, found incidentally while
-investigating other phases:
+**Fixed and verified:**
 
-- The global `ValidationPipe` (`apps/api/src/main.ts:13`) is configured
-  `{ whitelist: true, transform: true }` — unknown fields are stripped
-  from incoming payloads. `forbidNonWhitelisted` is **not** set, so an
-  unexpected field is silently dropped rather than rejected with a 400.
-  This is a real gap in defense-in-depth (a client sending garbage fields
-  gets no signal that anything was wrong), though not itself an exploit
-  path given `whitelist: true` already strips them.
-- `auth.controller.ts`'s `refresh`/`logout` endpoints and
-  `admin-auth.controller.ts`'s `beginMfaEnrollment` take an untyped
-  `@Body() body: {...}` object literal instead of a validated DTO class,
-  bypassing the pipe entirely for those three routes. Each only reads a
-  couple of named fields off the object, so no direct exploit was found —
-  but they were never the subject of a deliberate check either.
+1. **Untyped `@Body()` object literals bypassing the ValidationPipe
+   entirely.** The two adjacent facts noted before this sweep ran
+   understated the actual scope - it wasn't 3 routes, it was **7**:
+   `auth.controller.ts`'s and `buyer-auth.controller.ts`'s `refresh`/
+   `logout` (4 routes - the buyer-facing pair was newer than the
+   original 2-route note and had never been caught), `admin-auth.
+   controller.ts`'s `beginMfaEnrollment`, and `buyer-account.controller.
+   ts`'s `updateProfile` (previously an unbounded `{ displayName?:
+   string }` with no length cap at all). All 7 now go through real DTO
+   classes (`RefreshTokenDto`, `LogoutDto`, `AdminMfaEnrollDto`,
+   `UpdateProfileDto`), so malformed/wrong-typed input is rejected with a
+   clean 400 instead of reaching a service method that assumed the shape
+   was already correct. Live-verified: wrong-typed `sessionId`/
+   `refreshToken`, a non-UUID `sessionId`, and an oversized `displayName`
+   (>120 chars) are all now rejected with 400 (`input-validation-sweep.
+   e2e-spec.ts`).
+2. **Money-amount fields with no upper bound.** Every money column in
+   this schema is `Decimal(12,2)`; a value beyond that range previously
+   reached Postgres and failed as an unhandled 500 (numeric field
+   overflow) instead of a clean 400. Found and fixed across 6 DTOs:
+   `CreateVariantDto`/`UpdateVariantDto` (price/compareAtPrice/baseCost),
+   `PurchaseGiftCardDto` (the highest-exposure of the six - public,
+   unauthenticated, and previously had no upper bound at all, not even
+   the `@IsPositive()`-only floor the others had), `IssueGiftCardDto`,
+   `RequestTopUpDto` (wallet top-up), and `CreateDiscountCodeDto`. All
+   now share one constant (`common/validation/money.constants.ts`).
+   Live-verified: a variant price, gift-card purchase amount, wallet
+   top-up amount, and discount-code value all beyond the range are
+   rejected with 400, and a real in-range value still succeeds.
+3. **Cart resource-amplification.** `CartItemDto`'s `quantity` had no
+   upper bound and `CartItemsDto`/`CreateCartDto`/`UpdateCartDto`'s
+   `items` array had no `@ArrayMaxSize` - a single request could submit
+   an absurd quantity or, more materially, a large array of distinct
+   items each triggering its own DB lookup, amplifying one request into
+   many round-trips. Capped at 100,000/item and 100 items/request
+   (generous for any real cart, tight enough to bound the amplification).
+   Live-verified: both are rejected with 400.
 
-**Open scope, entirely untested:** negative-number/range abuse, oversized
-string/payload handling, null/undefined required fields, wrong types,
-empty arrays, unicode/homoglyph identity-field tricks, SQLi-style payloads
-against the ORM, script/HTML injection in every free-text field (product
-descriptions, review bodies, D-Studio custom CSS/HTML, seller bios,
-campaign email bodies, etc.), and ReDoS in this codebase's validation
-regexes.
+**Also found and fixed, adjacent to but not itself a "boundary" bug:**
+
+4. **`PayloadTooLargeError` surfaced as 500, not 413.** The global
+   `HttpExceptionFilter` (`common/filters/http-exception.filter.ts`)
+   already had a precedent for this exact class of problem - a
+   non-`HttpException` error object carrying its own correct status that
+   the filter's generic branch was discarding down to 500 (originally
+   fixed for two Prisma error codes, per that file's own comment). The
+   oversized-body protection itself was always working; only the status
+   code was wrong. Added the same mapping for body-parser's own
+   `PayloadTooLargeError` (duck-typed on `.type === "entity.too.large"`,
+   the stable signal `raw-body` sets, rather than importing that
+   package). Live-verified: a >100KB JSON body now gets a clean 413.
+5. **A real stored-XSS vector, found while checking the "script/HTML
+   injection in every free-text field" item this sweep was scoped to
+   cover.** The storefront product-detail page
+   (`apps/web/app/storefront/products/[productId]/page.tsx`) built its
+   JSON-LD structured-data block via plain `JSON.stringify()` fed
+   directly into `dangerouslySetInnerHTML` inside a `<script
+   type="application/ld+json">` tag - and `JSON.stringify()` does not
+   escape `<`. A seller-controlled product title of
+   `</script><script>alert(document.cookie)</script>` would close the
+   JSON-LD script tag early and inject a second, real, executable one -
+   stored XSS against every buyer who views that product page. Fixed
+   with a small shared helper (`apps/web/lib/safe-json-ld.ts`) that
+   replaces every literal less-than character with its Unicode escape
+   sequence before injection - semantically identical JSON (verified it
+   round-trips through `JSON.parse()` back to the exact original string)
+   with no HTML-sensitive sequence surviving.
+   Checked every other `dangerouslySetInnerHTML` site in `apps/web` for
+   the same pattern: the only other JSON-LD path
+   (`storefront/layout.tsx`'s custom head tags) already goes through
+   `sanitizeHeadTags()` server-side, which parses as real HTML via the
+   `sanitize-html` library rather than naive string interpolation, so it
+   was never vulnerable to this; the two `bodyHtml`/design-token sites
+   are admin-only input by design (documented as such in their own
+   comments), a different and already-accepted trust boundary.
+   `apps/web` has no unit/e2e test framework wired up (CI's `web-build`
+   job is a build/typecheck check only) - verified via a direct proof
+   that the escaped output contains no raw `</script>` and round-trips
+   correctly, plus a clean `pnpm --filter @uzeyn/web build`.
+
+**Confirmed already safe, not a finding:**
+- `forbidNonWhitelisted` is still unset on the global `ValidationPipe`
+  (`whitelist: true` strips unknown fields silently rather than
+  rejecting them with 400) - unchanged, low-severity defense-in-depth
+  gap, not itself an exploit path.
+- Every `@Matches()` regex in the codebase (slug/code fields) uses a
+  simple bounded character class (`[a-z0-9-]{1,63}` and similar) - no
+  nested quantifiers or ambiguous alternation, so none are vulnerable to
+  ReDoS.
+- Every raw-SQL call site (`$executeRawUnsafe`/`$queryRaw`) was checked:
+  `TenantPrismaService`'s UUID-validated seller-id interpolation (already
+  documented), `retention.service.ts`'s hardcoded parameterized
+  statements with no user-facing input path, and `admin-search.service.
+  ts`'s `Prisma.sql` tagged-template search (properly parameterized, not
+  string concatenation) are all safe.
+- Pagination/list-query DTOs already had sane bounds where checked
+  (`ProductListQueryDto`'s `limit` is already `@Max(100)`), confirming
+  the gaps found above were genuine oversights on specific newer/money
+  DTOs, not a systemic absence of boundary discipline.
+
+**Not exhaustively covered:** this was a deep, representative sweep
+across the endpoint categories most exposed to attacker-controlled input
+(auth, money amounts, cart, the free-text-to-HTML rendering path) rather
+than a literal field-by-field audit of every one of this codebase's ~150
+DTOs. Lower-exposure fields (most `@MaxLength`-less optional strings on
+admin-only or already-authenticated seller-dashboard-only endpoints)
+were not individually hunted down.
 
 ### Phase 2 — Business-logic abuse scenarios: **mostly done, one gap unfixed, one sub-area untested**
 
