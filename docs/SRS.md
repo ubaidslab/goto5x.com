@@ -1,16 +1,29 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.60 (Build-phase amendment — adds FR-6.70 (Module 104):
-a pre-order payment-instructions preview on the storefront checkout
-page, closing a real launch-risk gap a pre-launch audit found (the
-seller's configured payment methods — bank/JazzCash/Easypaisa/COD —
-were only ever shown to a buyer AFTER placing an order, on the
-confirmation page; a buyer had no way to see how they'd actually pay
-before committing to checkout, a real source of cart-abandonment
-confusion). Every field involved is already buyer-safe by FR-6.14's
-own design (a seller configures these specifically to be shown to
-buyers) — this surfaces the identical data one step earlier, not new
-data. Implementation proceeds.
+**Version:** 0.61 (Build-phase amendment — adds FR-51.8 (Module 105):
+an explicit confirm step before an email campaign actually sends,
+closing a real launch-risk gap a pre-launch audit found (the
+Campaigns composer's "Send campaign" button fired
+`POST /stores/:storeId/campaigns` directly — which creates the
+campaign row AND queues the send job in the same call, per FR-51.6 —
+with no confirmation of any kind; a segment can be hundreds of
+customers, the send is irreversible once queued, and a slip of the
+finger or an unnoticed wrong-segment selection had no safety net
+before this). Same "irreversible bulk action" pattern as the admin
+confirm-dialog batch (FR-8.16) and FR-6.69's downgrade confirmation,
+reusing the identical `useConfirm()` dialog rather than a new
+mechanism. Implementation proceeds.
+
+Prior amendment — 0.60, Module 104: a pre-order
+payment-instructions preview on the storefront checkout page, closing
+a real launch-risk gap a pre-launch audit found (the seller's
+configured payment methods — bank/JazzCash/Easypaisa/COD — were only
+ever shown to a buyer AFTER placing an order, on the confirmation
+page; a buyer had no way to see how they'd actually pay before
+committing to checkout, a real source of cart-abandonment confusion).
+Every field involved is already buyer-safe by FR-6.14's own design (a
+seller configures these specifically to be shown to buyers) — this
+surfaces the identical data one step earlier, not new data.
 
 Prior amendment — 0.59, Module 103: the seller
 dashboard's own Plans & Billing page (`billing/page.tsx`) gains the
@@ -5822,6 +5835,18 @@ sender machinery; no AI)
   No new logging mechanism — every campaign send is an event on the
   cross-cutting log already required of every module from Module 3
   onward.
+- **v0.61 (FR-51.8, Module 105): explicit confirm step before the send
+  fires.** `POST /stores/:storeId/campaigns` both creates the campaign
+  row and queues the send job (FR-51.6) in the same call — there is no
+  separate draft/send distinction, so the composer's "Send campaign"
+  button is itself the irreversible action. The dashboard's own
+  `useConfirm()` dialog (FR-8.16's reusable primitive) now gates that
+  submit: the seller sees the recipient segment's name and live
+  eligible-recipient count, the sender address, and the subject line,
+  and must explicitly confirm before the request fires. Same class of
+  protection as FR-6.69's downgrade-confirmation batch — reputational
+  rather than financial exposure, but the same "irreversible bulk
+  action, no undo" shape.
 
 ### 5.52 Staff Accounts, plan-tier (new, v0.32 — pulls the previously
 Phase-3-deferred staff-sub-account concept forward as a paid-plan
@@ -10289,6 +10314,40 @@ tests: configured methods visible pre-order to an anonymous caller;
 v1.0 defaults for an unconfigured store; 404 for a nonexistent
 hostname; cross-store isolation) plus the full 100-file e2e regression
 suite (100/100 passed, zero failures).
+
+### 14.73 Campaign-Send Confirm Step (new, v0.61, §5.51,
+launch-risk gap found in a pre-launch audit, BUILT)
+- [x] The Campaigns composer's "Send campaign" submit is gated behind
+      the dashboard's existing `useConfirm()` dialog (FR-8.16) - the
+      confirmation shows the selected segment's name and member count
+      (the same count already displayed in the segment `<select>`,
+      from `GET /stores/:storeId/customer-segments`), the sender
+      address, and the subject line, plus a note that unsubscribed
+      customers are still automatically excluded at actual send time
+      (FR-51.3, unchanged) - before `POST /stores/:storeId/campaigns`
+      (which both creates the campaign row and queues the send job,
+      FR-51.6) is actually called. BUILT: `campaigns/page.tsx`'s
+      `handleCreate()` reads the form fields, resolves the matching
+      segment/sender objects, and awaits `confirm({...})` before
+      calling the API - a rejected confirmation returns early with
+      nothing submitted.
+- [x] Cancelling the confirmation leaves the composer's fields intact
+      (no data loss) and sends nothing - the same behavior as every
+      other `useConfirm()` gate in this codebase. BUILT and
+      live-verified via Playwright: filled the composer, opened the
+      dialog, clicked Cancel - the campaign list stayed empty and no
+      request was sent.
+- [x] No backend change: the quota/rate-limit/segment-resolution gates
+      in `EmailCampaignsService.create()` are unchanged - this is
+      purely a frontend safety gate in front of an unchanged, already-
+      correct backend contract. Confirmed via `git diff --stat`
+      (zero `apps/api` files touched) and a clean re-run of
+      `module34-email-campaigns.e2e-spec.ts` (5/5 passed).
+
+Live-verified via Playwright end-to-end: the dialog rendered the
+correct segment name, sender address, and subject; confirming actually
+submitted the campaign (appeared in the list, form reset); cancelling
+submitted nothing.
 
 ---
 

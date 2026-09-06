@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -55,6 +56,7 @@ const statusTone: Record<CampaignStatus, "neutral" | "success" | "warning" | "da
 };
 
 export default function CampaignsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [senders, setSenders] = useState<SenderEmail[]>([]);
@@ -87,18 +89,37 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
 
   if (!campaigns) return <PageSpinner />;
 
+  /** FR-51.8 (Module 105) - "Send campaign" both creates the campaign
+   * row and queues the send job in the same call (FR-51.6); there's no
+   * separate draft step, so this submit IS the irreversible action. */
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setCreating(true);
     const form = new FormData(e.currentTarget);
+    const segmentId = form.get("segmentId") as string;
+    const senderEmailId = form.get("senderEmailId") as string;
+    const subject = form.get("subject") as string;
+    const body = form.get("body") as string;
+
+    const segment = segments.find((s) => s.id === segmentId);
+    const sender = senders.find((s) => s.id === senderEmailId);
+
+    const ok = await confirm({
+      title: "Send this campaign?",
+      description:
+        "This can't be undone once it's sent - the email queues immediately for every eligible customer in the segment (anyone already unsubscribed is automatically skipped).",
+      changes: [
+        { label: "Segment", from: "-", to: `${segment?.name ?? "?"} (${segment?.memberCount ?? 0} customers)` },
+        { label: "From", from: "-", to: sender?.emailAddress ?? "?" },
+        { label: "Subject", from: "-", to: subject },
+      ],
+      confirmLabel: "Send campaign",
+    });
+    if (!ok) return;
+
+    setCreating(true);
     try {
-      await api.post(`/stores/${params.storeId}/campaigns`, {
-        segmentId: form.get("segmentId"),
-        senderEmailId: form.get("senderEmailId"),
-        subject: form.get("subject"),
-        body: form.get("body"),
-      });
+      await api.post(`/stores/${params.storeId}/campaigns`, { segmentId, senderEmailId, subject, body });
       (e.target as HTMLFormElement).reset();
       load();
     } catch (err) {
