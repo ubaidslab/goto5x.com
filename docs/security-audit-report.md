@@ -6,19 +6,22 @@ advanced, "top-class-hacker-resistant" security. It replaces what had
 previously existed only as scattered commit messages and an informal
 verbal summary — this document is the actual pre-launch security record.
 
-**Status as of this writing: incomplete, but both P0 (launch-blocking)
-findings are now fixed, and the P1 IDOR sweep has run clean.** One of
-five phases (input validation) never executed at all, a second (rate-
-limit concurrency) is roughly a third done, and the phases that did run
-surfaced two real vulnerabilities — both now fixed and verified (see §3,
-findings #4 and #14; commits `e4b1118` and `8319fe9`) — plus the
-previously-never-run IDOR sweep, which found no exploitable gap (§3,
-finding #13). Several lower-priority items remain open (§4). This report
-exists specifically so that gap is visible and actionable rather than
-quietly assumed away. Nothing in this document should be read as "the
-platform is comprehensively secure" — real launch-blocking gaps are
-closed and the IDOR sweep is clean, but the input-validation sweep and
-most of the concurrency burst-testing still haven't run.
+**Status as of this writing: both P0 (launch-blocking) findings are
+fixed, and both P1 sweeps (IDOR, input validation) have run and closed
+everything they found — only rate-limit burst-concurrency testing is
+still incomplete.** Every phase of the original 5-phase pass has now
+either run clean or had its real findings fixed, except Phase 4
+(rate-limit concurrency), which is still roughly a third done. Real
+vulnerabilities surfaced and fixed: the P0 impersonation-token and
+upload-content findings (see §3, findings #4 and #14; commits `e4b1118`
+and `8319fe9`), the IDOR sweep's one test-coverage gap (§3, finding
+#13), and the input-validation sweep's stored-XSS finding plus four
+lower-severity robustness gaps (§3, finding #12). Lower-priority items
+remain open (§4). This report exists specifically so that gap is visible
+and actionable rather than quietly assumed away. Nothing in this
+document should be read as "the platform is comprehensively secure" —
+real launch-blocking gaps are closed and both P1 sweeps are clean, but
+concurrency burst-testing on 4 named endpoints still hasn't run.
 
 ---
 
@@ -331,7 +334,7 @@ the entire pass, regardless of phase or whether it was fixed.
 | 9 | Supplier wallet debit — read-then-recompute, not atomic | 2 (incidental) | **Found, not fixed** | `apps/api/src/.../plan-fee-debit.service.ts` reads a JS-recomputed balance from `supplier-wallet.service.ts` rather than using a true atomic increment/decrement, unlike `WalletService`'s pattern elsewhere. | Exploitable only if the monthly debit-sweep cron can run concurrently for the same supplier — plausible under a scheduler misconfiguration or manual re-trigger, but not demonstrated live. Was surfaced as a side-observation, not itself investigated as a primary finding. |
 | 10 | Password-reset / email-verification token reuse | 2 | **Confirmed already safe** | Token hash cleared atomically on first use in the same `update()` call, both flows, `apps/api/src/auth/auth.service.ts`. No clock-skew grace period on either expiry check. | No fix needed. |
 | 11 | Access-token (JWT) has no live revocation check | 2 | **Confirmed as an accepted, deliberate tradeoff** | `apps/api/src/auth/jwt.strategy.ts` — stateless, 15-minute TTL, no per-request DB/Redis lookup. Refresh-token sessions are separately, genuinely revocable. | Low — standard short-TTL access-token design; not treated as a bug. |
-| 12 | Input-validation sweep across all endpoints | 1 | **Never tested** | Both dispatch attempts failed or were interrupted before producing any findings. | Unknown severity. Negative-number/boundary handling, XSS sanitization of every free-text field, ReDoS in validation regexes, and any raw-SQL usage were never audited. |
+| 12 | Input-validation sweep across all endpoints | 1 | **Swept (2026-09-06), 5 real gaps found and fixed** | See §2 Phase 1 for the full writeup. Summary: 7 untyped `@Body()` routes now behind real DTOs (`RefreshTokenDto`/`LogoutDto`/`AdminMfaEnrollDto`/`UpdateProfileDto`); 6 money-amount DTOs given an upper bound matching `Decimal(12,2)` (`PurchaseGiftCardDto` was the highest-exposure - public, unauthenticated, previously unbounded); cart quantity/array-size capped against resource amplification; `PayloadTooLargeError` now correctly surfaces as 413 not 500 (`HttpExceptionFilter`); a real stored-XSS vector in the storefront product page's JSON-LD block fixed (`apps/web/lib/safe-json-ld.ts`). Verified via 9 new live e2e tests (`input-validation-sweep.e2e-spec.ts`) plus a clean web build for the frontend fix. ReDoS and raw-SQL usage were also checked and confirmed already safe. | The stored-XSS finding was the most serious - any seller could have targeted every buyer viewing their product page. Now closed; everything else was a 500-instead-of-400/413 robustness gap or a DoS-adjacent amplification bound, not a data-exposure or auth-bypass path. |
 | 13 | IDOR full sweep across every resource type | 2 | **Swept, no exploitable IDOR found; one test-coverage gap closed** | Direct cross-tenant/cross-buyer object-ID access attempted (code-level verification plus live e2e test execution) across every named resource type: **orders** — dual-layer app+RLS cross-tenant tests already existed (`orders.e2e-spec.ts:691,716`), confirmed current. **products** — same, plus the sharper same-seller/cross-store boundary case (`catalog.e2e-spec.ts:114,147,169`). **reviews** — buyer-side media attach checked against `review.orderId !== order.id` (not just "any review at this store"); seller moderation RLS + explicit `review.storeId !== storeId` check, both confirmed in `reviews.service.ts`. **staff** — `module101-staff-lifecycle.e2e-spec.ts:233` already proves an admin action against a staff-account id belonging to a different seller is rejected as not found. **wallet** — `SellerWalletController`/`SupplierWalletController` derive `sellerId`/`supplierId` only from `@CurrentSellerId()`/`@CurrentSupplierId()` (JWT-only, never a route/body param) confirmed in `current-seller.decorator.ts`, but no e2e test exercised this cross-tenant — **2 new tests added** to `module20-wallet-supplier-portal.e2e-spec.ts` (both seller and supplier sides), passing. **D-Studio assets/theme settings** — `store-theme-settings.service.ts` explicitly documents and implements the RLS-isn't-enough case ("RLS proves 'not another seller's row,' not 'not my OWN other store's row'"), re-verifying `storeId` belongs to the calling seller on every read/write. **D-Studio Pack / template purchases** — seller-facing `requestPurchase`/`listOwn` are sellerId-JWT-scoped; the `verify`/`reject` admin actions that grant entitlements are correctly gated behind `AdminAuthGuard` (structurally rejects any token without an `adminUserId` claim — a seller token can never reach them), confirmed in both `dstudio-pack.service.ts` and `template-purchase.service.ts`. **buyer accounts / wishlist / chat (the newer, buyer-account-linked surfaces flagged for extra scrutiny)** — wishlist and saved addresses are keyed by composite `(buyerId, productId)`/explicit `assertOwnsAddress()` ownership checks, buyerId always from `@CurrentBuyer()` (JWT), never a client param; existing e2e tests already attempt direct cross-buyer ID guesses (not just "list doesn't leak"), e.g. `module81-buyer-accounts.e2e-spec.ts:153-161` PATCHes/DELETEs buyer A's address with buyer B's token and asserts 403/404. Buyer chat is a capability-token model (192-bit `randomBytes(24)`, not brute-forceable) for the buyer side, and RLS + explicit `storeId` filter for the seller side, both already tested in `module83-buyer-chat.e2e-spec.ts`. | None found exploitable. The one real gap (wallet's missing explicit test) was a coverage gap, not a code gap — closed same-day. |
 | 14 | File-upload content-type spoofing (no magic-byte check) | 3 | **Fixed & verified** | Commit `8319fe9`. New `apps/api/src/media/file-signature.util.ts` sniffs real magic bytes (JPEG/PNG/GIF/WEBP images; MP4/MOV/WEBM video; PDF/DOC/DOCX documents) and returns a server-chosen, canonical Content-Type; `media.util.ts`'s `mediaTypeFromMimetype(mimetype)` replaced with `detectMediaTypeOrThrow(buffer)`, wired into direct media upload, store logo, review media, Google Drive import, and (via a parallel document check) Careers CVs — the client's declared mimetype is no longer read for classification or the stored `Content-Type` anywhere in this pipeline. 15 test fixtures updated across 8 e2e files; 1 new dedicated test proves the exact spoofing vector (declared `image/png`, real bytes `<script>...`) is rejected, and that a real file declared with a generic/wrong mimetype is still correctly classified. Full 100-file e2e regression: 100/100 passed. | Previously: a file whose real bytes were arbitrary but labeled e.g. `image/svg+xml` passed validation and was served back with that same executable content type — a plausible stored-XSS vector. Now: only recognized real image/video/document content is accepted, and the served Content-Type is always server-chosen. |
 | 15 | Checkout / MFA / campaign-send / gift-card-purchase burst-concurrency | 4 | **Never burst-tested** | Zero concurrent-traffic tests exist for these four endpoints anywhere in this session, despite each being named explicitly in the phase's own scope. Only signup and login actually received the "real concurrency" treatment the phase promised. | Unknown severity — these are exactly the endpoints a founder explicitly flagged as sensitive, and none of them were re-verified under real burst traffic. |
@@ -341,15 +344,14 @@ the entire pass, regardless of phase or whether it was fixed.
 
 **Do not represent this platform as comprehensively "secure" or
 "hardened" on the strength of this pass alone — but the two
-launch-blocking (P0) gaps it surfaced are now closed, and the IDOR
-sweep (P1) has now run and found nothing exploitable.** Phase 1 (input
-validation) never actually ran as an audit; its task-tracker status of
-"in progress" was misleading in the ordinary sense of the phrase — the
-honest description was "not started." Phase 4 tested 2 of the 6
-endpoints it named. None of that changes with the fixes below — what
-changes is that the two real, concrete vulnerabilities this incomplete
-pass *did* manage to surface are no longer open, and the largest missing
-sub-scope of Phase 2 (the IDOR sweep) has now actually run.
+launch-blocking (P0) gaps it surfaced are now closed, the IDOR sweep
+(P1) has run and found nothing exploitable, and the input-validation
+sweep (P1) has run and found + fixed a real stored-XSS vector plus four
+lower-severity robustness gaps.** Phase 4 (rate-limit concurrency)
+tested only 2 of the 6 endpoints it named and is the one phase that
+still hasn't been completed. None of that changes with the fixes below
+— what changes is that every phase except Phase 4 has now either run
+clean or had its real findings closed.
 
 **Fixed (2026-09-06):**
 
@@ -374,13 +376,19 @@ sub-scope of Phase 2 (the IDOR sweep) has now actually run.
   found; one test-coverage gap (wallet had no explicit cross-tenant e2e
   test, though the underlying code was already safe) was closed with 2
   new tests in `module20-wallet-supplier-portal.e2e-spec.ts`.
+- **#12 — input-validation sweep.** Run to completion (2026-09-06). 7
+  untyped-body routes, 6 unbounded money-amount DTOs, unbounded cart
+  quantity/array size, a `PayloadTooLargeError` surfacing as 500 instead
+  of 413, and a real stored-XSS vector in the storefront product page's
+  JSON-LD block were all found and fixed. Verified by 9 new e2e tests
+  (`input-validation-sweep.e2e-spec.ts`) plus a clean web build.
 
 **Still open, in priority order (per the founder's own P1/P2
 sequencing):**
 
-- **P1 (complete before launch):** the input-validation sweep (#12) and
-  burst-concurrency testing on checkout/MFA/campaign-send/gift-card-
-  purchase (#15) — neither has ever actually run.
+- **P1 (complete before launch):** burst-concurrency testing on
+  checkout/MFA/campaign-send/gift-card-purchase (#15) — the one item
+  from the original 5-phase pass that still hasn't actually run.
 - **P2 (consistency, not urgent):** the supplier wallet debit's
   read-then-recompute pattern (#9) should be converted to a true atomic
   update to match every other money-path in this codebase.
