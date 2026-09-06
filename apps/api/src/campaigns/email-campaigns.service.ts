@@ -50,9 +50,23 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
   /**
    * FR-51.2 - the monthly quota check happens BEFORE the campaign row
    * exists and BEFORE anything is queued: a send that would exceed the
-   * remaining quota is rejected entirely, never partially sent. Same
-   * check-then-act shape as ProductsService.create()'s catalog.product_limit
-   * gate.
+   * remaining quota is rejected entirely, never partially sent.
+   *
+   * P1.5 concurrency-burst-testing finding (docs/security-audit-report.md) -
+   * this used to read `getQuota()` (a SUM aggregate over already-*sent*
+   * campaigns) in one transaction and insert the new campaign in a second,
+   * separate one. Two genuinely concurrent create() calls for the same
+   * seller each read the same "remaining" value before either committed,
+   * so both could pass a quota check that only one of them should have -
+   * and even sequentially, a burst of creates issued faster than the async
+   * send queue drains would blow past the monthly quota the same way,
+   * since a just-created "queued" campaign was never counted as reserved.
+   * Fixed by taking a `SELECT ... FOR UPDATE` row lock on the seller's own
+   * Subscription row (guaranteed to exist, one per seller) to serialize
+   * concurrent create() calls for that seller, and by reserving against
+   * every campaign created this month (not just ones that finished
+   * sending) so a serialized-in second call sees the first's reservation
+   * immediately, without waiting for the queue worker to mark it sent.
    */
   async create(sellerId: string, storeId: string, dto: CreateCampaignDto) {
     // Phase B pre-launch audit finding - the monthly quota below bounds
@@ -68,15 +82,28 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
     if (!sender || sender.sellerId !== sellerId) throw new NotFoundException("Sender email not found.");
     if (sender.status !== "active") throw new BadRequestException("That sender email is not active.");
 
-    const { monthlyLimit, remaining } = await this.getQuota(sellerId, storeId);
-    if (eligibleCount > remaining) {
-      throw new BadRequestException(
-        `This campaign would send to ${eligibleCount} customers, exceeding your plan's remaining monthly email campaign quota (${remaining} of ${monthlyLimit} left this month). No emails were sent.`,
-      );
-    }
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const monthlyLimit = await this.settings.resolve<number>("email_campaigns.monthly_send_limit", planContext);
+    const startOfMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
 
-    const created = await this.tenantPrisma.run(sellerId, (tx) =>
-      tx.emailCampaign.create({
+    const created = await this.tenantPrisma.run(sellerId, async (tx) => {
+      // Blocks here until any other in-flight create() for this seller
+      // commits or rolls back - the lock is released automatically when
+      // this transaction ends either way.
+      await tx.$queryRawUnsafe(`SELECT id FROM subscriptions WHERE seller_id = $1::uuid FOR UPDATE`, sellerId);
+
+      const reserved = await tx.emailCampaign.aggregate({
+        where: { createdAt: { gte: startOfMonth } },
+        _sum: { recipientCount: true },
+      });
+      const remaining = monthlyLimit - (reserved._sum.recipientCount ?? 0);
+      if (eligibleCount > remaining) {
+        throw new BadRequestException(
+          `This campaign would send to ${eligibleCount} customers, exceeding your plan's remaining monthly email campaign quota (${remaining} of ${monthlyLimit} left this month). No emails were sent.`,
+        );
+      }
+
+      return tx.emailCampaign.create({
         data: {
           storeId,
           segmentId: dto.segmentId,
@@ -86,8 +113,8 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
           status: "queued",
           recipientCount: eligibleCount,
         },
-      }),
-    );
+      });
+    });
 
     await this.queue!.add(EMAIL_CAMPAIGNS_JOB_NAME, { campaignId: created.id });
     return created;
