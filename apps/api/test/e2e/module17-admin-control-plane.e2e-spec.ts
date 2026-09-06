@@ -468,6 +468,16 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       const endAudit = await superuser.adminAuditLog.findFirst({ where: { action: "impersonation.end" } });
       expect(endAudit).not.toBeNull();
 
+      // Security-audit fix (docs/security-audit-report.md, finding #4):
+      // the token itself must stop working the instant the session is
+      // ended, not just have a DB row flagged that nothing ever reads
+      // back. It's still cryptographically valid and unexpired here -
+      // only JwtStrategy's live revocation-state lookup can catch this.
+      const rejectedAfterEnd = await request(app.getHttpServer())
+        .get(`/stores/${seller.storeId}`)
+        .set("Authorization", `Bearer ${impersonationToken}`);
+      expect(rejectedAfterEnd.status).toBe(401);
+
       // The seller's own Security-card read shows when/duration, never the admin's identity.
       const history = await request(app.getHttpServer())
         .get("/sellers/me/support-access-history")
@@ -477,6 +487,36 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       expect(history.body[0]).toHaveProperty("startedAt");
       expect(history.body[0]).toHaveProperty("durationMinutes");
       expect(history.body[0]).not.toHaveProperty("adminUserId");
+    });
+
+    it("Security-audit fix: an impersonation token also stops working once its session's own expiresAt has passed, independent of the admin ever clicking End", async () => {
+      const adminToken = await createAndLoginAdmin("imp-expiry-admin@example.com");
+      const seller = await signupLoginAndCreateStore("imp-expiry-seller@example.com", "imp-expiry-seller-store");
+
+      const start = await request(app.getHttpServer())
+        .post(`/admin/sellers/${seller.sellerId}/impersonate`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reason: "Investigating a support ticket" });
+      expect(start.status).toBe(201);
+      const impersonationToken = start.body.accessToken as string;
+      const sessionId = start.body.impersonationSessionId as string;
+
+      // Confirms the token works before expiry (same as the happy path above).
+      const beforeExpiry = await request(app.getHttpServer())
+        .get(`/stores/${seller.storeId}`)
+        .set("Authorization", `Bearer ${impersonationToken}`);
+      expect(beforeExpiry.status).toBe(200);
+
+      // Simulates the session's own TTL having elapsed - the JWT itself is
+      // still cryptographically valid and unexpired (its own `exp` claim
+      // is set from the same TTL, so this only proves the DB-backed
+      // liveness check, not JWT expiry).
+      await superuser.impersonationSession.update({ where: { id: sessionId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+
+      const afterExpiry = await request(app.getHttpServer())
+        .get(`/stores/${seller.storeId}`)
+        .set("Authorization", `Bearer ${impersonationToken}`);
+      expect(afterExpiry.status).toBe(401);
     });
 
     it("read-only view-any-store access works regardless of who owns the store", async () => {
