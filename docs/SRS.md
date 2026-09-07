@@ -3012,6 +3012,28 @@ can actually be enforced against.
   price back to the seller's wallet — a wallet credit, never an external
   gateway reversal. Published in the plan terms shown at signup and on
   the pricing page.
+- FR-6.50 (new, pre-Milestone-A founder directive): **FR-6.49's refund
+  policy excludes any referred seller.** A seller whose account carries a
+  `ReferralAttribution` row (i.e. they signed up via an approved Growth &
+  Partner Program participant's referral link/code, per FR-33.1/FR-33.3)
+  is never eligible for FR-6.49's 50% first-cycle refund, regardless of
+  window/renewal-count qualification otherwise met — their plan-fee
+  payments are final once made. Policy rationale: this closes what would
+  otherwise be a clawback problem — referral/ambassador commission (FR-
+  33.4) accrues only from a referred seller's plan-fee RENEWAL payments,
+  and if a later refund could reverse a payment that had already paid out
+  referral commission, the platform would need a commission-clawback
+  mechanism symmetric to the payment reversal. Making referred sellers'
+  payments categorically non-refundable removes that scenario at the
+  source instead of building a reversal path for it.
+  `SubscriptionRefundService.cancelWithRefund()` returns a
+  `refundIneligibleReason` string whenever the refund portion doesn't
+  apply (including this new referral-based exclusion, alongside the
+  pre-existing already-refunded/already-renewed/window-expired reasons),
+  so the admin acting on the cancellation always sees why. Disclosed to a
+  prospective referred seller BEFORE they sign up, in
+  `docs/legal/growth-partner-programs-terms.md` §4 (not only discoverable
+  by requesting a refund afterward).
 - FR-8.17 (Module 89, new v0.41): **Bulk-action backend endpoints.**
   Replaces the client-side `Promise.all` per-item fan-out pattern the
   admin terminal used for moderation bulk approve/reject and wallet-

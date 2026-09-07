@@ -60,13 +60,30 @@ every program, determined by whichever valid referral was recorded first.
 A later referral attempt for the same seller — through any program — has
 no effect.
 
-## 4. Withdrawals
+## 4. Referred Seller: Plan-Fee Payments Are Non-Refundable
+This section applies to you if you sign up for a uzeyn.com seller account
+using someone else's referral link or code — not to the referrer earning
+commission under §2 above.
+
+**If your seller account is attributed to any Growth & Partner Program
+referral (Ambassador, Student Referral, or Creator), your plan-subscription
+payments become final and non-refundable from the moment that attribution
+is recorded, including the standard first-cycle refund window otherwise
+available to sellers who sign up without a referral.** This applies
+regardless of whether the referral ultimately qualifies the referrer for
+any commission.
+
+You should understand this before completing signup with a referral link
+or code — it cannot be waived or reversed after the fact by contacting
+support.
+
+## 5. Withdrawals
 Earnings post to your existing uzeyn.com wallet. You may request a
 withdrawal once your balance meets the published minimum. Every withdrawal
 request is reviewed by uzeyn.com before any funds are disbursed; a
 rejected request does not affect your wallet balance.
 
-## 5. Fraud, Clawback, and Suspension/Termination
+## 6. Fraud, Clawback, and Suspension/Termination
 uzeyn.com monitors for self-referral and fraudulent referral patterns. A
 confirmed finding may result in cancellation of pending rewards, a
 clawback of previously credited or withdrawn amounts (which may take your
@@ -76,7 +93,7 @@ for Terms violation, fraud, or suspicious activity. uzeyn.com may suspend
 or terminate any approved participant's access, in-flight rewards, or
 account at any time for these reasons.
 
-## 6. Changes
+## 7. Changes
 Commission rates, windows, thresholds, caps, and eligibility criteria
 published for these programs may change at any time; changes apply to
 future activity only, except where this document states an amount is

@@ -31,7 +31,7 @@ export class SubscriptionRefundService {
     adminUserId: string,
     sellerId: string,
     reason: string,
-  ): Promise<{ status: "cancelled"; refunded: boolean; refundAmount: number | null }> {
+  ): Promise<{ status: "cancelled"; refunded: boolean; refundAmount: number | null; refundIneligibleReason: string | null }> {
     if (!reason || !reason.trim()) {
       throw new BadRequestException("A reason is required to cancel a subscription.");
     }
@@ -42,7 +42,10 @@ export class SubscriptionRefundService {
       throw new BadRequestException("This subscription is already cancelled.");
     }
 
-    const qualifyingPayment = await this.findQualifyingFirstCyclePayment(sellerId, subscription.firstCycleRefundedAt);
+    const { payment: qualifyingPayment, ineligibleReason } = await this.findQualifyingFirstCyclePayment(
+      sellerId,
+      subscription.firstCycleRefundedAt,
+    );
 
     await this.prismaAdmin.subscription.update({
       where: { sellerId },
@@ -66,33 +69,55 @@ export class SubscriptionRefundService {
       afterValue: { status: "cancelled", reason, refunded: qualifyingPayment !== null, refundAmount },
     });
 
-    return { status: "cancelled", refunded: qualifyingPayment !== null, refundAmount };
+    return { status: "cancelled", refunded: qualifyingPayment !== null, refundAmount, refundIneligibleReason: qualifyingPayment ? null : ineligibleReason };
   }
 
   /**
-   * Qualifies only when: no refund has ever been posted for this seller
-   * (the durable, one-time marker); exactly one verified plan-fee payment
-   * exists (i.e., the seller is still on their very first cycle - a
-   * second verified payment means they already renewed, so this is no
-   * longer "the first billing cycle" FR-6.49 scopes the policy to); and
-   * that payment's verifiedAt is still within the admin-editable refund
-   * window.
+   * Qualifies only when: the seller was never acquired via a referral/
+   * ambassador program (Founder directive, pre-Milestone-A - a referred
+   * seller's plan-fee payments are final/non-refundable, disclosed in
+   * docs/legal/growth-partner-programs-terms.md so a prospective referred
+   * seller can see this BEFORE signing up via a referral link, not just
+   * discover it on refund request); no refund has ever been posted for
+   * this seller (the durable, one-time marker); exactly one verified
+   * plan-fee payment exists (i.e., the seller is still on their very
+   * first cycle - a second verified payment means they already renewed,
+   * so this is no longer "the first billing cycle" FR-6.49 scopes the
+   * policy to); and that payment's verifiedAt is still within the
+   * admin-editable refund window.
    */
-  private async findQualifyingFirstCyclePayment(sellerId: string, firstCycleRefundedAt: Date | null) {
-    if (firstCycleRefundedAt) return null;
+  private async findQualifyingFirstCyclePayment(
+    sellerId: string,
+    firstCycleRefundedAt: Date | null,
+  ): Promise<{ payment: { planFeePortion: unknown; currency: string } | null; ineligibleReason: string | null }> {
+    if (firstCycleRefundedAt) {
+      return { payment: null, ineligibleReason: "This seller has already used their one-time first-cycle refund." };
+    }
+
+    const referralAttribution = await this.prismaAdmin.referralAttribution.findUnique({ where: { referredSellerId: sellerId } });
+    if (referralAttribution) {
+      return {
+        payment: null,
+        ineligibleReason: "Plan fee payments are non-refundable for accounts enrolled via a referral/ambassador program.",
+      };
+    }
 
     const payments = await this.prismaAdmin.walletTopUpRequest.findMany({
       where: { ownerType: "seller", ownerId: sellerId, planFeePortion: { not: null }, status: "verified" },
       orderBy: { verifiedAt: "asc" },
     });
-    if (payments.length !== 1) return null;
+    if (payments.length !== 1) {
+      return { payment: null, ineligibleReason: "This seller is not within their first billing cycle (no qualifying payment, or already renewed)." };
+    }
 
     const firstPayment = payments[0];
     const windowDays = await this.settings.resolve<number>("billing.subscription_refund_window_days");
     const deadline = new Date(firstPayment.verifiedAt!.getTime() + windowDays * DAY_MS);
-    if (new Date() > deadline) return null;
+    if (new Date() > deadline) {
+      return { payment: null, ineligibleReason: "The refund window for this seller's first-cycle payment has closed." };
+    }
 
-    return firstPayment;
+    return { payment: firstPayment, ineligibleReason: null };
   }
 
   /** A wallet credit, never an external gateway reversal - the same refund_adjustment entry type FR-8.8 already reserves, unchanged. */
