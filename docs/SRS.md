@@ -1,6 +1,21 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.62 (Security-audit fix amendment — closes the two P0
+**Version:** 0.63 (Founder walkthrough Phase 3 item 17: adds FR-8.22,
+**broadcast announcements**. Investigated first, per the founder's own
+instruction to "check whether the existing in-app messaging system
+already covers this" before building anything new — confirmed FR-8.15's
+messaging system was a genuine partial match but was missing 4 specific
+things: an image field, a shown-count-limit trigger (only date-range
+existed), persistent per-account shown-count tracking (the old popup
+dismissal was `sessionStorage`-only — client-side, reset every session/
+device, and could not enforce a shown-count limit at all), and any
+supplier delivery path whatsoever (`targetType` had no `supplier` value
+and no supplier-facing endpoint existed). Closes all 4 by extending the
+existing `PlatformMessage` system in place rather than building a
+parallel one — see FR-8.22 for the full breakdown. Implementation
+proceeds.
+
+Prior amendment — 0.62 (Security-audit fix amendment — closes the two P0
 (launch-blocking) findings from `docs/security-audit-report.md`: (1)
 admin impersonation's "End session" now actually revokes the token
 (a live revocation-state lookup in `JwtStrategy`, not just a database
@@ -12,8 +27,7 @@ mimetype, closing a plausible stored-XSS vector via a mislabeled
 upload (FR-9.2/FR-32.5/FR-14.1/FR-33.8). Both fixed, tested (2 new
 e2e tests for the impersonation fix; 15 test fixtures updated plus 1
 new dedicated test for the upload fix), and verified against the
-full 100-file e2e regression suite before this amendment. Implementation
-proceeds.
+full 100-file e2e regression suite before this amendment.
 
 Prior amendment — 0.61, Module 105: adds FR-51.8:
 an explicit confirm step before an email campaign actually sends,
@@ -3352,6 +3366,62 @@ can actually be enforced against.
     Premium Motion Templates, which has none either); no stacking of
     simultaneous Packs; no auto-renewal/subscription billing for the
     Pack itself (see above).
+
+- FR-8.22 (extends FR-8.15, new v0.55 — Founder walkthrough Phase 3 item
+  17): **Broadcast announcements — closes 4 gaps a "does the existing
+  system already cover this?" investigation confirmed were genuinely
+  missing from FR-8.15's in-app messaging**, rather than building a
+  second, parallel system:
+  - **Image field.** `PlatformMessage.imageUrl` (nullable `String`) —
+    the same plain-URL-text-input pattern `PlatformBrandAsset`/
+    `saveBrandAsset()` already established for global, non-store-scoped
+    admin content, not a `MediaAsset` upload flow (`MediaAsset.storeId`
+    is a required column — MediaAsset is inherently store-scoped, so it
+    cannot represent a platform-level image at all).
+  - **Shown-count-limit trigger.** A new optional `maxShownCount` (Int)
+    on `PlatformMessage`, applying only to the **popup** channel (the
+    only channel with a "shown" concept) — an *alternative or
+    additional* gate alongside the pre-existing `startsAt`/`endsAt`
+    date-range trigger; a message may use either, neither, or both.
+  - **Persistent per-account shown-count tracking.** A new
+    `PlatformMessageView` table (`messageId`, `sellerId` XOR
+    `supplierId` — the same "exactly one owner" CHECK-constraint shape
+    `Subscription` already established for FR-7.10's seller/supplier
+    dual ownership, hand-added in migration.sql since Prisma has no
+    schema-level support for a CHECK spanning two nullable columns),
+    `shownCount`, `lastShownAt`. This **replaces** the previous
+    mechanism, which was `sessionStorage`-only, purely client-side, and
+    reset on every new session or device — it could not enforce
+    `maxShownCount` at all. The seller/supplier client now calls
+    `POST .../messages/:id/shown` the moment a popup actually renders
+    (not on every list fetch), and `listActiveFor`/`listActiveForSupplier`
+    exclude a popup once its per-account `shownCount` reaches
+    `maxShownCount`. The session-scoped dismiss-on-click behavior is
+    kept as-is on top of this (so a popup doesn't reappear on route
+    navigation within the same session) — it no longer does the
+    eligibility decision alone.
+  - **Supplier targeting/delivery (previously absent entirely).** A new
+    `supplier` value on `PlatformMessageTargetType` (alongside the
+    existing `all`/`plan`/`seller`) plus a new `targetSupplierId`
+    column, and a new supplier-facing `GET /supplier/messages` +
+    `POST /supplier/messages/:id/shown` pair (mirroring the seller-
+    facing `/sellers/me/messages` routes exactly — same
+    `PlatformMessagesService`, a new `listActiveForSupplier()`/
+    `recordShownForSupplier()` pair alongside the existing seller
+    methods). **`all`-targeted messages now reach suppliers too** — the
+    feature is named "broadcast announcement" and no supplier had ever
+    received a single platform message before this FR, so restricting
+    `all` to sellers only would have left the stated goal unmet. There
+    is deliberately no `plan`-based targeting for suppliers (suppliers
+    don't carry the seller plan-tier concept `targetType: "plan"`
+    resolves against) — `supplier` targeting is always a specific
+    supplier, matching how `targetType: "seller"` already always names
+    a specific seller.
+  - Admin composition UI (`/admin/messages`) extended with an image-URL
+    field, a "max times shown per account" field (shown only when
+    channel is popup), and a "specific supplier" target option — every
+    other control (channel, existing targets, schedule, delete)
+    unchanged.
 
 ### 5.6l Store-Wide Payment Model (new, v0.46 — Module 95, founder batch B12)
 A single, mutually-exclusive choice per store — **Prepaid / COD /

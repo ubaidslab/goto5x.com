@@ -12,7 +12,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
 
 type Channel = "banner" | "popup" | "in_app_notification";
-type TargetType = "all" | "plan" | "seller";
+type TargetType = "all" | "plan" | "seller" | "supplier";
 
 const CHANNEL_LABEL: Record<Channel, string> = { banner: "Banner", popup: "Popup", in_app_notification: "In-app notification" };
 
@@ -22,8 +22,11 @@ interface PlatformMessage {
   targetType: TargetType;
   targetPlanId: string | null;
   targetSellerId: string | null;
+  targetSupplierId: string | null;
   title: string | null;
   body: string;
+  imageUrl: string | null;
+  maxShownCount: number | null;
   startsAt: string | null;
   endsAt: string | null;
   createdAt: string;
@@ -35,6 +38,8 @@ interface PlatformMessage {
  * scheduled), restyled onto DashCard. Every action preserved: list,
  * create, delete (confirm-gated). Converted from hand-rolled fetch/
  * authHeaders to adminApi.
+ * Phase 3 item 17 (SRS FR-8.22) - added image URL, popup shown-count
+ * limit, and supplier targeting.
  */
 export default function AdminMessagesPage() {
   const confirm = useConfirm();
@@ -43,8 +48,11 @@ export default function AdminMessagesPage() {
   const [targetType, setTargetType] = useState<TargetType>("all");
   const [targetPlanId, setTargetPlanId] = useState("");
   const [targetSellerId, setTargetSellerId] = useState("");
+  const [targetSupplierId, setTargetSupplierId] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [maxShownCount, setMaxShownCount] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -67,13 +75,18 @@ export default function AdminMessagesPage() {
         targetType,
         targetPlanId: targetType === "plan" ? targetPlanId : undefined,
         targetSellerId: targetType === "seller" ? targetSellerId : undefined,
+        targetSupplierId: targetType === "supplier" ? targetSupplierId : undefined,
         title: title || undefined,
         body,
+        imageUrl: imageUrl || undefined,
+        maxShownCount: channel === "popup" && maxShownCount ? Number(maxShownCount) : undefined,
         startsAt: startsAt || undefined,
         endsAt: endsAt || undefined,
       });
       setTitle("");
       setBody("");
+      setImageUrl("");
+      setMaxShownCount("");
       setStartsAt("");
       setEndsAt("");
       load();
@@ -115,13 +128,22 @@ export default function AdminMessagesPage() {
                     {CHANNEL_LABEL[m.channel]}
                     <span className="font-normal text-ink-muted">
                       {" "}
-                      · {m.targetType === "all" ? "all sellers" : m.targetType === "plan" ? `plan ${m.targetPlanId}` : `seller ${m.targetSellerId}`}
+                      ·{" "}
+                      {m.targetType === "all"
+                        ? "all sellers + suppliers"
+                        : m.targetType === "plan"
+                          ? `plan ${m.targetPlanId}`
+                          : m.targetType === "seller"
+                            ? `seller ${m.targetSellerId}`
+                            : `supplier ${m.targetSupplierId}`}
                     </span>
                   </p>
                   {m.title && <p className="text-sm font-medium text-ink">{m.title}</p>}
+                  {m.imageUrl && <img src={m.imageUrl} alt="" className="my-1 h-16 w-28 rounded-md border border-border object-cover" />}
                   <p className="text-sm text-ink-muted">{m.body}</p>
                   <p className="text-xs text-ink-faint">
                     {m.startsAt ? new Date(m.startsAt).toLocaleString() : "always"} &rarr; {m.endsAt ? new Date(m.endsAt).toLocaleString() : "forever"}
+                    {m.channel === "popup" && m.maxShownCount != null && <> · shown at most {m.maxShownCount}x per account</>}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => remove(m)}>
@@ -149,9 +171,10 @@ export default function AdminMessagesPage() {
               <div className="sm:w-56">
                 <Field label="Target">
                   <Select value={targetType} onChange={(e) => setTargetType(e.target.value as TargetType)}>
-                    <option value="all">All sellers</option>
+                    <option value="all">All sellers + suppliers</option>
                     <option value="plan">A specific plan</option>
                     <option value="seller">A specific seller</option>
+                    <option value="supplier">A specific supplier</option>
                   </Select>
                 </Field>
               </div>
@@ -169,12 +192,22 @@ export default function AdminMessagesPage() {
                   </Field>
                 </div>
               )}
+              {targetType === "supplier" && (
+                <div className="flex-1">
+                  <Field label="Supplier ID">
+                    <Input value={targetSupplierId} onChange={(e) => setTargetSupplierId(e.target.value)} required />
+                  </Field>
+                </div>
+              )}
             </div>
             <Field label="Title (optional)">
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </Field>
             <Field label="Body">
               <Textarea value={body} onChange={(e) => setBody(e.target.value)} required />
+            </Field>
+            <Field label="Image URL (optional)">
+              <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
             </Field>
             <div className="flex flex-wrap gap-3">
               <div className="w-56">
@@ -187,6 +220,19 @@ export default function AdminMessagesPage() {
                   <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
                 </Field>
               </div>
+              {channel === "popup" && (
+                <div className="w-56">
+                  <Field label="Max times shown per account (optional)">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={maxShownCount}
+                      onChange={(e) => setMaxShownCount(e.target.value)}
+                      placeholder="unlimited"
+                    />
+                  </Field>
+                </div>
+              )}
             </div>
             <Button type="submit">Create message</Button>
           </form>

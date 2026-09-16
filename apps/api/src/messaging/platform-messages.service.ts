@@ -23,8 +23,11 @@ export class PlatformMessagesService {
         targetType: dto.targetType ?? "all",
         targetPlanId: dto.targetType === "plan" ? dto.targetPlanId : undefined,
         targetSellerId: dto.targetType === "seller" ? dto.targetSellerId : undefined,
+        targetSupplierId: dto.targetType === "supplier" ? dto.targetSupplierId : undefined,
         title: dto.title,
         body: dto.body,
+        imageUrl: dto.imageUrl,
+        maxShownCount: dto.maxShownCount,
         startsAt: dto.startsAt ? new Date(dto.startsAt) : undefined,
         endsAt: dto.endsAt ? new Date(dto.endsAt) : undefined,
         createdByAdminUserId: adminUserId,
@@ -78,6 +81,83 @@ export class PlatformMessagesService {
       orderBy: { createdAt: "desc" },
     });
 
-    return messages.filter((m) => (!m.startsAt || m.startsAt <= now) && (!m.endsAt || m.endsAt >= now));
+    const inWindow = messages.filter((m) => (!m.startsAt || m.startsAt <= now) && (!m.endsAt || m.endsAt >= now));
+    return this.filterByShownLimit(inWindow, "sellerId", sellerId);
+  }
+
+  /**
+   * Phase 3 item 17 (SRS FR-8.22) - the supplier-facing equivalent of
+   * listActiveFor. Suppliers only ever see "all" broadcasts or messages
+   * targeted specifically at them (targetType "supplier") - there is no
+   * plan-targeted path for suppliers, unlike sellers.
+   */
+  async listActiveForSupplier(supplierId: string) {
+    const now = new Date();
+
+    const messages = await this.prisma.platformMessage.findMany({
+      where: {
+        OR: [{ targetType: "all" }, { targetType: "supplier", targetSupplierId: supplierId }],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const inWindow = messages.filter((m) => (!m.startsAt || m.startsAt <= now) && (!m.endsAt || m.endsAt >= now));
+    return this.filterByShownLimit(inWindow, "supplierId", supplierId);
+  }
+
+  /**
+   * The shown-count-limit trigger only applies to the popup channel (the
+   * one thing that actually tracks "shown" - banners/notifications just
+   * render inline for as long as targeting/window match, same as before).
+   * Messages without maxShownCount set are unaffected either way.
+   */
+  private async filterByShownLimit(
+    messages: Awaited<ReturnType<PlatformMessagesService["listAll"]>>,
+    viewerField: "sellerId" | "supplierId",
+    viewerId: string,
+  ) {
+    const gated = messages.filter((m) => m.channel === "popup" && m.maxShownCount != null);
+    if (gated.length === 0) return messages;
+
+    const views = await this.prisma.platformMessageView.findMany({
+      where: { messageId: { in: gated.map((m) => m.id) }, [viewerField]: viewerId },
+    });
+    const shownCountByMessageId = new Map(views.map((v) => [v.messageId, v.shownCount]));
+
+    return messages.filter((m) => {
+      if (m.channel !== "popup" || m.maxShownCount == null) return true;
+      return (shownCountByMessageId.get(m.id) ?? 0) < m.maxShownCount;
+    });
+  }
+
+  /**
+   * Called by the seller/supplier client the moment a popup is actually
+   * rendered, so the count reflects real shown events rather than every
+   * fetch of the message list. Replaces the old sessionStorage-only
+   * dismissal, which reset every session/device and couldn't enforce
+   * maxShownCount at all.
+   */
+  async recordShownForSeller(sellerId: string, messageId: string) {
+    return this.recordShown("sellerId", sellerId, messageId);
+  }
+
+  async recordShownForSupplier(supplierId: string, messageId: string) {
+    return this.recordShown("supplierId", supplierId, messageId);
+  }
+
+  private async recordShown(viewerField: "sellerId" | "supplierId", viewerId: string, messageId: string) {
+    const message = await this.prisma.platformMessage.findUnique({ where: { id: messageId } });
+    if (!message) throw new NotFoundException("Message not found.");
+
+    const uniqueWhere =
+      viewerField === "sellerId"
+        ? { uniq_message_view_seller: { messageId, sellerId: viewerId } }
+        : { uniq_message_view_supplier: { messageId, supplierId: viewerId } };
+
+    return this.prisma.platformMessageView.upsert({
+      where: uniqueWhere,
+      create: { messageId, [viewerField]: viewerId, shownCount: 1, lastShownAt: new Date() },
+      update: { shownCount: { increment: 1 }, lastShownAt: new Date() },
+    });
   }
 }

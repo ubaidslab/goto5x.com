@@ -1862,7 +1862,7 @@ model SettingsDefinition {
   defaultValue         Json                @map("default_value")
   validation           Json?
   description          String?
-  // FR-8.16 (v0.40) - data-driven replacement for the admin Settings
+  // FR-8.22 (v0.40) - data-driven replacement for the admin Settings
   // Registry editor's prior hardcoded frontend high-impact-key heuristic
   // (billing./commission/platform.maintenance string-match). When true,
   // both the standalone Settings Registry editor and Seller-360's own
@@ -2022,20 +2022,33 @@ model PlatformBrandAssetRevision {
 // Module 17 (FR-8.15, extends FR-8.7). Global, no RLS - targeting is
 // resolved at the application layer (PlatformMessagesService), same as
 // Settings Registry scope resolution, not via row-level security.
+// Phase 3 item 17 amendment (SRS FR-8.22): added imageUrl (plain URL field,
+// the same PlatformBrandAsset/saveBrandAsset() pattern - no MediaAsset FK,
+// since MediaAsset.storeId is required and this content is global, not
+// store-scoped), maxShownCount (the shown-count-limit trigger, alongside
+// the pre-existing startsAt/endsAt date-range trigger - both are optional
+// and independent, a message can use either, neither, or both), and
+// supplier targeting (targetSupplierId + the new "supplier" targetType) to
+// close the "no supplier delivery path at all" gap.
 model PlatformMessage {
   id                   String                    @id @default(uuid()) @db.Uuid
   channel              PlatformMessageChannel
   targetType           PlatformMessageTargetType @default(all) @map("target_type")
   targetPlanId         String?                   @map("target_plan_id") @db.Uuid
   targetSellerId       String?                   @map("target_seller_id") @db.Uuid
+  targetSupplierId     String?                   @map("target_supplier_id") @db.Uuid
   title                String?
   body                 String
+  imageUrl             String?                   @map("image_url")
+  maxShownCount        Int?                      @map("max_shown_count")
   startsAt             DateTime?                 @map("starts_at") @db.Timestamptz
   endsAt               DateTime?                 @map("ends_at") @db.Timestamptz
   createdByAdminUserId String?                   @map("created_by_admin_user_id") @db.Uuid
   createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz
 
-  @@index([targetType, targetPlanId, targetSellerId], name: "idx_messages_targeting")
+  views PlatformMessageView[]
+
+  @@index([targetType, targetPlanId, targetSellerId, targetSupplierId], name: "idx_messages_targeting")
   @@map("platform_messages")
 }
 
@@ -2049,6 +2062,29 @@ enum PlatformMessageTargetType {
   all
   plan
   seller
+  supplier
+}
+
+// Phase 3 item 17 (SRS FR-8.22) - persistent, per-account shown-count
+// tracking for the popup channel's shown-count-limit trigger. Replaces the
+// old sessionStorage-only client-side dismissal, which reset every
+// session/device and couldn't enforce maxShownCount at all. Exactly one of
+// sellerId/supplierId is set - same "Prisma manages columns, migration.sql
+// hand-adds what it can't express" CHECK-constraint pattern Subscription
+// (Module 20, FR-7.10 supplement) already uses for the same shape.
+model PlatformMessageView {
+  id          String    @id @default(uuid()) @db.Uuid
+  messageId   String    @map("message_id") @db.Uuid
+  sellerId    String?   @map("seller_id") @db.Uuid
+  supplierId  String?   @map("supplier_id") @db.Uuid
+  shownCount  Int       @default(0) @map("shown_count")
+  lastShownAt DateTime  @default(now()) @map("last_shown_at") @db.Timestamptz
+
+  message PlatformMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, sellerId], name: "uniq_message_view_seller")
+  @@unique([messageId, supplierId], name: "uniq_message_view_supplier")
+  @@map("platform_message_views")
 }
 
 // Module 3.5/v0.8 amendment: Platform Event Log (SRS §3.11, FR-26.x). Global,

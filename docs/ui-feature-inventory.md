@@ -842,7 +842,7 @@ Then: 3 grouped tables (individual/team/supplier) → Create-tier form → **Gra
 
 **Content pages & brand assets** — 5 fixed legal/info page editors (plain textarea, deliberately not WYSIWYG) + 3 fixed brand-asset URL-reference fields (no actual file-upload widget — URL-paste only). 8 independent save buttons, **zero confirm steps** despite being public-facing legal/brand content.
 
-**Messages** (seller-facing banners/popups/in-app) — target All/Plan/Seller (raw ID fields, no lookup), scheduled window — table + create form + Delete (**now `useConfirm()`-gated**, danger tone). Not the same as the admin's own notification bell (see chrome, above).
+**Messages** (seller+supplier-facing banners/popups/in-app) — target All/Plan/Seller/Supplier (raw ID fields, no lookup), scheduled window, optional image URL, optional popup max-shown-per-account count — table + create form + Delete (**now `useConfirm()`-gated**, danger tone). Not the same as the admin's own notification bell (see chrome, above). Phase 3 item 17 (SRS FR-8.22) closed 4 prior gaps: no image field, no shown-count-limit trigger, `sessionStorage`-only (non-persistent, non-enforceable) popup dismissal, and no supplier delivery path at all — suppliers previously received zero platform messages, ever.
 
 **Email** — UZEYN's own unified inbox: link IMAP+SMTP accounts (native `FormData` form, the only one built this way; plain-text password fields with **no masking toggle**) → merged inbox → reply (fixed "To," pre-filled subject). "Unlink" is **now `useConfirm()`-gated**, danger tone. A failed reply-send blanks the *entire* inbox view rather than showing an inline error — a real UX gap.
 

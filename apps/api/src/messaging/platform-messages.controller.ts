@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { CurrentSupplierId } from "../common/decorators/current-supplier.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
@@ -41,5 +42,28 @@ export class SellerPlatformMessagesController {
   @Get()
   listActive(@CurrentSellerId() sellerId: string) {
     return this.messages.listActiveFor(sellerId);
+  }
+
+  /** Phase 3 item 17 (SRS FR-8.22) - called when a popup is actually rendered, not on every list fetch. */
+  @Post(":id/shown")
+  recordShown(@CurrentSellerId() sellerId: string, @Param("id") id: string) {
+    return this.messages.recordShownForSeller(sellerId, id);
+  }
+}
+
+/** Phase 3 item 17 (SRS FR-8.22) - the supplier-facing equivalent, previously entirely missing. */
+@Controller("supplier/messages")
+@UseGuards(JwtAuthGuard)
+export class SupplierPlatformMessagesController {
+  constructor(private readonly messages: PlatformMessagesService) {}
+
+  @Get()
+  listActive(@CurrentSupplierId() supplierId: string) {
+    return this.messages.listActiveForSupplier(supplierId);
+  }
+
+  @Post(":id/shown")
+  recordShown(@CurrentSupplierId() supplierId: string, @Param("id") id: string) {
+    return this.messages.recordShownForSupplier(supplierId, id);
   }
 }
