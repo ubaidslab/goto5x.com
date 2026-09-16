@@ -21,6 +21,7 @@ interface SellerOverview {
     kycStatus: string;
     activationStatus: string;
     lifecycleStatus: LifecycleStatus;
+    lifecycleSuspendedUntil: string | null;
     isTrusted: boolean;
     createdAt: string;
   };
@@ -109,6 +110,13 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
   const [staffActionPanel, setStaffActionPanel] = useState<{ id: string; type: "suspend" | "block" } | null>(null);
   const [staffSuspendDays, setStaffSuspendDays] = useState("7");
   const [staffActionReason, setStaffActionReason] = useState("");
+  // Founder walkthrough finding (Phase 2 item 16) - suspended/banned no
+  // longer go through the generic typed-value confirm dialog; they need
+  // the admin's own authenticator code re-entered, plus (for suspended) an
+  // optional auto-lift duration.
+  const [lifecycleActionPanel, setLifecycleActionPanel] = useState<"suspended" | "banned" | null>(null);
+  const [lifecycleMfaCode, setLifecycleMfaCode] = useState("");
+  const [lifecycleSuspendDays, setLifecycleSuspendDays] = useState("indefinite");
 
   function load() {
     adminApi
@@ -309,23 +317,35 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
     }
   }
 
-  async function setLifecycleStatus(status: LifecycleStatus) {
+  /**
+   * Founder walkthrough finding (Phase 2 item 16) - "suspended"/"banned"
+   * are the two statuses that actually enforce against the seller's
+   * storefront (StorefrontService.loadActiveStoreOrThrow), so they skip
+   * the generic typed-value confirm dialog entirely: the admin's own
+   * authenticator code (entered in the inline panel below) IS the
+   * confirmation step. Every other status keeps the existing confirm().
+   */
+  async function setLifecycleStatus(status: LifecycleStatus, mfaCode?: string, until?: string) {
     setError(null);
     if (!reason.trim()) {
       setError("A reason is required for every lifecycle action.");
       return;
     }
-    const ok = await confirm({
-      title: `Set ${seller.businessName} to "${status}"?`,
-      description: `This changes the seller's lifecycle status from "${seller.lifecycleStatus}" to "${status}" and is visible to the seller. Reason: ${reason}`,
-      changes: [{ label: "Lifecycle status", from: seller.lifecycleStatus, to: status }],
-      confirmLabel: `Set ${status}`,
-      tone: status === "banned" || status === "suspended" ? "danger" : "default",
-    });
-    if (!ok) return;
+    if (status !== "suspended" && status !== "banned") {
+      const ok = await confirm({
+        title: `Set ${seller.businessName} to "${status}"?`,
+        description: `This changes the seller's lifecycle status from "${seller.lifecycleStatus}" to "${status}" and is visible to the seller. Reason: ${reason}`,
+        changes: [{ label: "Lifecycle status", from: seller.lifecycleStatus, to: status }],
+        confirmLabel: `Set ${status}`,
+      });
+      if (!ok) return;
+    }
     setPendingAction(`lifecycle:${status}`);
     try {
-      await adminApi.post(`/admin/sellers/${params.sellerId}/lifecycle`, { status, reason });
+      await adminApi.post(`/admin/sellers/${params.sellerId}/lifecycle`, { status, reason, mfaCode, until });
+      setLifecycleActionPanel(null);
+      setLifecycleMfaCode("");
+      setLifecycleSuspendDays("indefinite");
       load();
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "Couldn't update this seller's lifecycle status.");
@@ -528,6 +548,13 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       <div className="-mt-4 flex items-center gap-2">
         <Badge tone={lifecycleTone[seller.lifecycleStatus]}>{seller.lifecycleStatus}</Badge>
         <Badge tone={seller.activationStatus === "auto_approved" ? "success" : "warning"}>{seller.activationStatus}</Badge>
+        {seller.lifecycleStatus === "suspended" && (
+          <span className="text-sm text-ink-muted">
+            {seller.lifecycleSuspendedUntil
+              ? `Auto-lifts ${new Date(seller.lifecycleSuspendedUntil).toLocaleString()}`
+              : "Indefinite - requires an explicit admin action to lift"}
+          </span>
+        )}
       </div>
 
       {error && <Alert tone="danger">{error}</Alert>}
@@ -550,11 +577,64 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
               size="sm"
               disabled={s === seller.lifecycleStatus || (pendingAction !== null && pendingAction !== `lifecycle:${s}`)}
               loading={pendingAction === `lifecycle:${s}`}
-              onClick={() => setLifecycleStatus(s)}
+              onClick={() =>
+                s === "suspended" || s === "banned"
+                  ? setLifecycleActionPanel(lifecycleActionPanel === s ? null : s)
+                  : setLifecycleStatus(s)
+              }
             >
               Set {s}
             </Button>
           ))}
+        </div>
+        {lifecycleActionPanel && (
+          <div className="mt-3 space-y-3 rounded-md border border-border-strong bg-canvas p-3">
+            <p className="text-sm text-ink-muted">
+              Setting <strong>{lifecycleActionPanel}</strong> immediately affects this seller&apos;s storefront(s) - re-enter
+              your authenticator code to confirm.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="w-32">
+                <Field label="Authenticator code">
+                  <Input value={lifecycleMfaCode} onChange={(e) => setLifecycleMfaCode(e.target.value)} placeholder="123456" maxLength={6} />
+                </Field>
+              </div>
+              {lifecycleActionPanel === "suspended" && (
+                <div className="w-44">
+                  <Field label="Duration">
+                    <Select value={lifecycleSuspendDays} onChange={(e) => setLifecycleSuspendDays(e.target.value)}>
+                      <option value="indefinite">Indefinite</option>
+                      <option value="1">1 day</option>
+                      <option value="3">3 days</option>
+                      <option value="7">7 days</option>
+                      <option value="14">14 days</option>
+                      <option value="30">30 days</option>
+                    </Select>
+                  </Field>
+                </div>
+              )}
+              <Button
+                variant="danger"
+                size="sm"
+                loading={pendingAction === `lifecycle:${lifecycleActionPanel}`}
+                disabled={pendingAction !== null && pendingAction !== `lifecycle:${lifecycleActionPanel}`}
+                onClick={() => {
+                  const until =
+                    lifecycleActionPanel === "suspended" && lifecycleSuspendDays !== "indefinite"
+                      ? new Date(Date.now() + Number(lifecycleSuspendDays) * 24 * 60 * 60 * 1000).toISOString()
+                      : undefined;
+                  setLifecycleStatus(lifecycleActionPanel, lifecycleMfaCode, until);
+                }}
+              >
+                Confirm {lifecycleActionPanel}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setLifecycleActionPanel(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
           {impersonationSessionId ? (
             <Button variant="ghost" size="sm" onClick={endImpersonation}>
               End impersonation session

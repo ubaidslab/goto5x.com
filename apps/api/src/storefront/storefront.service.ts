@@ -107,23 +107,33 @@ export class StorefrontService {
    * OrdersService never checks store.status. Public (not private) because
    * CartService/CheckoutService/OrderStatusLookupService (Module 9) reuse
    * this same hostname-resolution + status gate rather than duplicating it.
+   *
+   * Founder walkthrough finding (Phase 2 item 16): the admin's seller-
+   * lifecycle "suspended"/"banned" action (SellerLifecycleService, FR-29.4)
+   * previously had zero effect here - it only fed verification-eligibility
+   * and store-health scoring, so an admin "suspending" or "banning" a
+   * seller never actually touched their storefront's real availability.
+   * `store.seller.lifecycleStatus` is now checked alongside `store.status`,
+   * ORed rather than mirrored into it, so the two independent suspension
+   * sources (this one, and the dormant-store job's own store.status writes)
+   * can never stomp on each other.
    */
   async loadActiveStoreOrThrow(hostname: string) {
     const storeId = await this.resolveStoreIdByHostname(hostname);
     if (!storeId) throw new NotFoundException("No store found for this hostname.");
     const store = await this.prismaAdmin.store.findUnique({
       where: { id: storeId },
-      include: { themeSettings: { include: { theme: true } }, domains: true, logoMedia: true },
+      include: { themeSettings: { include: { theme: true } }, domains: true, logoMedia: true, seller: { select: { lifecycleStatus: true } } },
     });
     if (!store) throw new NotFoundException("Store not found.");
-    if (store.status === "suspended") {
+    if (store.status === "suspended" || store.seller.lifecycleStatus === "suspended") {
       throw new ForbiddenException({ code: "store_suspended", message: "This store is temporarily unavailable." });
     }
     // Module 20 (SRS §5.6e, FR-6.25) - orders_paused behaves like active for
     // browsing (catalog/product pages/cart) - only CheckoutService blocks
     // it, at the point checkout would otherwise complete. `banned`/
     // `archived` fall through to the plain 404 below, same as before.
-    if (store.status !== "active" && store.status !== "orders_paused") {
+    if ((store.status !== "active" && store.status !== "orders_paused") || store.seller.lifecycleStatus === "banned") {
       throw new NotFoundException("Store not found.");
     }
     return store;

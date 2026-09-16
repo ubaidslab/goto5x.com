@@ -100,6 +100,7 @@ export class AdminSellerOverviewService {
         kycStatus: seller.kycStatus,
         activationStatus: seller.activationStatus,
         lifecycleStatus: seller.lifecycleStatus,
+        lifecycleSuspendedUntil: seller.lifecycleSuspendedUntil,
         isTrusted: seller.isTrusted,
         createdAt: seller.createdAt,
       },

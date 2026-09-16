@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { AdminSellerLifecycleController } from "./admin-seller-lifecycle.controller";
 import { AdminTrustSafetyController } from "./admin-trust-safety.controller";
@@ -31,6 +32,7 @@ import { TrustSafetyMonitorsService } from "./trust-safety-monitors.service";
     SellerLifecycleService,
     TrustSafetyMonitorsService,
     SubscriptionAbuseService,
+    RateLimitService,
   ],
   exports: [
     SellerAgreementService,

@@ -384,6 +384,15 @@ model Seller {
   // (FR-8.4) specified but never had a prior module actually build -
   // surfaced as a direct Module 12 dependency, built here (see build-plan.md).
   lifecycleStatus SellerLifecycleStatus @default(active) @map("lifecycle_status")
+  // Founder walkthrough finding (Phase 2 item 16) - only meaningful while
+  // lifecycleStatus is "suspended"; null there means "indefinite" (an
+  // admin explicitly lifts it). Cleared whenever lifecycleStatus changes
+  // to anything else. Swept by SellerLifecycleService.runLifecycleSuspensionLiftSweep()
+  // via the same worker tick as StaffAccountsService's own suspension-lift
+  // sweep (mirrors that exact "suspend for N days or indefinitely,
+  // auto-lift" shape - FR-52.14 - one row per lifecycle change, not a
+  // history table).
+  lifecycleSuspendedUntil DateTime? @map("lifecycle_suspended_until") @db.Timestamptz
 
   // Module 55 (SRS §5.62/FR-62.3) - independent per-seller opt-out for the
   // admin-composed platform newsletter only; transactional emails (FR-62.1)

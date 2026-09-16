@@ -5,6 +5,7 @@ import * as bcrypt from "bcryptjs";
 import request from "supertest";
 import { RiskScoreService } from "../../src/trust-safety/risk-score.service";
 import { SellerAgreementService } from "../../src/trust-safety/seller-agreement.service";
+import { SellerLifecycleService } from "../../src/trust-safety/seller-lifecycle.service";
 import { TrustSafetyMonitorsService } from "../../src/trust-safety/trust-safety-monitors.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
@@ -75,6 +76,27 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       .post("/admin/auth/mfa/verify")
       .send({ preAuthToken: login.body.preAuthToken, code });
     return verify.body.accessToken;
+  }
+
+  /** Same as fullyVerifiedAdminToken() but also returns the TOTP secret, for tests that need to generate a fresh step-up code mid-test (Phase 2 item 16). */
+  async function fullyVerifiedAdminTokenWithSecret(email: string): Promise<{ token: string; secret: string }> {
+    const passwordHash = await bcrypt.hash("admin-password", 10);
+    const user = await superuser.user.create({
+      data: { email, passwordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+
+    const login = await request(app.getHttpServer())
+      .post("/admin/auth/login")
+      .send({ email, password: "admin-password" });
+    const enroll = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/enroll")
+      .send({ preAuthToken: login.body.preAuthToken });
+    const code = authenticator.generate(enroll.body.secret);
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code });
+    return { token: verify.body.accessToken, secret: enroll.body.secret };
   }
 
   describe("Seller Agreement acceptance (FR-29.1/29.2)", () => {
@@ -365,6 +387,134 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       const seller = await superuser.seller.findUniqueOrThrow({ where: { id: sellerId } });
       expect(seller.activationStatus).not.toBe("auto_approved"); // the flag fired...
       expect(seller.lifecycleStatus).toBe("active"); // ...but the LIFECYCLE ladder never moved on its own.
+    });
+
+    describe("Founder walkthrough finding (Phase 2 item 16) - suspend/ban step-up MFA + auto-lift duration", () => {
+      async function createStore(sellerToken: string, slug: string): Promise<string> {
+        const store = await request(app.getHttpServer())
+          .post("/stores")
+          .set("Authorization", `Bearer ${sellerToken}`)
+          .send({ name: `Store ${slug}`, slug });
+        return store.body.id as string;
+      }
+
+      it("setting status to suspended/banned without a valid MFA code is rejected, and lifecycle status is unchanged", async () => {
+        const { token: sellerToken, sellerId } = await signup("stepup-noauth@example.com");
+        const adminToken = await fullyVerifiedAdminToken("stepup-noauth-admin@example.com");
+
+        const noCode = await request(app.getHttpServer())
+          .post(`/admin/sellers/${sellerId}/lifecycle`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ status: "suspended", reason: "Testing without MFA" });
+        expect(noCode.status).toBe(401);
+
+        const wrongCode = await request(app.getHttpServer())
+          .post(`/admin/sellers/${sellerId}/lifecycle`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ status: "suspended", reason: "Testing wrong MFA", mfaCode: "000000" });
+        expect(wrongCode.status).toBe(401);
+
+        const seller = await superuser.seller.findUniqueOrThrow({ where: { id: sellerId } });
+        expect(seller.lifecycleStatus).toBe("active");
+        void sellerToken;
+      });
+
+      it("a valid MFA code sets suspended with an auto-lift date, and the seller's storefront is actually blocked (403) while suspended", async () => {
+        const { token: sellerToken, sellerId } = await signup("stepup-suspend@example.com");
+        const storeId = await createStore(sellerToken, "stepup-suspend-store");
+        const hostname = "stepup-suspend-store.uzeyn.com";
+        const { token: adminToken, secret } = await fullyVerifiedAdminTokenWithSecret("stepup-suspend-admin@example.com");
+
+        const before = await request(app.getHttpServer()).get("/storefront/store").query({ hostname });
+        expect(before.status).toBe(200);
+
+        const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const res = await request(app.getHttpServer())
+          .post(`/admin/sellers/${sellerId}/lifecycle`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ status: "suspended", reason: "Repeated policy violations", mfaCode: authenticator.generate(secret), until });
+        expect(res.status).toBe(201);
+        expect(res.body.lifecycleStatus).toBe("suspended");
+        expect(new Date(res.body.lifecycleSuspendedUntil).toISOString()).toBe(until);
+
+        const blocked = await request(app.getHttpServer()).get("/storefront/store").query({ hostname });
+        expect(blocked.status).toBe(403);
+        expect(blocked.body.message).toMatchObject({ code: "store_suspended" });
+        void storeId;
+      });
+
+      it("a valid MFA code sets banned, and the seller's storefront is hidden (404) - store.status itself is never touched", async () => {
+        const { token: sellerToken, sellerId } = await signup("stepup-ban@example.com");
+        await createStore(sellerToken, "stepup-ban-store");
+        const hostname = "stepup-ban-store.uzeyn.com";
+        const { token: adminToken, secret } = await fullyVerifiedAdminTokenWithSecret("stepup-ban-admin@example.com");
+
+        const res = await request(app.getHttpServer())
+          .post(`/admin/sellers/${sellerId}/lifecycle`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ status: "banned", reason: "Confirmed fraud", mfaCode: authenticator.generate(secret) });
+        expect(res.status).toBe(201);
+
+        const hidden = await request(app.getHttpServer()).get("/storefront/store").query({ hostname });
+        expect(hidden.status).toBe(404);
+
+        const store = await superuser.store.findFirstOrThrow({ where: { slug: "stepup-ban-store" } });
+        expect(store.status).toBe("active"); // the store row's own status column is untouched - only the seller's lifecycleStatus enforces this.
+      });
+
+      it("omitting `until` when suspending leaves it indefinite - the auto-lift sweep never touches it", async () => {
+        const { sellerId } = await signup("stepup-indefinite@example.com");
+        const { token: adminToken, secret } = await fullyVerifiedAdminTokenWithSecret("stepup-indefinite-admin@example.com");
+
+        await request(app.getHttpServer())
+          .post(`/admin/sellers/${sellerId}/lifecycle`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ status: "suspended", reason: "Indefinite hold", mfaCode: authenticator.generate(secret) });
+
+        const lifecycle = app.get(SellerLifecycleService);
+        const swept = await lifecycle.runLifecycleSuspensionLiftSweep();
+        expect(swept.lifted).toBe(0);
+
+        const seller = await superuser.seller.findUniqueOrThrow({ where: { id: sellerId } });
+        expect(seller.lifecycleStatus).toBe("suspended");
+        expect(seller.lifecycleSuspendedUntil).toBeNull();
+      });
+
+      it("the auto-lift sweep flips a past-due suspension back to active, restoring storefront access", async () => {
+        const { token: sellerToken, sellerId } = await signup("stepup-autolift@example.com");
+        await createStore(sellerToken, "stepup-autolift-store");
+        const hostname = "stepup-autolift-store.uzeyn.com";
+
+        await superuser.seller.update({
+          where: { id: sellerId },
+          data: { lifecycleStatus: "suspended", lifecycleSuspendedUntil: new Date(Date.now() - 60_000) },
+        });
+        const blocked = await request(app.getHttpServer()).get("/storefront/store").query({ hostname });
+        expect(blocked.status).toBe(403);
+
+        const lifecycle = app.get(SellerLifecycleService);
+        const swept = await lifecycle.runLifecycleSuspensionLiftSweep();
+        expect(swept.lifted).toBe(1);
+
+        const seller = await superuser.seller.findUniqueOrThrow({ where: { id: sellerId } });
+        expect(seller.lifecycleStatus).toBe("active");
+        expect(seller.lifecycleSuspendedUntil).toBeNull();
+
+        const restored = await request(app.getHttpServer()).get("/storefront/store").query({ hostname });
+        expect(restored.status).toBe(200);
+      });
+
+      it("softer statuses (warned/restricted/active) still work with no MFA code required - only suspended/banned step up", async () => {
+        const { sellerId } = await signup("stepup-soft@example.com");
+        const adminToken = await fullyVerifiedAdminToken("stepup-soft-admin@example.com");
+
+        const res = await request(app.getHttpServer())
+          .post(`/admin/sellers/${sellerId}/lifecycle`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ status: "restricted", reason: "Minor policy note" });
+        expect(res.status).toBe(201);
+        expect(res.body.lifecycleStatus).toBe("restricted");
+      });
     });
   });
 

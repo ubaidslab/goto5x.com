@@ -1,5 +1,6 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { $Enums } from "@prisma/client";
+import { Request } from "express";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAccessPayload } from "../common/types";
@@ -34,9 +35,18 @@ export class AdminSellerLifecycleController {
     @CurrentUser() user: JwtAccessPayload,
     @Param("sellerId") sellerId: string,
     @Body() dto: SetLifecycleStatusDto,
+    @Req() req: Request,
   ) {
     this.assertAdminUserId(user);
-    return this.lifecycle.setLifecycleStatus(user.adminUserId, sellerId, dto.status, dto.reason);
+    return this.lifecycle.setLifecycleStatus(
+      user.adminUserId,
+      sellerId,
+      dto.status,
+      dto.reason,
+      req.ip ?? "unknown",
+      dto.mfaCode,
+      dto.until,
+    );
   }
 
   private assertAdminUserId(user: JwtAccessPayload): asserts user is JwtAccessPayload & { adminUserId: string } {

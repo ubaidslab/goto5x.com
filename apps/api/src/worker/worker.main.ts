@@ -48,6 +48,7 @@ import { PlatformNewsletterService } from "../seller-notifications/platform-news
 import { PLATFORM_NEWSLETTER_QUEUE_NAME } from "../seller-notifications/platform-newsletter.queue";
 import { StaffAccountsService } from "../staff/staff-accounts.service";
 import { STAFF_ACCOUNT_EXPIRY_QUEUE_NAME } from "../staff/staff-account-expiry.queue";
+import { SellerLifecycleService } from "../trust-safety/seller-lifecycle.service";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -81,6 +82,7 @@ async function main() {
   const monthlySellerReport = appContext.get(MonthlySellerReportService);
   const platformNewsletter = appContext.get(PlatformNewsletterService);
   const staffAccounts = appContext.get(StaffAccountsService);
+  const sellerLifecycle = appContext.get(SellerLifecycleService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -404,10 +406,13 @@ async function main() {
     // FR-52.14 (Module 101) - runSuspensionLiftSweep() rides the same
     // existing tick rather than a second queue/scheduler: both are plain
     // updateMany sweeps with no per-row branching that could fail
-    // independently.
+    // independently. Phase 2 item 16 (founder walkthrough finding) -
+    // SellerLifecycleService's own suspension-lift sweep rides the same
+    // tick for the same reason.
     async () => {
       await staffAccounts.runExpirySweep();
       await staffAccounts.runSuspensionLiftSweep();
+      await sellerLifecycle.runLifecycleSuspensionLiftSweep();
     },
     { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
   );
