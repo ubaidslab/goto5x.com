@@ -10,7 +10,13 @@ verbal summary — this document is the actual pre-launch security record.
 pass have now run to completion, every real finding they surfaced is
 fixed and verified, and both P2 consistency follow-ups they surfaced
 have since been closed too — zero open items remain from this
-thread.** This concludes the security-hardening thread opened by the
+thread.** (Update, 2026-09-16: two new critical CVEs against the pinned
+`next@14.2.35` dependency surfaced after this pass closed and were
+investigated the same day - both confirmed not exploitable in this
+deployment's actual configuration/architecture; see §5. This is a
+separate, later thread from the 5-phase pass below, tracked here rather
+than in a new document.) This concludes the security-hardening thread
+opened by the
 founder's standing request for advanced, "top-class-hacker-resistant"
 security. Eight genuine vulnerabilities/races were found and fixed
 across the full pass: the two P0 launch-blockers (impersonation-token
@@ -487,6 +493,76 @@ checked against the live code for this report (not merely assumed), and
 holds up: the discount/gift-card race guards, the money-rounding
 discipline, the password-reset/email-verification token handling, and
 the full-history secrets scan.
+
+---
+
+## 5. Next.js dependency CVEs (2026-09-16) — investigated, not exploitable in this deployment
+
+CI's `dependency-audit` job (`pnpm audit --audit-level=critical`) started
+failing on every push once two new critical advisories were published
+against `next@14.2.35` (the version this repo is pinned to) - not caused
+by any code change in this repo, but a real gate failure that needed a
+real answer rather than being waved off.
+
+- **GHSA-p293-qw3h-jr36 - "Unauthenticated Remote Code Execution on
+  windows-hosted servers."** Confirmed **not applicable** - this
+  platform has no Windows deployment path anywhere. Both `apps/web/
+  Dockerfile` and `apps/api/Dockerfile` build `FROM node:20-alpine`
+  (Linux/musl), and the entire deployment story in `docs/launch-
+  runbook.md` is a Linux VPS running `docker compose`. No fix needed;
+  the vulnerable code path can never execute in this environment.
+
+- **GHSA-2xp9-vwfh-vxw4 - "Unauthenticated Remote Code Execution in
+  Image Optimization API when AVIF files are used."** Investigated and
+  confirmed **not reachable**, for two independent reasons - either one
+  alone would already close this, and both hold simultaneously:
+  1. **AVIF is never enabled.** `apps/web/next.config.js` has no
+     `images.formats` override at all, so Next's own default applies -
+     confirmed directly from the installed package's source
+     (`node_modules/next@14.2.35/.../shared/lib/image-config.js`,
+     `formats: ["image/webp"]`). AVIF encoding/decoding is opt-in only;
+     this deployment never opts in, so the vulnerable code path is
+     never invoked regardless of what's requested.
+  2. **The Image Optimization API is never fed attacker-controllable
+     input either way.** `next/image` is used in exactly two files in
+     this entire codebase - `components/marketing/ImageStack.tsx` and
+     `components/marketing/DeviceMockup.tsx` - both marketing-page
+     components whose only real-world call sites (`app/page.tsx`) pass
+     hardcoded, build-time-static local paths (`/marketing/dashboard-
+     products.png` etc. - developer-supplied product screenshots, never
+     a remote or user-suppliable URL). Every path that actually serves
+     externally-sourced imagery - product photos, store logos, deal
+     thumbnails, wishlist images, D-Studio previews - deliberately uses
+     a plain `<img>` tag instead, each already carrying its own
+     `eslint-disable @next/next/no-img-element` comment explaining why
+     (e.g. "seller-uploaded external MinIO URL, not a static/local
+     asset" - `components/dashboard/ImagesSection.tsx`, `app/storefront/
+     products/[productId]/product-gallery.tsx`, every storefront
+     template, `app/storefront/templates/dstudio-sections/index.tsx`).
+     This was a deliberate architectural choice made before this CVE
+     existed (keeping untrusted image bytes out of Next's built-in
+     optimizer), not a fix applied in response to it - it just happens
+     to also close this exposure completely.
+
+**No code changes were needed** - the mitigation the patched Next.js
+releases apply (disabling AVIF) was already this deployment's effective
+state by default, and the second, independent barrier (no attacker-
+controllable input ever reaches the optimizer) means even a future
+accidental `images.formats` change enabling AVIF would not by itself
+reopen this specific exposure.
+
+**What remains genuinely open:** `next@14.2.35` itself is still an
+outdated major version with unpatched code for both advisories -
+today's finding is "not currently exploitable given how this app uses
+Next.js," not "the dependency is fine to leave forever." The full
+Next.js 14→15 upgrade (required for the real fix, and requiring React 19
+plus a full regression pass across every page) is tracked as its own
+dedicated future task rather than rushed into the middle of this pass -
+see `docs/SRS.md`'s tracked-items section for the entry and reasoning.
+`pnpm audit --audit-level=critical` in CI will keep failing until that
+upgrade lands; that's expected and correctly reflects real, if currently
+unreachable, risk in the pinned dependency - not a regression to chase
+away with a suppression.
 
 ---
 
