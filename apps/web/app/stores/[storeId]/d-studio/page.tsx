@@ -262,9 +262,19 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
       })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Couldn't load your theme settings."));
     api
-      .get<{ items: Array<{ id: string; title: string; description: string | null; averageRating: string; reviewCount: number; variants?: unknown[]; seoTitle?: string; seoDescription?: string | null }> }>(
-        `/stores/${params.storeId}/products?limit=100`,
-      )
+      .get<{
+        items: Array<{
+          id: string;
+          title: string;
+          description: string | null;
+          averageRating: string;
+          reviewCount: number;
+          variants?: unknown[];
+          media?: PublicProduct["media"];
+          seoTitle?: string;
+          seoDescription?: string | null;
+        }>;
+      }>(`/stores/${params.storeId}/products?limit=100`)
       .then((page) =>
         setProducts(
           page.items.map((p) => ({
@@ -274,7 +284,12 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
             averageRating: p.averageRating,
             reviewCount: p.reviewCount,
             variants: (p.variants ?? []) as PublicProduct["variants"],
-            media: [],
+            // Founder walkthrough finding (Phase 1 item 12) - this was
+            // hardcoded to [], so no D-Studio preview (FeaturedProducts,
+            // ComparisonTable) could ever show a real product image
+            // regardless of what the seller uploaded. products.service.ts's
+            // list() now actually includes media in its response.
+            media: p.media ?? [],
             seoTitle: p.seoTitle ?? p.title,
             seoDescription: p.seoDescription ?? null,
             canonicalUrl: null,

@@ -26,7 +26,25 @@ export class ObjectStorageService {
   constructor(config: ConfigService) {
     const endpoint = config.getOrThrow<string>("MINIO_ENDPOINT");
     this.bucket = config.getOrThrow<string>("MINIO_BUCKET");
-    this.publicBaseUrl = config.get<string>("MEDIA_PUBLIC_BASE_URL") || `${endpoint}/${this.bucket}`;
+    const publicBaseUrl = config.get<string>("MEDIA_PUBLIC_BASE_URL");
+    // Founder walkthrough finding (Phase 1 item 12) - unset MEDIA_PUBLIC_BASE_URL
+    // silently falls back to MINIO_ENDPOINT, which in this deployment topology
+    // (docker-compose.yml's minio service has no Traefik route/public port -
+    // only api/worker can reach it, via the internal Docker DNS name) is never
+    // reachable from a browser. Every stored MediaAsset.url would silently be a
+    // broken link platform-wide - seller-uploaded product images, logos, brand
+    // assets, everything. Failing fast at boot in production (never local dev,
+    // where the MINIO_ENDPOINT/MINIO_BUCKET fallback is the documented,
+    // correct default - see .env.example) turns a silent, hard-to-diagnose
+    // "images don't show" bug into an unmissable deploy-time error instead.
+    if (!publicBaseUrl && config.get<string>("NODE_ENV") === "production") {
+      throw new Error(
+        "MEDIA_PUBLIC_BASE_URL must be set in production - without it, every stored media URL falls back to " +
+          "MINIO_ENDPOINT (the API's internal storage address), which is never reachable from a browser. " +
+          "See docs/launch-runbook.md's MinIO bucket setup step.",
+      );
+    }
+    this.publicBaseUrl = publicBaseUrl || `${endpoint}/${this.bucket}`;
     this.client = new S3Client({
       endpoint,
       region: "us-east-1", // required by the SDK; meaningless for a self-hosted MinIO target

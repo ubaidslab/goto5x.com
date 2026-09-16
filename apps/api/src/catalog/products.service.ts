@@ -230,7 +230,14 @@ export class ProductsService {
       const [items, total] = await Promise.all([
         tx.product.findMany({
           where,
-          include: { variants: true },
+          // Founder walkthrough finding (Phase 1 item 12) - this endpoint's
+          // response never included media at all, so D-Studio's product-
+          // preview panel (the only caller that ever needed an image) had
+          // to hardcode media: [] and could never render a real product
+          // image, regardless of what the seller actually uploaded. Same
+          // include shape StorefrontService already uses for the public
+          // product DTO, so the two stay in sync.
+          include: { variants: true, media: { orderBy: { sortOrder: "asc" }, include: { thumbnailMedia: { select: { id: true, url: true } } } } },
           orderBy: { createdAt: "desc" },
           skip: (page - 1) * limit,
           take: limit,
@@ -244,7 +251,11 @@ export class ProductsService {
 
   async getOne(sellerId: string, storeId: string, productId: string) {
     const product = await this.tenantPrisma.run(sellerId, async (tx) => {
-      const found = await tx.product.findUnique({ where: { id: productId }, include: { variants: true } });
+      // Founder walkthrough finding (Phase 1 item 12) - same media include as list() above, for consistency.
+      const found = await tx.product.findUnique({
+        where: { id: productId },
+        include: { variants: true, media: { orderBy: { sortOrder: "asc" }, include: { thumbnailMedia: { select: { id: true, url: true } } } } },
+      });
       if (!found || found.storeId !== storeId) throw new NotFoundException("Product not found.");
       return found;
     });

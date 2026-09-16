@@ -166,6 +166,42 @@ describe("Media: direct upload to object storage (e2e) - SRS FR-9.2, §14.9", ()
     expect(detach.body.productId).toBeNull();
   });
 
+  /**
+   * Founder walkthrough finding (Phase 1 item 12) - GET /stores/:storeId/
+   * products never included media at all (ProductsService.list()'s Prisma
+   * include only had variants), so the one caller that needed a product
+   * image (D-Studio's preview panel) had to hardcode media: [] and could
+   * never render a real image regardless of what the seller uploaded.
+   */
+  it("a product's attached media is included in the seller's own product list, not just the dedicated media endpoints (Phase 1 item 12)", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("media-in-product-list@example.com", "media-in-product-list-store");
+    const product = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Photographed Product" });
+    const upload = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/media`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", realJpegBytes("photo-bytes"), { filename: "p.jpg", contentType: "image/jpeg" });
+    await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/media/${upload.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ productId: product.body.id });
+
+    const list = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`);
+    const found = list.body.items.find((p: { id: string }) => p.id === product.body.id);
+    expect(found.media).toHaveLength(1);
+    expect(found.media[0].url).toBe(upload.body.url);
+
+    const single = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/products/${product.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(single.body.media).toHaveLength(1);
+    expect(single.body.media[0].url).toBe(upload.body.url);
+  });
+
   it("deleting a media asset removes both the DB row and the underlying object", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("media-delete@example.com", "media-delete-store");
     const upload = await request(app.getHttpServer())

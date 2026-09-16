@@ -232,6 +232,20 @@ unmodified once granted.
       (`docker compose exec minio mc mb local/$MINIO_BUCKET`, or the MinIO
       console at the container's console port) — the app does not
       auto-create it (README's "Secrets" table, `MINIO_BUCKET` row).
+- [ ] **Required in production (founder walkthrough finding, Phase 1 item
+      12):** set `MEDIA_PUBLIC_BASE_URL` to a real, browser-reachable URL
+      (a CDN or a Traefik-routed public hostname pointed at the bucket) -
+      `docker-compose.yml`'s `minio` service has no public port/Traefik
+      route, so `MINIO_ENDPOINT` in production is necessarily the internal
+      Docker DNS name (`http://minio:9000`), which a buyer's browser can
+      never reach. Leaving `MEDIA_PUBLIC_BASE_URL` unset makes every stored
+      image/media URL platform-wide (product photos, logos, brand assets)
+      silently broken - `ObjectStorageService` now refuses to boot in
+      production without it, turning this into an unmissable deploy-time
+      error rather than a "why don't images show" support ticket. Confirm
+      it's actually working, not just set: open a real product image URL
+      from a fresh upload in a plain browser tab (not curl from the VPS
+      itself, which can resolve `minio` internally and would falsely pass).
 - [ ] **Required (Module 24 security fix, v0.28):** the bucket must NOT
       grant anonymous/public read on the `private-exports/` prefix —
       `SellerDataExport`'s products/orders/customers CSVs and summary PDF

@@ -58,6 +58,19 @@ export function CartContents({
             borderRadius: 12,
           }}
         >
+          {/* Founder walkthrough finding (Phase 1 item 12) - the cart never
+              rendered a product image at all (no field to render even
+              existed); imageUrl is snapshotted at add-to-cart time
+              (local-cart.ts), so an item added before this fix simply
+              renders without a thumbnail instead of a broken-image icon. */}
+          {item.imageUrl && (
+            <img
+              // eslint-disable-next-line @next/next/no-img-element -- seller-uploaded external MinIO URL, not a static/local asset
+              src={item.imageUrl}
+              alt=""
+              style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
+            />
+          )}
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600 }}>{item.title}</div>
             <div style={{ fontSize: 13, color: "#6b7280" }}>{item.sku}</div>

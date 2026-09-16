@@ -137,6 +137,7 @@ export default async function StorefrontProductPage({ params }: { params: { prod
             hostname={host}
             productId={product.id}
             productTitle={product.title}
+            productImageUrl={product.media[0]?.url ?? null}
             variants={product.variants}
             currency={store.currency}
             theme={theme}

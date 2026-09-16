@@ -14,6 +14,15 @@ export interface LocalCartItem {
   title: string;
   sku: string;
   unitPrice: number;
+  /**
+   * Founder walkthrough finding (Phase 1 item 12) - snapshotted at add-to-
+   * cart time (same pattern as title/sku/unitPrice above), not re-fetched -
+   * this field never existed before, so the cart could never show a
+   * product image on any theme. Optional/nullable so an item already sitting
+   * in a returning buyer's localStorage from before this field existed just
+   * renders without a thumbnail instead of breaking.
+   */
+  imageUrl?: string | null;
 }
 
 const KEY_PREFIX = "uzeyn_cart_";

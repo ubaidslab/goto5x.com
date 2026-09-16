@@ -22,6 +22,7 @@ export function AddToCartForm({
   hostname,
   productId,
   productTitle,
+  productImageUrl,
   variants,
   currency,
   theme,
@@ -30,6 +31,8 @@ export function AddToCartForm({
   hostname: string;
   productId: string;
   productTitle: string;
+  /** Phase 1 item 12 - snapshotted onto the cart line item; see local-cart.ts's own comment. */
+  productImageUrl: string | null;
   variants: VariantOption[];
   currency: string;
   theme: ResolvedThemeSettings;
@@ -60,6 +63,7 @@ export function AddToCartForm({
       title: productTitle,
       sku: selected.sku,
       unitPrice: Number(selected.price),
+      imageUrl: productImageUrl,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2500);
