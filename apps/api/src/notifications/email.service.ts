@@ -51,6 +51,24 @@ export class EmailService {
     );
   }
 
+  /**
+   * Phase 2 item 15 (founder walkthrough finding) - a seller invited this
+   * email as a supplier and no account existed yet, so one was created in
+   * the background with no password set. Reuses the exact same claim
+   * mechanism as sendPasswordResetEmail/completePasswordReset (the
+   * `/reset-password?token=` page works for any account regardless of
+   * whether it has a prior password) - a distinct subject/body only, so the
+   * recipient understands why they're getting this rather than assuming
+   * it's a "forgot password" click.
+   */
+  async sendSupplierInviteClaimEmail(to: string, storeName: string, claimUrl: string): Promise<void> {
+    await this.send(
+      to,
+      `${storeName} invited you as a supplier on uzeyn.com`,
+      `${storeName} invited you to connect as a supplier on uzeyn.com. Click to set up your supplier account (this link expires soon): ${claimUrl}`,
+    );
+  }
+
   /** FR-52.15 (Module 101, founder batch B14) - "reset-not-reveal": sent only to the staff member's own email, never the admin who triggered it. */
   async sendStaffPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
     await this.send(

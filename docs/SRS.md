@@ -1935,7 +1935,24 @@ audit log — one purpose-built role, not the start of a general framework.
   supplier link directly from their own dashboard (generating an invite a supplier
   accepts), in addition to a supplier independently registering and requesting a
   link. Either path lands in the same place: a `StoreSupplierLink` pending the
-  seller's review.
+  seller's review. **Amended, founder walkthrough (Phase 2 item 15):** the
+  original flow required the invited email to already have a self-registered
+  supplier account, blocking the seller on that supplier's own signup timing.
+  Inviting an email with no existing account now creates the Supplier identity
+  automatically in the background (a `User` row with no password set yet, the
+  same "invited, not yet claimed" shape already used elsewhere) and emails a
+  claim link; the supplier finishes setup by setting a password whenever they
+  get to it, with no functional gap in the meantime — the link is already
+  pending the seller's review exactly as before. Identity is deduped strictly
+  by email: a second, unrelated seller inviting an already-existing (self-
+  registered or invite-created, claimed or not) supplier always resolves to
+  the same Supplier row and only ever adds a new, independent
+  `StoreSupplierLink` — it can never touch another seller's existing link,
+  approval state, or that supplier's listings. The supplier
+  self-registration/portal-login path (FR-3.1) is unchanged, still available
+  for a supplier who wants to sign up directly and still how any supplier
+  manages their listings across every connected store once they have a
+  password set.
 - FR-2.7: Listing review/approval — every listing a linked supplier submits is
   queued for the seller's explicit approval before it can appear in that seller's
   store; no auto-publish path exists.

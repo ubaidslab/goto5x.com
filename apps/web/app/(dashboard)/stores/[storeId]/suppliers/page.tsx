@@ -83,8 +83,10 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
   const [reviews, setReviews] = useState<ListingReview[] | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [email, setEmail] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [decidingReview, setDecidingReview] = useState<string | null>(null);
   const [decidingLinkId, setDecidingLinkId] = useState<string | null>(null);
 
@@ -135,10 +137,20 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
   async function invite(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInviteMessage(null);
     setInviting(true);
     try {
-      await api.post(`/stores/${params.storeId}/supplier-links`, { supplierEmail: email });
+      const link = await api.post<{ isNewSupplierAccount: boolean }>(`/stores/${params.storeId}/supplier-links`, {
+        supplierEmail: email,
+        supplierBusinessName: businessName || undefined,
+      });
+      setInviteMessage(
+        link.isNewSupplierAccount
+          ? "Invited - we emailed them to set up their supplier account."
+          : "Connected to their existing supplier account, pending your approval below.",
+      );
       setEmail("");
+      setBusinessName("");
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't invite that supplier.");
@@ -194,15 +206,24 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
       )}
 
       {error && <Alert tone="danger">{error}</Alert>}
+      {inviteMessage && <Alert tone="success">{inviteMessage}</Alert>}
 
       <div className="max-w-2xl space-y-6">
         <Card>
-          <CardHeader title="Invite a supplier" description="Enter the email address they used to sign up as a supplier." />
+          <CardHeader
+            title="Invite a supplier"
+            description="Enter their email - if they don't have an account yet, we'll create one and email them to set it up. No need to wait on them to sign up first."
+          />
           <CardBody>
             <form onSubmit={invite} className="flex items-end gap-2">
               <div className="flex-1">
                 <Field label="Supplier email">
                   <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </Field>
+              </div>
+              <div className="flex-1">
+                <Field label="Business name (if new)">
+                  <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Only needed if they're new" />
                 </Field>
               </div>
               <Button type="submit" loading={inviting}>

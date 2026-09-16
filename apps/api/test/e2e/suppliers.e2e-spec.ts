@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { authenticator } from "otplib";
 import request from "supertest";
+import { EmailService } from "../../src/notifications/email.service";
 import { SupplierListingsService } from "../../src/suppliers/supplier-listings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
@@ -133,6 +134,130 @@ describe("Suppliers & Printify Adapter (e2e) - SRS §5.3/§5.4, §14.3/§14.4", 
       .set("Authorization", `Bearer ${token}`);
     expect(approve.status).toBe(200);
     expect(approve.body.status).toBe("active");
+  });
+
+  describe("Founder walkthrough finding (Phase 2 item 15) - a seller invite never waits on supplier self-registration", () => {
+    it("inviting an email with no existing account creates the supplier identity automatically and emails a claim link", async () => {
+      const claimSpy = jest.spyOn(app.get(EmailService), "sendSupplierInviteClaimEmail");
+      const { token, storeId } = await signupLoginAndCreateStore("autocreate-seller@example.com", "autocreate-seller-store");
+
+      const invite = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/supplier-links`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ supplierEmail: "never-registered-supplier@example.com", supplierBusinessName: "Fresh Supplier Co" });
+      expect(invite.status).toBe(201);
+      expect(invite.body.status).toBe("pending_seller_review");
+      expect(invite.body.invitedBy).toBe("seller");
+      expect(invite.body.isNewSupplierAccount).toBe(true);
+
+      // The identity was created in the background - no self-registration
+      // step was ever hit for this email.
+      const created = await superuser.user.findUniqueOrThrow({
+        where: { email: "never-registered-supplier@example.com" },
+        include: { supplier: true },
+      });
+      expect(created.passwordHash).toBeNull();
+      expect(created.supplier?.businessName).toBe("Fresh Supplier Co");
+      expect(created.passwordResetTokenHash).not.toBeNull();
+
+      expect(claimSpy).toHaveBeenCalledTimes(1);
+      const [claimTo, claimStoreName, claimUrl] = claimSpy.mock.calls[0];
+      expect(claimTo).toBe("never-registered-supplier@example.com");
+      expect(claimStoreName).toBe("Store for autocreate-seller@example.com");
+
+      // The claim link reuses the real password-reset completion endpoint -
+      // the invited supplier can set a password and log in for real, with
+      // zero prior self-registration step.
+      const token1 = new URL(claimUrl).searchParams.get("token")!;
+      const complete = await request(app.getHttpServer())
+        .post("/auth/password-reset/complete")
+        .send({ token: token1, newPassword: "supplier-claimed-password-1" });
+      expect(complete.status).toBe(200);
+
+      const login = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ email: "never-registered-supplier@example.com", password: "supplier-claimed-password-1" });
+      expect(login.status).toBe(200);
+      const supplierLinks = await request(app.getHttpServer())
+        .get("/supplier/store-links")
+        .set("Authorization", `Bearer ${login.body.accessToken}`);
+      expect(supplierLinks.body).toHaveLength(1);
+      expect(supplierLinks.body[0].storeId).toBe(storeId);
+    });
+
+    it("inviting an email with no business name and no existing account is rejected with a clear error", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("noname-seller@example.com", "noname-seller-store");
+      const invite = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/supplier-links`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ supplierEmail: "noname-supplier@example.com" });
+      expect(invite.status).toBe(400);
+    });
+
+    it(
+      "a second seller inviting an already-invited (still unclaimed) supplier reuses the same identity - " +
+        "the first seller's working link and listings are completely undisturbed",
+      async () => {
+        const sellerA = await signupLoginAndCreateStore("dedupe-seller-a@example.com", "dedupe-seller-a-store");
+        const inviteA = await request(app.getHttpServer())
+          .post(`/stores/${sellerA.storeId}/supplier-links`)
+          .set("Authorization", `Bearer ${sellerA.token}`)
+          .send({ supplierEmail: "shared-supplier@example.com", supplierBusinessName: "Shared Supplier Co" });
+        expect(inviteA.body.isNewSupplierAccount).toBe(true);
+        await request(app.getHttpServer())
+          .patch(`/stores/${sellerA.storeId}/supplier-links/${inviteA.body.id}/approve`)
+          .set("Authorization", `Bearer ${sellerA.token}`);
+        const { listing } = await seedSupplierListing("shared-supplier@example.com");
+
+        const beforeB = await request(app.getHttpServer())
+          .get(`/stores/${sellerA.storeId}/supplier-links`)
+          .set("Authorization", `Bearer ${sellerA.token}`);
+        expect(beforeB.body).toHaveLength(1);
+        expect(beforeB.body[0].status).toBe("active");
+
+        // A second, unrelated seller invites the SAME still-unclaimed email.
+        const sellerB = await signupLoginAndCreateStore("dedupe-seller-b@example.com", "dedupe-seller-b-store");
+        const inviteB = await request(app.getHttpServer())
+          .post(`/stores/${sellerB.storeId}/supplier-links`)
+          .set("Authorization", `Bearer ${sellerB.token}`)
+          .send({ supplierEmail: "shared-supplier@example.com", supplierBusinessName: "Ignored - account already exists" });
+        expect(inviteB.status).toBe(201);
+        expect(inviteB.body.isNewSupplierAccount).toBe(false);
+        expect(inviteB.body.supplierId).toBe(inviteA.body.supplierId);
+
+        // Exactly one Supplier/User row exists for this email - deduped by identity.
+        const supplierCount = await superuser.supplier.count({ where: { businessName: "Shared Supplier Co" } });
+        expect(supplierCount).toBe(1);
+        const userCount = await superuser.user.count({ where: { email: "shared-supplier@example.com" } });
+        expect(userCount).toBe(1);
+
+        // Seller A's link, its approval, and the supplier's listing are all untouched.
+        const afterB = await request(app.getHttpServer())
+          .get(`/stores/${sellerA.storeId}/supplier-links`)
+          .set("Authorization", `Bearer ${sellerA.token}`);
+        expect(afterB.body).toHaveLength(1);
+        expect(afterB.body[0].id).toBe(inviteA.body.id);
+        expect(afterB.body[0].status).toBe("active");
+        const listingStillThere = await superuser.supplierListing.findUniqueOrThrow({ where: { id: listing.id } });
+        expect(listingStillThere.supplierId).toBe(inviteA.body.supplierId);
+
+        // Seller B's own invite is independently pending review, scoped only to seller B's store.
+        const bLinks = await request(app.getHttpServer())
+          .get(`/stores/${sellerB.storeId}/supplier-links`)
+          .set("Authorization", `Bearer ${sellerB.token}`);
+        expect(bLinks.body).toHaveLength(1);
+        expect(bLinks.body[0].status).toBe("pending_seller_review");
+      },
+    );
+
+    it("inviting an email that belongs to an existing non-supplier account is rejected as a conflict", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("conflict-seller@example.com", "conflict-seller-store");
+      const invite = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/supplier-links`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ supplierEmail: "conflict-seller@example.com" });
+      expect(invite.status).toBe(409);
+    });
   });
 
   it("a supplier can request a link to a store by slug; it lands pending_seller_review same as an invite (FR-2.6/FR-3.1)", async () => {

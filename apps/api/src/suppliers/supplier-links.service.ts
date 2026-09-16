@@ -1,7 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
+import { generateToken } from "../auth/token.util";
 import { EventsService } from "../events/events.service";
+import { EmailService } from "../notifications/email.service";
+import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
+import { SettingsService } from "../settings-registry/settings.service";
 import { InviteSupplierDto } from "./dto/create-store-supplier-link.dto";
 
 /**
@@ -16,29 +21,76 @@ import { InviteSupplierDto } from "./dto/create-store-supplier-link.dto";
 export class SupplierLinksService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly prismaAdmin: PrismaAdminService,
     private readonly events: EventsService,
+    private readonly email: EmailService,
+    private readonly settings: SettingsService,
+    private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Founder walkthrough finding (Phase 2 item 15): a seller inviting a
+   * supplier by email no longer waits on that supplier having already
+   * self-registered. If no account exists for the email yet, one is
+   * created here in the background (User with `passwordHash: null` - the
+   * same "invited, not yet claimed" shape AuthService.completePasswordReset()
+   * already handles for any User row, regardless of whether it ever had a
+   * password) and a claim-link email is sent reusing that exact mechanism.
+   * Identity is deduped purely by email (the `users.email` unique
+   * constraint) - a second seller inviting an already-existing supplier
+   * (whether self-registered or invite-created) always resolves to the
+   * SAME Supplier row and only ever adds a new, independent
+   * StoreSupplierLink; it can never touch another store's existing link or
+   * that supplier's listings. The supplier self-registration/portal-login
+   * flow itself (AuthService.signup with role "supplier",
+   * SupplierPortalService) is untouched - still there for a supplier who
+   * wants to sign up directly, and still how an invited supplier manages
+   * their listings once they've claimed their account.
+   */
   async invite(sellerId: string, storeId: string, dto: InviteSupplierDto) {
-    const link = await this.tenantPrisma.run(sellerId, async (tx) => {
+    const result = await this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
 
-      const supplierUser = await tx.user.findUnique({
+      let supplierUser = await tx.user.findUnique({
         where: { email: dto.supplierEmail },
         include: { supplier: true },
       });
-      if (!supplierUser?.supplier) {
-        throw new BadRequestException("No supplier account exists for that email.");
+
+      if (supplierUser && !supplierUser.supplier) {
+        throw new ConflictException("An account already exists for that email and isn't a supplier account.");
+      }
+
+      let isNewSupplierAccount = false;
+      if (!supplierUser) {
+        if (!dto.supplierBusinessName) {
+          throw new BadRequestException("A business name is required to invite a new supplier.");
+        }
+        supplierUser = await tx.user.create({
+          data: {
+            email: dto.supplierEmail,
+            roleFlags: ["supplier"],
+            supplier: { create: { businessName: dto.supplierBusinessName } },
+          },
+          include: { supplier: true },
+        });
+        isNewSupplierAccount = true;
       }
 
       try {
         // FR-2.6 - "either path lands in the same place: a StoreSupplierLink
         // pending the seller's review," even though the seller is the one
         // initiating - the seller still gives the final go-ahead.
-        return await tx.storeSupplierLink.create({
-          data: { storeId, supplierId: supplierUser.supplier.id, invitedBy: "seller" },
+        const link = await tx.storeSupplierLink.create({
+          data: { storeId, supplierId: supplierUser.supplier!.id, invitedBy: "seller" },
         });
+        return {
+          link,
+          isNewSupplierAccount,
+          supplierUserId: supplierUser.id,
+          supplierEmail: supplierUser.email,
+          storeName: store.name,
+        };
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
           throw new ConflictException("This supplier already has a link to this store.");
@@ -47,15 +99,30 @@ export class SupplierLinksService {
       }
     });
 
+    if (result.isNewSupplierAccount) {
+      const ttlMinutes = await this.settings.resolve<number>("auth.password_reset_token_ttl_minutes");
+      const { token, tokenHash } = generateToken();
+      await this.prismaAdmin.user.update({
+        where: { id: result.supplierUserId },
+        data: {
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+        },
+      });
+      const claimUrl = `${this.config.getOrThrow<string>("APP_BASE_URL")}/reset-password?token=${token}`;
+      await this.email.sendSupplierInviteClaimEmail(result.supplierEmail, result.storeName, claimUrl);
+    }
+
     await this.events.emit({
       eventType: "store_supplier_link.created",
       actorType: "seller",
       actorId: sellerId,
       storeId,
       entityType: "store_supplier_link",
-      entityId: link.id,
+      entityId: result.link.id,
+      metadata: { isNewSupplierAccount: result.isNewSupplierAccount },
     });
-    return link;
+    return { ...result.link, isNewSupplierAccount: result.isNewSupplierAccount };
   }
 
   async list(sellerId: string, storeId: string) {
