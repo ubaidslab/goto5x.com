@@ -55,13 +55,33 @@ function StoreSwitcher({ storeId, storeName, stores }: { storeId: string; storeN
   );
 }
 
-function NavLinks({ storeId, planName, onNavigate }: { storeId: string; planName?: string; onNavigate?: () => void }) {
+function NavLinks({
+  storeId,
+  planName,
+  chatEnabled,
+  onNavigate,
+}: {
+  storeId: string;
+  planName?: string;
+  /**
+   * Founder walkthrough finding (Phase 1 item 11) - "Live chat" is the one
+   * top-level nav item gating an entirely tier-unavailable feature with no
+   * locked-preview value (buyer_chat.enabled is RISE+FLY-only, and the
+   * storefront widget it depends on is gated identically - a lower-tier
+   * seller's inbox could only ever show a misleading permanent empty
+   * state, never a real preview). Undefined while still loading and false
+   * both hide it - fail closed, never flash it in only to remove it.
+   */
+  chatEnabled?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
+  const visibleNavItems = navItems.filter((item) => item.label !== "Live chat" || chatEnabled === true);
 
   return (
     <nav className="mt-2 flex flex-1 flex-col gap-4">
       {GROUP_ORDER.map((group) => {
-        const items = navItems.filter((item) => item.group === group);
+        const items = visibleNavItems.filter((item) => item.group === group);
         if (items.length === 0) return null;
         return (
           <div key={group} className={group === "admin" ? "border-t border-border pt-4" : undefined}>
@@ -105,6 +125,7 @@ export function Sidebar({
   storeName,
   stores = [],
   planName,
+  chatEnabled,
 }: {
   storeId: string;
   storeName?: string;
@@ -112,6 +133,8 @@ export function Sidebar({
   stores?: StoreSummary[];
   /** Shown as small text under the Settings link (Part B item 7 of the UI/UX mandate). */
   planName?: string;
+  /** See NavLinks' own doc comment (Phase 1 item 11). */
+  chatEnabled?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -148,7 +171,7 @@ export function Sidebar({
               </DialogPrimitive.Close>
             </div>
             <StoreSwitcher storeId={storeId} storeName={storeName} stores={stores} />
-            <NavLinks storeId={storeId} planName={planName} onNavigate={() => setMobileOpen(false)} />
+            <NavLinks storeId={storeId} planName={planName} chatEnabled={chatEnabled} onNavigate={() => setMobileOpen(false)} />
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
@@ -157,7 +180,7 @@ export function Sidebar({
       <aside className="hidden h-screen w-64 flex-shrink-0 flex-col overflow-y-auto bg-surface px-3 py-5 md:flex">
         <Wordmark />
         <StoreSwitcher storeId={storeId} storeName={storeName} stores={stores} />
-        <NavLinks storeId={storeId} planName={planName} />
+        <NavLinks storeId={storeId} planName={planName} chatEnabled={chatEnabled} />
       </aside>
     </>
   );

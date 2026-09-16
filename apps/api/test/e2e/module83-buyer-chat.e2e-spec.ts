@@ -67,6 +67,30 @@ describe("Live chat widget (e2e) - FR-66.3 (Module 83)", () => {
     expect(accepted.body.threadId).toBeTruthy();
   });
 
+  /**
+   * Founder walkthrough finding (Phase 1 item 11) - the seller dashboard's
+   * "Live chat" nav item used to show unconditionally even on a GO-tier
+   * store, where a buyer could never reach the widget at all (proven by the
+   * test above), so the seller's inbox page could only ever show a
+   * misleading "no conversations yet" empty state. Proves the field the
+   * nav/page now gates on (subscriptions.service.ts's getSubscription())
+   * mirrors the exact same buyer_chat.enabled resolution the storefront
+   * gate above enforces - not a separate, potentially-drifting frontend
+   * tierOrder comparison.
+   */
+  it("GET /sellers/me/subscription's chatEnabled mirrors the same buyer_chat.enabled gate the storefront enforces", async () => {
+    const { token, sellerId } = await signupLoginAndCreateStore("chat-subscription-flag@example.com", "chat-subscription-flag-store");
+
+    const goResponse = await request(app.getHttpServer()).get("/sellers/me/subscription").set("Authorization", `Bearer ${token}`);
+    expect(goResponse.status).toBe(200);
+    expect(goResponse.body.chatEnabled).toBe(false);
+
+    await upgradeToRise(sellerId);
+    const riseResponse = await request(app.getHttpServer()).get("/sellers/me/subscription").set("Authorization", `Bearer ${token}`);
+    expect(riseResponse.status).toBe(200);
+    expect(riseResponse.body.chatEnabled).toBe(true);
+  });
+
   it("a buyer can poll and reply using only the accessToken, and the seller's reply shows up", async () => {
     const { token: sellerToken, storeId, hostname, sellerId } = await signupLoginAndCreateStore("chat-rise@example.com", "chat-rise-store");
     await upgradeToRise(sellerId);

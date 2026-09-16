@@ -27,6 +27,7 @@ export default function StoreDashboardLayout({
   const [stores, setStores] = useState<Store[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState("default");
   const [planName, setPlanName] = useState<string | undefined>(undefined);
+  const [chatEnabled, setChatEnabled] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
     api
@@ -61,10 +62,19 @@ export default function StoreDashboardLayout({
   // UI/UX Design Phase (Part B item 7) - "plan name shown as small text
   // under Settings." Seller-scoped, not store-scoped (Module 61), same
   // endpoint the Billing page already reads.
+  // Founder walkthrough finding (Phase 1 item 11) - chatEnabled gates the
+  // "Live chat" nav item below (server-resolved buyer_chat.enabled, see
+  // SubscriptionsService.getSubscription()'s own comment) so a GO/RUN
+  // seller - who can never receive a thread, since the storefront widget
+  // itself is gated the same way - never sees a nav item that can only
+  // ever lead to a misleading permanent empty state.
   useEffect(() => {
     api
-      .get<{ plan: { name: string } }>("/sellers/me/subscription")
-      .then((sub) => setPlanName(sub.plan?.name))
+      .get<{ plan: { name: string }; chatEnabled: boolean }>("/sellers/me/subscription")
+      .then((sub) => {
+        setPlanName(sub.plan?.name);
+        setChatEnabled(sub.chatEnabled);
+      })
       .catch(() => {});
   }, []);
 
@@ -84,7 +94,7 @@ export default function StoreDashboardLayout({
           </div>
         )}
         <div className="app-shell-surface flex flex-1 flex-col md:flex-row" data-dashboard-theme={dashboardTheme}>
-          <Sidebar storeId={params.storeId} storeName={store?.name} stores={stores} planName={planName} />
+          <Sidebar storeId={params.storeId} storeName={store?.name} stores={stores} planName={planName} chatEnabled={chatEnabled} />
           <main className="flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8">
             {/* Founder batch A4 - was `mx-auto max-w-5xl`, a hard 1024px cap
                 that left ~160px of dead space on a 1440px viewport (measured

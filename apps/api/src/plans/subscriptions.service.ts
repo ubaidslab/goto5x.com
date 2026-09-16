@@ -181,7 +181,18 @@ export class SubscriptionsService {
       include: { plan: true, pendingPlan: true },
     });
     if (!subscription) throw new NotFoundException("No subscription found for this seller.");
-    return subscription;
+    // Founder walkthrough finding (Phase 1 item 11) - the seller dashboard
+    // nav showed "Live chat" unconditionally even though buyer_chat.enabled
+    // is RISE+FLY-only and the widget the feature depends on is server-
+    // gated the same way on the storefront (storefront.service.ts's
+    // PublicStore.chatEnabled) - a GO/RUN seller could never receive a
+    // thread, so their inbox page could only ever show a misleading "no
+    // conversations yet" empty state forever, with no lock/upgrade CTA
+    // anywhere. Resolved the same way as every other precedence-aware gate
+    // in this codebase (not a raw tierOrder comparison) so a per-seller
+    // Settings Registry override still works correctly in either direction.
+    const chatEnabled = await this.settings.resolve<boolean>("buyer_chat.enabled", { sellerId, planId: subscription.planId });
+    return { ...subscription, chatEnabled };
   }
 
   /**

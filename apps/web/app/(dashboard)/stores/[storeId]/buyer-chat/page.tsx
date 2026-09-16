@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { toast } from "@/lib/use-toast";
 import { api } from "@/lib/dashboard-api";
 
@@ -32,12 +34,27 @@ export default function BuyerChatPage({ params }: { params: { storeId: string } 
   const [status, setStatus] = useState<"open" | "closed" | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // Founder walkthrough finding (Phase 1 item 11) - the nav item hides
+  // itself for a seller without this feature (Sidebar.tsx), but a direct/
+  // bookmarked visit could still land here - this closes the same gap for
+  // that path, matching the locked-preview pattern every other tier-gated
+  // page already uses (e.g. payments/page.tsx's Prepaid card) instead of
+  // rendering the misleading "no conversations yet" empty state, which
+  // would never be able to say anything else on a plan with no widget.
+  const [chatEnabled, setChatEnabled] = useState<boolean | null>(null);
 
   function loadThreads() {
     api.get<ChatThreadSummary[]>(`/stores/${params.storeId}/buyer-chat`).then(setThreads);
   }
 
   useEffect(loadThreads, [params.storeId]);
+
+  useEffect(() => {
+    api
+      .get<{ chatEnabled: boolean }>("/sellers/me/subscription")
+      .then((sub) => setChatEnabled(sub.chatEnabled))
+      .catch(() => setChatEnabled(true));
+  }, []);
 
   function openThread(id: string) {
     setSelectedId(id);
@@ -72,12 +89,25 @@ export default function BuyerChatPage({ params }: { params: { storeId: string } 
     loadThreads();
   }
 
-  if (threads === null) return <PageSpinner />;
+  if (threads === null || chatEnabled === null) return <PageSpinner />;
 
   return (
     <div>
       <PageHeader title="Live chat" description="Conversations buyers have started from your storefront's chat widget." />
-      {threads.length === 0 ? (
+      {!chatEnabled ? (
+        <UpgradeLockedCard
+          requiredTier="RISE"
+          title="Live chat is a RISE+ feature"
+          description="Let buyers message you straight from your storefront and reply from one inbox here, once you're on RISE or FLY."
+          action={
+            <Link href={`/stores/${params.storeId}/billing`}>
+              <Button size="sm" variant="secondary">
+                View plans
+              </Button>
+            </Link>
+          }
+        />
+      ) : threads.length === 0 ? (
         <EmptyState
           title="No chat conversations yet"
           description="When a buyer starts a chat from your storefront, it will show up here."
