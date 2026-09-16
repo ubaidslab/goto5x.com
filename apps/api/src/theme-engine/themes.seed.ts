@@ -246,6 +246,49 @@ export async function seedTemplatesBrandingSettings(prisma: PrismaClient) {
   }
 }
 
+/**
+ * Founder walkthrough finding (Phase 2 item 13) - "DEFAULT VISUAL QUALITY":
+ * a brand-new store previously got whichever free theme sorted first
+ * (Editorial, sortOrder 0) completely silently - no picker, no choice, and
+ * the seed comment above candidly calls the whole catalog's current visual
+ * design "bare-functional... for this pass." Per the founder's explicit
+ * resolution: the tier ladder/catalog/Pack all stay fully intact (nothing
+ * else in this file changes) - only the FIRST-TOUCH default is replaced
+ * with an explicit choice between exactly two already-existing, genuinely
+ * distinct-looking templates, free on every tier: Atelier (monochrome,
+ * minimal, restrained single accent - already this project's own "Light"/
+ * apple.com-discipline aesthetic) as Light, and Studio (dark slate
+ * background, bright text - already a real dark palette, not a new design)
+ * as Dark. Admin-configurable via Settings Registry (never hardcoded IDs
+ * in application code) so a future re-pick of which two templates serve
+ * this role is a data change, not a redeploy - same discipline as every
+ * other tunable business choice in this codebase.
+ */
+export async function seedDStudioFirstTouchSettings(prisma: PrismaClient) {
+  await prisma.settingsDefinition.upsert({
+    where: { key: "dstudio.first_touch_light_theme_id" },
+    create: {
+      key: "dstudio.first_touch_light_theme_id",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "44444444-4444-4444-8444-444444444444", // Atelier
+      description: "The 'Light' option in the two-choice first-touch starter picker a brand-new store sees (Phase 2 item 13) - free on every tier regardless of this theme's own tier.",
+    },
+    update: {},
+  });
+  await prisma.settingsDefinition.upsert({
+    where: { key: "dstudio.first_touch_dark_theme_id" },
+    create: {
+      key: "dstudio.first_touch_dark_theme_id",
+      valueType: "string",
+      allowedScopes: ["global"],
+      defaultValue: "22222222-2222-4222-8222-222222222222", // Studio
+      description: "The 'Dark' option in the two-choice first-touch starter picker a brand-new store sees (Phase 2 item 13) - free on every tier regardless of this theme's own tier.",
+    },
+    update: {},
+  });
+}
+
 if (require.main === module) {
   const prisma = new PrismaClient();
   Promise.resolve()

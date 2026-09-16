@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Reveal } from "@/components/motion/Reveal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { THEME_PRESETS } from "@/lib/theme-presets";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "completed" | "cancelled" | "disputed";
@@ -80,6 +81,96 @@ function periodChangeHint(current: number, prior: number): string {
   return `${change > 0 ? "+" : ""}${change}% vs prior 30d`;
 }
 
+interface ThemeOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Founder walkthrough finding (Phase 2 item 13) - "DEFAULT VISUAL QUALITY":
+ * replaces the old theme step's "Choose a theme (leaves to the old bare
+ * /customizer) / Keep this theme (blind accept)" pair with the real,
+ * simplified choice the founder asked for - exactly two premium starting
+ * points, Light and Dark, free on every tier. Both option ids and their
+ * preset colors are server-resolved (StoreThemeSettingsService.getForStore(),
+ * lib/theme-presets.ts's THEME_PRESETS), never hardcoded here, so an admin
+ * re-pick of which two built-in templates serve this role needs no
+ * frontend change. The full 22-section/14-preset catalog stays fully
+ * discoverable afterward inside D-Studio - this is only the first-touch
+ * starting point.
+ */
+function ThemeStartPicker({ storeId, onPicked }: { storeId: string; onPicked: () => void }) {
+  const [themeSettings, setThemeSettings] = useState<{ themeId: string; lightId: string; darkId: string } | null>(null);
+  const [themes, setThemes] = useState<ThemeOption[] | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<{ themeId: string; firstTouchLightThemeId: string; firstTouchDarkThemeId: string }>(`/stores/${storeId}/theme-settings`)
+      .then((res) => setThemeSettings({ themeId: res.themeId, lightId: res.firstTouchLightThemeId, darkId: res.firstTouchDarkThemeId }))
+      .catch(() => setThemeSettings(null));
+    api
+      .get<ThemeOption[]>("/themes")
+      .then(setThemes)
+      .catch(() => setThemes([]));
+  }, [storeId]);
+
+  async function pick(themeId: string) {
+    setPicking(themeId);
+    try {
+      await api.patch(`/stores/${storeId}/theme-settings`, { themeId });
+      onPicked();
+    } finally {
+      setPicking(null);
+    }
+  }
+
+  if (!themeSettings || !themes) {
+    return <PageSpinner />;
+  }
+
+  const options: { id: string; label: string }[] = [
+    { id: themeSettings.lightId, label: "Light" },
+    { id: themeSettings.darkId, label: "Dark" },
+  ];
+
+  return (
+    <div className="flex gap-3">
+      {options.map((opt) => {
+        const theme = themes.find((t) => t.id === opt.id);
+        const preset = theme ? THEME_PRESETS[theme.name] : undefined;
+        const isCurrent = themeSettings.themeId === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => pick(opt.id)}
+            disabled={picking !== null}
+            className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-smooth-fast disabled:opacity-60 ${
+              isCurrent ? "border-accent ring-1 ring-accent" : "border-border hover:border-border-strong"
+            }`}
+          >
+            <span
+              className="flex h-12 w-20 items-center justify-center rounded-md text-sm font-display font-semibold"
+              style={{ background: preset?.colors.background ?? "#fff", color: preset?.colors.primary ?? "#000" }}
+            >
+              Aa
+            </span>
+            <span className="flex items-center gap-1 text-xs font-medium text-ink">
+              {picking === opt.id ? "Saving..." : opt.label}
+              {isCurrent && (
+                <Badge tone="success" className="text-[10px]">
+                  Current
+                </Badge>
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * Module 16 (SRS §5.20/FR-20.1) - the guided post-signup checklist. Steps
  * are read from real store state wherever possible (a seller who already
@@ -117,20 +208,9 @@ function OnboardingWizard({
   }> = [
     {
       key: "theme",
-      label: "Pick a theme",
-      description: "Choose how your storefront looks, or keep the default.",
-      action: progress.theme ? null : (
-        <div className="flex gap-2">
-          <Link href={`/stores/${storeId}/customizer`}>
-            <Button size="sm" variant="secondary">
-              Choose a theme
-            </Button>
-          </Link>
-          <Button size="sm" variant="ghost" loading={acking === "theme"} onClick={() => ack("theme")}>
-            Keep this theme
-          </Button>
-        </div>
-      ),
+      label: "Pick a look",
+      description: "Start Light or Dark - the full design catalog stays open inside Design Studio.",
+      action: progress.theme ? null : <ThemeStartPicker storeId={storeId} onPicked={onAcknowledged} />,
     },
     {
       key: "logo",

@@ -1903,6 +1903,23 @@ audit log — one purpose-built role, not the start of a general framework.
   e2e proving byte-identical order totals/commission/wallet-delta/P&L across
   every template) — full detail in docs/architecture.md's Template Package
   Spec section, tested in §14.1's checklist below.
+- FR-1.11 (new, founder walkthrough finding, Phase 2 item 13): **First-touch
+  default template quality.** A brand-new store's auto-assigned default
+  theme (previously always Editorial, hardcoded via lowest-`sortOrder`) is
+  replaced by a two-choice **Light/Dark starter picker** shown in the Home
+  page onboarding wizard's "Pick a look" step: Light resolves to Atelier
+  (free tier), Dark resolves to Studio (normally premium tier). Both IDs are
+  admin-configurable via Settings Registry (`dstudio.first_touch_light_theme_id`/
+  `dstudio.first_touch_dark_theme_id`), never hardcoded client-side. Picking
+  the Dark/Studio option is free on **every plan tier**, including GO,
+  scoped narrowly to a store's very first-ever theme choice
+  (`!store.onboardingThemeAckAt`) — re-selecting Studio afterward, or on any
+  other store, still requires the real `theme.premium_tier_enabled` plan
+  gate (FR-1.1's premium-tier ladder stays fully intact; this is a one-time
+  first-impression grant, not a pricing change). Rationale: a seller's first
+  storefront view otherwise defaulted to the same template every time,
+  undermining the "premium, distinct templates" claim of FR-1.1 at the exact
+  moment a new seller forms their first impression of the product.
 
 ### 5.2 Seller Admin Dashboard
 - FR-2.1: Product/catalog CRUD, variants, inventory tracking.

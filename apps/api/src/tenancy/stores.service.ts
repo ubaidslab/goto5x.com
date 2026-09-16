@@ -71,9 +71,18 @@ export class StoresService {
       // assigned yet" as a state. `themes` has no RLS (global catalog), so
       // this read is unaffected by the seller-scoped session this
       // transaction is already running under.
+      //
+      // Founder walkthrough finding (Phase 2 item 13) - this used to be a
+      // blind "whichever free theme sorts first" query (always silently
+      // resolved to Editorial, with zero seller input). Now resolves the
+      // admin-configurable "Light" first-touch starter (Atelier by default,
+      // see themes.seed.ts's seedDStudioFirstTouchSettings()) instead - the
+      // Home page's onboarding wizard immediately offers the Light/Dark
+      // choice explicitly, so this is just the synchronous starting point
+      // every store needs the instant it exists, not the seller's only say.
+      const lightThemeId = await this.settings.resolve<string>("dstudio.first_touch_light_theme_id");
       const defaultTheme = await tx.theme.findFirst({
-        where: { tier: "free", isActive: true },
-        orderBy: { sortOrder: "asc" },
+        where: { id: lightThemeId, isActive: true },
       });
       if (!defaultTheme) {
         // Deliberately fails loudly rather than silently creating a store
@@ -82,7 +91,7 @@ export class StoresService {
         // condition, same discipline as a missing Settings Registry key
         // throwing instead of guessing a value.
         throw new InternalServerErrorException(
-          "No active free theme is seeded - run src/theme-engine/themes.seed.ts before creating stores.",
+          "No active first-touch starter theme is seeded - run src/theme-engine/themes.seed.ts before creating stores.",
         );
       }
       await tx.storeThemeSettings.create({

@@ -38,7 +38,7 @@ import { seedStaffSettings } from "../staff/staff.seed";
 import { seedStoreHealthSettings } from "../store-health/store-health.seed";
 import { seedStoresSettings } from "../tenancy/stores.seed";
 import { seedSupplierSettings } from "../suppliers/suppliers.seed";
-import { seedBuiltInThemes, seedModule4Settings, seedTemplatesBrandingSettings } from "../theme-engine/themes.seed";
+import { seedBuiltInThemes, seedDStudioFirstTouchSettings, seedModule4Settings, seedTemplatesBrandingSettings } from "../theme-engine/themes.seed";
 import { seedSellerAgreementV1, seedTrustSafetySettings } from "../trust-safety/trust-safety.seed";
 import { seedVerificationSettings } from "../verification/verification.seed";
 
@@ -96,6 +96,7 @@ export async function seedDefaults(prisma: PrismaClient): Promise<void> {
   await seedWhatsAppMessagingSettings(prisma);
   await seedDefaultCategories(prisma);
   await seedBuiltInThemes(prisma);
+  await seedDStudioFirstTouchSettings(prisma);
   await seedSellerAgreementV1(prisma);
   await seedPlansData(prisma);
   await seedTemplatesBrandingSettings(prisma);

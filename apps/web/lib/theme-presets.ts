@@ -120,7 +120,12 @@ export interface ResolvedThemeSettings {
   faqItems: FaqItem[];
 }
 
-const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSection[] }> = {
+// Exported for the Home page onboarding wizard's Light/Dark first-touch
+// picker (Phase 2 item 13) - it needs each option's real preset colors for
+// a swatch preview, driven by whichever theme name the server currently
+// resolves for each slot, never a hardcoded assumption of which theme is
+// "Light" vs "Dark".
+export const THEME_PRESETS: Record<string, { colors: ThemeColors; sections: ThemeSection[] }> = {
   // Editorial - serif display type, generous whitespace, lifestyle
   // photography treatment. Default free template (sortOrder 0).
   Editorial: {

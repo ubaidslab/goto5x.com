@@ -61,7 +61,16 @@ export class StoreThemeSettingsService {
     const context = await this.subscriptions.getPlanContext(sellerId);
     const codedModeEnabled = await this.settings.resolve<boolean>("theme.coded_mode_enabled", context);
     const effectiveTierOrder = await this.getEffectiveTierOrder(sellerId);
-    return { ...themeSettings, codedModeEnabled, effectiveTierOrder };
+    // Founder walkthrough finding (Phase 2 item 13) - lets the Home page's
+    // onboarding wizard render the real two-choice Light/Dark starter
+    // picker without hardcoding either theme's id client-side - same
+    // "server resolves it, frontend just renders what comes back" pattern
+    // as codedModeEnabled/effectiveTierOrder above.
+    const [firstTouchLightThemeId, firstTouchDarkThemeId] = await Promise.all([
+      this.settings.resolve<string>("dstudio.first_touch_light_theme_id"),
+      this.settings.resolve<string>("dstudio.first_touch_dark_theme_id"),
+    ]);
+    return { ...themeSettings, codedModeEnabled, effectiveTierOrder, firstTouchLightThemeId, firstTouchDarkThemeId };
   }
 
   async update(sellerId: string, storeId: string, dto: UpdateStoreThemeSettingsDto) {
@@ -112,10 +121,27 @@ export class StoreThemeSettingsService {
             throw new ForbiddenException("You don't have a license for this template.");
           }
         } else if (theme.tier === "premium") {
-          const context = await this.subscriptions.getPlanContext(sellerId);
-          const premiumTierEnabled = await this.settings.resolve<boolean>("theme.premium_tier_enabled", context);
-          if (!premiumTierEnabled) {
-            throw new ForbiddenException("This template isn't included in your current plan.");
+          // Founder walkthrough finding (Phase 2 item 13) - the two-choice
+          // first-touch starter picker (Light=Atelier, Dark=Studio) is free
+          // on every tier by explicit founder instruction, even though
+          // Studio is normally a premium-tier template. Bypass is scoped
+          // tightly: only this store's very first-ever theme choice
+          // (!store.onboardingThemeAckAt), and only for the two admin-
+          // designated starter IDs - switching INTO Studio again later
+          // (after onboarding, or on a different store) still requires the
+          // real plan-tier gate below, so this can't be replayed to get
+          // free permanent access to the premium catalog.
+          const [lightThemeId, darkThemeId] = await Promise.all([
+            this.settings.resolve<string>("dstudio.first_touch_light_theme_id"),
+            this.settings.resolve<string>("dstudio.first_touch_dark_theme_id"),
+          ]);
+          const isFreeFirstTouchChoice = !store.onboardingThemeAckAt && (theme.id === lightThemeId || theme.id === darkThemeId);
+          if (!isFreeFirstTouchChoice) {
+            const context = await this.subscriptions.getPlanContext(sellerId);
+            const premiumTierEnabled = await this.settings.resolve<boolean>("theme.premium_tier_enabled", context);
+            if (!premiumTierEnabled) {
+              throw new ForbiddenException("This template isn't included in your current plan.");
+            }
           }
         }
       }

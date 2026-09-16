@@ -87,7 +87,10 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
       .get(`/stores/${storeId}/theme-settings`)
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.theme.name).toBe("Editorial");
+    // Phase 2 item 13 - the store creation default now resolves
+    // `dstudio.first_touch_light_theme_id` (Atelier) instead of always
+    // picking the lowest-sortOrder free theme (Editorial).
+    expect(res.body.theme.name).toBe("Atelier");
     expect(res.body.theme.tier).toBe("free");
   });
 
