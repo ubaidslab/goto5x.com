@@ -13,6 +13,15 @@ import { Reveal } from "@/components/motion/Reveal";
 
 const SLUGS = ["terms", "privacy", "refund", "about", "contact"];
 const BRAND_ASSET_KINDS = ["logo", "favicon", "hero"];
+// Founder walkthrough finding (Phase 1 item 10) - footer social links reuse this
+// same brand-assets mechanism (SRS FR-12.3) rather than a new settings surface;
+// MarketingFooter.tsx reads these same 4 kinds and only renders a link when set.
+const SOCIAL_LINK_KINDS: { kind: string; label: string }[] = [
+  { kind: "social_linkedin", label: "LinkedIn" },
+  { kind: "social_facebook", label: "Facebook" },
+  { kind: "social_instagram", label: "Instagram" },
+  { kind: "social_tiktok", label: "TikTok" },
+];
 
 interface ContentPage {
   slug: string;
@@ -139,6 +148,27 @@ export default function AdminContentPagesPage() {
                 </div>
                 <Button size="sm" onClick={() => saveBrandAsset(kind)}>
                   Save {kind}
+                </Button>
+              </div>
+            ))}
+          </Reveal>
+        </DashCard>
+
+        <DashCard>
+          <DashCardHeader title="Social links" />
+          <p className="mb-4 text-sm text-ink-muted">
+            Shown in the platform footer. Leave blank to hide a network - the footer never shows a dead link.
+          </p>
+          <Reveal className="space-y-3" stagger={0.04}>
+            {SOCIAL_LINK_KINDS.map(({ kind, label }) => (
+              <div key={kind} className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[16rem] flex-1">
+                  <Field label={`${label} URL`}>
+                    <Input value={brandAssets[kind] ?? ""} onChange={(e) => setBrandAssets({ ...brandAssets, [kind]: e.target.value })} />
+                  </Field>
+                </div>
+                <Button size="sm" onClick={() => saveBrandAsset(kind)}>
+                  Save {label}
                 </Button>
               </div>
             ))}
