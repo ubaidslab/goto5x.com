@@ -115,10 +115,16 @@ function ThemeStartPicker({ storeId, onPicked }: { storeId: string; onPicked: ()
       .catch(() => setThemes([]));
   }, [storeId]);
 
-  async function pick(themeId: string) {
-    setPicking(themeId);
+  async function pick(id: string, choice: "light" | "dark") {
+    setPicking(id);
     try {
-      await api.patch(`/stores/${storeId}/theme-settings`, { themeId });
+      // Founder walkthrough finding (Phase 2 item 13) - a dedicated
+      // one-time endpoint, not the general theme-settings PATCH: the
+      // server resolves the real theme id from the Settings Registry
+      // itself, so this can never be replayed as "set themeId=Studio
+      // directly" to get free permanent premium access (see
+      // StoreThemeSettingsService.pickFirstTouchTheme()'s own comment).
+      await api.post(`/stores/${storeId}/theme-settings/first-touch-pick`, { choice });
       onPicked();
     } finally {
       setPicking(null);
@@ -129,9 +135,9 @@ function ThemeStartPicker({ storeId, onPicked }: { storeId: string; onPicked: ()
     return <PageSpinner />;
   }
 
-  const options: { id: string; label: string }[] = [
-    { id: themeSettings.lightId, label: "Light" },
-    { id: themeSettings.darkId, label: "Dark" },
+  const options: { id: string; label: string; choice: "light" | "dark" }[] = [
+    { id: themeSettings.lightId, label: "Light", choice: "light" },
+    { id: themeSettings.darkId, label: "Dark", choice: "dark" },
   ];
 
   return (
@@ -144,7 +150,7 @@ function ThemeStartPicker({ storeId, onPicked }: { storeId: string; onPicked: ()
           <button
             key={opt.id}
             type="button"
-            onClick={() => pick(opt.id)}
+            onClick={() => pick(opt.id, opt.choice)}
             disabled={picking !== null}
             className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-smooth-fast disabled:opacity-60 ${
               isCurrent ? "border-accent ring-1 ring-accent" : "border-border hover:border-border-strong"

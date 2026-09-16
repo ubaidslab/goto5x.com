@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { RequireStaffScope } from "../common/decorators/require-staff-scope.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { StaffScopeGuard } from "../common/guards/staff-scope.guard";
+import { PickFirstTouchThemeDto } from "./dto/pick-first-touch-theme.dto";
 import { UpdateStoreThemeSettingsDto } from "./dto/update-store-theme-settings.dto";
 import { StoreThemeSettingsService } from "./store-theme-settings.service";
 
@@ -26,5 +27,16 @@ export class StoreThemeSettingsController {
     @Body() dto: UpdateStoreThemeSettingsDto,
   ) {
     return this.themeSettings.update(sellerId, storeId, dto);
+  }
+
+  /** Phase 2 item 13 - the Home page onboarding wizard's one-time Light/Dark starter picker (see service method's own doc comment). */
+  @Post("first-touch-pick")
+  @RequireStaffScope("design")
+  pickFirstTouchTheme(
+    @CurrentSellerId() sellerId: string,
+    @Param("storeId") storeId: string,
+    @Body() dto: PickFirstTouchThemeDto,
+  ) {
+    return this.themeSettings.pickFirstTouchTheme(sellerId, storeId, dto.choice);
   }
 }

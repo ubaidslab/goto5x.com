@@ -11,7 +11,7 @@
     "test:api:e2e": "pnpm --filter @uzeyn/api test:e2e",
     "prisma:migrate": "pnpm --filter @uzeyn/api prisma:migrate",
     "prisma:generate": "pnpm --filter @uzeyn/api prisma:generate",
-    "audit": "pnpm audit --audit-level=critical",
+    "audit": "bash scripts/dependency-audit.sh",
     "audit:report": "pnpm audit --audit-level=high || true",
     "verify:dependency-audit-mechanism": "bash scripts/verify-dependency-audit-blocks-vulnerable-package.sh",
     "simulate": "pnpm --filter @uzeyn/api simulate"
@@ -20,6 +20,12 @@
     "overrides": {
       "multer": "^2.2.0",
       "minimist": "^1.2.8"
+    },
+    "auditConfig": {
+      "ignoreCves": [
+        "GHSA-p293-qw3h-jr36",
+        "GHSA-2xp9-vwfh-vxw4"
+      ]
     }
   }
 }

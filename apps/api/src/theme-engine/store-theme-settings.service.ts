@@ -121,27 +121,20 @@ export class StoreThemeSettingsService {
             throw new ForbiddenException("You don't have a license for this template.");
           }
         } else if (theme.tier === "premium") {
-          // Founder walkthrough finding (Phase 2 item 13) - the two-choice
-          // first-touch starter picker (Light=Atelier, Dark=Studio) is free
-          // on every tier by explicit founder instruction, even though
-          // Studio is normally a premium-tier template. Bypass is scoped
-          // tightly: only this store's very first-ever theme choice
-          // (!store.onboardingThemeAckAt), and only for the two admin-
-          // designated starter IDs - switching INTO Studio again later
-          // (after onboarding, or on a different store) still requires the
-          // real plan-tier gate below, so this can't be replayed to get
-          // free permanent access to the premium catalog.
-          const [lightThemeId, darkThemeId] = await Promise.all([
-            this.settings.resolve<string>("dstudio.first_touch_light_theme_id"),
-            this.settings.resolve<string>("dstudio.first_touch_dark_theme_id"),
-          ]);
-          const isFreeFirstTouchChoice = !store.onboardingThemeAckAt && (theme.id === lightThemeId || theme.id === darkThemeId);
-          if (!isFreeFirstTouchChoice) {
-            const context = await this.subscriptions.getPlanContext(sellerId);
-            const premiumTierEnabled = await this.settings.resolve<boolean>("theme.premium_tier_enabled", context);
-            if (!premiumTierEnabled) {
-              throw new ForbiddenException("This template isn't included in your current plan.");
-            }
+          // Module 18 (FR-24.5) - this general endpoint NEVER bypasses the
+          // plan-tier gate, for any theme, regardless of onboarding state -
+          // proven by theme-engine.e2e-spec.ts and module75-feature-gate-ladder.e2e-spec.ts.
+          // The Phase 2 item 13 "Dark option is free on every tier" grant
+          // is a SEPARATE, narrowly-scoped action - see pickFirstTouchTheme()
+          // below - deliberately not reachable through this general
+          // set-any-theme endpoint, since a raw API call here can't be
+          // distinguished from the onboarding wizard's own call (same
+          // endpoint, same payload shape), which would have made the grant
+          // silently replayable into permanent free premium access.
+          const context = await this.subscriptions.getPlanContext(sellerId);
+          const premiumTierEnabled = await this.settings.resolve<boolean>("theme.premium_tier_enabled", context);
+          if (!premiumTierEnabled) {
+            throw new ForbiddenException("This template isn't included in your current plan.");
           }
         }
       }
@@ -163,6 +156,52 @@ export class StoreThemeSettingsService {
         await tx.store.update({ where: { id: storeId }, data: { onboardingThemeAckAt: new Date() } });
       }
 
+      return updated;
+    });
+  }
+
+  /**
+   * Founder walkthrough finding (Phase 2 item 13) - the Home page
+   * onboarding wizard's two-choice Light/Dark starter picker. Deliberately
+   * its own endpoint/method, not a code path inside the general update()
+   * above: it takes a `choice` ("light"|"dark"), never a raw themeId, so
+   * the resolved theme id always comes from the Settings Registry
+   * (dstudio.first_touch_light_theme_id/_dark_theme_id) server-side - a
+   * caller can request "the dark starter option," never "themeId X
+   * regardless of what it currently resolves to." Free on every plan tier
+   * by explicit founder instruction, but only once per store
+   * (!store.onboardingThemeAckAt) - a second call on the same store, or a
+   * call on any other store, is rejected outright rather than falling
+   * through to the plan-tier gate, since this isn't "another attempt to
+   * buy the same theme," it's "the one-time starter grant is already
+   * spent."
+   */
+  async pickFirstTouchTheme(sellerId: string, storeId: string, choice: "light" | "dark") {
+    const themeId = await this.settings.resolve<string>(
+      choice === "light" ? "dstudio.first_touch_light_theme_id" : "dstudio.first_touch_dark_theme_id",
+    );
+
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId } });
+      if (!store) throw new NotFoundException("Store not found.");
+      if (store.onboardingThemeAckAt) {
+        throw new ForbiddenException("This store has already completed its first-touch theme pick.");
+      }
+      const existing = await tx.storeThemeSettings.findUnique({ where: { storeId } });
+      if (!existing) {
+        throw new NotFoundException("This store has no theme settings - a built-in theme may not have been seeded.");
+      }
+      const theme = await tx.theme.findFirst({ where: { id: themeId, isActive: true } });
+      if (!theme) {
+        throw new NotFoundException("The configured first-touch starter theme is not active - check Settings Registry.");
+      }
+
+      const updated = await tx.storeThemeSettings.update({
+        where: { storeId },
+        data: { themeId: theme.id },
+        include: { theme: true },
+      });
+      await tx.store.update({ where: { id: storeId }, data: { onboardingThemeAckAt: new Date() } });
       return updated;
     });
   }

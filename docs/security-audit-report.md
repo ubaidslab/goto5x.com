@@ -544,25 +544,47 @@ real answer rather than being waved off.
      optimizer), not a fix applied in response to it - it just happens
      to also close this exposure completely.
 
-**No code changes were needed** - the mitigation the patched Next.js
-releases apply (disabling AVIF) was already this deployment's effective
-state by default, and the second, independent barrier (no attacker-
-controllable input ever reaches the optimizer) means even a future
-accidental `images.formats` change enabling AVIF would not by itself
-reopen this specific exposure.
+**Update (2026-09-16) - explicit mitigation applied, and the CI gate
+closed with a documented, scoped exception.** The investigation above
+was correct but initially left two loose ends: (1) AVIF being disabled
+was only Next's *implicit default* - true today, but silently reversible
+by a future `next.config.js` edit or a Next version that changes that
+default; (2) `pnpm audit --audit-level=critical` in CI kept failing on
+every push with no resolution, which is not sustainable - a red required
+check that's expected to stay red indefinitely trains everyone to ignore
+it, which is worse than not having the check. Both are now closed:
+
+1. **`apps/web/next.config.js` now explicitly sets
+   `images: { formats: ["image/webp"] }`** - the exact interim mitigation
+   the official patched Next.js releases apply, made structural instead
+   of implicit. AVIF being unreachable is now true by explicit
+   configuration, not by relying on a default that could silently change.
+2. **`scripts/dependency-audit.sh`** (wired in as the `audit` root
+   package.json script, unchanged in CI's `dependency-audit` job) applies
+   a narrowly-scoped, fully-commented exception for exactly these two
+   GHSA IDs via `pnpm audit --ignore <id>` - the actual mechanism this
+   pnpm version (10.33.0) implements (confirmed via `pnpm audit --help`;
+   the `pnpm.auditConfig.ignoreCves` package.json field some pnpm docs
+   reference was tried first and confirmed **not** respected by this
+   version - `pnpm audit` still failed with it set). The script's own
+   comments carry the full justification (which CVE, why it's not
+   exploitable in this deployment, a `TODO(next-15-upgrade)` marker to
+   revisit when the tracked major-version upgrade lands) so the exception
+   is legible from the script itself, not just this document.
 
 **What remains genuinely open:** `next@14.2.35` itself is still an
-outdated major version with unpatched code for both advisories -
-today's finding is "not currently exploitable given how this app uses
-Next.js," not "the dependency is fine to leave forever." The full
-Next.js 14→15 upgrade (required for the real fix, and requiring React 19
-plus a full regression pass across every page) is tracked as its own
-dedicated future task rather than rushed into the middle of this pass -
-see `docs/SRS.md`'s tracked-items section for the entry and reasoning.
-`pnpm audit --audit-level=critical` in CI will keep failing until that
-upgrade lands; that's expected and correctly reflects real, if currently
-unreachable, risk in the pinned dependency - not a regression to chase
-away with a suppression.
+outdated major version with unpatched code for both advisories - this
+exception is "not currently exploitable given how this app uses
+Next.js, confirmed and now also structurally enforced," not "the
+dependency is fine to leave forever." The full Next.js 14→15 upgrade
+(required for the real fix, and requiring React 19 plus a full
+regression pass across every page) is tracked as its own dedicated
+future task rather than rushed into the middle of this pass - see
+`docs/SRS.md`'s Risk Register #29 for the entry and reasoning. Both
+`scripts/dependency-audit.sh`'s `TODO(next-15-upgrade)` comment and Risk
+Register #29 itself must be revisited (the exception almost certainly
+deleted outright) the moment that upgrade lands - this is not a
+permanent suppression.
 
 ---
 

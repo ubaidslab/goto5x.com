@@ -4,6 +4,15 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.API_BASE_URL ?? "http://localhost:3000",
   },
+  // GHSA-2xp9-vwfh-vxw4 (dependency-audit exception, scripts/dependency-audit.sh) -
+  // already confirmed unreachable here (next/image only ever renders 2
+  // hardcoded local marketing assets, never remote/user-suppliable input),
+  // but explicit rather than relying on Next's own default to stay true
+  // regardless of any future Next version's default change - this is the
+  // exact interim mitigation the official patched Next.js releases apply.
+  images: {
+    formats: ["image/webp"],
+  },
   // Founder walkthrough finding (pre-Milestone-A, Phase 1 item 8 - confirming
   // XSS/injection coverage) - these three are safe, zero-risk-of-breakage
   // additions (verified: no <iframe> use anywhere in this app, so

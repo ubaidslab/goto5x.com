@@ -94,6 +94,80 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
     expect(res.body.theme.tier).toBe("free");
   });
 
+  describe("Phase 2 item 13 - the onboarding wizard's one-time Light/Dark first-touch picker", () => {
+    it("POST first-touch-pick with choice=dark resolves to Studio for free on GO tier, and completes onboarding", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("first-touch-dark@example.com", "first-touch-dark-store");
+      const res = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/theme-settings/first-touch-pick`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "dark" });
+      expect(res.status).toBe(201);
+      expect(res.body.theme.name).toBe("Studio");
+
+      const store = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
+      expect(store.onboardingThemeAckAt).not.toBeNull();
+    });
+
+    it("POST first-touch-pick with choice=light resolves to Atelier", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("first-touch-light@example.com", "first-touch-light-store");
+      const res = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/theme-settings/first-touch-pick`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "light" });
+      expect(res.status).toBe(201);
+      expect(res.body.theme.name).toBe("Atelier");
+    });
+
+    it("a second first-touch-pick call on the same (already-onboarded) store is rejected - the grant is one-time, not repeatable", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("first-touch-once@example.com", "first-touch-once-store");
+      await request(app.getHttpServer())
+        .post(`/stores/${storeId}/theme-settings/first-touch-pick`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "dark" });
+
+      const again = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/theme-settings/first-touch-pick`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "light" });
+      expect(again.status).toBe(403);
+    });
+
+    it(
+      "the general theme-settings PATCH never bypasses the premium-tier gate for Studio - even on a fresh, " +
+        "never-onboarded GO-tier store (this is exactly the regression the founder's own CI caught)",
+      async () => {
+        const { token, storeId } = await signupLoginAndCreateStore("no-general-bypass@example.com", "no-general-bypass-store");
+        const studio = await superuser.theme.findFirstOrThrow({ where: { name: "Studio" } });
+
+        const res = await request(app.getHttpServer())
+          .patch(`/stores/${storeId}/theme-settings`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ themeId: studio.id });
+        expect(res.status).toBe(403);
+
+        const store = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
+        expect(store.onboardingThemeAckAt).toBeNull(); // the rejected attempt never silently completed onboarding either
+      },
+    );
+
+    it("a seller whose plan enables theme.premium_tier_enabled can still select Studio through the general endpoint normally - the real plan-tier gate is untouched", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("premium-general-select@example.com", "premium-general-select-store");
+      const adminToken = await fullyVerifiedAdminToken("premium-general-select-admin@example.com");
+      await request(app.getHttpServer())
+        .put("/admin/settings/values")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ key: "theme.premium_tier_enabled", scopeType: "global", value: true });
+      const studio = await superuser.theme.findFirstOrThrow({ where: { name: "Studio" } });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/theme-settings`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ themeId: studio.id });
+      expect(res.status).toBe(200);
+      expect(res.body.theme.name).toBe("Studio");
+    });
+  });
+
   it("the customizer persists theme/settings changes, and they're read back exactly (FR-1.2/FR-1.3)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("themes-persist@example.com", "themes-persist-store");
     // Module 18 (FR-24.5) - "Studio" is `premium` tier, now actually gated by
