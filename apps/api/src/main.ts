@@ -2,6 +2,8 @@ import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import { seedDefaults } from "./bootstrap/seed-defaults";
+import { PrismaAdminService } from "./prisma/prisma-admin.service";
 
 async function bootstrap() {
   // rawBody: true (SRS §6.5) - the Template Install/License API and the
@@ -11,6 +13,20 @@ async function bootstrap() {
   // controllers that need it (external-api/*.controller.ts).
   const app = await NestFactory.create(AppModule, { rawBody: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // Founder walkthrough finding (pre-Milestone-A): this previously only ran
+  // via `test/e2e/setup.ts` (under the name `seedSettings`) or a manually-run
+  // `scripts/dev-seed.ts` - a real deployment's first boot against a fresh
+  // database never seeded a single Settings Registry definition, built-in
+  // theme, or plan row, so almost every endpoint (store details, D-Studio,
+  // SEO fields, ...) threw on its very first `SettingsService.resolve()`
+  // call. Every individual seed function upserts with an empty `update: {}`
+  // (see seed-defaults.ts's own comment), so this is safe to run on every
+  // boot, including redeploys against a database that already has these
+  // rows - it only ever creates what's missing.
+  await seedDefaults(app.get(PrismaAdminService));
+  // eslint-disable-next-line no-console
+  console.log("Settings Registry defaults, themes, and plans confirmed seeded.");
   // Security-hardening fix (app-level audit): `true` trusts EVERY hop in a
   // client-supplied X-Forwarded-For unconditionally, so proxy-addr walks
   // all the way to its leftmost entry - which, since a well-behaved

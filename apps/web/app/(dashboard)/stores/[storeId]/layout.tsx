@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ConfirmDialogProvider } from "@/components/dashboard/ConfirmDialogProvider";
 import { PlatformMessages } from "@/components/dashboard/PlatformMessages";
@@ -21,6 +22,7 @@ export default function StoreDashboardLayout({
   children: React.ReactNode;
   params: { storeId: string };
 }) {
+  const router = useRouter();
   const [store, setStore] = useState<Store | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState("default");
@@ -35,13 +37,19 @@ export default function StoreDashboardLayout({
 
   // SRS §5.56/FR-56.3 - the store switcher's source list. Fetched once per
   // mount (not per storeId) since it's the seller's whole store set, not
-  // scoped to the currently-open one.
+  // scoped to the currently-open one. Phase 0.1 safety net - a zero-store
+  // seller should never actually reach a `/stores/[storeId]` URL now that
+  // login/signup redirect correctly, but a stale bookmark/shared link (or
+  // every store having been deleted) must not strand them here either.
   useEffect(() => {
     api
       .get<Store[]>("/stores")
-      .then(setStores)
+      .then((list) => {
+        setStores(list);
+        if (list.length === 0) router.push("/stores/new");
+      })
       .catch(() => {});
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     api

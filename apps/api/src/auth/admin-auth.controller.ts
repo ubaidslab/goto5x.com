@@ -2,6 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post, Req } from "@nestjs/commo
 import { Request } from "express";
 import { AdminAuthService } from "./admin-auth.service";
 import { AdminLoginDto, AdminMfaEnrollDto, AdminMfaVerifyDto } from "./dto/admin-login.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
 
 @Controller("admin/auth")
 export class AdminAuthController {
@@ -23,5 +24,12 @@ export class AdminAuthController {
   @HttpCode(HttpStatus.OK)
   verifyMfa(@Body() dto: AdminMfaVerifyDto, @Req() req: Request) {
     return this.adminAuth.verifyMfaAndIssueSession(dto.preAuthToken, dto.code, req.ip ?? "unknown");
+  }
+
+  /** Phase 0.5 founder-walkthrough fix - see AdminAuthService.refresh()'s own comment. */
+  @Post("refresh")
+  @HttpCode(HttpStatus.OK)
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.adminAuth.refresh(dto.sessionId, dto.refreshToken);
   }
 }

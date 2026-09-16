@@ -87,11 +87,23 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
   const [dealPerformance, setDealPerformance] = useState<DealPerformanceRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Founder walkthrough finding (pre-Milestone-A, Phase 0.4) - each catch
+  // below used to set only the shared `error` string, never its own
+  // resource's state. `loading` (below) requires all five to be non-null,
+  // so a single failed endpoint left the page stuck on `PageSpinner`
+  // forever - the `error` Alert was rendered, but underneath a full-page
+  // spinner that never cleared, easy to miss and functionally identical to
+  // "hangs with no visible error." Every catch now also sets a safe
+  // fallback, matching the pattern the dashboard Home page's own fetches
+  // already used.
   useEffect(() => {
     api
       .get<TopProductRow[]>(`/stores/${params.storeId}/analytics/top-products?by=${topProductsBy}&limit=10`)
       .then(setTopProducts)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load top products."));
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : "Couldn't load top products.");
+        setTopProducts([]);
+      });
   }, [params.storeId, topProductsBy]);
 
   useEffect(() => {
@@ -99,28 +111,40 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
     api
       .get<SalesBucketPoint[]>(`/stores/${params.storeId}/analytics/sales-over-time?bucket=${bucket}${range}`)
       .then(setSalesOverTime)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load sales over time."));
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : "Couldn't load sales over time.");
+        setSalesOverTime([]);
+      });
   }, [params.storeId, bucket, rangeStart, rangeEnd]);
 
   useEffect(() => {
     api
       .get<Overview>(`/stores/${params.storeId}/analytics/overview`)
       .then(setOverview)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load the analytics overview."));
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : "Couldn't load the analytics overview.");
+        setOverview({ repeatCustomerRate: 0, returnRate: 0, aov: 0 });
+      });
   }, [params.storeId]);
 
   useEffect(() => {
     api
       .get<ReturnRateByProductRow[]>(`/stores/${params.storeId}/analytics/return-rate-by-product`)
       .then(setReturnRateByProduct)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load return rate by product."));
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : "Couldn't load return rate by product.");
+        setReturnRateByProduct([]);
+      });
   }, [params.storeId]);
 
   useEffect(() => {
     api
       .get<DealPerformanceRow[]>(`/stores/${params.storeId}/analytics/deal-performance`)
       .then(setDealPerformance)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load deal performance."));
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : "Couldn't load deal performance.");
+        setDealPerformance([]);
+      });
   }, [params.storeId]);
 
   const loading =

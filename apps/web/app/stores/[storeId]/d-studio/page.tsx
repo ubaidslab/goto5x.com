@@ -175,6 +175,14 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
   const [codedModeEnabled, setCodedModeEnabled] = useState<boolean | null>(null);
   const [sellerTierOrder, setSellerTierOrder] = useState<number | null>(null);
   const [products, setProducts] = useState<PublicProduct[]>([]);
+  // Founder walkthrough finding (pre-Milestone-A, Phase 0.3) - the three
+  // fetches this loading gate depends on (store, themes, theme-settings)
+  // used to swallow failures silently with no fallback, so any real
+  // failure (most commonly a fresh install missing Settings Registry rows
+  // these endpoints depend on - see src/bootstrap/seed-defaults.ts) left
+  // the gate below stuck on "Loading D-Studio…" forever, with nothing to
+  // retry and no way out.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [openAnimSlot, setOpenAnimSlot] = useState<ElementSlot | null>(null);
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("mobile");
@@ -226,8 +234,11 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
     api
       .get<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"] }>(`/stores/${params.storeId}`)
       .then(setStore)
-      .catch(() => {});
-    api.get<Theme[]>("/themes").then(setThemes).catch(() => {});
+      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Couldn't load your store."));
+    api
+      .get<Theme[]>("/themes")
+      .then(setThemes)
+      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Couldn't load the theme catalog."));
     api
       .get<{ themeId: string; settings: ThemeSettings; customCode: string | null; codedModeEnabled: boolean; effectiveTierOrder: number }>(
         `/stores/${params.storeId}/theme-settings`,
@@ -249,7 +260,7 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
         // published version" reverts to.
         publishedSnapshotRef.current = { themeId: ts.themeId, settings: loadedSettings };
       })
-      .catch(() => setSellerTierOrder(0));
+      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Couldn't load your theme settings."));
     api
       .get<{ items: Array<{ id: string; title: string; description: string | null; averageRating: string; reviewCount: number; variants?: unknown[]; seoTitle?: string; seoDescription?: string | null }> }>(
         `/stores/${params.storeId}/products?limit=100`,
@@ -545,6 +556,21 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
     } catch (err) {
       toast({ tone: "danger", title: err instanceof ApiError ? err.message : "Couldn't save your custom code." });
     }
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3" style={{ background: CHROME.bg, color: CHROME.inkMuted }}>
+        <p className="max-w-sm text-center text-sm">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md border border-current px-3 py-1.5 text-sm"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   if (!store || sellerTierOrder === null || !themes.length) {

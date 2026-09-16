@@ -4,51 +4,7 @@ import { LedgerEntryType, PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
 import { signedContribution } from "../../src/billing/wallet.service";
-import { seedAccountSecuritySettings } from "../../src/auth/account-security.seed";
-import { seedAdminEmailSettings } from "../../src/admin-email/admin-email.seed";
-import { seedCampaignsSettings } from "../../src/campaigns/campaigns.seed";
-import { seedCareersSettings } from "../../src/careers/careers.seed";
-import { seedBuyerChatSettings } from "../../src/buyer-chat/buyer-chat.seed";
-import { seedWishlistSettings } from "../../src/buyer-account/wishlist.seed";
-import { seedCustomerSegmentsSettings } from "../../src/customer-segments/customer-segments.seed";
-import { seedDataExportSettings } from "../../src/data-export/data-export.seed";
-import { seedDealsSettings } from "../../src/deals/deals.seed";
-import { seedDesignTokensSettings } from "../../src/design-tokens/design-tokens.seed";
-import { seedOnboardingSettings } from "../../src/auth/onboarding.seed";
-import { seedBillingSettings } from "../../src/billing/billing.seed";
-import { seedSubscriptionReadinessSettings } from "../../src/billing/subscription-readiness.seed";
-import { seedEmailTemplates } from "../../src/billing/email-templates.seed";
-import { seedWalletSettings } from "../../src/billing/wallet.seed";
-import { seedPlatformGatewaySettings } from "../../src/platform-gateway/platform-gateway.seed";
-import { seedModerationSettings } from "../../src/moderation/moderation.seed";
-import { seedExternalApiSettings } from "../../src/external-api/external-api.seed";
-import { seedGiftCardsSettings } from "../../src/gift-cards/gift-cards.seed";
-import { seedGrowthProgramsSettings } from "../../src/growth-programs/growth-programs.seed";
-import { seedImpersonationSettings } from "../../src/impersonation/impersonation.seed";
-import { seedInventorySettings } from "../../src/inventory/inventory.seed";
-import { seedWhatsAppMessagingSettings } from "../../src/whatsapp-messaging/whatsapp-messaging.seed";
-import { seedMessagingSettings } from "../../src/messaging/messaging.seed";
-import { seedOrdersSettings } from "../../src/orders/orders.seed";
-import { seedOrderVerificationSettings } from "../../src/orders/order-verification.seed";
-import { seedPaymentModelSettings } from "../../src/store-settings/payment-model.seed";
-import { seedDeliveryTrackingSettings } from "../../src/orders/delivery-tracking.seed";
-import { seedPlansData, seedPlansSettings } from "../../src/plans/plans.seed";
-import { seedReviewsSettings } from "../../src/reviews/reviews.seed";
-import { seedReturnsSettings } from "../../src/returns/returns.seed";
-import { seedSeoAdvancedSettings } from "../../src/storefront/seo-advanced.seed";
-import { seedSellerNotificationsSettings } from "../../src/seller-notifications/seller-notifications.seed";
-import {
-  seedModule1Settings,
-  seedModule3Settings,
-  seedPlatformEventsSettings,
-} from "../../src/settings-registry/settings.seed";
-import { seedStaffSettings } from "../../src/staff/staff.seed";
-import { seedStoreHealthSettings } from "../../src/store-health/store-health.seed";
-import { seedStoresSettings } from "../../src/tenancy/stores.seed";
-import { seedSupplierSettings } from "../../src/suppliers/suppliers.seed";
-import { seedBuiltInThemes, seedModule4Settings, seedTemplatesBrandingSettings } from "../../src/theme-engine/themes.seed";
-import { seedSellerAgreementV1, seedTrustSafetySettings } from "../../src/trust-safety/trust-safety.seed";
-import { seedVerificationSettings } from "../../src/verification/verification.seed";
+import { seedDefaults } from "../../src/bootstrap/seed-defaults";
 
 /**
  * Builds a real NestJS app wired to the real local Postgres/Redis started for
@@ -114,77 +70,15 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   `);
 }
 
+/**
+ * Thin re-export, kept under its original name for the ~100 e2e spec files
+ * that already call `seedSettings(superuser)` - the real body now lives in
+ * `src/bootstrap/seed-defaults.ts` as `seedDefaults()`, which is also the
+ * function `main.ts` calls on every real API boot (see that file's own
+ * comment for the production bug this consolidation fixes).
+ */
 export async function seedSettings(prisma: PrismaClient): Promise<void> {
-  await seedModule1Settings(prisma);
-  await seedModule3Settings(prisma);
-  await seedPlatformEventsSettings(prisma);
-  await seedModule4Settings(prisma);
-  await seedModerationSettings(prisma);
-  await seedSupplierSettings(prisma);
-  await seedOrdersSettings(prisma);
-  await seedOrderVerificationSettings(prisma);
-  await seedPaymentModelSettings(prisma);
-  await seedDeliveryTrackingSettings(prisma);
-  await seedBillingSettings(prisma);
-  await seedWalletSettings(prisma);
-  await seedPlatformGatewaySettings(prisma);
-  await seedTrustSafetySettings(prisma);
-  await seedAccountSecuritySettings(prisma);
-  await seedOnboardingSettings(prisma);
-  await seedPlansSettings(prisma);
-  await seedExternalApiSettings(prisma);
-  await seedMessagingSettings(prisma);
-  await seedImpersonationSettings(prisma);
-  await seedGrowthProgramsSettings(prisma);
-  await seedCareersSettings(prisma);
-  await seedStoreHealthSettings(prisma);
-  await seedVerificationSettings(prisma);
-  await seedInventorySettings(prisma);
-  await seedWhatsAppMessagingSettings(prisma);
-  // Themes aren't a Settings Registry concept, but every store-creation test
-  // across every module needs at least one seeded theme to exist (Module 4
-  // auto-assigns a default theme in StoresService.create()) - seeded
-  // alongside settings for exactly that reason, not because it's settings data.
-  await seedBuiltInThemes(prisma);
-  // Same reasoning as themes above - every seller signup requires a current
-  // Seller Agreement version to accept (SRS FR-29.1); reseeded fresh per
-  // test file so a version published mid-suite by one test never leaks
-  // into another file's run.
-  await seedSellerAgreementV1(prisma);
-  // Same reasoning again - AuthService.signup() assigns every new seller
-  // First Month (individual, tier 0, v0.33/FR-7.1/7.3); that row (and
-  // Starter, its auto-transition target) must exist before any test signs
-  // a seller up.
-  await seedPlansData(prisma);
-  // Templates module (v0.31 design phase) - depends on the paid plan rows
-  // seedPlansData() just (re)created, so it must run after them.
-  await seedTemplatesBrandingSettings(prisma);
-  // Module 34 - depends on the same paid plan rows for its plan-tier quota key.
-  await seedCampaignsSettings(prisma);
-  // Module 35 - depends on the same paid plan rows for its plan-tier quota key.
-  await seedStaffSettings(prisma);
-  // Module 56 (SRS §5.63/FR-63.2) - same paid-plan-row dependency, for its Pro-tier gate.
-  await seedDataExportSettings(prisma);
-  // SRS §5.6k (v0.41) - same paid-plan-row dependency, for support.sla_hours' per-tier values.
-  await seedSubscriptionReadinessSettings(prisma);
-  await seedEmailTemplates(prisma);
-  // Module 58 (SRS §5.65/FR-65.5) - same paid-plan-row dependency, for its Growth+ gate.
-  await seedSeoAdvancedSettings(prisma);
-  // Module 49 (SRS §5.56/FR-56.1) - same paid-plan-row dependency as staff above.
-  await seedStoresSettings(prisma);
-  await seedAdminEmailSettings(prisma);
-  await seedGiftCardsSettings(prisma);
-  await seedDealsSettings(prisma);
-  await seedDesignTokensSettings(prisma);
-  // Module 75 (SRS §5.6j/FR-7.23) - same paid-plan-row dependency as gift cards above.
-  await seedCustomerSegmentsSettings(prisma);
-  await seedReviewsSettings(prisma);
-  await seedReturnsSettings(prisma);
-  await seedSellerNotificationsSettings(prisma);
-  // Module 83 (SRS §5.66/FR-66.3) - same paid-plan-row dependency as gift cards/customer segments above.
-  await seedBuyerChatSettings(prisma);
-  // Module 85 (SRS §5.66/FR-66.5) - same paid-plan-row dependency, same RISE+FLY boundary as buyer chat above.
-  await seedWishlistSettings(prisma);
+  await seedDefaults(prisma);
 }
 
 /**

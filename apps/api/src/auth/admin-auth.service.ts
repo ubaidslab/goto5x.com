@@ -140,6 +140,55 @@ export class AdminAuthService {
     return { accessToken, sessionId, refreshToken };
   }
 
+  /**
+   * Founder walkthrough finding (pre-Milestone-A, Phase 0.5) - no admin
+   * refresh path existed at all: the 15-minute access token
+   * (JWT_ACCESS_TTL_MINUTES) had nothing behind it, so any admin session
+   * older than that showed the backend's bare "Unauthorized" on the very
+   * next request, on every one of the ~30 admin terminal pages. Mirrors
+   * AuthService.refresh() exactly (refresh-token rotation via the same
+   * generic, user-id-keyed SessionService - not seller/admin-specific) but
+   * re-issues an ADMIN-shaped token: `mfaVerified: true` carries forward
+   * from the original MFA verification (this never re-prompts for a TOTP
+   * code, matching the seller-side refresh's equivalent trust boundary -
+   * both treat "holds a valid, non-expired refresh token for this session"
+   * as continuity of the already-verified login, not a fresh credential
+   * check). Re-reads `adminUser` fresh (not from the old token's claims)
+   * so a role change or de-provisioning between logins is picked up
+   * immediately rather than persisting in a stale refreshed token.
+   */
+  async refresh(sessionId: string, refreshToken: string): Promise<{ accessToken: string; sessionId: string; refreshToken: string }> {
+    const userId = await this.sessions.validateRefreshToken(sessionId, refreshToken);
+    if (!userId) {
+      throw new UnauthorizedException("Invalid or expired refresh token.");
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { adminUser: true } });
+    if (!user?.adminUser) {
+      throw new UnauthorizedException("This account no longer has admin access.");
+    }
+
+    await this.sessions.touchSession(sessionId);
+    // Destroy the old session and issue a new one (refresh-token rotation).
+    await this.sessions.destroySession(sessionId);
+
+    const { sessionId: newSessionId, refreshToken: newRefreshToken } = await this.sessions.createSession(user.id);
+    const accessToken = this.jwt.sign(
+      {
+        sub: user.id,
+        adminUserId: user.adminUser.id,
+        adminRole: user.adminUser.role,
+        mfaVerified: true,
+      } satisfies JwtAccessPayload,
+      {
+        secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
+        expiresIn: `${this.config.getOrThrow<number>("JWT_ACCESS_TTL_MINUTES")}m`,
+      },
+    );
+
+    return { accessToken, sessionId: newSessionId, refreshToken: newRefreshToken };
+  }
+
   private verifyPreAuthToken(token: string): AdminPreAuthPayload {
     try {
       const payload = this.jwt.verify<AdminPreAuthPayload>(token, {

@@ -28,7 +28,58 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Founder walkthrough finding (pre-Milestone-A, Phase 0.5) - no admin
+ * refresh path existed at all, backend or frontend: the admin login page
+ * only ever stored the access token, never a sessionId/refreshToken, and
+ * nothing here would have used them if it had. A 15-minute access token
+ * (JWT_ACCESS_TTL_MINUTES) with no refresh meant every admin session
+ * hard-expired mid-walkthrough, showing the backend's bare "Unauthorized"
+ * as inline content on every one of the ~30 admin terminal pages. See
+ * AdminAuthService.refresh() for the new `POST /admin/auth/refresh`
+ * endpoint this calls. Same shared-in-flight-promise shape as
+ * dashboard-api.ts's tryRefresh() - a burst of concurrent 401s triggers
+ * exactly one refresh.
+ */
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const sessionId = window.localStorage.getItem("adminSessionId");
+  const refreshToken = window.localStorage.getItem("adminRefreshToken");
+  if (!sessionId || !refreshToken) return false;
+
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/admin/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, refreshToken }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return false;
+        const body = await res.json();
+        window.localStorage.setItem("adminAccessToken", body.accessToken);
+        window.localStorage.setItem("adminSessionId", body.sessionId);
+        window.localStorage.setItem("adminRefreshToken", body.refreshToken);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+function clearSessionAndRedirectToLogin() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem("adminAccessToken");
+  window.localStorage.removeItem("adminSessionId");
+  window.localStorage.removeItem("adminRefreshToken");
+  window.location.href = "/admin/login";
+}
+
+async function request<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -37,6 +88,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+
+  if (res.status === 401 && !isRetry && path !== "/admin/auth/refresh") {
+    if (await tryRefresh()) {
+      return request<T>(path, init, true);
+    }
+    clearSessionAndRedirectToLogin();
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

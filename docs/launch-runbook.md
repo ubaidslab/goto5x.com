@@ -216,10 +216,20 @@ Work through this in order — earlier steps stop the bleeding, later steps clea
 ## 5. Seed reference data
 
 - [ ] The Settings Registry ships its own defaults via each module's
-      `*.seed.ts`, applied automatically the first time the API boots
-      against a fresh database (no separate seed command needed for
-      those — same mechanism verified throughout local dev in this
-      engagement). Confirm via the admin Settings screen
+      `*.seed.ts`, applied automatically on every real API boot
+      (`src/main.ts` calls the consolidated `seedDefaults()` -
+      `src/bootstrap/seed-defaults.ts` - before `app.listen()`; every
+      individual seed function upserts with an empty `update: {}`, so this
+      is idempotent and safe on every redeploy, never overwriting an
+      admin's own override). **Founder-walkthrough finding, fixed
+      2026-09-15:** this checklist line previously described the *intended*
+      behavior, but the actual code only ever ran these seeds from e2e test
+      setup or the manual `scripts/dev-seed.ts` - a real fresh deployment's
+      first boot seeded nothing, so almost every endpoint (store details,
+      D-Studio, SEO fields, ...) 404/500'd on its first `SettingsService.
+      resolve()` call, which several frontend pages' silent
+      `.catch(() => {})` handlers turned into a permanent loading spinner
+      with no visible error. Confirm via the admin Settings screen
       (`/admin/settings`) that the expected keys are present, then move
       to step 10 to actually set their real launch values.
 - [ ] The load/soak simulation's own seed data (step 8 below) is separate

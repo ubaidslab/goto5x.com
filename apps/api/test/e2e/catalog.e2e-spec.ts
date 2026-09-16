@@ -67,6 +67,35 @@ describe("Catalog: products & variants (e2e) - SRS FR-2.1, §14.2", () => {
     expect(getProduct.body.variants[0].sku).toBe("TSHIRT-M-BLUE");
   });
 
+  /**
+   * Founder walkthrough finding (pre-Milestone-A, Phase 0.2) - "category
+   * creation is broken or missing." Root cause: categories are a
+   * deliberate, admin-curated global taxonomy (CategoriesController.
+   * create() is AdminAuthGuard-only, not seller-facing - by design, not a
+   * bug), but a fresh install shipped with ZERO categories and no admin
+   * action ever ran to create any, so a brand-new seller's product-
+   * creation category dropdown was a dead end with nothing in it. Fixed
+   * by seeding a real starter taxonomy on every boot (src/catalog/
+   * categories.seed.ts, wired into src/bootstrap/seed-defaults.ts) - this
+   * proves a brand-new seller (no admin action taken) can see and assign
+   * a real category without anyone having created one first.
+   */
+  it("a brand-new seller sees real starter categories with no admin action needed, and can assign one to a product (Phase 0.2 fix)", async () => {
+    const { token, storeId } = await signupLoginAndCreateStore("category-seed-owner@example.com", "category-seed-store");
+
+    const list = await request(app.getHttpServer()).get("/categories").set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    expect(list.body.length).toBeGreaterThan(0);
+    const category = list.body[0];
+
+    const createProduct = await request(app.getHttpServer())
+      .post(`/stores/${storeId}/products`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Category-linked product", categoryId: category.id, status: "active" });
+    expect(createProduct.status).toBe(201);
+    expect(createProduct.body.categoryId).toBe(category.id);
+  });
+
   it("inventory tracking: updating a variant's stockQuantity persists (FR-2.1)", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("inventory-owner@example.com", "inventory-store");
     const product = await request(app.getHttpServer())

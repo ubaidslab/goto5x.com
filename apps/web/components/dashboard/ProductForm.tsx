@@ -102,7 +102,10 @@ export function ProductForm({
       </Field>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Category">
+        <Field
+          label="Category"
+          hint={categories.length === 0 ? "No categories exist yet - contact support to have one added." : undefined}
+        >
           <Select value={values.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
             <option value="">No category</option>
             {categories.map((c) => (

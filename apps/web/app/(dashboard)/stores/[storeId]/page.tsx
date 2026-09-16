@@ -220,6 +220,14 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   const [milestone, setMilestone] = useState<Milestone | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // Founder walkthrough finding (pre-Milestone-A, Phase 0.4) - this fetch's
+  // catch used to be empty, so any real failure (most commonly a fresh
+  // install missing Settings Registry rows this endpoint depends on - see
+  // src/bootstrap/seed-defaults.ts) left `store` null forever, and the
+  // loading gate below rendered `PageSpinner` with no way out. Every other
+  // fetch on this page already has a fallback in its own `.catch()` - this
+  // was the one exception.
+  const [storeError, setStoreError] = useState<string | null>(null);
 
   function refreshOnboarding() {
     api
@@ -229,7 +237,13 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   }
 
   function refreshStore() {
-    api.get<StoreSummary>(`/stores/${params.storeId}`).then(setStore).catch(() => {});
+    api
+      .get<StoreSummary>(`/stores/${params.storeId}`)
+      .then((s) => {
+        setStore(s);
+        setStoreError(null);
+      })
+      .catch((err) => setStoreError(err instanceof ApiError ? err.message : "Couldn't load your store details."));
   }
 
   useEffect(() => {
@@ -271,6 +285,20 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
     } finally {
       setPublishing(false);
     }
+  }
+
+  if (storeError) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" description="Here's what's happening in your store." />
+        <Alert tone="danger">
+          {storeError}{" "}
+          <Button size="sm" variant="outline" onClick={refreshStore}>
+            Retry
+          </Button>
+        </Alert>
+      </div>
+    );
   }
 
   if (

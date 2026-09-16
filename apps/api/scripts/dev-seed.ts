@@ -1,18 +1,23 @@
 import { PrismaClient } from "@prisma/client";
-import { seedSettings } from "../test/e2e/setup";
+import { seedDefaults } from "../src/bootstrap/seed-defaults";
 
 /**
  * One-time local-dev convenience: seeds the Settings Registry defaults,
  * plan catalog, built-in themes, and current Seller Agreement version that
  * `scripts/simulate/seed.ts` (and any real signup) needs to already exist.
- * Safe to re-run — every `seed*` function upserts, never duplicates.
+ * Safe to re-run — every `seed*` function upserts, never duplicates. As of
+ * the founder-walkthrough seed-on-boot fix, `src/main.ts` now calls
+ * `seedDefaults()` automatically on every real API boot too - this script
+ * stays useful for local dev specifically because of the localhost
+ * root-domain override below, which must never run against a real
+ * deployment.
  */
 (async () => {
   const prisma = new PrismaClient();
-  await seedSettings(prisma);
+  await seedDefaults(prisma);
 
   // Found while live-verifying FR-66.1 (Module 81) - `domains.
-  // platform_root_domain` defaults to "uzeyn.com" (seedSettings() is
+  // platform_root_domain` defaults to "uzeyn.com" (seedDefaults() is
   // shared with the e2e suite, which never hits this through a real
   // browser Host header, so the gap was invisible there). Any browser
   // request to a simulated store's `<slug>.localhost:3001` storefront 404s

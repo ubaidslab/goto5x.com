@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Alert } from "@/components/ui/Alert";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { redirectAfterAuth } from "@/lib/post-auth-redirect";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -18,6 +20,7 @@ function storeTokens(body: { accessToken: string; sessionId: string; refreshToke
 }
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export default function LoginPage() {
       }
       storeTokens(body);
       setLoggedIn(true);
+      await redirectAfterAuth(router, body.accessToken);
     } finally {
       setSubmitting(false);
     }
@@ -80,6 +84,7 @@ export default function LoginPage() {
         storeTokens(body);
         setLoggedIn(true);
         setPreAuthToken(null);
+        await redirectAfterAuth(router, body.accessToken);
       } else {
         setError(getApiErrorMessage(body, res.statusText));
       }

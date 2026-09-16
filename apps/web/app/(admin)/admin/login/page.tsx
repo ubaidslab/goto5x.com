@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Alert } from "@/components/ui/Alert";
@@ -9,6 +10,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 export default function AdminLoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [preAuthToken, setPreAuthToken] = useState<string | null>(null);
@@ -64,8 +66,18 @@ export default function AdminLoginPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
+        // Founder walkthrough finding (pre-Milestone-A, Phase 0.5) - this
+        // used to store only the access token, with no redirect afterward
+        // and no sessionId/refreshToken to ever refresh it with - every
+        // admin session was stuck on this same page after login and hard-
+        // expired 15 minutes later with no way back in short of a fresh
+        // login. See admin-api.ts's request() for the refresh flow this
+        // now enables.
         localStorage.setItem("adminAccessToken", body.accessToken);
+        localStorage.setItem("adminSessionId", body.sessionId);
+        localStorage.setItem("adminRefreshToken", body.refreshToken);
         setLoggedIn(true);
+        router.push("/admin");
       } else {
         setError(getApiErrorMessage(body, res.statusText));
       }
