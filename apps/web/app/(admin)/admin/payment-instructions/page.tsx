@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
+import { ConfirmValueChange, useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -36,6 +36,69 @@ const EMPTY: PlatformPaymentInstructions = {
   jazzcash: { enabled: false, accountTitle: "", number: "" },
 };
 
+function displayValue(v: string | boolean): string {
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  return v.trim() === "" ? "(empty)" : v;
+}
+
+/**
+ * Founder walkthrough finding (Phase 1 item 9) - save() used to pass the
+ * confirm dialog a single row whose from/to were raw JSON.stringify() of the
+ * entire nested object ("garbled/unclear text... overflows its container").
+ * This builds one plain-language row per field that actually changed, so the
+ * admin sees exactly what's moving (e.g. "Bank account number: 1234 -> 5678")
+ * instead of one unreadable JSON blob covering fields that didn't change too.
+ */
+function describeChanges(from: PlatformPaymentInstructions, to: PlatformPaymentInstructions): ConfirmValueChange[] {
+  const rows: ConfirmValueChange[] = [];
+  const methods: { key: keyof PlatformPaymentInstructions; name: string; fields: { key: string; label: string }[] }[] = [
+    {
+      key: "bank",
+      name: "Bank transfer",
+      fields: [
+        { key: "bankName", label: "Bank name" },
+        { key: "accountTitle", label: "Account title" },
+        { key: "accountNumber", label: "Account number" },
+        { key: "iban", label: "IBAN" },
+      ],
+    },
+    {
+      key: "easypaisa",
+      name: "Easypaisa",
+      fields: [
+        { key: "accountTitle", label: "Account title" },
+        { key: "number", label: "Number" },
+      ],
+    },
+    {
+      key: "jazzcash",
+      name: "JazzCash",
+      fields: [
+        { key: "accountTitle", label: "Account title" },
+        { key: "number", label: "Number" },
+      ],
+    },
+  ];
+
+  for (const method of methods) {
+    const fromMethod = from[method.key] as unknown as Record<string, string | boolean>;
+    const toMethod = to[method.key] as unknown as Record<string, string | boolean>;
+    if (fromMethod.enabled !== toMethod.enabled) {
+      rows.push({ label: `${method.name}: enabled`, from: displayValue(fromMethod.enabled), to: displayValue(toMethod.enabled) });
+    }
+    for (const field of method.fields) {
+      if (fromMethod[field.key] !== toMethod[field.key]) {
+        rows.push({
+          label: `${method.name}: ${field.label}`,
+          from: displayValue(fromMethod[field.key]),
+          to: displayValue(toMethod[field.key]),
+        });
+      }
+    }
+  }
+  return rows;
+}
+
 /**
  * Phase 6c (Admin Terminal re-skin) - v0.41's platform payment instructions
  * form (FR-6.23), restyled onto DashCard. Every field/method preserved,
@@ -62,13 +125,14 @@ export default function AdminPaymentInstructionsPage() {
   useEffect(load, []);
 
   async function save() {
+    if (!current) return;
     setError(null);
     setSaved(false);
     const ok = await confirm({
       title: "Update platform payment instructions?",
       description:
         "This changes where every seller is told to send their subscription/plan-fee payment (FR-8.16 - a bad value here sends real money to the wrong place).",
-      changes: [{ label: "billing.platform_payment_instructions", from: JSON.stringify(current), to: JSON.stringify(draft) }],
+      changes: describeChanges(current, draft),
       confirmLabel: "Save",
       tone: "danger",
     });

@@ -166,6 +166,45 @@ Work through this in order — earlier steps stop the bleeding, later steps clea
    was rotated, when maintenance mode was on, and any founder/legal
    notification obligations triggered by step 4's CNIC case.
 
+## 3b. Admin Panel Secret-Path Gate
+
+Founder walkthrough finding (Phase 1 item 7) — `/admin` was previously a
+predictable, guessable path with nothing standing in front of it but the
+login form itself. `apps/web/middleware.ts` now gates every `/admin*`
+request behind a secret entry path, verified by a signed, httpOnly cookie
+(not the URL alone) so existing admin pages' internal links keep working
+unmodified once granted.
+
+- [ ] Set both `ADMIN_ENTRY_SECRET_PATH` (a non-guessable path segment —
+      not `/admin-secret` or anything guessable-by-pattern; something like
+      a random word combination or a generated token works well) and
+      `ADMIN_GATE_SIGNING_SECRET` (`openssl rand -base64 32`, same
+      discipline as every other generated secret in §3) in `apps/web`'s
+      `.env` before launch. **Both must be set** — leaving either unset
+      falls through to the unguarded behavior (the local-dev default;
+      never a hard requirement that could lock out an environment that
+      hasn't configured this yet).
+- [ ] Confirm it's actually active: visiting `https://<platform-domain>/admin`
+      directly (without first visiting the secret path) must return a bare
+      404 — indistinguishable from the route not existing — not a login
+      page. Then visit `https://<platform-domain>/<ADMIN_ENTRY_SECRET_PATH>`
+      and confirm it redirects to `/admin`'s real login page, and that
+      normal admin navigation (clicking into any admin page) keeps working
+      afterward without hitting the secret path again.
+- [ ] **To rotate** (suspected leak, staff turnover, or just periodic
+      hygiene): generate a new `ADMIN_ENTRY_SECRET_PATH` and/or
+      `ADMIN_GATE_SIGNING_SECRET`, update `apps/web`'s `.env`, and restart
+      the `web` container (`docker compose restart web` or equivalent) —
+      **no code change, no redeploy**. Rotating `ADMIN_GATE_SIGNING_SECRET`
+      immediately invalidates every previously-issued gate cookie (anyone
+      with an old cookie is bounced back to a 404 on their next `/admin`
+      request), so it's the faster of the two to rotate under suspected
+      compromise; rotating `ADMIN_ENTRY_SECRET_PATH` alone doesn't affect
+      already-granted cookies until they naturally expire (30 days).
+- [ ] This is a defense-in-depth layer, not a replacement for admin
+      login/MFA — real authentication and authorization are completely
+      unaffected either way and remain the actual security boundary.
+
 ## 4. Bring the stack up
 
 - [ ] `docker compose up --build -d` from the repo root on the VPS.

@@ -87,13 +87,21 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
               </DialogHeader>
 
               {pending.changes && pending.changes.length > 0 && (
-                <div className="my-2 space-y-2 rounded-md border border-border bg-canvas p-3">
+                // Founder walkthrough finding (Phase 1 item 9) - was a single-line
+                // `flex justify-between` row: fine for short "5" -> "10" values, but
+                // a long unbroken value (e.g. JSON.stringify of an object) has no
+                // whitespace to wrap on and pushed past the dialog's fixed width.
+                // Stacking label above value + break-words fixes it regardless of
+                // content length; max-h + overflow-y-auto caps it when a caller
+                // passes many rows (e.g. payment-instructions' per-field diff).
+                <div className="my-2 max-h-[40vh] space-y-3 overflow-y-auto rounded-md border border-border bg-canvas p-3">
                   {pending.changes.map((c) => (
-                    <div key={c.label} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-ink-muted">{c.label}</span>
-                      <span className="font-medium text-ink">
-                        {c.from} <span className="text-ink-faint">&rarr;</span> {c.to}
-                      </span>
+                    <div key={c.label} className="text-sm">
+                      <div className="text-ink-muted">{c.label}</div>
+                      <div className="mt-0.5 break-words font-medium text-ink">
+                        <span className="break-words">{c.from}</span> <span className="text-ink-faint">&rarr;</span>{" "}
+                        <span className="break-words">{c.to}</span>
+                      </div>
                     </div>
                   ))}
                 </div>

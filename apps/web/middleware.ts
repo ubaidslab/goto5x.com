@@ -46,10 +46,95 @@ const SUPPORT_CENTER_HOSTS = (process.env.SUPPORT_CENTER_HOSTNAMES ?? "support.l
   .map((h) => h.trim())
   .filter(Boolean);
 
-export function middleware(request: NextRequest) {
+/**
+ * Founder walkthrough finding (pre-Milestone-A, Phase 1 item 7) - `/admin`
+ * was a predictable, guessable path with nothing standing in front of it
+ * but the login form itself (real auth, unaffected either way - this is a
+ * defense-in-depth layer on top of it, not a replacement). Gated behind a
+ * secret entry path, rotatable via env vars alone (ADMIN_ENTRY_SECRET_PATH,
+ * ADMIN_GATE_SIGNING_SECRET - see docs/launch-runbook.md for the exact
+ * rotation steps), no redeploy required - only a restart to pick up the
+ * new env values.
+ *
+ * Mechanism: visiting `/<ADMIN_ENTRY_SECRET_PATH>` sets an httpOnly,
+ * signed cookie (HMAC-SHA256 over an expiry timestamp, verified with Web
+ * Crypto so this runs in the Edge middleware runtime) and redirects to
+ * `/admin`; every `/admin*` request without a validly-signed, unexpired
+ * cookie gets a bare 404 - indistinguishable from the route not existing
+ * at all, so a direct guess at `/admin` reveals nothing. Every existing
+ * admin page's internal `<Link href="/admin/...">` keeps working
+ * unmodified once the cookie is set, since the gate is cookie-based, not
+ * a URL-rewrite the app's own links would need to know about.
+ * Deliberately falls through to today's unguarded behavior when either
+ * env var is unset (local dev, and any environment that hasn't
+ * configured this yet) - never a hard requirement that could lock
+ * everyone out of an environment that never set it up.
+ */
+const ADMIN_ENTRY_SECRET_PATH = process.env.ADMIN_ENTRY_SECRET_PATH;
+const ADMIN_GATE_SIGNING_SECRET = process.env.ADMIN_GATE_SIGNING_SECRET;
+const ADMIN_GATE_COOKIE = "admin_gate";
+const ADMIN_GATE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+
+function toBase64Url(bytes: ArrayBuffer): string {
+  let binary = "";
+  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function computeAdminGateValue(expiresAt: number): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(ADMIN_GATE_SIGNING_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(expiresAt)));
+  return `${expiresAt}.${toBase64Url(signature)}`;
+}
+
+async function isValidAdminGateCookie(cookieValue: string | undefined): Promise<boolean> {
+  if (!cookieValue) return false;
+  const [expiresAtRaw] = cookieValue.split(".");
+  const expiresAt = Number(expiresAtRaw);
+  if (!Number.isFinite(expiresAt) || Date.now() / 1000 > expiresAt) return false;
+  return (await computeAdminGateValue(expiresAt)) === cookieValue;
+}
+
+async function handlePlatformHostRequest(request: NextRequest): Promise<NextResponse> {
+  if (!ADMIN_ENTRY_SECRET_PATH || !ADMIN_GATE_SIGNING_SECRET) {
+    return NextResponse.next();
+  }
+
+  const path = request.nextUrl.pathname;
+
+  if (path === `/${ADMIN_ENTRY_SECRET_PATH}`) {
+    const expiresAt = Math.floor(Date.now() / 1000) + ADMIN_GATE_TTL_SECONDS;
+    const response = NextResponse.redirect(new URL("/admin", request.url));
+    response.cookies.set(ADMIN_GATE_COOKIE, await computeAdminGateValue(expiresAt), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: ADMIN_GATE_TTL_SECONDS,
+    });
+    return response;
+  }
+
+  if (path === "/admin" || path.startsWith("/admin/")) {
+    const valid = await isValidAdminGateCookie(request.cookies.get(ADMIN_GATE_COOKIE)?.value);
+    if (!valid) {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
+
+  return NextResponse.next();
+}
+
+export async function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   if (PLATFORM_HOSTS.includes(host)) {
-    return NextResponse.next();
+    return handlePlatformHostRequest(request);
   }
   const url = request.nextUrl.clone();
   if (SUPPORT_CENTER_HOSTS.includes(host)) {
