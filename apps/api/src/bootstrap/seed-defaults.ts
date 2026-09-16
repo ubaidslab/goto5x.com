@@ -17,7 +17,7 @@ import { seedEmailTemplates } from "../billing/email-templates.seed";
 import { seedWalletSettings } from "../billing/wallet.seed";
 import { seedPlatformGatewaySettings } from "../platform-gateway/platform-gateway.seed";
 import { seedModerationSettings } from "../moderation/moderation.seed";
-import { seedExternalApiSettings } from "../external-api/external-api.seed";
+import { seedExternalApiClients, seedExternalApiSettings } from "../external-api/external-api.seed";
 import { seedGiftCardsSettings } from "../gift-cards/gift-cards.seed";
 import { seedGrowthProgramsSettings } from "../growth-programs/growth-programs.seed";
 import { seedImpersonationSettings } from "../impersonation/impersonation.seed";
@@ -85,6 +85,7 @@ export async function seedDefaults(prisma: PrismaClient): Promise<void> {
   await seedOnboardingSettings(prisma);
   await seedPlansSettings(prisma);
   await seedExternalApiSettings(prisma);
+  await seedExternalApiClients(prisma);
   await seedMessagingSettings(prisma);
   await seedImpersonationSettings(prisma);
   await seedGrowthProgramsSettings(prisma);

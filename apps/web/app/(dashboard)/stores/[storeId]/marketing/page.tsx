@@ -36,15 +36,24 @@ interface ProductOption {
 }
 
 /**
- * SRS §5.24b/FR-24.8/FR-24.10 - the seller dashboard's hand-off point to the
- * founder's separate Social Media SaaS. Seller-scoped data (not store-scoped)
- * hosted under the store URL, same convention as Plans & Billing.
+ * Founder walkthrough finding (Phase 2 item 14) - this page originally
+ * centered on a hand-off to the founder's separate Social Media SaaS (SRS
+ * §5.24b/FR-24.8), which was never built and stays deferred. The hand-off
+ * button/copy is removed from this component; the backend hook it called
+ * (POST /sellers/me/marketing-handoff, marketing-handoff.controller.ts)
+ * is untouched and stays genuinely dormant per the founder's explicit
+ * instruction - a real re-attachment point if that product ever ships,
+ * without this page needing to carry dead UI code in the meantime. The
+ * "Connect"/token section stays, reframed honestly as what it actually is:
+ * the bearer-token auth the real, UZEYN-native Meta catalog feed below
+ * depends on (see external-api.seed.ts's seedExternalApiClients() - without
+ * it, that "Connect" click 400'd on every fresh install, silently blocking
+ * the real feed feature too, not just the dead handoff).
  */
 export default function MarketingPage({ params }: { params: { storeId: string } }) {
   const confirm = useConfirm();
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [handingOff, setHandingOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [feedStatus, setFeedStatus] = useState<SocialMediaFeedStatus | null>(null);
@@ -107,7 +116,7 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
       setNewToken(res.token);
       load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't connect the Social Media SaaS yet.");
+      setError(err instanceof ApiError ? err.message : "Couldn't create a feed connection.");
     } finally {
       setConnecting(false);
     }
@@ -130,48 +139,24 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
     }
   }
 
-  async function openMarketingSaas() {
-    setError(null);
-    setHandingOff(true);
-    try {
-      const res = await api.post<{ url: string }>("/sellers/me/marketing-handoff", {});
-      window.open(res.url, "_blank", "noreferrer");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "The Marketing app isn't available yet.");
-    } finally {
-      setHandingOff(false);
-    }
-  }
-
   const active = tokens.filter((t) => !t.revokedAt);
 
   return (
     <div>
-      <PageHeader
-        title="Marketing"
-        description="Connect your store to marketing tools like the Social Media SaaS to promote your catalog."
-      />
+      <PageHeader title="Marketing" description="Promote your catalog with campaigns, segments, gift cards, discounts, and social/WhatsApp feeds." />
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Card>
-        <CardHeader title="Social Media SaaS" />
+        <CardHeader title="Feed API access" description="Powers the Facebook & Instagram Shop feed and WhatsApp product sharing below." />
         <CardBody className="space-y-4">
-          <p className="text-sm text-ink-muted">
-            Post directly to social media using your product catalog - no second signup, no second password.
-          </p>
-          <Button onClick={openMarketingSaas} loading={handingOff}>
-            Open Marketing app &rarr;
-          </Button>
-
           <div>
-            <h3 className="mb-2 text-sm font-medium text-ink">Connected apps</h3>
             {newToken && (
               <Alert tone="success">
                 Connection created. Copy this token now - it won&apos;t be shown again: <code>{newToken}</code>
               </Alert>
             )}
             {active.length === 0 ? (
-              <EmptyState title="No apps connected yet" description="Connect below to start posting your catalog to social media." />
+              <EmptyState title="No apps connected yet" description="Connect below to enable your feed integrations." />
             ) : (
               <Reveal stagger={0.05} className="space-y-2">
                 {active.map((t) => (

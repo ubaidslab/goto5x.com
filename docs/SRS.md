@@ -4304,7 +4304,14 @@ follow.
 - FR-24.8: The seller dashboard includes a **"Marketing" section** — a polished
   entry point that hands the seller off to the founder's separate Social Media
   SaaS **using the existing SSO hook (§3.2a)** — no second signup, no second
-  password.
+  password. **v1.0 presentation note (founder walkthrough finding, Phase 2 item
+  14):** since that product doesn't exist yet, the hand-off button/copy itself
+  is not shown in the Marketing section - same "hidden until real, never a
+  broken link" precedent FR-24.2's premium-templates showcase already
+  established for the sibling Template Store hook. The backend endpoint
+  (POST /sellers/me/marketing-handoff) and its documented "not configured yet"
+  error response (unaffected by this note) are unchanged and become reachable
+  again the moment a real base URL is configured and a UI is reattached.
 - FR-24.9: **Product Feed API** — an authenticated, **seller-scoped**, read-only
   API exposing that seller's products (title, price, images, storefront URL) so
   the Social Media SaaS can auto-fill post templates. The feed exposes only fields

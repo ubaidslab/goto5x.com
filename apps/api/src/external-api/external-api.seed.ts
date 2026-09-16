@@ -1,4 +1,6 @@
+import { randomBytes } from "crypto";
 import { PrismaClient } from "@prisma/client";
+import { encryptDriveToken } from "../media/drive-token-crypto.util";
 
 /**
  * Module 18 (SRS §6.5 rate limiting; FR-24.5's plan-tier gate). Rate limits
@@ -104,6 +106,37 @@ export async function seedExternalApiSettings(prisma: PrismaClient) {
       defaultValue: false,
       description:
         "Whether a seller may select a premium-tier theme (distinct from a marketplace-tier theme, which is gated purely by TemplateEntitlement, FR-24.5). Off for every seller in v1.0, same precedent as theme.coded_mode_enabled.",
+    },
+    update: {},
+  });
+}
+
+/**
+ * Founder walkthrough finding (Phase 2 item 14) - SellerApiTokensService.
+ * create() requires an already-registered `social_media_saas`-typed
+ * ExternalApiClient row before it will mint a seller's own bearer token
+ * (see that service's own comment), but nothing ever seeded one - so a
+ * seller's "Connect" click in the Marketing hub always 400'd on a fresh
+ * install. That same token is the ONLY auth path for the real, UZEYN-
+ * native Meta Commerce Catalog feed too (FR-55.1-55.3) - both feed
+ * endpoints share one token/client mechanism
+ * (ProductFeedService.resolveToken()) - so the missing row wasn't only
+ * blocking the dead external-SaaS handoff, it silently blocked the real
+ * feed feature from ever working, contradicting the "stays fully
+ * functional" assumption. The signing secret this row's schema requires
+ * is never actually read for this client type (only template_store's HMAC
+ * path checks it, per ProductFeedService's own comment) - generated and
+ * encrypted here exactly like the admin-create-client flow does, just
+ * never shown to anyone, since nothing ever verifies against it.
+ */
+export async function seedExternalApiClients(prisma: PrismaClient) {
+  const key = Buffer.from(process.env.EXTERNAL_API_SECRET_ENCRYPTION_KEY ?? "", "base64");
+  await prisma.externalApiClient.upsert({
+    where: { clientType: "social_media_saas" },
+    create: {
+      clientType: "social_media_saas",
+      displayName: "Seller feed API access",
+      signingSecretEncrypted: encryptDriveToken(randomBytes(32).toString("hex"), key),
     },
     update: {},
   });

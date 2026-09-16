@@ -77,6 +77,16 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
       .post("/admin/external-api-clients")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ clientType, displayName: clientType });
+    if (res.status === 409) {
+      // Founder walkthrough finding (Phase 2 item 14) - social_media_saas is
+      // now seeded on boot (seedExternalApiClients(), so the real seller-
+      // facing "Connect" flow works out of the box) and already exists by
+      // the time any test reaches here - fall back to the existing row
+      // instead of assuming every registerClient() call creates fresh.
+      const list = await request(app.getHttpServer()).get("/admin/external-api-clients").set("Authorization", `Bearer ${adminToken}`);
+      const existing = list.body.find((c: { clientType: string }) => c.clientType === clientType);
+      return { clientId: existing.id as string, secret: undefined as unknown as string };
+    }
     return { clientId: res.body.id as string, secret: res.body.signingSecret as string };
   }
 
@@ -352,6 +362,34 @@ describe("External-SaaS Integration Hooks (e2e) - SRS §5.24, §14.22", () => {
   });
 
   describe("Seller API tokens dashboard (FR-24.10) and cross-SaaS eligibility (FR-24.14)", () => {
+    /**
+     * Founder walkthrough finding (Phase 2 item 14) - SellerApiTokensService.
+     * create() requires an existing social_media_saas ExternalApiClient row,
+     * but nothing seeded one before this fix, so a seller's "Connect" click
+     * in the Marketing hub always 400'd on a completely fresh install - not
+     * just the dead external-handoff button, but the real bearer-token auth
+     * the UZEYN-native Meta catalog feed also depends on. Deliberately does
+     * NOT call registerClient() first (unlike every other test in this
+     * file) - the whole point is proving no admin action is needed.
+     */
+    it("a seller can self-serve create a feed-access token with zero admin action, on a completely fresh install (Phase 2 item 14)", async () => {
+      const seller = await signupLoginAndCreateStore("fresh-feed-token@example.com", "fresh-feed-token-store");
+
+      const tokenRes = await request(app.getHttpServer())
+        .post("/sellers/me/api-tokens")
+        .set("Authorization", `Bearer ${seller.token}`);
+      expect(tokenRes.status).toBe(201);
+      expect(tokenRes.body.token).toBeTruthy();
+
+      const feed = await request(app.getHttpServer())
+        .get("/external/social-media/meta-catalog-feed")
+        .set("Authorization", `Bearer ${tokenRes.body.token}`);
+      // Growth-tier plan gate (FR-55.2) still applies - a GO-tier seller is
+      // correctly forbidden, but that's a real, documented 403, never the
+      // "integration not configured" 400 the missing seed row used to cause.
+      expect(feed.status).toBe(403);
+    });
+
     it("a seller can list their connected tokens without ever seeing the plaintext again", async () => {
       const seller = await signupLoginAndCreateStore("tokens-list@example.com", "tokens-list-store");
       const adminToken = await fullyVerifiedAdminToken("tokens-list-admin@example.com");
