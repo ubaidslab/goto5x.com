@@ -10,6 +10,7 @@ import { AvatarInitials } from "@/components/dashboard/ui/AvatarInitials";
 import { DashCard, DashCardFooter, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { GaugeCard } from "@/components/dashboard/ui/Gauge";
 import { Milestone, MilestoneBanner } from "@/components/dashboard/MilestoneBanner";
+import { GradientMesh } from "@/components/marketing/AbstractGraphic";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Reveal } from "@/components/motion/Reveal";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -141,26 +142,39 @@ function ThemeStartPicker({ storeId, onPicked }: { storeId: string; onPicked: ()
   ];
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-4">
       {options.map((opt) => {
         const theme = themes.find((t) => t.id === opt.id);
         const preset = theme ? THEME_PRESETS[theme.name] : undefined;
         const isCurrent = themeSettings.themeId === opt.id;
+        const bg = preset?.colors.background ?? "#fff";
+        const ink = preset?.colors.text ?? "#000";
+        const accent = preset?.colors.primary ?? ink;
         return (
           <button
             key={opt.id}
             type="button"
             onClick={() => pick(opt.id, opt.choice)}
             disabled={picking !== null}
-            className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-smooth-fast disabled:opacity-60 ${
+            className={`group flex flex-col items-center gap-2 rounded-lg border p-2.5 transition-smooth-fast disabled:opacity-60 ${
               isCurrent ? "border-accent ring-1 ring-accent" : "border-border hover:border-border-strong"
             }`}
           >
+            {/* Founder walkthrough finding (Phase 4 item 18) - a real
+                miniature storefront preview (header bar + product-grid
+                blocks in the theme's own colors) rather than a bare "Aa"
+                text swatch, so this is an actual visual decision, not a
+                label guess. */}
             <span
-              className="flex h-12 w-20 items-center justify-center rounded-md text-sm font-display font-semibold"
-              style={{ background: preset?.colors.background ?? "#fff", color: preset?.colors.primary ?? "#000" }}
+              className="flex h-16 w-28 flex-col gap-1 overflow-hidden rounded-md p-1.5 shadow-xs transition-transform group-hover:scale-[1.03]"
+              style={{ background: bg }}
+              aria-hidden
             >
-              Aa
+              <span className="h-2 w-8 rounded-full" style={{ background: ink }} />
+              <span className="flex flex-1 gap-1">
+                <span className="flex-1 rounded-sm" style={{ background: accent, opacity: 0.85 }} />
+                <span className="flex-1 rounded-sm" style={{ background: ink, opacity: 0.15 }} />
+              </span>
             </span>
             <span className="flex items-center gap-1 text-xs font-medium text-ink">
               {picking === opt.id ? "Saving..." : opt.label}
@@ -264,28 +278,39 @@ function OnboardingWizard({
   const doneCount = steps.filter((s) => progress[s.key]).length;
 
   return (
-    <div>
-      <PageHeader
-        title="Get your store ready"
-        description={`${doneCount} of ${steps.length} steps done - complete them to finish setting up your store.`}
-      />
-      <DashCard>
-        <DashCardHeader title="Setup checklist" />
-        <div className="divide-y divide-border">
-          {steps.map((step) => (
-            <div key={step.key} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-ink">{step.label}</p>
-                  <Badge tone={progress[step.key] ? "success" : "neutral"}>{progress[step.key] ? "Done" : "To do"}</Badge>
+    <div className="relative overflow-hidden">
+      {/* Founder walkthrough finding (Phase 4 item 18) - this is the very
+          first screen a brand-new seller ever sees, and it previously had
+          no imagery and no entrance motion at all (unlike the main
+          dashboard below, which already had both). Same token-driven
+          abstract graphic the marketing homepage's hero uses (never a
+          stock photo) - "no visible borders, tonal background" is the
+          card mandate, this is a background accent behind it, not a
+          replacement for it. */}
+      <GradientMesh className="pointer-events-none absolute -top-24 right-0 h-96 w-96 opacity-70" />
+      <div className="relative">
+        <PageHeader
+          title="Get your store ready"
+          description={`${doneCount} of ${steps.length} steps done - complete them to finish setting up your store.`}
+        />
+        <DashCard>
+          <DashCardHeader title="Setup checklist" />
+          <Reveal className="divide-y divide-border" stagger={0.08}>
+            {steps.map((step) => (
+              <div key={step.key} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-ink">{step.label}</p>
+                    <Badge tone={progress[step.key] ? "success" : "neutral"}>{progress[step.key] ? "Done" : "To do"}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-ink-muted">{step.description}</p>
                 </div>
-                <p className="mt-1 text-sm text-ink-muted">{step.description}</p>
+                {step.action}
               </div>
-              {step.action}
-            </div>
-          ))}
-        </div>
-      </DashCard>
+            ))}
+          </Reveal>
+        </DashCard>
+      </div>
     </div>
   );
 }
@@ -410,20 +435,25 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
 
   if (products.length === 0) {
     return (
-      <div>
-        <PageHeader title="Welcome to your store" description="Let's get your first product live." />
-        <DashCard className="p-0">
-          <EmptyState
-            icon={<ShoppingBag className="h-6 w-6" />}
-            title="Add your first product"
-            description="Once you add a product with at least one price and quantity, your store is ready to start taking orders."
-            action={
-              <Link href={`/stores/${params.storeId}/products/new`}>
-                <Button>Add a product</Button>
-              </Link>
-            }
-          />
-        </DashCard>
+      <div className="relative overflow-hidden">
+        <GradientMesh className="pointer-events-none absolute -top-24 right-0 h-96 w-96 opacity-70" />
+        <div className="relative">
+          <PageHeader title="Welcome to your store" description="Let's get your first product live." />
+          <Reveal>
+            <DashCard className="p-0">
+              <EmptyState
+                icon={<ShoppingBag className="h-6 w-6" />}
+                title="Add your first product"
+                description="Once you add a product with at least one price and quantity, your store is ready to start taking orders."
+                action={
+                  <Link href={`/stores/${params.storeId}/products/new`}>
+                    <Button>Add a product</Button>
+                  </Link>
+                }
+              />
+            </DashCard>
+          </Reveal>
+        </div>
       </div>
     );
   }
@@ -435,20 +465,25 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
   // hidden; plan-fee payment is a separate, unrelated flow).
   if (!store.publishedAt) {
     return (
-      <div>
-        <PageHeader title="Publish your store" description="One last step before you can accept real orders." />
-        <DashCard className="flex flex-col items-center gap-4 py-16 text-center">
-          <div>
-            <h2 className="text-base font-semibold text-ink">Ready to go live?</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
-              Publishing requires a payment method and identity verification - both one-time steps.
-            </p>
-          </div>
-          {publishError && <Alert>{publishError}</Alert>}
-          <Button loading={publishing} onClick={publish}>
-            Publish store
-          </Button>
-        </DashCard>
+      <div className="relative overflow-hidden">
+        <GradientMesh className="pointer-events-none absolute -top-24 right-0 h-96 w-96 opacity-70" />
+        <div className="relative">
+          <PageHeader title="Publish your store" description="One last step before you can accept real orders." />
+          <Reveal>
+            <DashCard className="flex flex-col items-center gap-4 py-16 text-center">
+              <div>
+                <h2 className="text-base font-semibold text-ink">Ready to go live?</h2>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
+                  Publishing requires a payment method and identity verification - both one-time steps.
+                </p>
+              </div>
+              {publishError && <Alert>{publishError}</Alert>}
+              <Button loading={publishing} onClick={publish}>
+                Publish store
+              </Button>
+            </DashCard>
+          </Reveal>
+        </div>
       </div>
     );
   }
