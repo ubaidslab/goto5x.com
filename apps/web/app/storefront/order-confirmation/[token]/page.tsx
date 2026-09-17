@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { AnimatedElement } from "../../../../components/motion/AnimatedElement";
 import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
@@ -35,7 +36,9 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
       <AnnouncementBar theme={theme} />
       <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24, maxWidth: 640, margin: "0 auto" }}>
-        <div
+        <AnimatedElement
+          as="div"
+          preset="scale-in"
           style={{
             padding: 24,
             borderRadius: 12,
@@ -48,7 +51,7 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
           <p style={{ margin: 0 }}>
             Your order is <strong>awaiting payment</strong> - it isn't confirmed yet.
           </p>
-        </div>
+        </AnimatedElement>
 
         <OrderVerificationPanel token={params.token} verification={order.verification} />
         <ModelAdvancePanel token={params.token} paymentModel={order.paymentModel} orderStatus={order.status} />

@@ -66,7 +66,11 @@ export default async function StorefrontCollectionPage({ params }: { params: { c
           <h1 style={{ color: theme.colors.primary }}>{collection.title}</h1>
           {collection.description && <p>{collection.description}</p>}
         </div>
-        <FeaturedProductsSection products={collection.products} theme={theme} />
+        <FeaturedProductsSection
+          products={collection.products}
+          theme={theme}
+          elementAnimations={{ heading: "fade-up", image: "stagger-reveal" }}
+        />
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />

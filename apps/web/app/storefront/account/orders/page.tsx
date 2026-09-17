@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { AnimatedElement } from "../../../../components/motion/AnimatedElement";
 import { fetchStorefrontNavigation, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
@@ -48,31 +49,33 @@ export default async function BuyerOrdersPage() {
       <main style={{ padding: 24, maxWidth: 640, margin: "0 auto" }}>
         <h1 style={{ fontSize: 22, marginBottom: 16 }}>Order history</h1>
         {orders.length === 0 && <p style={{ fontSize: 14, color: "#6b7280" }}>No orders yet.</p>}
-        {orders.map((order) => (
-          <a
-            key={order.id}
-            href={`/order-status/${order.statusLookupToken}`}
-            style={{
-              display: "block",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-              textDecoration: "none",
-              color: theme.colors.text,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <strong>
-                #{order.orderNumber} - {order.storeName}
-              </strong>
-              <span style={{ textTransform: "capitalize", fontSize: 13, color: "#6b7280" }}>{order.status}</span>
-            </div>
-            <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
-              {new Date(order.placedAt).toLocaleDateString()} - {order.currency} {order.totalAmount}
-            </p>
-          </a>
-        ))}
+        <AnimatedElement as="div" preset="stagger-reveal">
+          {orders.map((order) => (
+            <a
+              key={order.id}
+              href={`/order-status/${order.statusLookupToken}`}
+              style={{
+                display: "block",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 12,
+                textDecoration: "none",
+                color: theme.colors.text,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <strong>
+                  #{order.orderNumber} - {order.storeName}
+                </strong>
+                <span style={{ textTransform: "capitalize", fontSize: 13, color: "#6b7280" }}>{order.status}</span>
+              </div>
+              <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+                {new Date(order.placedAt).toLocaleDateString()} - {order.currency} {order.totalAmount}
+              </p>
+            </a>
+          ))}
+        </AnimatedElement>
         <p style={{ marginTop: 20 }}>
           <a href="/account" style={{ color: theme.colors.primary, fontWeight: 600 }}>
             &larr; Back to account

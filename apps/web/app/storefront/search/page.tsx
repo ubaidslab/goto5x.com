@@ -64,7 +64,11 @@ export default async function StorefrontSearchPage({ searchParams }: SearchPageP
           </select>
           <button type="submit">Search</button>
         </form>
-        <FeaturedProductsSection products={results ?? []} theme={theme} />
+        <FeaturedProductsSection
+          products={results ?? []}
+          theme={theme}
+          elementAnimations={{ heading: "fade-up", image: "stagger-reveal" }}
+        />
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
       <WhatsappButton theme={theme} />

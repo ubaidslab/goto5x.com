@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatedElement } from "../../../../components/motion/AnimatedElement";
 import { ResolvedThemeSettings } from "../../../../lib/theme-presets";
 import { removeWishlistItemAction, WishlistItem } from "../actions";
 
@@ -23,7 +24,7 @@ export function WishlistList({ items, theme }: { items: WishlistItem[]; theme: R
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <AnimatedElement as="div" preset="stagger-reveal" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {list.map((item) => (
         <div
           key={item.productId}
@@ -56,6 +57,6 @@ export function WishlistList({ items, theme }: { items: WishlistItem[]; theme: R
           </button>
         </div>
       ))}
-    </div>
+    </AnimatedElement>
   );
 }

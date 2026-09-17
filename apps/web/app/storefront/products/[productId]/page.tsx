@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { AnimatedElement } from "../../../../components/motion/AnimatedElement";
 import { safeJsonLdString } from "../../../../lib/safe-json-ld";
 import { fetchStorefrontNavigation, fetchStorefrontProduct, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
@@ -111,7 +112,9 @@ export default async function StorefrontProductPage({ params }: { params: { prod
       <main style={{ padding: 24 }}>
         <a href="/">&larr; Back to store</a>
         <h1>{product.title}</h1>
-        <ProductGallery media={product.media} title={product.title} />
+        <AnimatedElement as="div" preset="fade-up">
+          <ProductGallery media={product.media} title={product.title} />
+        </AnimatedElement>
         {product.description && <p>{product.description}</p>}
         {/* SRS §5.69/FR-69.3 (Module 94) - buyer-facing by default, no seller
             opt-in required (contrast with tags' FR-57.4 opt-in). Absent

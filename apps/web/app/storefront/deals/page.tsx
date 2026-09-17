@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { AnimatedElement } from "../../../components/motion/AnimatedElement";
 import { fetchStorefrontDeals, fetchStorefrontNavigation, fetchStorefrontStore } from "../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../lib/theme-presets";
 import { ComingSoonPage, PasswordGate } from "../access-gates";
@@ -41,7 +42,11 @@ export default async function StorefrontDealsPage() {
         {deals.length === 0 ? (
           <p>No deals are running right now - check back soon.</p>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 20, marginTop: 24 }}>
+          <AnimatedElement
+            as="div"
+            preset="stagger-reveal"
+            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 20, marginTop: 24 }}
+          >
             {deals.map((deal) => (
               <a
                 key={deal.id}
@@ -81,7 +86,7 @@ export default async function StorefrontDealsPage() {
                 </div>
               </a>
             ))}
-          </div>
+          </AnimatedElement>
         )}
       </main>
       <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />

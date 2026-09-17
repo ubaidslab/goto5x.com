@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { AnimatedElement } from "../../../../components/motion/AnimatedElement";
 import { fetchStorefrontDeal, fetchStorefrontNavigation, fetchStorefrontStore } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { ComingSoonPage, PasswordGate } from "../../access-gates";
@@ -66,7 +67,11 @@ export default async function StorefrontDealPage({ params }: { params: { dealId:
             <h1 style={{ color: theme.colors.primary, margin: "0 0 8px" }}>{deal.title}</h1>
             {deal.description && <p>{deal.description}</p>}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginTop: 20 }}>
+            <AnimatedElement
+              as="div"
+              preset="stagger-reveal"
+              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginTop: 20 }}
+            >
               {deal.items.map((item) => (
                 <div key={item.variantId} style={{ border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
                   {item.imageUrl && (
@@ -87,7 +92,7 @@ export default async function StorefrontDealPage({ params }: { params: { dealId:
                   </div>
                 </div>
               ))}
-            </div>
+            </AnimatedElement>
           </div>
 
           <div style={{ flex: "0 0 320px" }}>
