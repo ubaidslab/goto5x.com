@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
@@ -68,14 +68,14 @@ export default function CustomerDetailPage({ params }: { params: { storeId: stri
       />
 
       <Reveal className="max-w-3xl space-y-6" stagger={0.08}>
-        <Card>
+        <DashCard>
           {customer.unsubscribedAt && (
             <div className="flex items-center gap-2 border-b border-border px-6 py-2">
               <Badge tone="neutral">Unsubscribed</Badge>
               <span className="text-xs text-ink-muted">Excluded from email campaigns since {new Date(customer.unsubscribedAt).toLocaleDateString()}.</span>
             </div>
           )}
-          <CardBody className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <p className="text-xs text-ink-muted">Orders</p>
               <p className="mt-1 text-lg font-semibold text-ink">{customer.ordersCount}</p>
@@ -98,13 +98,13 @@ export default function CustomerDetailPage({ params }: { params: { storeId: stri
                 <p className="mt-1 text-sm text-ink">{customer.phone}</p>
               </div>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Order history" description="Every order placed on this store from this email address." />
+        <DashCard>
+          <DashCardHeader title="Order history" description="Every order placed on this store from this email address." />
           {customer.orders.length === 0 ? (
-            <CardBody className="text-sm text-ink-muted">No orders yet.</CardBody>
+            <div className="text-sm text-ink-muted">No orders yet.</div>
           ) : (
             <div className="divide-y divide-border">
               {customer.orders.map((order) => (
@@ -124,7 +124,7 @@ export default function CustomerDetailPage({ params }: { params: { storeId: stri
               ))}
             </div>
           )}
-        </Card>
+        </DashCard>
       </Reveal>
     </div>
   );

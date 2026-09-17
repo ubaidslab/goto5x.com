@@ -7,8 +7,9 @@ import { ProductForm, ProductFormValues } from "@/components/dashboard/ProductFo
 import { Variant, VariantsSection } from "@/components/dashboard/VariantsSection";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Textarea } from "@/components/ui/Field";
+import { Reveal } from "@/components/motion/Reveal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
@@ -176,7 +177,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
         }
       />
 
-      <div className="max-w-2xl space-y-6">
+      <Reveal className="max-w-2xl space-y-6" stagger={0.08}>
         <ProductForm
           initialValues={{
             title: product.title,
@@ -191,12 +192,12 @@ export default function EditProductPage({ params }: { params: { storeId: string;
           onSubmit={handleSave}
         />
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Product details"
             description="Free-form facts a buyer sees on the product page - material, dimensions, country of origin. These never create purchase options; use Variants below for that."
           />
-          <CardBody className="space-y-3">
+          <div className="space-y-3">
             {attributesError && <Alert>{attributesError}</Alert>}
             {attributesSaved && <Alert tone="success">Saved.</Alert>}
             {attributes.length === 0 ? (
@@ -236,18 +237,18 @@ export default function EditProductPage({ params }: { params: { storeId: string;
                 Save product details
               </Button>
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         <ImagesSection storeId={params.storeId} productId={params.productId} />
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Advanced SEO"
             description="Overrides this product's canonical URL, search-engine indexing, social preview, structured data, and sitemap inclusion. Leave blank/on to use your store's defaults."
           />
           {product.seoAdvancedFieldsEnabled ? (
-            <CardBody>
+            <div>
               <form onSubmit={saveAdvancedSeo} className="space-y-4">
                 {seoError && <Alert>{seoError}</Alert>}
                 {seoSaved && <Alert tone="success">Saved.</Alert>}
@@ -283,7 +284,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
                   Save advanced SEO
                 </Button>
               </form>
-            </CardBody>
+            </div>
           ) : (
             <UpgradeLockedCard
               requiredTier="RISE"
@@ -298,7 +299,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
               }
             />
           )}
-        </Card>
+        </DashCard>
 
         {product.sourceType === "supplier" ? (
           <Alert tone="info">
@@ -312,7 +313,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
             onChange={(variants) => setProduct({ ...product, variants })}
           />
         )}
-      </div>
+      </Reveal>
     </div>
   );
 }

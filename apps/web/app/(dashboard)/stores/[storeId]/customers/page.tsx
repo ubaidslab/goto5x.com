@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -72,14 +72,14 @@ export default function CustomersListPage({ params }: { params: { storeId: strin
       {customers === null ? (
         <PageSpinner />
       ) : customers.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState
             title={search ? "No customers match that search" : "No customers yet"}
             description={search ? "Try a different name or email." : "A customer record appears here the first time someone checks out."}
           />
-        </Card>
+        </DashCard>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
+        <DashCard className="divide-y divide-border overflow-hidden">
           <Reveal stagger={0.03}>
             {customers.map((customer) => (
               <Link
@@ -101,7 +101,7 @@ export default function CustomersListPage({ params }: { params: { storeId: strin
               </Link>
             ))}
           </Reveal>
-        </Card>
+        </DashCard>
       )}
     </div>
   );

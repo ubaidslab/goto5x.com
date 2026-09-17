@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -271,7 +271,7 @@ export default function ProductsListPage({ params }: { params: { storeId: string
         }
       />
 
-      <Card className="mb-4 space-y-3 p-4">
+      <DashCard className="mb-4 space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="Search">
             <Input placeholder="Title or SKU" value={filters.search} onChange={(e) => setFilter("search", e.target.value)} />
@@ -329,10 +329,10 @@ export default function ProductsListPage({ params }: { params: { storeId: string
         <p className="text-xs text-ink-muted">
           {productPage.total} product{productPage.total === 1 ? "" : "s"} match{productPage.total === 1 ? "es" : ""}
         </p>
-      </Card>
+      </DashCard>
 
       {selected.size > 0 && (
-        <Card className="mb-4 space-y-3 p-4">
+        <DashCard className="mb-4 space-y-3 p-4">
           <p className="text-sm font-medium text-ink">
             {selected.size} product{selected.size === 1 ? "" : "s"} selected
           </p>
@@ -441,11 +441,11 @@ export default function ProductsListPage({ params }: { params: { storeId: string
           )}
 
           {bulkError && <p className="text-sm text-danger">{bulkError}</p>}
-        </Card>
+        </DashCard>
       )}
 
       {productPage.items.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState
             title={filtersActive ? "No products match these filters" : "No products yet"}
             description={
@@ -461,10 +461,10 @@ export default function ProductsListPage({ params }: { params: { storeId: string
               )
             }
           />
-        </Card>
+        </DashCard>
       ) : (
         <>
-          <Card className="overflow-hidden">
+          <DashCard className="overflow-hidden">
             <div className="flex items-center gap-4 border-b border-border px-6 py-2">
               <Checkbox
                 aria-label="Select all products on this page"
@@ -501,7 +501,7 @@ export default function ProductsListPage({ params }: { params: { storeId: string
                 );
               })}
             </Reveal>
-          </Card>
+          </DashCard>
 
           {productPage.totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3">

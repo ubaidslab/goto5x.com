@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Select } from "@/components/ui/Field";
@@ -114,9 +114,9 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
       {data === null ? (
         <PageSpinner />
       ) : data.variants.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState title="No variants yet" description="Add products with variants to manage their stock here." />
-        </Card>
+        </DashCard>
       ) : (
         <>
           <div className="mb-4 flex items-center justify-between">
@@ -126,7 +126,7 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
             </label>
           </div>
 
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="divide-y divide-border overflow-hidden">
             {visibleVariants.length === 0 ? (
               <div className="p-6">
                 <EmptyState title="No variants match" description="Nothing at or below the low-stock threshold." />
@@ -209,7 +209,7 @@ export default function InventoryPage({ params }: { params: { storeId: string } 
               ))}
               </Reveal>
             )}
-          </Card>
+          </DashCard>
         </>
       )}
     </div>

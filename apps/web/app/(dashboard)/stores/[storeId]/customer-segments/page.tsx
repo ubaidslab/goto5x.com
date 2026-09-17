@@ -5,7 +5,7 @@ import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -191,9 +191,9 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Create a segment" />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Create a segment" />
+          <div>
             <form onSubmit={handleCreate} className="space-y-4">
               <Field label="Name">
                 <Input value={filters.name} onChange={(e) => updateFilter("name", e.target.value)} maxLength={80} required placeholder="e.g. Repeat buyers" />
@@ -245,18 +245,18 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
                 Create segment
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {segments.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState
               title="No segments yet"
               description="Create one above to group your customers by orders, spend, recency, or location - useful as a foundation for future campaigns."
             />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="divide-y divide-border overflow-hidden">
             <Reveal stagger={0.04}>
             {segments.map((segment) => (
               <div key={segment.id} className="px-6 py-4">
@@ -299,7 +299,7 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
               </div>
             ))}
             </Reveal>
-          </Card>
+          </DashCard>
         )}
       </div>
     </div>

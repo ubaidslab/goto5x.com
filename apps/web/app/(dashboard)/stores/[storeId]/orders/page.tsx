@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -334,7 +334,7 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
         </Reveal>
       )}
 
-      <Card className="mb-4 space-y-3 p-4">
+      <DashCard className="mb-4 space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="Status">
             <Select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
@@ -400,9 +400,9 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
         <p className="text-xs text-ink-muted">
           {ordersPage.total} order{ordersPage.total === 1 ? "" : "s"} match{ordersPage.total === 1 ? "es" : ""}
         </p>
-      </Card>
+      </DashCard>
 
-      <Card className="mb-4 space-y-2 p-4">
+      <DashCard className="mb-4 space-y-2 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-ink">Bulk tracking upload</p>
@@ -428,10 +428,10 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
             )}
           </div>
         ))}
-      </Card>
+      </DashCard>
 
       {selected.size > 0 && (
-        <Card className="mb-4 space-y-3 p-4">
+        <DashCard className="mb-4 space-y-3 p-4">
           <p className="text-sm font-medium text-ink">
             {selected.size} order{selected.size === 1 ? "" : "s"} selected
           </p>
@@ -485,21 +485,21 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
           )}
 
           {bulkError && <p className="text-sm text-danger">{bulkError}</p>}
-        </Card>
+        </DashCard>
       )}
 
       {ordersPage.items.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState
             title={filtersActive || bucket ? "No orders match this filter" : "No orders yet"}
             description={
               filtersActive || bucket ? "Try a different filter." : "Orders placed on your storefront (or added manually) will show up here."
             }
           />
-        </Card>
+        </DashCard>
       ) : (
         <>
-          <Card className="overflow-hidden">
+          <DashCard className="overflow-hidden">
             <div className="flex items-center gap-4 border-b border-border px-6 py-2">
               <Checkbox
                 aria-label="Select all orders on this page"
@@ -565,7 +565,7 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
                 );
               })}
             </Reveal>
-          </Card>
+          </DashCard>
 
           {ordersPage.totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3">

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -328,8 +328,8 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Reveal className="max-w-3xl space-y-6" stagger={0.05}>
-        <Card>
-          <CardBody className="flex items-center justify-between">
+        <DashCard>
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Badge tone={statusTone[order.status]}>{order.status === "pending" ? "awaiting payment" : order.status}</Badge>
               <span className="text-xs text-ink-muted">{order.source === "manual" ? "Manually created" : "Placed on storefront"}</span>
@@ -351,13 +351,13 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                 </Button>
               )}
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {verification && (
-          <Card>
-            <CardHeader title="Verification" description="This order's order-verification gate - the same status the buyer's confirmation depends on." />
-            <CardBody className="flex flex-wrap items-center justify-between gap-3">
+          <DashCard>
+            <DashCardHeader title="Verification" description="This order's order-verification gate - the same status the buyer's confirmation depends on." />
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Badge
                   tone={
@@ -386,13 +386,13 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                   )}
                 </div>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
         )}
 
-        <Card>
-          <CardHeader title="Order timeline" description="The same timeline the buyer sees on their order-status page." />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Order timeline" description="The same timeline the buyer sees on their order-status page." />
+          <div>
             <ol className="space-y-2">
               {order.timeline.map((stage) => (
                 <li key={stage.stage} className="flex items-center gap-2 text-sm">
@@ -402,12 +402,12 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                 </li>
               ))}
             </ol>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Items" />
-          <CardBody className="space-y-4">
+        <DashCard>
+          <DashCardHeader title="Items" />
+          <div className="space-y-4">
             {order.items.map((item) => (
               <div key={item.id} className="rounded-md border border-border p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -494,13 +494,13 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                 </div>
               </div>
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {["confirmed", "shipped", "delivered", "completed"].includes(order.status) && (
-          <Card>
-            <CardHeader title="Costs & profit" description="What Shopify doesn't show you - true net profit for this order." />
-            <CardBody>
+          <DashCard>
+            <DashCardHeader title="Costs & profit" description="What Shopify doesn't show you - true net profit for this order." />
+            <div>
               <div className="flex flex-wrap items-end gap-2">
                 <Field label="Courier cost (Rs)">
                   <Input type="number" min={0} value={courierCostInput} onChange={(e) => setCourierCostInput(e.target.value)} />
@@ -542,13 +542,13 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                   </div>
                 </div>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
         )}
 
-        <Card>
-          <CardHeader title="Shipping address" />
-          <CardBody className="text-sm text-ink">
+        <DashCard>
+          <DashCardHeader title="Shipping address" />
+          <div className="text-sm text-ink">
             <p>{address.fullName}</p>
             <p>{address.line1}</p>
             {address.line2 && <p>{address.line2}</p>}
@@ -556,22 +556,22 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
               {address.city}, {address.country} {address.postalCode}
             </p>
             <p className="mt-1 text-ink-muted">{address.phone}</p>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Tags" description="Your own labels for this order - not shown to the buyer." />
-          <CardBody className="flex items-end gap-2">
+        <DashCard>
+          <DashCardHeader title="Tags" description="Your own labels for this order - not shown to the buyer." />
+          <div className="flex items-end gap-2">
             <Field label="Comma-separated" hint="e.g. gift, priority">
               <Input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} />
             </Field>
             <Button variant="secondary" loading={savingTags} onClick={saveTags}>
               Save tags
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card className="p-4">
+        <DashCard className="p-4">
           <Disclosure label={`Internal notes (${order.notes.length})`}>
             <form onSubmit={addNote} className="flex items-end gap-2">
               <div className="flex-1">
@@ -594,9 +594,9 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
               </div>
             )}
           </Disclosure>
-        </Card>
+        </DashCard>
 
-        <Card className="p-4">
+        <DashCard className="p-4">
           <Disclosure label="Timeline">
             <div className="space-y-1.5 text-sm text-ink-muted">
               {order.timelineEvents.map((event) => (
@@ -606,7 +606,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
               ))}
             </div>
           </Disclosure>
-        </Card>
+        </DashCard>
       </Reveal>
     </div>
   );
