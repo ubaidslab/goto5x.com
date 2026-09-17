@@ -9,6 +9,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 
 type LifecycleStatus = "active" | "warned" | "restricted" | "suspended" | "banned";
@@ -559,6 +560,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
 
       {error && <Alert tone="danger">{error}</Alert>}
 
+      <Reveal className="space-y-4" stagger={0.05}>
       <DashCard>
         <DashCardHeader title="Actions" description="Every lifecycle action is reason-required and audited." />
         <Field label="Reason (required for lifecycle actions)">
@@ -987,6 +989,7 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
           </div>
         </DashCard>
       </div>
+      </Reveal>
     </div>
   );
 }

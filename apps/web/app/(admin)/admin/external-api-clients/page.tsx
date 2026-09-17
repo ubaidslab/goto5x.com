@@ -10,6 +10,7 @@ import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 type ClientType = "template_store" | "social_media_saas";
 
@@ -95,7 +96,7 @@ export default function AdminExternalApiClientsPage() {
         </Alert>
       )}
 
-      <div className="max-w-3xl space-y-4">
+      <Reveal className="max-w-3xl space-y-4" stagger={0.08}>
         <DashCard className="divide-y divide-border">
           {clients.map((c) => (
             <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -133,7 +134,7 @@ export default function AdminExternalApiClientsPage() {
             <Button type="submit">Register</Button>
           </form>
         </DashCard>
-      </div>
+      </Reveal>
     </div>
   );
 }

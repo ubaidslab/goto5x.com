@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 
 interface ReturnRequest {
   id: string;
@@ -103,7 +104,8 @@ export default function AdminReturnsPage() {
           <EmptyState title="No return requests" description="Return requests across every store will show up here." />
         </DashCard>
       ) : (
-        <DashCard className="divide-y divide-border">
+        <DashCard className="overflow-hidden">
+          <Reveal className="divide-y divide-border" stagger={0.03}>
           {requests.map((r) => (
             <div key={r.id} className="flex flex-col gap-2 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -160,6 +162,7 @@ export default function AdminReturnsPage() {
               )}
             </div>
           ))}
+          </Reveal>
         </DashCard>
       )}
     </div>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 import { Textarea } from "@/components/ui/Field";
 
 interface EligibilityCriterion {
@@ -104,7 +105,7 @@ export default function AdminVerificationPage() {
         {queue.length === 0 ? (
           <EmptyState title="No applications pending review" description="Verified Store applications will show up here." />
         ) : (
-          <div className="space-y-4">
+          <Reveal className="space-y-4" stagger={0.04}>
             {queue.map((app) => (
               <div key={app.id} className="rounded-md border border-border p-4">
                 <p className="text-sm font-medium text-ink">
@@ -137,7 +138,7 @@ export default function AdminVerificationPage() {
                 </div>
               </div>
             ))}
-          </div>
+          </Reveal>
         )}
       </DashCard>
 
@@ -146,7 +147,7 @@ export default function AdminVerificationPage() {
         {reReview.length === 0 ? (
           <EmptyState title="No verified stores currently flagged" description="Drift-triggered re-review flags will show up here." />
         ) : (
-          <div className="space-y-4">
+          <Reveal className="space-y-4" stagger={0.04}>
             {reReview.map((store) => (
               <div key={store.id} className="rounded-md border border-border p-4">
                 <p className="text-sm font-medium text-ink">
@@ -170,7 +171,7 @@ export default function AdminVerificationPage() {
                 </div>
               </div>
             ))}
-          </div>
+          </Reveal>
         )}
       </DashCard>
     </div>
