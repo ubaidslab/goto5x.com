@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { Reveal } from "@/components/motion/Reveal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ApiError, api } from "@/lib/dashboard-api";
@@ -103,10 +104,10 @@ export default function DealDetailPage({ params }: { params: { storeId: string; 
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Deal details" />
-          <CardBody>
+      <Reveal className="max-w-2xl space-y-6" stagger={0.08}>
+        <DashCard>
+          <DashCardHeader title="Deal details" />
+          <div>
             <form onSubmit={onSave} className="space-y-4">
               <Field label="Title">
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
@@ -128,12 +129,12 @@ export default function DealDetailPage({ params }: { params: { storeId: string; 
                 Save changes
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Items" description={`${deal.items.length} item${deal.items.length === 1 ? "" : "s"} in this deal.`} />
-          <CardBody className="space-y-2">
+        <DashCard>
+          <DashCardHeader title="Items" description={`${deal.items.length} item${deal.items.length === 1 ? "" : "s"} in this deal.`} />
+          <div className="space-y-2">
             {deal.items.length === 0 ? (
               <p className="text-sm text-ink-muted">This deal has no items - add some or it can't be purchased.</p>
             ) : (
@@ -151,9 +152,9 @@ export default function DealDetailPage({ params }: { params: { storeId: string; 
                 </div>
               ))
             )}
-          </CardBody>
-        </Card>
-      </div>
+          </div>
+        </DashCard>
+      </Reveal>
     </div>
   );
 }

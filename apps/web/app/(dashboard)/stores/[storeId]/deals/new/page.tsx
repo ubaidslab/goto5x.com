@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Field, Input, Textarea } from "@/components/ui/Field";
+import { Reveal } from "@/components/motion/Reveal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, api } from "@/lib/dashboard-api";
 
@@ -94,9 +95,10 @@ export default function NewDealPage({ params }: { params: { storeId: string } })
       {error && <Alert tone="danger">{error}</Alert>}
 
       <form onSubmit={onSubmit} className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Deal details" />
-          <CardBody className="space-y-4">
+        <Reveal stagger={0.08} className="space-y-6">
+        <DashCard>
+          <DashCardHeader title="Deal details" />
+          <div className="space-y-4">
             <Field label="Title">
               <Input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Steal Deal" />
             </Field>
@@ -117,12 +119,12 @@ export default function NewDealPage({ params }: { params: { storeId: string } })
                 required
               />
             </Field>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Items" description="Pick the variants to bundle into this deal." />
-          <CardBody className="space-y-3">
+        <DashCard>
+          <DashCardHeader title="Items" description="Pick the variants to bundle into this deal." />
+          <div className="space-y-3">
             {products === null ? (
               <p className="text-sm text-ink-muted">Loading products...</p>
             ) : products.length === 0 ? (
@@ -140,8 +142,9 @@ export default function NewDealPage({ params }: { params: { storeId: string } })
                 </div>
               ))
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
+        </Reveal>
 
         <Button type="submit" loading={submitting}>
           Create deal

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -52,14 +52,14 @@ export default function DealsListPage({ params }: { params: { storeId: string } 
       </Link>
 
       {deals.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState
             title="No deals yet"
             description="Create one to bundle products at a discount - e.g. '20% off all 5' - with a single buy-now button on your storefront."
           />
-        </Card>
+        </DashCard>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
+        <DashCard className="divide-y divide-border overflow-hidden">
           <Reveal stagger={0.03}>
             {deals.map((deal) => (
               <Link
@@ -77,7 +77,7 @@ export default function DealsListPage({ params }: { params: { storeId: string } 
               </Link>
             ))}
           </Reveal>
-        </Card>
+        </DashCard>
       )}
     </div>
   );

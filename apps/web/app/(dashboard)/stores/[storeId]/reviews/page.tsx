@@ -5,7 +5,7 @@ import { Play, Star } from "lucide-react";
 import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -143,14 +143,14 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
       {reviews === null ? (
         <PageSpinner />
       ) : reviews.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState
             title={status === "pending" ? "Nothing awaiting moderation" : "No reviews here"}
             description="Buyer-submitted reviews appear here from the order-status page."
           />
-        </Card>
+        </DashCard>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
+        <DashCard className="divide-y divide-border overflow-hidden">
           <Reveal stagger={0.04}>
           {reviews.map((review) => (
             <div key={review.id} className="px-6 py-4">
@@ -223,7 +223,7 @@ export default function ReviewsModerationPage({ params }: { params: { storeId: s
             </div>
           ))}
           </Reveal>
-        </Card>
+        </DashCard>
       )}
 
       {/* SRS §5.14/FR-14.5 (Module 93) - the review detail view: full record

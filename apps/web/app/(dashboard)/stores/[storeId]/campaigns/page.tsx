@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -141,8 +141,8 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
       <div className="max-w-2xl space-y-6">
         {quota && (
           <Reveal>
-          <Card>
-            <CardBody>
+          <DashCard>
+            <div>
               <div className="flex items-center justify-between text-sm">
                 <p className="font-medium text-ink">Monthly send quota</p>
                 <p className="text-ink-muted">
@@ -151,8 +151,8 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
               </div>
               <Progress className="mt-2" value={Math.min(100, (quota.usedThisMonth / Math.max(1, quota.monthlyLimit)) * 100)} />
               <p className="mt-1.5 text-xs text-ink-muted">{quota.remaining.toLocaleString()} remaining</p>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
           </Reveal>
         )}
 
@@ -164,9 +164,9 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
           </Alert>
         ) : null}
 
-        <Card>
-          <CardHeader title="New campaign" />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="New campaign" />
+          <div>
             <Alert tone="info" className="mb-4">
               Deliverability depends entirely on your own email provider&apos;s reputation and sending limits - this
               platform does not warm senders or guarantee inbox placement.
@@ -202,15 +202,15 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
                 Send campaign
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {campaigns.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState title="No campaigns yet" description="Send one above once you have a segment and a connected sender email." />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="divide-y divide-border overflow-hidden">
             <Reveal stagger={0.04}>
             {campaigns.map((campaign) => (
               <div key={campaign.id} className="px-6 py-4">
@@ -236,7 +236,7 @@ export default function CampaignsPage({ params }: { params: { storeId: string } 
               </div>
             ))}
             </Reveal>
-          </Card>
+          </DashCard>
         )}
       </div>
     </div>

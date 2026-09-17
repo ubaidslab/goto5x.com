@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -146,9 +146,9 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
       <PageHeader title="Marketing" description="Promote your catalog with campaigns, segments, gift cards, discounts, and social/WhatsApp feeds." />
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <Card>
-        <CardHeader title="Feed API access" description="Powers the Facebook & Instagram Shop feed and WhatsApp product sharing below." />
-        <CardBody className="space-y-4">
+      <DashCard>
+        <DashCardHeader title="Feed API access" description="Powers the Facebook & Instagram Shop feed and WhatsApp product sharing below." />
+        <div className="space-y-4">
           <div>
             {newToken && (
               <Alert tone="success">
@@ -178,18 +178,18 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
               </Button>
             </div>
           </div>
-        </CardBody>
-      </Card>
+        </div>
+      </DashCard>
 
       <Reveal>
-      <Card className="mt-6">
-        <CardHeader title="Facebook & Instagram Shop feed" description="A product catalog feed for Meta Commerce Manager - same connected token as above." />
+      <DashCard className="mt-6">
+        <DashCardHeader title="Facebook & Instagram Shop feed" description="A product catalog feed for Meta Commerce Manager - same connected token as above." />
         {feedStatus === null ? (
-          <CardBody>
+          <div>
             <PageSpinner />
-          </CardBody>
+          </div>
         ) : feedStatus.metaCatalogFeedEnabled ? (
-          <CardBody className="space-y-3">
+          <div className="space-y-3">
             <p className="text-sm text-ink-muted">
               In Meta Commerce Manager, add this as a data feed URL, authenticated with a Bearer token from your connected app above (create one
               if you haven&apos;t yet).
@@ -203,7 +203,7 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
                 Copy
               </Button>
             </div>
-          </CardBody>
+          </div>
         ) : (
           <UpgradeLockedCard
             requiredTier="RISE"
@@ -218,18 +218,18 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
             }
           />
         )}
-      </Card>
+      </DashCard>
       </Reveal>
 
       <Reveal>
-      <Card className="mt-6">
-        <CardHeader title="WhatsApp product-share link" description="A share link for one product, opening WhatsApp's own contact picker." />
+      <DashCard className="mt-6">
+        <DashCardHeader title="WhatsApp product-share link" description="A share link for one product, opening WhatsApp's own contact picker." />
         {feedStatus === null ? (
-          <CardBody>
+          <div>
             <PageSpinner />
-          </CardBody>
+          </div>
         ) : feedStatus.whatsappProductShareEnabled ? (
-          <CardBody className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-64">
               <Field label="Product">
                 <Select value={shareProductId} onChange={(e) => setShareProductId(e.target.value)} disabled={products.length === 0}>
@@ -245,7 +245,7 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
             <Button loading={generatingShareLink} disabled={!shareProductId} onClick={generateShareLink}>
               Generate share link
             </Button>
-          </CardBody>
+          </div>
         ) : (
           <UpgradeLockedCard
             requiredTier="RISE"
@@ -260,7 +260,7 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
             }
           />
         )}
-      </Card>
+      </DashCard>
       </Reveal>
     </div>
   );

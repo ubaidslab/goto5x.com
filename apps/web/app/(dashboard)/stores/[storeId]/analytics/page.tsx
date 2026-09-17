@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { RotateCcw, Users, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Alert } from "@/components/ui/Alert";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -56,16 +56,16 @@ function StatTile({
   hint?: string;
 }) {
   return (
-    <Card>
-      <CardBody>
+    <DashCard>
+      <div>
         <div className="flex items-center gap-2 text-ink-muted">
           <Icon className="h-4 w-4" />
           <p className="text-xs font-medium uppercase tracking-wide">{label}</p>
         </div>
         <p className="mt-1 text-3xl font-semibold text-ink">{value}</p>
         {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
-      </CardBody>
-    </Card>
+      </div>
+    </DashCard>
   );
 }
 
@@ -170,8 +170,8 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
           </Reveal>
 
           <Reveal>
-          <Card>
-            <CardHeader
+          <DashCard>
+            <DashCardHeader
               title="Sales over time"
               action={
                 <div className="flex flex-wrap items-center gap-3">
@@ -208,7 +208,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                 </div>
               }
             />
-            <CardBody>
+            <div>
               {salesOverTime!.length === 0 || salesOverTime!.every((p) => p.orderCount === 0) ? (
                 <p className="py-8 text-center text-sm text-ink-muted">No confirmed sales in this period yet.</p>
               ) : (
@@ -225,13 +225,13 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                   </LineChart>
                 </ResponsiveContainer>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
           </Reveal>
 
           <Reveal>
-          <Card>
-            <CardHeader
+          <DashCard>
+            <DashCardHeader
               title="Top products"
               action={
                 <div className="flex gap-1">
@@ -249,7 +249,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                 </div>
               }
             />
-            <CardBody>
+            <div>
               {topProducts!.length === 0 ? (
                 <p className="py-8 text-center text-sm text-ink-muted">No confirmed sales yet.</p>
               ) : (
@@ -275,14 +275,14 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
           </Reveal>
 
           <Reveal>
-          <Card>
-            <CardHeader title="Return rate by product" description="Of orders eligible for return, per product - a breakdown behind the headline Return rate tile above." />
-            <CardBody>
+          <DashCard>
+            <DashCardHeader title="Return rate by product" description="Of orders eligible for return, per product - a breakdown behind the headline Return rate tile above." />
+            <div>
               {returnRateByProduct!.length === 0 ? (
                 <p className="py-8 text-center text-sm text-ink-muted">No return-eligible orders yet.</p>
               ) : (
@@ -304,14 +304,14 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
           </Reveal>
 
           <Reveal>
-          <Card>
-            <CardHeader title="Deal performance" description="Orders, units, and revenue attributable to each deal - confirmed orders only (SRS §5.67/FR-67.5)." />
-            <CardBody>
+          <DashCard>
+            <DashCardHeader title="Deal performance" description="Orders, units, and revenue attributable to each deal - confirmed orders only (SRS §5.67/FR-67.5)." />
+            <div>
               {dealPerformance!.length === 0 ? (
                 <p className="py-8 text-center text-sm text-ink-muted">No confirmed deal orders yet.</p>
               ) : (
@@ -328,8 +328,8 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
           </Reveal>
         </div>
       )}

@@ -6,7 +6,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -101,9 +101,9 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Create a discount code" />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Create a discount code" />
+          <div>
             <form onSubmit={handleCreate} className="space-y-4">
               <Field label="Code" hint="Letters, numbers, hyphens, and underscores only.">
                 <Input name="code" maxLength={40} pattern="[A-Za-z0-9_-]+" required placeholder="e.g. SUMMER10" />
@@ -131,15 +131,15 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
                 Create code
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {codes.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState title="No discount codes yet" description="Create one above to offer buyers a percentage or fixed-amount discount at checkout." />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="divide-y divide-border overflow-hidden">
             <Reveal stagger={0.04}>
             {codes.map((discountCode) => (
               <div key={discountCode.id} className="flex items-center justify-between gap-4 px-6 py-4">
@@ -164,7 +164,7 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
               </div>
             ))}
             </Reveal>
-          </Card>
+          </DashCard>
         )}
       </div>
     </div>

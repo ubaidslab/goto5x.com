@@ -6,7 +6,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -134,7 +134,7 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <Card className="mb-6 p-6">
+      <DashCard className="mb-6 p-6">
         <p className="mb-3 text-sm font-medium text-ink">Issue a gift card</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Amount">
@@ -150,16 +150,16 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
         <Button className="mt-3" loading={submitting} onClick={issue}>
           Issue gift card
         </Button>
-      </Card>
+      </DashCard>
 
       {cards === null ? (
         <PageSpinner />
       ) : cards.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState title="No gift cards yet" description="Issue one above, or wait for a buyer to purchase one from your storefront." />
-        </Card>
+        </DashCard>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
+        <DashCard className="divide-y divide-border overflow-hidden">
           <Reveal stagger={0.04}>
           {cards.map((card) => (
             <div key={card.id} className="px-6 py-4">
@@ -210,7 +210,7 @@ export default function GiftCardsPage({ params }: { params: { storeId: string } 
             </div>
           ))}
           </Reveal>
-        </Card>
+        </DashCard>
       )}
     </div>
   );
