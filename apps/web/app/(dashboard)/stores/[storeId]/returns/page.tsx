@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type ReturnStatus = "requested" | "approved" | "rejected" | "completed";
@@ -109,77 +110,79 @@ export default function ReturnsPage({ params }: { params: { storeId: string } })
       {requests === null ? (
         <PageSpinner />
       ) : requests.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState
             title={status === "requested" ? "Nothing awaiting review" : "No return requests here"}
             description="Buyer-submitted return requests appear here from the order-status page."
           />
-        </Card>
+        </DashCard>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
-          {requests.map((r) => (
-            <div key={r.id} className="px-6 py-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">
-                    Order #{r.order.orderNumber} · {r.order.buyerEmail}
-                  </p>
-                  <p className="mt-0.5 text-xs text-ink-muted">
-                    Requested {new Date(r.requestedAt).toLocaleDateString()} · {r.order.currency} {r.order.totalAmount} order total
-                  </p>
+        <DashCard className="overflow-hidden">
+          <Reveal className="divide-y divide-border" stagger={0.03}>
+            {requests.map((r) => (
+              <div key={r.id} className="px-6 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">
+                      Order #{r.order.orderNumber} · {r.order.buyerEmail}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-muted">
+                      Requested {new Date(r.requestedAt).toLocaleDateString()} · {r.order.currency} {r.order.totalAmount} order total
+                    </p>
+                  </div>
+                  <Badge tone={STATUS_TONE[r.status]}>{r.status}</Badge>
                 </div>
-                <Badge tone={STATUS_TONE[r.status]}>{r.status}</Badge>
+
+                <p className="mt-2 text-sm text-ink-muted">Buyer reason: {r.buyerReason}</p>
+                {r.sellerNote && <p className="mt-1 text-sm text-ink-muted">Your note: {r.sellerNote}</p>}
+                {r.refundAmount != null && (
+                  <p className="mt-1 text-sm text-ink">
+                    Refunded: {r.order.currency} {r.refundAmount}
+                  </p>
+                )}
+
+                {r.status === "requested" && (
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <Button variant="secondary" loading={busyId === r.id} onClick={() => decide(r.id, "approved")}>
+                      Approve
+                    </Button>
+                    <div className="min-w-[220px] flex-1">
+                      <Field label="Reject reason (required to reject)">
+                        <Input
+                          value={rejectNotes[r.id] ?? ""}
+                          onChange={(e) => setRejectNotes({ ...rejectNotes, [r.id]: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                    <Button variant="ghost" loading={busyId === r.id} onClick={() => decide(r.id, "rejected")}>
+                      Reject
+                    </Button>
+                  </div>
+                )}
+
+                {r.status === "approved" && (
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <div className="w-40">
+                      <Field label="Refund amount" hint={`Up to ${r.order.currency} ${r.order.totalAmount}`}>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder={r.order.totalAmount}
+                          value={refundAmounts[r.id] ?? ""}
+                          onChange={(e) => setRefundAmounts({ ...refundAmounts, [r.id]: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                    <Button loading={busyId === r.id} onClick={() => complete(r.id, r.order.totalAmount)}>
+                      Issue refund
+                    </Button>
+                  </div>
+                )}
               </div>
-
-              <p className="mt-2 text-sm text-ink-muted">Buyer reason: {r.buyerReason}</p>
-              {r.sellerNote && <p className="mt-1 text-sm text-ink-muted">Your note: {r.sellerNote}</p>}
-              {r.refundAmount != null && (
-                <p className="mt-1 text-sm text-ink">
-                  Refunded: {r.order.currency} {r.refundAmount}
-                </p>
-              )}
-
-              {r.status === "requested" && (
-                <div className="mt-3 flex flex-wrap items-end gap-2">
-                  <Button variant="secondary" loading={busyId === r.id} onClick={() => decide(r.id, "approved")}>
-                    Approve
-                  </Button>
-                  <div className="min-w-[220px] flex-1">
-                    <Field label="Reject reason (required to reject)">
-                      <Input
-                        value={rejectNotes[r.id] ?? ""}
-                        onChange={(e) => setRejectNotes({ ...rejectNotes, [r.id]: e.target.value })}
-                      />
-                    </Field>
-                  </div>
-                  <Button variant="ghost" loading={busyId === r.id} onClick={() => decide(r.id, "rejected")}>
-                    Reject
-                  </Button>
-                </div>
-              )}
-
-              {r.status === "approved" && (
-                <div className="mt-3 flex flex-wrap items-end gap-2">
-                  <div className="w-40">
-                    <Field label="Refund amount" hint={`Up to ${r.order.currency} ${r.order.totalAmount}`}>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        placeholder={r.order.totalAmount}
-                        value={refundAmounts[r.id] ?? ""}
-                        onChange={(e) => setRefundAmounts({ ...refundAmounts, [r.id]: e.target.value })}
-                      />
-                    </Field>
-                  </div>
-                  <Button loading={busyId === r.id} onClick={() => complete(r.id, r.order.totalAmount)}>
-                    Issue refund
-                  </Button>
-                </div>
-              )}
-            </div>
-          ))}
-        </Card>
+            ))}
+          </Reveal>
+        </DashCard>
       )}
     </div>
   );

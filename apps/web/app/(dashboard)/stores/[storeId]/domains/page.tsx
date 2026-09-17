@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type VerificationStatus = "pending" | "verified" | "failed";
@@ -112,84 +113,90 @@ export default function DomainsPage({ params }: { params: { storeId: string } })
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Attach a custom domain" description="Point your domain's DNS at uzeyn.com, then verify it here." />
-          <CardBody className="space-y-4">
-            <form onSubmit={attach} className="flex items-end gap-2">
-              <div className="flex-1">
-                <Field label="Domain name">
-                  <Input
-                    placeholder="shop.example.com"
-                    value={domainName}
-                    onChange={(e) => setDomainName(e.target.value)}
-                    required
-                  />
-                </Field>
-              </div>
-              <Button type="submit" loading={attaching}>
-                Attach
-              </Button>
-            </form>
-            {config && (
-              <div className="rounded-md border border-border bg-canvas p-3 text-xs text-ink-muted">
-                <p>
-                  <span className="font-medium text-ink">CNAME</span> (subdomains) &rarr; {config.cnameTarget}
-                </p>
-                <p>
-                  <span className="font-medium text-ink">A record</span> (root/apex domains) &rarr; {config.aRecordIp}
-                </p>
-              </div>
-            )}
-          </CardBody>
-        </Card>
+        <Reveal>
+          <DashCard>
+            <DashCardHeader title="Attach a custom domain" description="Point your domain's DNS at uzeyn.com, then verify it here." />
+            <div className="space-y-4">
+              <form onSubmit={attach} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Field label="Domain name">
+                    <Input
+                      placeholder="shop.example.com"
+                      value={domainName}
+                      onChange={(e) => setDomainName(e.target.value)}
+                      required
+                    />
+                  </Field>
+                </div>
+                <Button type="submit" loading={attaching}>
+                  Attach
+                </Button>
+              </form>
+              {config && (
+                <div className="rounded-md border border-border bg-canvas p-3 text-xs text-ink-muted">
+                  <p>
+                    <span className="font-medium text-ink">CNAME</span> (subdomains) &rarr; {config.cnameTarget}
+                  </p>
+                  <p>
+                    <span className="font-medium text-ink">A record</span> (root/apex domains) &rarr; {config.aRecordIp}
+                  </p>
+                </div>
+              )}
+            </div>
+          </DashCard>
+        </Reveal>
 
         {domains.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState
               title="No custom domains attached"
               description="Your store is reachable on its free subdomain until you attach one of your own."
             />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
-            {domains.map((domain) => (
-              <div key={domain.id} className="flex items-center justify-between gap-4 px-6 py-4">
-                <div>
-                  <p className="text-sm font-medium text-ink">{domain.domainName}</p>
-                  <p className="mt-0.5 text-xs text-ink-muted">
-                    TLS: {domain.tlsStatus} · Attached {new Date(domain.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge tone={verificationTone[domain.verificationStatus]}>{domain.verificationStatus}</Badge>
-                  {domain.verificationStatus !== "verified" && (
-                    <Button variant="secondary" size="sm" loading={verifyingId === domain.id} onClick={() => verifyNow(domain.id)}>
-                      Verify now
+          <DashCard className="overflow-hidden">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
+              {domains.map((domain) => (
+                <div key={domain.id} className="flex items-center justify-between gap-4 px-6 py-4">
+                  <div>
+                    <p className="text-sm font-medium text-ink">{domain.domainName}</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">
+                      TLS: {domain.tlsStatus} · Attached {new Date(domain.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge tone={verificationTone[domain.verificationStatus]}>{domain.verificationStatus}</Badge>
+                    {domain.verificationStatus !== "verified" && (
+                      <Button variant="secondary" size="sm" loading={verifyingId === domain.id} onClick={() => verifyNow(domain.id)}>
+                        Verify now
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => remove(domain.id)}>
+                      Remove
                     </Button>
-                  )}
-                  <Button variant="ghost" size="sm" onClick={() => remove(domain.id)}>
-                    Remove
-                  </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </Card>
+              ))}
+            </Reveal>
+          </DashCard>
         )}
 
         {config?.referral && (
-          <Card>
-            <CardBody className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-ink">Don&apos;t own a domain yet?</p>
-                <p className="mt-0.5 text-xs text-ink-muted">Get one through {config.referral.partnerName}.</p>
+          <Reveal>
+            <DashCard>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-ink">Don&apos;t own a domain yet?</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">Get one through {config.referral.partnerName}.</p>
+                </div>
+                <a href={config.referral.url} target="_blank" rel="noopener noreferrer nofollow">
+                  <Button variant="secondary" size="sm">
+                    Get a domain
+                  </Button>
+                </a>
               </div>
-              <a href={config.referral.url} target="_blank" rel="noopener noreferrer nofollow">
-                <Button variant="secondary" size="sm">
-                  Get a domain
-                </Button>
-              </a>
-            </CardBody>
-          </Card>
+            </DashCard>
+          </Reveal>
         )}
       </div>
     </div>

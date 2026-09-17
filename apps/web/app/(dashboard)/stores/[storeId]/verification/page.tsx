@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface EligibilityCriterion {
@@ -92,66 +93,74 @@ export default function VerifiedStorePage({ params }: { params: { storeId: strin
         description="Earn a buyer-facing trust badge, shown on your storefront and at checkout. Eligibility is checked live - passing every criterion means you may apply, not that approval is guaranteed."
       />
 
-      <Card>
-        <CardBody className="flex items-center gap-3">
-          <Badge tone={status.verifiedStatus === "verified" ? "success" : status.verifiedStatus === "pending_re_review" ? "warning" : "neutral"}>
-            {STATUS_LABEL[status.verifiedStatus]}
-          </Badge>
-          {status.verifiedStatus === "verified" && status.verifiedExpiresAt && (
-            <p className="text-xs text-ink-muted">Renews by {new Date(status.verifiedExpiresAt).toLocaleDateString()}</p>
-          )}
-          {status.verifiedStatus === "pending_re_review" && (
-            <p className="text-xs text-ink-muted">Your badge is suspended pending admin re-review.</p>
-          )}
-        </CardBody>
-      </Card>
+      <Reveal>
+        <DashCard>
+          <div className="flex items-center gap-3">
+            <Badge tone={status.verifiedStatus === "verified" ? "success" : status.verifiedStatus === "pending_re_review" ? "warning" : "neutral"}>
+              {STATUS_LABEL[status.verifiedStatus]}
+            </Badge>
+            {status.verifiedStatus === "verified" && status.verifiedExpiresAt && (
+              <p className="text-xs text-ink-muted">Renews by {new Date(status.verifiedExpiresAt).toLocaleDateString()}</p>
+            )}
+            {status.verifiedStatus === "pending_re_review" && (
+              <p className="text-xs text-ink-muted">Your badge is suspended pending admin re-review.</p>
+            )}
+          </div>
+        </DashCard>
+      </Reveal>
 
-      <Card>
-        <CardHeader title="Eligibility criteria" />
-        <CardBody className="divide-y divide-border">
-          {eligibility.criteria.map((c) => (
-            <div key={c.key} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
-              <div>
-                <p className="text-sm font-medium text-ink">{c.label}</p>
-                <p className="text-sm text-ink-muted">{c.detail}</p>
+      <Reveal>
+        <DashCard>
+          <DashCardHeader title="Eligibility criteria" />
+          <div className="divide-y divide-border">
+            {eligibility.criteria.map((c) => (
+              <div key={c.key} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium text-ink">{c.label}</p>
+                  <p className="text-sm text-ink-muted">{c.detail}</p>
+                </div>
+                <Badge tone={c.pass ? "success" : "neutral"}>{c.pass ? "Pass" : "Not yet"}</Badge>
               </div>
-              <Badge tone={c.pass ? "success" : "neutral"}>{c.pass ? "Pass" : "Not yet"}</Badge>
-            </div>
-          ))}
-        </CardBody>
-      </Card>
+            ))}
+          </div>
+        </DashCard>
+      </Reveal>
 
       {error && <Alert>{error}</Alert>}
 
       {canApply && (
-        <Card>
-          <CardBody>
-            <Button loading={applying} onClick={apply}>
-              Apply for Verified Store
-            </Button>
-            <p className="mt-2 text-xs text-ink-muted">
-              A processing fee will be debited from your wallet when you apply - this pays for the admin review, not the badge itself, and is refunded in full if your application is rejected.
-            </p>
-          </CardBody>
-        </Card>
+        <Reveal>
+          <DashCard>
+            <div>
+              <Button loading={applying} onClick={apply}>
+                Apply for Verified Store
+              </Button>
+              <p className="mt-2 text-xs text-ink-muted">
+                A processing fee will be debited from your wallet when you apply - this pays for the admin review, not the badge itself, and is refunded in full if your application is rejected.
+              </p>
+            </div>
+          </DashCard>
+        </Reveal>
       )}
 
       {applications.length > 0 && (
-        <Card>
-          <CardHeader title="Application history" />
-          <CardBody className="divide-y divide-border">
-            {applications.map((a) => (
-              <div key={a.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                <div>
-                  <p className="text-sm font-medium text-ink">Rs. {Number(a.feeAmount).toFixed(2)}</p>
-                  <p className="text-xs text-ink-muted">{new Date(a.createdAt).toLocaleString()}</p>
-                  {a.decisionNotes && <p className="text-xs text-ink-muted">{a.decisionNotes}</p>}
+        <Reveal>
+          <DashCard>
+            <DashCardHeader title="Application history" />
+            <div className="divide-y divide-border">
+              {applications.map((a) => (
+                <div key={a.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium text-ink">Rs. {Number(a.feeAmount).toFixed(2)}</p>
+                    <p className="text-xs text-ink-muted">{new Date(a.createdAt).toLocaleString()}</p>
+                    {a.decisionNotes && <p className="text-xs text-ink-muted">{a.decisionNotes}</p>}
+                  </div>
+                  <Badge tone={a.status === "approved" ? "success" : a.status === "rejected" ? "danger" : "warning"}>{a.status}</Badge>
                 </div>
-                <Badge tone={a.status === "approved" ? "success" : a.status === "rejected" ? "danger" : "warning"}>{a.status}</Badge>
-              </div>
-            ))}
-          </CardBody>
-        </Card>
+              ))}
+            </div>
+          </DashCard>
+        </Reveal>
       )}
     </div>
   );

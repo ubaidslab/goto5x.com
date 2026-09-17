@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
 
@@ -133,13 +134,13 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader
+      <Reveal className="max-w-2xl space-y-6" stagger={0.08}>
+        <DashCard>
+          <DashCardHeader
             title="Verification channel"
             description="An order placed against this store stays unconfirmed until it clears this channel - the same gate as payment."
           />
-          <CardBody>
+          <div>
             <form onSubmit={saveSettings} className="space-y-4">
               <Field label="Channel" hint="Applies to every new order placed from now on. Every channel is listed even if your plan doesn't include it yet.">
                 <Select
@@ -187,15 +188,15 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
                 Save
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Connected sender emails"
             description="Required for Email OTP - the code is sent from your own inbox, never this platform's. Up to 5 connected, rotating once one hits its daily cap."
           />
-          <CardBody className="space-y-4">
+          <div className="space-y-4">
             {emails.length === 0 ? (
               <EmptyState title="No sender emails connected yet" description="Connect one below to use the Email OTP channel." />
             ) : (
@@ -243,9 +244,9 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
                 Connect sender email
               </Button>
             </form>
-          </CardBody>
-        </Card>
-      </div>
+          </div>
+        </DashCard>
+      </Reveal>
     </div>
   );
 }

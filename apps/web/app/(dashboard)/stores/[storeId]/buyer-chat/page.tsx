@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -114,7 +114,7 @@ export default function BuyerChatPage({ params }: { params: { storeId: string } 
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[280px_1fr]">
-          <Card className="divide-y divide-border p-0">
+          <DashCard className="divide-y divide-border p-0">
             {threads.map((t) => (
               <button
                 key={t.id}
@@ -133,9 +133,9 @@ export default function BuyerChatPage({ params }: { params: { storeId: string } 
                 )}
               </button>
             ))}
-          </Card>
+          </DashCard>
 
-          <Card className="flex min-h-[420px] flex-col p-0">
+          <DashCard className="flex min-h-[420px] flex-col p-0">
             {!selectedId || messages === null ? (
               <div className="flex flex-1 items-center justify-center text-sm text-ink-muted">Select a conversation</div>
             ) : (
@@ -175,7 +175,7 @@ export default function BuyerChatPage({ params }: { params: { storeId: string } 
                 )}
               </>
             )}
-          </Card>
+          </DashCard>
         </div>
       )}
     </div>

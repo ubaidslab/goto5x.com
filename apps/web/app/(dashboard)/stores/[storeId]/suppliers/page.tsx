@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -16,16 +16,16 @@ import { ApiError, api } from "@/lib/dashboard-api";
 /** Same local StatTile shape as the Analytics page's own (not shared/extracted - this codebase's existing per-page precedent). */
 function StatTile({ icon: Icon, label, value, hint }: { icon: typeof Users; label: string; value: string; hint?: string }) {
   return (
-    <Card>
-      <CardBody>
+    <DashCard>
+      <div>
         <div className="flex items-center gap-2 text-ink-muted">
           <Icon className="h-4 w-4" />
           <p className="text-xs font-medium uppercase tracking-wide">{label}</p>
         </div>
         <p className="mt-1 text-3xl font-semibold text-ink">{value}</p>
         {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
-      </CardBody>
-    </Card>
+      </div>
+    </DashCard>
   );
 }
 
@@ -209,12 +209,12 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
       {inviteMessage && <Alert tone="success">{inviteMessage}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Invite a supplier"
             description="Enter their email - if they don't have an account yet, we'll create one and email them to set it up. No need to wait on them to sign up first."
           />
-          <CardBody>
+          <div>
             <form onSubmit={invite} className="flex items-end gap-2">
               <div className="flex-1">
                 <Field label="Supplier email">
@@ -230,18 +230,18 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
                 Invite
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {links.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState
               title="No suppliers connected"
               description="Selling entirely your own products? You can ignore this screen - it's only needed if you want to list another supplier's products."
             />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="divide-y divide-border overflow-hidden">
             <Reveal stagger={0.04}>
             {links.map((link) => (
               <div key={link.id} className="flex items-center justify-between gap-4 px-6 py-4">
@@ -280,7 +280,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
               </div>
             ))}
             </Reveal>
-          </Card>
+          </DashCard>
         )}
 
         <div>
@@ -290,13 +290,13 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
           </p>
 
           {pendingReviews.length === 0 && decidedReviews.length === 0 ? (
-            <Card>
+            <DashCard>
               <EmptyState title="No listings submitted yet" description="Once a connected supplier submits a product, it'll show up here for your approval." />
-            </Card>
+            </DashCard>
           ) : (
             <div className="space-y-4">
               {pendingReviews.length > 0 && (
-                <Card className="divide-y divide-border overflow-hidden">
+                <DashCard className="divide-y divide-border overflow-hidden">
                   {pendingReviews.map((review) => (
                     <div key={review.id} className="flex items-center justify-between gap-4 px-6 py-4">
                       <div className="min-w-0">
@@ -326,11 +326,11 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
                       </div>
                     </div>
                   ))}
-                </Card>
+                </DashCard>
               )}
 
               {decidedReviews.length > 0 && (
-                <Card className="divide-y divide-border overflow-hidden">
+                <DashCard className="divide-y divide-border overflow-hidden">
                   {decidedReviews.map((review) => (
                     <div key={review.id} className="flex items-center justify-between gap-4 px-6 py-4">
                       <div className="min-w-0">
@@ -340,7 +340,7 @@ export default function SupplierLinksPage({ params }: { params: { storeId: strin
                       <Badge tone={reviewStatusTone[review.status]}>{review.status}</Badge>
                     </div>
                   ))}
-                </Card>
+                </DashCard>
               )}
             </div>
           )}

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -249,11 +249,11 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
           )}
 
           {awaitingTracking.length === 0 ? (
-            <Card>
+            <DashCard>
               <EmptyState title="Nothing awaiting tracking" description="Every confirmed order currently has tracking uploaded." />
-            </Card>
+            </DashCard>
           ) : (
-            <Card className="overflow-hidden">
+            <DashCard className="overflow-hidden">
               <Reveal className="divide-y divide-border" stagger={0.03}>
                 {awaitingTracking.map((order) => {
                   const draft = trackingDraft(order.id);
@@ -303,15 +303,15 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
                   );
                 })}
               </Reveal>
-            </Card>
+            </DashCard>
           )}
         </TabsContent>
 
         <TabsContent value="settings">
           <div className="max-w-2xl space-y-6">
-            <Card>
-              <CardHeader title="Shipping" description="One flat rate for every order, with an optional free-shipping threshold." />
-              <CardBody>
+            <DashCard>
+              <DashCardHeader title="Shipping" description="One flat rate for every order, with an optional free-shipping threshold." />
+              <div>
                 <form onSubmit={saveShipping} className="space-y-4">
                   <Field label="Flat shipping rate" hint="Charged on every order, in your store's currency.">
                     <Input name="flatRate" type="number" step="0.01" min="0" defaultValue={shipping.flatRate} required />
@@ -323,12 +323,12 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
                     Save shipping
                   </Button>
                 </form>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
 
-            <Card>
-              <CardHeader title="Tax" description="One tax rate applied storewide." />
-              <CardBody>
+            <DashCard>
+              <DashCardHeader title="Tax" description="One tax rate applied storewide." />
+              <div>
                 <form onSubmit={saveTax} className="space-y-4">
                   <Field label="Tax rate (%)">
                     <Input name="taxRate" type="number" step="0.01" min="0" max="100" defaultValue={tax.taxRate} required />
@@ -344,19 +344,19 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
                     Save tax
                   </Button>
                 </form>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
           </div>
         </TabsContent>
 
         <TabsContent value="buyer-messages">
           <div className="max-w-2xl space-y-6">
-            <Card>
-              <CardHeader
+            <DashCard>
+              <DashCardHeader
                 title="Buyer tracking messages"
                 description="What buyers see on their order-status page for each stage. We only ever show 4 honest states - we can't fake real-time courier GPS, so this is the door we give buyers, not fake precision behind it."
               />
-              <CardBody>
+              <div>
                 <form onSubmit={saveDeliveryTracking} className="space-y-4">
                   <Field label="Pending" hint="Shown while the order is being packed, before it's handed to the courier.">
                     <Textarea name="messagePending" rows={2} maxLength={500} defaultValue={deliveryTracking.messagePending} required />
@@ -388,8 +388,8 @@ export default function ShippingTrackingPage({ params }: { params: { storeId: st
                     Save buyer messages
                   </Button>
                 </form>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
           </div>
         </TabsContent>
       </Tabs>

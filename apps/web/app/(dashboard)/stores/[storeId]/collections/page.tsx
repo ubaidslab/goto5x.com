@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -58,9 +58,9 @@ export default function CollectionsPage({ params }: { params: { storeId: string 
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Create a collection" />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Create a collection" />
+          <div>
             <form onSubmit={onCreate} className="flex items-end gap-3">
               <div className="flex-1">
                 <Field label="Title">
@@ -76,15 +76,15 @@ export default function CollectionsPage({ params }: { params: { storeId: string 
                 Create
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {collections === null ? null : collections.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState title="No collections yet" description="Create one above to group related products for your storefront." />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="divide-y divide-border overflow-hidden">
             <Reveal stagger={0.03}>
             {collections.map((collection) => (
               <Link
@@ -100,7 +100,7 @@ export default function CollectionsPage({ params }: { params: { storeId: string 
               </Link>
             ))}
             </Reveal>
-          </Card>
+          </DashCard>
         )}
       </div>
     </div>

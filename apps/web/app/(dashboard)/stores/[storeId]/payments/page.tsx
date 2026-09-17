@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -247,12 +247,12 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Payment model"
             description="How your whole store collects payment - one rule for every order, replacing a mix of methods. Switching this only affects new orders placed from now on."
           />
-          <CardBody>
+          <div>
             {modelError && <Alert tone="danger">{modelError}</Alert>}
             <form onSubmit={saveModel} className="space-y-4">
               <Field label="Model" hint="Every option is listed even if your plan doesn't include it yet.">
@@ -295,15 +295,15 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                 Save payment model
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Payment gateway"
             description="Connect your own Raast, Easypaisa, JazzCash, or bank account so we can verify your buyer's payment was received and confirm the order automatically - your money never passes through UZEYN, and there's no commission either way. Raast is free and offered first at checkout. Sellers without a connection keep using the manual payment instructions below."
           />
-          <CardBody>
+          <div>
             {gatewayError && <Alert>{gatewayError}</Alert>}
             {gatewayConnections.length > 0 && (
               <Reveal className="mb-4 divide-y divide-border overflow-hidden rounded-lg border border-border" stagger={0.04}>
@@ -385,15 +385,15 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                 Connect
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Payment instructions"
             description="How buyers pay you when there's no connected gateway. Shown at checkout and on their order confirmation - you'll mark each order paid yourself once you've received it."
           />
-          <CardBody>
+          <div>
             <form onSubmit={savePayment} className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <Field label="Bank account title">
@@ -441,8 +441,8 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                 Save payment instructions
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
       </div>
     </div>
   );
