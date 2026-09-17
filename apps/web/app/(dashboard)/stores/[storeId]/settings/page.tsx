@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
 
@@ -421,13 +422,13 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       {error && <Alert tone="danger">{error}</Alert>}
       {saved && <Alert tone="success">Saved.</Alert>}
 
-      <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader
+      <Reveal className="max-w-2xl space-y-6" stagger={0.06}>
+        <DashCard>
+          <DashCardHeader
             title="Store branding"
             description="Shown on your storefront header, PDF invoices, and transactional emails. Without a logo, your store name is shown instead."
           />
-          <CardBody className="flex items-center gap-4">
+          <div className="flex items-center gap-4">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt="Store logo" className="h-14 max-w-[200px] rounded-md border border-border object-contain p-1" />
@@ -447,12 +448,12 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 </Button>
               )}
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Storefront access" description="Who can view your storefront right now." />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Storefront access" description="Who can view your storefront right now." />
+          <div>
             <form onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 {(["public", "coming_soon", "password_protected"] as const).map((mode) => (
@@ -474,12 +475,12 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 Save
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Store policy" description="Shown on your storefront, and counted toward your Store Health Score's profile completeness." />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Store policy" description="Shown on your storefront, and counted toward your Store Health Score's profile completeness." />
+          <div>
             <form onSubmit={savePolicyText} className="space-y-4">
               {policySaved && <Alert tone="success">Saved.</Alert>}
               <Field label="Policy statement" htmlFor="policy-text" hint="Shipping, returns, or other buyer-facing policy text.">
@@ -495,15 +496,15 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 Save
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Invoice customization"
             description="Shown on your buyers' generated invoice PDFs when set. UZEYN's own invoice branding is separate and always included regardless."
           />
-          <CardBody>
+          <div>
             <form onSubmit={saveInvoiceCustomization} className="space-y-4">
               {invoiceSaved && <Alert tone="success">Saved.</Alert>}
               <Field label="Tax / NTN number" htmlFor="invoice-tax-number" hint="Shown next to your business name on invoices, if set.">
@@ -536,16 +537,16 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 Save
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Advanced SEO"
             description="Store-wide defaults for search-engine indexing, structured data, and sitemap inclusion. Per-product and per-collection overrides are set on each product/collection's own edit page. The basic page title/description above stay available on every plan."
           />
           {seoAdvancedFieldsEnabled ? (
-            <CardBody>
+            <div>
               <form onSubmit={saveAdvancedSeo} className="space-y-4">
                 {seoSaved && <Alert tone="success">Saved.</Alert>}
                 <label className="flex items-center gap-2 text-sm text-ink">
@@ -597,7 +598,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                   Save
                 </Button>
               </form>
-            </CardBody>
+            </div>
           ) : (
             <UpgradeLockedCard
               requiredTier="RISE"
@@ -612,14 +613,14 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               }
             />
           )}
-        </Card>
+        </DashCard>
 
-        <Card id="reports">
-          <CardHeader
+        <DashCard id="reports">
+          <DashCardHeader
             title="Data export"
             description="A convenience copy of your products, orders, and customers for your own records - delivered to your connected Google Drive, or emailed if Drive isn't connected. Not a substitute for our own platform backups."
           />
-          <CardBody className="space-y-4">
+          <div className="space-y-4">
             {exportError && <Alert>{exportError}</Alert>}
             <Button loading={requestingExport} onClick={requestDataExport}>
               Request export now
@@ -653,15 +654,15 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 ))}
               </div>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Identity verification"
             description="Required before checkout works - a way for the platform to confirm the seller behind an account is a real, accountable person."
           />
-          <CardBody>
+          <div>
             {activationStatus !== "auto_approved" && (
               <Alert tone="info">
                 Your account is under review ({activationStatus === "blocked" ? "blocked pending review" : "pending review"}).
@@ -703,15 +704,15 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               </Button>
             </form>
             {cnicSaved && <Alert tone="success">Saved.</Alert>}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Notifications"
             description="Platform emails about your account - separate from the order and stock alerts your store sends automatically, which can't be turned off."
           />
-          <CardBody>
+          <div>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
@@ -721,15 +722,15 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               />
               Send me the UZEYN newsletter (product updates, tips, and announcements)
             </label>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Security"
             description="Two-factor authentication and the devices currently signed in to your account."
           />
-          <CardBody className="space-y-6">
+          <div className="space-y-6">
             <div>
               <h3 className="mb-2 text-sm font-medium text-ink">Two-factor authentication</h3>
               {mfaEnabled ? (
@@ -818,12 +819,12 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 </ul>
               )}
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Dashboard appearance" description="Purely cosmetic - only changes how your own dashboard looks, never your storefront." />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Dashboard appearance" description="Purely cosmetic - only changes how your own dashboard looks, never your storefront." />
+          <div>
             <div className="flex gap-3">
               {DASHBOARD_THEMES.map((theme) => (
                 <button
@@ -840,9 +841,9 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 </button>
               ))}
             </div>
-          </CardBody>
-        </Card>
-      </div>
+          </div>
+        </DashCard>
+      </Reveal>
     </div>
   );
 }

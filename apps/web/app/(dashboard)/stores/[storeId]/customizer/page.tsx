@@ -10,7 +10,7 @@ import { getTemplateSections } from "@/app/storefront/templates/registry";
 import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -266,8 +266,8 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
 
       <div className="grid grid-cols-[360px_1fr] gap-6">
         <Reveal stagger={0.05} className="space-y-4">
-          <Card>
-            <CardBody>
+          <DashCard>
+            <div>
               <Field label="Theme">
                 <Select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
                   {themes.map((t) => (
@@ -278,26 +278,26 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                   ))}
                 </Select>
               </Field>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
           {showcaseUrl && (
-            <Card>
-              <CardHeader title="Premium templates" />
-              <CardBody>
+            <DashCard>
+              <DashCardHeader title="Premium templates" />
+              <div>
                 <p className="text-sm text-muted-foreground">
                   Browse professionally designed premium templates in the Template Store.
                 </p>
                 <a href={showcaseUrl} target="_blank" rel="noreferrer">
                   <Button variant="secondary">Browse Template Store &rarr;</Button>
                 </a>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
           )}
 
-          <Card>
-            <CardHeader title="Storefront branding" description="The 'Managed by UZEYN' mark shown on your storefront." />
-            <CardBody className="space-y-3">
+          <DashCard>
+            <DashCardHeader title="Storefront branding" description="The 'Managed by UZEYN' mark shown on your storefront." />
+            <div className="space-y-3">
               {branding && (
                 <>
                   <label className="flex items-center gap-2 text-sm text-ink">
@@ -316,12 +316,12 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                   )}
                 </>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
-          <Card>
-            <CardHeader title="Colors" />
-            <CardBody className="grid grid-cols-3 gap-3">
+          <DashCard>
+            <DashCardHeader title="Colors" />
+            <div className="grid grid-cols-3 gap-3">
               <Field label="Primary">
                 <input type="color" value={resolved.colors.primary} onChange={(e) => setColor("primary", e.target.value)} className="h-10 w-full rounded-md border border-border" />
               </Field>
@@ -331,12 +331,12 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
               <Field label="Text">
                 <input type="color" value={resolved.colors.text} onChange={(e) => setColor("text", e.target.value)} className="h-10 w-full rounded-md border border-border" />
               </Field>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
-          <Card>
-            <CardHeader title="Sections" description="Show/hide and reorder." />
-            <CardBody className="space-y-1">
+          <DashCard>
+            <DashCardHeader title="Sections" description="Show/hide and reorder." />
+            <div className="space-y-1">
               {resolved.sections.map((section, index) => (
                 <div key={section.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-canvas">
                   <label className="flex items-center gap-2 text-sm text-ink">
@@ -365,12 +365,12 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                   </div>
                 </div>
               ))}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
-          <Card>
-            <CardHeader title="Announcement bar" />
-            <CardBody className="space-y-3">
+          <DashCard>
+            <DashCardHeader title="Announcement bar" />
+            <div className="space-y-3">
               <label className="flex items-center gap-2 text-sm text-ink">
                 <input
                   type="checkbox"
@@ -384,12 +384,12 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                 value={resolved.announcementBar?.message ?? ""}
                 onChange={(e) => setAnnouncementBar(resolved.announcementBar?.enabled ?? false, e.target.value)}
               />
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
-          <Card>
-            <CardHeader title="WhatsApp button" />
-            <CardBody className="space-y-3">
+          <DashCard>
+            <DashCardHeader title="WhatsApp button" />
+            <div className="space-y-3">
               <label className="flex items-center gap-2 text-sm text-ink">
                 <input
                   type="checkbox"
@@ -403,17 +403,17 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                 value={resolved.whatsapp?.phoneNumber ?? ""}
                 onChange={(e) => setWhatsapp(resolved.whatsapp?.enabled ?? false, e.target.value)}
               />
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
-          <Card>
-            <CardHeader title="Coded mode" description="A raw-code escape hatch beyond what the controls above can express." />
+          <DashCard>
+            <DashCardHeader title="Coded mode" description="A raw-code escape hatch beyond what the controls above can express." />
             {codedModeEnabled === null ? (
-              <CardBody>
+              <div>
                 <PageSpinner />
-              </CardBody>
+              </div>
             ) : codedModeEnabled ? (
-              <CardBody className="space-y-3">
+              <div className="space-y-3">
                 <Alert tone="warning">
                   Saved here, but not yet rendered on your live storefront in this release - there is no execution path for it yet.
                   Use this as a staging area; nothing you write here is visible to buyers today.
@@ -428,7 +428,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                 <Button variant="secondary" loading={savingCode} onClick={saveCustomCode}>
                   Save code
                 </Button>
-              </CardBody>
+              </div>
             ) : (
               <UpgradeLockedCard
                 requiredTier="RISE"
@@ -443,11 +443,11 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
                 }
               />
             )}
-          </Card>
+          </DashCard>
 
-          <Card>
-            <CardHeader title="FAQ" />
-            <CardBody className="space-y-3">
+          <DashCard>
+            <DashCardHeader title="FAQ" />
+            <div className="space-y-3">
               {resolved.faqItems.map((item, index) => (
                 <div key={index} className="space-y-2 rounded-md border border-border p-3">
                   <Input placeholder="Question" value={item.question} onChange={(e) => updateFaqItem(index, "question", e.target.value)} />
@@ -460,8 +460,8 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
               <Button variant="secondary" onClick={addFaqItem}>
                 Add question
               </Button>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
 
           <Button loading={saving} onClick={onSave}>
             Save

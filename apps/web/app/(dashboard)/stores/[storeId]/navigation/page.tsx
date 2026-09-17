@@ -5,7 +5,7 @@ import { NavigationItem } from "@/lib/storefront-api";
 import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -87,14 +87,14 @@ export default function NavigationEditorPage({ params }: { params: { storeId: st
         {items === null ? (
           <PageSpinner />
         ) : items.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState title={`No ${location} items yet`} description="Add one below to start building this menu." />
-          </Card>
+          </DashCard>
         ) : (
         <Reveal stagger={0.05} className="space-y-3">
           {items.map((item, index) => (
-            <Card key={index}>
-              <CardBody className="space-y-3">
+            <DashCard key={index}>
+              <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Type">
                     <Select value={item.type} onChange={(e) => updateItem(index, { type: e.target.value as NavigationItem["type"] })}>
@@ -160,8 +160,8 @@ export default function NavigationEditorPage({ params }: { params: { storeId: st
                 <Button variant="ghost" size="sm" onClick={() => removeItem(index)}>
                   Remove
                 </Button>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
           ))}
         </Reveal>
         )}

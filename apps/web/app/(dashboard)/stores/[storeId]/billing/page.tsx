@@ -5,10 +5,11 @@ import { Check } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { ApiError, api } from "@/lib/dashboard-api";
 import { planTierCopy, planTierSubtitle } from "@/lib/plan-tier-copy";
@@ -293,9 +294,10 @@ export default function BillingPage() {
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-5xl space-y-6">
-        <Card>
-          <CardHeader title="Current plan" />
-          <CardBody>
+        <Reveal>
+        <DashCard>
+          <DashCardHeader title="Current plan" />
+          <div>
             {subscription && (
               <div className="space-y-1 text-sm text-ink">
                 <p>
@@ -328,19 +330,21 @@ export default function BillingPage() {
                 )}
               </div>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
+        </Reveal>
 
         {(paymentRequests?.some((r) => r.status === "pending") ?? false) ? (
           <Alert tone="info">Your plan-fee payment is pending admin verification.</Alert>
         ) : (
           paymentPreview && (
-            <Card>
-              <CardHeader
+            <Reveal>
+            <DashCard>
+              <DashCardHeader
                 title={paymentPreview.isRenewal ? "Plan fee due" : "Get started"}
                 description={`${paymentPreview.planName}${planTierSubtitle(paymentPreview.planName) ? ` (${planTierSubtitle(paymentPreview.planName)})` : ""} - ${paymentPreview.isRenewal ? "renewal" : "first cycle (discounted)"}`}
               />
-              <CardBody className="space-y-4">
+              <div className="space-y-4">
                 {paymentError && <Alert>{paymentError}</Alert>}
                 {paymentInstructions && <Alert tone="info">{paymentInstructions}</Alert>}
                 <div className="rounded-lg border border-border p-4">
@@ -349,15 +353,17 @@ export default function BillingPage() {
                 <Button loading={submittingPayment} onClick={submitPlanFeePayment}>
                   Pay - Rs. {paymentPreview.amountDue.toFixed(2)}
                 </Button>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
+            </Reveal>
           )
         )}
 
         {paymentRequests && paymentRequests.length > 0 && (
-          <Card>
-            <CardHeader title="Payment history" />
-            <CardBody className="divide-y divide-border">
+          <Reveal>
+          <DashCard>
+            <DashCardHeader title="Payment history" />
+            <div className="divide-y divide-border">
               {paymentRequests.map((r) => (
                 <div key={r.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                   <div>
@@ -369,14 +375,16 @@ export default function BillingPage() {
                   </Badge>
                 </div>
               ))}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
+          </Reveal>
         )}
 
         {!activeMembership && plans && (
-          <Card>
-            <CardHeader title="Available plans" description="What each tier gets you - upgrading or downgrading takes effect at your next billing cycle." />
-            <CardBody>
+          <Reveal>
+          <DashCard>
+            <DashCardHeader title="Available plans" description="What each tier gets you - upgrading or downgrading takes effect at your next billing cycle." />
+            <div>
               {/* FR-7.20 (Module 61/103) - the same three cycles the public
                   pricing page's own toggle offers a signing-up seller,
                   extended here to an existing seller switching plans. */}
@@ -450,14 +458,16 @@ export default function BillingPage() {
                   );
                 })}
               </div>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
+          </Reveal>
         )}
 
         {pendingInvites.length > 0 && (
-          <Card>
-            <CardHeader title="Team invitations" description="A leader's team dashboard sees only read-only sales analytics - never your store, products, or customers." />
-            <CardBody className="space-y-3">
+          <Reveal>
+          <DashCard>
+            <DashCardHeader title="Team invitations" description="A leader's team dashboard sees only read-only sales analytics - never your store, products, or customers." />
+            <div className="space-y-3">
               {pendingInvites.map((invite) => (
                 <div key={invite.id} className="flex items-center justify-between rounded-md border border-border p-3">
                   <p className="text-sm text-ink">
@@ -473,14 +483,16 @@ export default function BillingPage() {
                   </div>
                 </div>
               ))}
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
+          </Reveal>
         )}
 
         {activeMembership && (
-          <Card>
-            <CardHeader title="Team membership" />
-            <CardBody>
+          <Reveal>
+          <DashCard>
+            <DashCardHeader title="Team membership" />
+            <div>
               <Button variant="ghost" onClick={leaveTeam}>
                 Leave team
               </Button>
@@ -488,14 +500,16 @@ export default function BillingPage() {
                 Leaving is always available and never suspends your store - you downgrade to Starter at the end of
                 the current period.
               </p>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
+          </Reveal>
         )}
 
         {!activeMembership && (
-          <Card>
-            <CardHeader title="Teams" description="Sponsor other sellers' subscriptions if your plan includes team-leader eligibility." />
-            <CardBody className="space-y-4">
+          <Reveal>
+          <DashCard>
+            <DashCardHeader title="Teams" description="Sponsor other sellers' subscriptions if your plan includes team-leader eligibility." />
+            <div className="space-y-4">
               {teams && teams.length > 0 && (
                 <div className="space-y-3">
                   {teams.map((team) => (
@@ -546,8 +560,9 @@ export default function BillingPage() {
                   Create team
                 </Button>
               </form>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
+          </Reveal>
         )}
       </div>
     </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -170,9 +170,9 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-3xl space-y-6">
-        <Card>
-          <CardHeader title="Period" />
-          <CardBody className="flex flex-wrap items-end gap-3">
+        <DashCard>
+          <DashCardHeader title="Period" />
+          <div className="flex flex-wrap items-end gap-3">
             <Field label="From">
               <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
             </Field>
@@ -182,8 +182,8 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
             <Button loading={loading} onClick={loadPeriod}>
               View
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
         {loading && !period ? (
           <PageSpinner />
@@ -197,28 +197,28 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
             )}
 
             <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-2">
-              <Card>
-                <CardBody>
+              <DashCard>
+                <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Revenue</p>
                   <p className="mt-1 text-3xl font-semibold text-ink">Rs {period.revenue.toLocaleString()}</p>
                   <p className="mt-1 text-xs text-ink-muted">{period.orderCount} confirmed order{period.orderCount === 1 ? "" : "s"}</p>
-                </CardBody>
-              </Card>
-              <Card>
-                <CardBody>
+                </div>
+              </DashCard>
+              <DashCard>
+                <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Net profit</p>
                   <p className={`mt-1 text-3xl font-semibold ${period.netProfit < 0 ? "text-danger" : "text-ink"}`}>
                     Rs {period.netProfit.toLocaleString()}
                   </p>
                   <p className="mt-1 text-xs text-ink-muted">What Shopify doesn't show you</p>
-                </CardBody>
-              </Card>
+                </div>
+              </DashCard>
             </Reveal>
 
             <Reveal>
-            <Card>
-              <CardHeader title="Breakdown" />
-              <CardBody className="space-y-1.5 text-sm">
+            <DashCard>
+              <DashCardHeader title="Breakdown" />
+              <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between text-ink-muted">
                   <span>Revenue</span>
                   <span className="text-ink">Rs {period.revenue.toLocaleString()}</span>
@@ -247,15 +247,15 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                   <span>Net profit</span>
                   <span>Rs {period.netProfit.toLocaleString()}</span>
                 </div>
-              </CardBody>
-            </Card>
+              </div>
+            </DashCard>
             </Reveal>
           </>
         ) : null}
 
-        <Card>
-          <CardHeader title="Ad spend" description="Manual entry now - a future Facebook/TikTok ad-spend API is a documented roadmap item, not built yet." />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Ad spend" description="Manual entry now - a future Facebook/TikTok ad-spend API is a documented roadmap item, not built yet." />
+          <div>
             <form onSubmit={addAdSpend} className="flex flex-wrap items-end gap-3">
               <Field label="From">
                 <Input type="date" value={entryStart} onChange={(e) => setEntryStart(e.target.value)} />
@@ -303,8 +303,8 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                 ))}
               </Reveal>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
       </div>
     </div>
   );

@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 type ImportJobType = "product_import" | "product_export" | "order_export" | "stock_import";
@@ -107,26 +108,26 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
 
       {error && <p className="mb-4 text-sm text-danger">{error}</p>}
 
-      <div className="max-w-3xl space-y-6">
-        <Card>
-          <CardHeader
+      <Reveal className="max-w-3xl space-y-6" stagger={0.06}>
+        <DashCard>
+          <DashCardHeader
             title="Import products"
             description="A Shopify product-export CSV. Core fields only - title, description, price, variants/options, images, and inventory."
           />
-          <CardBody>
+          <div>
             <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleUpload} className="hidden" id="import-csv-input" />
             <Button variant="secondary" loading={uploading} onClick={() => fileInputRef.current?.click()}>
               Upload CSV
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Bulk update stock"
             description="A CSV with just SKU and Quantity columns - updates stock levels only, never price/title/etc."
           />
-          <CardBody>
+          <div>
             <input
               ref={stockFileInputRef}
               type="file"
@@ -141,25 +142,25 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
             <a href={`/stores/${params.storeId}/inventory`} className="ml-4 text-sm text-accent hover:underline">
               Manage individual levels &amp; adjustment history &rarr;
             </a>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Export your data" description="For your own records, or to move to another platform." />
-          <CardBody className="flex gap-3">
+        <DashCard>
+          <DashCardHeader title="Export your data" description="For your own records, or to move to another platform." />
+          <div className="flex gap-3">
             <Button variant="secondary" loading={exporting === "products"} onClick={() => runExport("products")}>
               Export products
             </Button>
             <Button variant="secondary" loading={exporting === "orders"} onClick={() => runExport("orders")}>
               Export orders
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Recent jobs" />
+        <DashCard>
+          <DashCardHeader title="Recent jobs" />
           {jobs.length === 0 ? (
-            <CardBody className="text-sm text-ink-muted">Nothing yet.</CardBody>
+            <div className="text-sm text-ink-muted">Nothing yet.</div>
           ) : (
             <div className="divide-y divide-border">
               {jobs.map((job) => (
@@ -202,8 +203,8 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
               ))}
             </div>
           )}
-        </Card>
-      </div>
+        </DashCard>
+      </Reveal>
     </div>
   );
 }

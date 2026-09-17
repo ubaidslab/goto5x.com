@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/Badge";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
@@ -60,8 +60,8 @@ export default function StoreHealthPage({ params }: { params: { storeId: string 
         description="A 0-100 score reflecting how smoothly your store is running - recomputed on a schedule, with a plain-language breakdown of what's holding it back."
       />
 
-      <Card>
-        <CardBody>
+      <DashCard>
+        <div>
           {current.score === null ? (
             <p className="text-sm text-ink-muted">Your first score hasn't been computed yet - check back after the next scheduled run.</p>
           ) : (
@@ -73,13 +73,13 @@ export default function StoreHealthPage({ params }: { params: { storeId: string 
               )}
             </div>
           )}
-        </CardBody>
-      </Card>
+        </div>
+      </DashCard>
 
       {current.breakdown && current.breakdown.some((i) => i.suggestion) && (
-        <Card>
-          <CardHeader title="What's lowering your score" />
-          <CardBody className="space-y-3">
+        <DashCard>
+          <DashCardHeader title="What's lowering your score" />
+          <div className="space-y-3">
             {current.breakdown
               .filter((i) => i.suggestion)
               .map((i) => (
@@ -88,29 +88,29 @@ export default function StoreHealthPage({ params }: { params: { storeId: string 
                   <p className="text-sm text-ink-muted">{i.suggestion}</p>
                 </div>
               ))}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
       )}
 
       {current.breakdown && (
-        <Card>
-          <CardHeader title="Score breakdown" />
-          <CardBody className="divide-y divide-border">
+        <DashCard>
+          <DashCardHeader title="Score breakdown" />
+          <div className="divide-y divide-border">
             {current.breakdown.map((i) => (
               <div key={i.key} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                 <p className="text-sm text-ink">{i.label}</p>
                 <p className="text-sm text-ink-muted">{Math.round(i.fraction * 100)}% of full marks</p>
               </div>
             ))}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
       )}
 
       {history.length > 0 && (
         <Reveal>
-          <Card>
-            <CardHeader title="Score over time" description="Your last few scheduled recomputations." />
-            <CardBody>
+          <DashCard>
+            <DashCardHeader title="Score over time" description="Your last few scheduled recomputations." />
+            <div>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={[...history].reverse()}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
@@ -124,8 +124,8 @@ export default function StoreHealthPage({ params }: { params: { storeId: string 
                   <Line type="monotone" dataKey="score" stroke="var(--color-accent)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
         </Reveal>
       )}
     </div>

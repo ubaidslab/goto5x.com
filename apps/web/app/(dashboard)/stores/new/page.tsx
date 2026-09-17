@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody } from "@/components/ui/Card";
+import { DashCard } from "@/components/dashboard/ui/DashCard";
 import { Field, Input } from "@/components/ui/Field";
 import { api, ApiError } from "@/lib/dashboard-api";
 
@@ -67,8 +67,8 @@ export default function CreateStorePage() {
           <span className="font-display text-h4 font-bold tracking-tight text-ink">UZEYN</span>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">Create your store</p>
         </div>
-        <Card>
-          <CardBody>
+        <DashCard>
+          <div>
             <h1 className="text-h3 text-ink">Let&apos;s set up your store</h1>
             <p className="mt-1.5 text-sm text-ink-muted">
               Give it a name - you can change everything about it later.
@@ -110,8 +110,8 @@ export default function CreateStorePage() {
                 Create store
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
       </Reveal>
     </main>
   );

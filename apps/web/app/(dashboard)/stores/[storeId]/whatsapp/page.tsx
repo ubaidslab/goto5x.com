@@ -5,7 +5,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -84,12 +84,12 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Reveal>
-      <Card className="mb-6">
-        <CardHeader
+      <DashCard className="mb-6">
+        <DashCardHeader
           title="Cart-recovery message template"
           description="What the recovery link's pre-filled message says. Placeholders {{item_summary}}, {{store_name}}, and {{store_link}} are filled in per cart."
         />
-        <CardBody>
+        <div>
           {template === null ? (
             <PageSpinner />
           ) : (
@@ -100,18 +100,18 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
               </Button>
             </>
           )}
-        </CardBody>
-      </Card>
+        </div>
+      </DashCard>
       </Reveal>
 
       {carts === null ? (
         <PageSpinner />
       ) : carts.length === 0 ? (
-        <Card>
+        <DashCard>
           <EmptyState title="No abandoned carts" description="Carts flagged abandoned will show up here." />
-        </Card>
+        </DashCard>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
+        <DashCard className="divide-y divide-border overflow-hidden">
           <Reveal stagger={0.04}>
           {carts.map((cart) => (
             <div key={cart.id} className="flex items-center justify-between gap-4 px-6 py-4">
@@ -135,7 +135,7 @@ export default function WhatsAppRecoveryPage({ params }: { params: { storeId: st
             </div>
           ))}
           </Reveal>
-        </Card>
+        </DashCard>
       )}
     </div>
   );

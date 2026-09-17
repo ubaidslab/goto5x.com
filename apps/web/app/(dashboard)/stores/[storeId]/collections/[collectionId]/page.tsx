@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
 
 interface CollectionProductEntry {
@@ -177,9 +178,10 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Collection details" description="Basic details shown on your storefront and in search results - available on every plan." />
-          <CardBody>
+        <Reveal stagger={0.06}>
+        <DashCard>
+          <DashCardHeader title="Collection details" description="Basic details shown on your storefront and in search results - available on every plan." />
+          <div>
             <form onSubmit={saveDetails} className="space-y-4">
               {detailsSaved && <Alert tone="success">Saved.</Alert>}
               <Field label="Description" htmlFor="collection-description">
@@ -195,15 +197,15 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
                 Save
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader
+        <DashCard>
+          <DashCardHeader
             title="Advanced SEO"
             description="Growth-plan feature. Overrides this collection's canonical URL, search-engine indexing, social preview, and sitemap inclusion. Leave blank/on to use your store's defaults."
           />
-          <CardBody>
+          <div>
             <form onSubmit={saveAdvancedSeo} className="space-y-4">
               {seoSaved && <Alert tone="success">Saved.</Alert>}
               <Field label="Canonical URL" htmlFor="collection-canonical-url" hint="Leave blank to use this collection's own URL.">
@@ -231,12 +233,12 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
                 Save advanced SEO
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
 
-        <Card>
-          <CardHeader title="Add a product" />
-          <CardBody>
+        <DashCard>
+          <DashCardHeader title="Add a product" />
+          <div>
             <form onSubmit={onAddProduct} className="flex items-end gap-3">
               <div className="flex-1">
                 <Field label="Product">
@@ -254,24 +256,27 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
                 Add product
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
+        </Reveal>
 
         {entries.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState title="No products in this collection yet" description="Add one above." />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
-            {entries.map((entry) => (
-              <div key={entry.productId} className="flex items-center justify-between gap-4 px-6 py-4">
-                <p className="text-sm font-medium text-ink">{entry.product.title}</p>
-                <Button variant="ghost" size="sm" onClick={() => onRemoveProduct(entry.productId)}>
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </Card>
+          <DashCard className="overflow-hidden">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
+              {entries.map((entry) => (
+                <div key={entry.productId} className="flex items-center justify-between gap-4 px-6 py-4">
+                  <p className="text-sm font-medium text-ink">{entry.product.title}</p>
+                  <Button variant="ghost" size="sm" onClick={() => onRemoveProduct(entry.productId)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </Reveal>
+          </DashCard>
         )}
       </div>
     </div>

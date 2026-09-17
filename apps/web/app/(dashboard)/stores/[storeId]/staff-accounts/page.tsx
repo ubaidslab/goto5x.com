@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Reveal } from "@/components/motion/Reveal";
 import { Switch } from "@/components/ui/Switch";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
@@ -279,9 +280,10 @@ export default function StaffAccountsPage() {
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader title="Add a staff account" />
-          <CardBody>
+        <Reveal>
+        <DashCard>
+          <DashCardHeader title="Add a staff account" />
+          <div>
             <Alert tone="info" className="mb-4">
               For example, give a designer only the &quot;Store design&quot; scope so they can use the customizer
               without ever seeing your orders, wallet, or plan.
@@ -326,15 +328,17 @@ export default function StaffAccountsPage() {
                 Create staff account
               </Button>
             </form>
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
+        </Reveal>
 
         {staff.length === 0 ? (
-          <Card>
+          <DashCard>
             <EmptyState title="No staff accounts yet" description="Add one above to give a team member scoped access." />
-          </Card>
+          </DashCard>
         ) : (
-          <Card className="divide-y divide-border overflow-hidden">
+          <DashCard className="overflow-hidden">
+            <Reveal className="divide-y divide-border" stagger={0.04}>
             {staff.map((account) => {
               const devices = devicesByStaffId[account.id];
               return (
@@ -391,26 +395,30 @@ export default function StaffAccountsPage() {
                 </div>
               );
             })}
-          </Card>
+            </Reveal>
+          </DashCard>
         )}
 
         {deviceRestrictionUnlocked && (
-          <Card>
-            <CardHeader
+          <Reveal>
+          <DashCard>
+            <DashCardHeader
               title="Device security"
               description="If you suspect a staff device has been compromised, revoke every approved device across every staff account at once."
             />
-            <CardBody>
+            <div>
               <Button variant="danger" onClick={revokeAllDevices}>
                 Revoke all staff devices
               </Button>
-            </CardBody>
-          </Card>
+            </div>
+          </DashCard>
+          </Reveal>
         )}
 
-        <Card>
-          <CardHeader title="Staff activity" description="What your team has been doing, in plain language." />
-          <CardBody>
+        <Reveal>
+        <DashCard>
+          <DashCardHeader title="Staff activity" description="What your team has been doing, in plain language." />
+          <div>
             {!activity || activity.length === 0 ? (
               <EmptyState title="No activity yet" description="Once a staff account makes changes, you'll see a summary here." />
             ) : (
@@ -422,8 +430,9 @@ export default function StaffAccountsPage() {
                 ))}
               </ul>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </DashCard>
+        </Reveal>
       </div>
     </div>
   );
