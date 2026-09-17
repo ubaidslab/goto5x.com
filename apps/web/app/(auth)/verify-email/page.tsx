@@ -47,7 +47,7 @@ export default function VerifyEmailPage() {
             {status.kind === "error" && <Alert tone="danger">{status.message}</Alert>}
           </div>
 
-          <Link href="/login" className="mt-5 inline-block text-sm font-medium text-accent underline-offset-2 hover:underline">
+          <Link href="/login" className="mt-5 inline-block text-sm font-medium text-accent underline underline-offset-2 hover:opacity-80">
             Go to login
           </Link>
         </CardBody>

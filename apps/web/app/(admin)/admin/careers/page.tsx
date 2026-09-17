@@ -142,7 +142,7 @@ export default function AdminCareersPage() {
                             <p className="font-medium text-ink">{a.applicantName}</p>
                             <p className="text-xs text-ink-muted">
                               {a.applicantEmail} {a.applicantPhone && `· ${a.applicantPhone}`} ·{" "}
-                              <a href={a.cvUrl} target="_blank" rel="noreferrer" className="text-accent hover:opacity-80">
+                              <a href={a.cvUrl} target="_blank" rel="noreferrer" className="text-accent underline hover:opacity-80">
                                 CV
                               </a>{" "}
                               · applied {new Date(a.createdAt).toLocaleString()}

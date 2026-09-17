@@ -183,7 +183,7 @@ export default function DesignSystemPage() {
             <Swatch name="Ink" cssVar="--color-ink" hex="#0a0a0a" />
             <Swatch name="Ink muted" cssVar="--color-ink-muted" hex="#6b6862" />
             <Swatch name="Ink faint" cssVar="--color-ink-faint" hex="#9c988f" />
-            <Swatch name="Accent" cssVar="--color-accent" hex="#0071e3" />
+            <Swatch name="Accent" cssVar="--color-accent" hex="#0a0a0a" />
             <Swatch name="Accent hover" cssVar="--color-accent-hover" hex="#0058b0" />
             <Swatch name="Accent subtle" cssVar="--color-accent-subtle" hex="#e8f2fd" />
           </Reveal>

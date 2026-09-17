@@ -33,7 +33,7 @@ const VALUES = [
 export default function ColorAbPreviewPage() {
   return (
     <div className="min-h-screen bg-canvas">
-      <ComparisonBlock label="Default — monochrome + restrained accent" accentHex="#0071e3" />
+      <ComparisonBlock label="Default — fully monochrome (no accent hue)" accentHex="#0a0a0a" />
       <div className="h-2 bg-ink" />
       <div data-marketing-theme="energy">
         <ComparisonBlock label="Alternate — energy" accentHex="#ff4d1c" />

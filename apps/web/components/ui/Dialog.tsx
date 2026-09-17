@@ -45,7 +45,7 @@ export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLD
 }
 
 export const DialogTitle = forwardRef<ElementRef<typeof DialogPrimitive.Title>, ComponentPropsWithoutRef<typeof DialogPrimitive.Title>>(
-  ({ className, ...props }, ref) => <DialogPrimitive.Title ref={ref} className={cn("font-display text-h3 text-ink", className)} {...props} />,
+  ({ className, ...props }, ref) => <DialogPrimitive.Title ref={ref} className={cn("text-h3 text-ink", className)} {...props} />,
 );
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 

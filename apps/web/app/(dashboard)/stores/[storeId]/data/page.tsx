@@ -139,7 +139,7 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
             <Button variant="secondary" loading={uploadingStock} onClick={() => stockFileInputRef.current?.click()}>
               Upload stock CSV
             </Button>
-            <a href={`/stores/${params.storeId}/inventory`} className="ml-4 text-sm text-accent hover:underline">
+            <a href={`/stores/${params.storeId}/inventory`} className="ml-4 text-sm text-accent underline hover:opacity-80">
               Manage individual levels &amp; adjustment history &rarr;
             </a>
           </div>
@@ -180,7 +180,7 @@ export default function DataPortabilityPage({ params }: { params: { storeId: str
                     </div>
                     <div className="flex items-center gap-3">
                       {job.status === "completed" && (
-                        <a href={job.fileUrl} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
+                        <a href={job.fileUrl} target="_blank" rel="noreferrer" className="text-sm text-accent underline hover:opacity-80">
                           {job.type === "product_import" || job.type === "stock_import" ? "View source file" : "Download"}
                         </a>
                       )}

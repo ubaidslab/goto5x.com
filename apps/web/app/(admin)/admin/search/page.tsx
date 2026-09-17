@@ -91,7 +91,7 @@ export default function AdminSearchPage() {
                     <span className="font-medium text-ink">
                       {s.name} <span className="font-normal text-ink-muted">({s.slug})</span>
                     </span>
-                    <Link href={`/admin/sellers/${s.sellerId}`} className="text-accent hover:opacity-80">
+                    <Link href={`/admin/sellers/${s.sellerId}`} className="text-accent underline hover:opacity-80">
                       Seller {s.sellerId.slice(0, 8)}
                     </Link>
                   </div>

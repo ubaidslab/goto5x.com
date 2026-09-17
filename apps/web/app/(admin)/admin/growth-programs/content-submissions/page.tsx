@@ -80,7 +80,7 @@ export default function AdminGrowthContentSubmissionsPage() {
                     {s.participantId.slice(0, 8)} <Badge tone="neutral">{s.platform}</Badge>
                   </p>
                   <p className="text-xs text-ink-muted">
-                    <a href={s.contentUrl} target="_blank" rel="noreferrer" className="text-accent hover:opacity-80">
+                    <a href={s.contentUrl} target="_blank" rel="noreferrer" className="text-accent underline hover:opacity-80">
                       {s.contentUrl}
                     </a>{" "}
                     · {s.reportedViews.toLocaleString()} views · {new Date(s.createdAt).toLocaleString()}

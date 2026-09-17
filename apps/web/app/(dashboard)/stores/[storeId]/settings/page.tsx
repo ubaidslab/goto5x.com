@@ -59,11 +59,13 @@ const EXPORT_FILE_LABELS: { file: "products" | "orders" | "customers" | "invento
 ];
 
 const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
-  // "default" mirrors the platform's own --color-accent token (founder
-  // brand-palette pass, batch A2) rather than reading the CSS variable at
-  // runtime, since this array also needs a static label - keep this swatch
-  // in sync by hand if the base accent token in globals.css ever changes.
-  { id: "default", label: "Green (default)", swatch: "#0d530e" },
+  // "default" mirrors the platform's own --color-accent token (v1.3
+  // monochrome pass - the platform's own default no longer has a color,
+  // but the 3 opt-in presets below are untouched by founder instruction)
+  // rather than reading the CSS variable at runtime, since this array
+  // also needs a static label - keep this swatch in sync by hand if the
+  // base accent token in globals.css ever changes.
+  { id: "default", label: "Monochrome (default)", swatch: "#0a0a0a" },
   { id: "emerald", label: "Emerald", swatch: "#1f9254" },
   { id: "amber", label: "Amber", swatch: "#b5750a" },
   { id: "rose", label: "Rose", swatch: "#c23b6b" },

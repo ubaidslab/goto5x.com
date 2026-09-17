@@ -28,7 +28,7 @@ export function UpgradeLockedCard({
         <Lock className="h-5 w-5" />
       </div>
       <div>
-        <h3 className="text-h4 font-display text-ink">{title}</h3>
+        <h3 className="text-h4 text-ink">{title}</h3>
         <p className="mx-auto mt-1.5 max-w-sm text-sm text-ink-muted">{description}</p>
         <p className="mt-2 text-xs font-medium uppercase tracking-wide text-ink-faint">Available on {requiredTier} and above</p>
       </div>

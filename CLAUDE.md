@@ -33,21 +33,65 @@ diffing against these project-authored versions before replacing them.
 
 ## Design Direction (binding for all UI work)
 
-- **Monochrome premium.** Near-white surfaces, near-black ink, a
-  grayscale scale between; **at most one** restrained accent, used
-  sparingly (links, the primary CTA) — apple.com discipline, horizonx.so
-  motion.
+- **Fully monochrome — FINAL, no accent hue anywhere (v1.3).** This
+  supersedes every earlier color decision recorded in this file and in
+  the Founder batch A2/A3 history (a cream/green brand palette + Alegreya
+  SC on every heading) — that pass shipped and was later fully reversed
+  by this one, not merely re-pointed at a different hue. Near-white
+  surfaces, true near-black ink, a grayscale scale between, and **zero**
+  accent color: the interactive role an accent hue used to play (primary
+  CTA fill, active nav, focus rings, links) is now filled by solid
+  near-black in light mode / near-white in dark mode — apple.com
+  discipline taken one step further, horizonx.so motion unchanged.
+  Semantic/status colors (order/verification/moderation state) are
+  explicitly untouched — see "Status colors stay functional, not brand"
+  below.
 - **Tokens are the single source of truth**
-  (`apps/web/app/globals.css`'s `@theme` block). The neutral scale
+  (`apps/web/app/globals.css`'s `@theme` block, mirrored in
+  `apps/api/src/design-tokens/design-tokens.constants.ts` for the admin
+  lockable color-token panel — Module 92/A6, no rebuild needed, just new
+  default values entered through it). Every neutral
   (`--color-canvas`/`--color-surface`/`--color-border`/`--color-ink`…)
-  was already a true grayscale and needed no change. The accent was
-  changed from a saturated violet/indigo to a restrained,
-  apple.com-style blue (`--color-accent: #0071e3`, mirrored in the
-  dark-mode block) — still a placeholder pending the founder's real
-  design pass, but establishing the "exactly one restrained accent"
-  discipline at the token level. **Individual pages are not restyled by
-  this policy** — everything currently using these tokens inherits the
-  direction automatically; a page-by-page pass is separate, future work.
+  is a true R=G=B grayscale value, no warm/cream or green tint anywhere.
+  `--color-accent` deliberately equals `--color-ink`'s value now (there's
+  no hue left to be confused with body text, so the two are told apart by
+  shape/underline/weight at each call site instead — a filled button, a
+  filled active-nav pill, an explicit `underline` on every inline text
+  link). **Individual pages are not restyled beyond this token-level
+  change plus the specific non-color-cue fixes this pass made** (see
+  git history for the exact list — bucket-filter tiles, settings-registry
+  row selection, ~14 links that relied on accent color alone).
+- **Typography: no serif in dense UI, ever.** The A3 batch's blanket
+  `h1,h2,h3,h4 { font-family: var(--font-display) }` rule (Alegreya SC
+  everywhere, including the seller dashboard and admin terminal) is
+  reversed. Dashboard/admin/forms/tables/small text are Inter-only,
+  hierarchy built from weight/size, never a serif face — shared
+  primitives (`PageHeader`, `DialogTitle`, `EmptyState`,
+  `UpgradeLockedCard`, `Gauge`'s value text) were edited directly rather
+  than relying on the removed blanket rule. The serif voice survives
+  ONLY on the marketing site's own hero/display headlines and shared
+  marketing components (`SectionTitle`, `PricingCard`, `FeatureCard`,
+  `FAQAccordion`, etc.) — each of those already opts in explicitly via
+  its own `font-display` className, independent of the rule that was
+  removed, so they were unaffected by removing it. The "UZEYN" wordmark
+  in `Sidebar.tsx`/`AdminSidebar.tsx`/the store-creation page keeps its
+  serif treatment — a brand-mark exception, not a heading.
+- **Seller-facing dashboard color personalization is untouched.** Module
+  10/FR-28.4's opt-in emerald/amber/rose accent presets (a seller's own
+  workspace choice, not the platform's brand identity) still work exactly
+  as before — only the platform DEFAULT (before a seller picks one)
+  became monochrome, per explicit founder instruction to keep this
+  shipped, tested feature rather than remove it for no functional reason.
+- **Status colors stay functional, not brand.** Order/verification/
+  moderation status colors (`--color-success`/`-warning`/`-danger`/
+  `-info`) were never part of any brand-color pass, this one included —
+  same "status pills stay distinct, never folded into brand palette"
+  rule locked since Phase 1.
+- **Buyer-facing storefronts (D-Studio) are out of scope for brand-color
+  passes.** A seller's own storefront theme (`lib/theme-presets.ts`,
+  `app/storefront/`) is a separate, seller-chosen system per the
+  original Phase 1 three-system separation - re-confirmed explicitly in
+  scope for the v1.3 monochrome pass as untouched.
 - **Branding is dummy until launch.** The platform will be renamed
   before public launch. Keep a typographic placeholder wordmark
   (`Sidebar.tsx`'s `Wordmark()` component is the existing example — see

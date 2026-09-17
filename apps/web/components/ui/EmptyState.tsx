@@ -24,7 +24,7 @@ export function EmptyState({
         </div>
       )}
       <div>
-        <h3 className="text-h4 font-display text-ink">{title}</h3>
+        <h3 className="text-h4 text-ink">{title}</h3>
         <p className="mx-auto mt-1.5 max-w-sm text-sm text-ink-muted">{description}</p>
       </div>
       {action}

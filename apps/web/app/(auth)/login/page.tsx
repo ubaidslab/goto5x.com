@@ -195,7 +195,7 @@ export default function LoginPage() {
         </CardBody>
       </Card>
       <p className="mt-6 text-center text-sm text-ink-muted">
-        <Link href="/reset-password" className="text-accent underline-offset-2 hover:underline">
+        <Link href="/reset-password" className="text-accent underline underline-offset-2 hover:opacity-80">
           Forgot password?
         </Link>
       </p>

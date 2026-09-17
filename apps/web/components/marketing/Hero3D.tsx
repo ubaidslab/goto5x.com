@@ -12,10 +12,13 @@ import { useEffect, useRef, useState } from "react";
  * permanent reduced-motion/no-WebGL experience; this canvas is a
  * progressive enhancement layered on top once it's confirmed safe to run.
  *
- * Colors are hardcoded RGB mirrors of --color-accent (#0071e3) and
+ * Colors are hardcoded RGB mirrors of --color-accent (#0a0a0a) and
  * --color-ink (#0a0a0a) from globals.css - a shader uniform can't read a
  * CSS custom property, so these two must be kept in sync by hand if the
- * tokens ever change.
+ * tokens ever change. v1.3 monochrome pass: accent and ink are now the
+ * same value by design (see globals.css's own comment), so this canvas
+ * renders as a single-tone near-black noise gradient - still a legitimate,
+ * tasteful signature moment, just monochrome like everything else now.
  */
 const VERTEX_SRC = `
 attribute vec2 aPos;
@@ -94,7 +97,7 @@ function hexToRgb01(hex: string): [number, number, number] {
 }
 
 /** `accentHex` defaults to --color-accent's mirror (see comment above) - only the founder's color-A/B preview page passes a different one. */
-export default function Hero3D({ accentHex = "#0071e3" }: { accentHex?: string }) {
+export default function Hero3D({ accentHex = "#0a0a0a" }: { accentHex?: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [active, setActive] = useState(false);
 

@@ -96,7 +96,7 @@ export default function SignupPage() {
                 ? "uzeyn.com is launching in your region soon - we've noted your interest and will be in touch."
                 : "Account created. We've sent a verification link to your email - open it, then log in."}
             </Alert>
-            <Link href="/login" className="mt-5 inline-block text-sm font-medium text-accent underline-offset-2 hover:underline">
+            <Link href="/login" className="mt-5 inline-block text-sm font-medium text-accent underline underline-offset-2 hover:opacity-80">
               Go to login
             </Link>
           </CardBody>
@@ -186,7 +186,7 @@ export default function SignupPage() {
       </Card>
       <p className="mt-6 text-center text-sm text-ink-muted">
         Already have an account?{" "}
-        <Link href="/login" className="text-accent underline-offset-2 hover:underline">
+        <Link href="/login" className="text-accent underline underline-offset-2 hover:opacity-80">
           Log in
         </Link>
       </p>

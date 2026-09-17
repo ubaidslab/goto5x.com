@@ -74,7 +74,7 @@ export default function AdminDesignTokensPage() {
     setSavedKey(null);
     const draft = drafts[token.key] ?? "";
     if (!HEX_RE.test(draft)) {
-      setError(`"${token.label}" needs a 6-digit hex color like #0d530e.`);
+      setError(`"${token.label}" needs a 6-digit hex color like #0a0a0a.`);
       return;
     }
 
@@ -162,7 +162,7 @@ export default function AdminDesignTokensPage() {
           <div className="overflow-hidden rounded-lg border" style={{ ...previewVars, borderColor: "var(--color-border-strong)" } as React.CSSProperties}>
             <div className="bg-canvas p-6">
               <div className="rounded-lg bg-surface p-5" style={{ border: "1px solid var(--color-border)" }}>
-                <h3 className="font-display text-lg font-bold text-ink">Sample heading</h3>
+                <h3 className="text-lg font-bold text-ink">Sample heading</h3>
                 <p className="mt-1 text-sm text-ink-muted">
                   Body text like this is what a seller or buyer reads everywhere - it must always stay a neutral, never the accent color.
                 </p>

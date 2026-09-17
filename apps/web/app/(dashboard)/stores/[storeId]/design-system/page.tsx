@@ -26,7 +26,7 @@ export default function DashboardDesignSystemPage() {
       />
 
       <section>
-        <h2 className="mb-4 font-display text-h3 text-ink">Gauge - every fill state</h2>
+        <h2 className="mb-4 text-h3 text-ink">Gauge - every fill state</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <GaugeCard icon={ShoppingBag} label="Sales (30d)" value="0 orders" percent={0} hint="0% vs prior 30d" />
           <GaugeCard icon={BarChart3} label="Revenue (30d)" value="Rs 84,200" percent={46} hint="+12% vs prior 30d" />
@@ -48,7 +48,7 @@ export default function DashboardDesignSystemPage() {
       </section>
 
       <section>
-        <h2 className="mb-4 font-display text-h3 text-ink">Card</h2>
+        <h2 className="mb-4 text-h3 text-ink">Card</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <DashCard>
             <DashCardHeader title="Store health" description="Recomputed nightly" />
@@ -81,7 +81,7 @@ export default function DashboardDesignSystemPage() {
       </section>
 
       <section>
-        <h2 className="mb-4 font-display text-h3 text-ink">Status pills (Badge, unchanged - already colored-bg + dark-tone text)</h2>
+        <h2 className="mb-4 text-h3 text-ink">Status pills (Badge, unchanged - already colored-bg + dark-tone text)</h2>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="neutral">Draft</Badge>
           <Badge tone="success" dot>
@@ -98,7 +98,7 @@ export default function DashboardDesignSystemPage() {
       </section>
 
       <section>
-        <h2 className="mb-4 font-display text-h3 text-ink">Avatar initials (real name, falls back to email)</h2>
+        <h2 className="mb-4 text-h3 text-ink">Avatar initials (real name, falls back to email)</h2>
         <div className="flex items-center gap-4">
           <AvatarInitials name="Bilal Ahmed" email="bilal.a@example.com" />
           <AvatarInitials name={null} email="fatima.n@example.com" />
@@ -106,7 +106,7 @@ export default function DashboardDesignSystemPage() {
       </section>
 
       <section>
-        <h2 className="mb-4 font-display text-h3 text-ink">Navigation</h2>
+        <h2 className="mb-4 text-h3 text-ink">Navigation</h2>
         <p className="max-w-2xl text-sm text-ink-muted">
           The real sidebar renders around this page - resize below 768px to see the mobile drawer (hamburger top bar
           replaces the static sidebar). Visit any of the four groups (Main menu / Growth / Operations / Admin) to see

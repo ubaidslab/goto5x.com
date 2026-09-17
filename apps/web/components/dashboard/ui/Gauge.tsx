@@ -108,7 +108,7 @@ export function GaugeCard({ icon: Icon, label, value, percent, hint, isEmpty, em
       ) : (
         <>
           <Gauge percent={percent} />
-          <p className="text-center font-display text-h3 text-ink">{value}</p>
+          <p className="text-center text-h3 text-ink">{value}</p>
           {hint && <p className="text-center text-xs text-ink-muted">{hint}</p>}
         </>
       )}

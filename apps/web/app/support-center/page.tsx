@@ -77,7 +77,7 @@ export default function SupportCenterHomePage() {
               <ul className="divide-y divide-border">
                 {articles.map((a) => (
                   <li key={a.slug} className="py-2.5">
-                    <Link href={`/kb/${a.slug}`} className="text-sm font-medium text-accent hover:underline">
+                    <Link href={`/kb/${a.slug}`} className="text-sm font-medium text-accent underline hover:opacity-80">
                       {a.title}
                     </Link>
                   </li>
@@ -97,7 +97,7 @@ export default function SupportCenterHomePage() {
                 {stores.map((s) => (
                   <li key={s.id} className="flex items-center justify-between gap-4 py-2.5">
                     <span className="text-sm text-ink">{s.name}</span>
-                    <Link href={`/stores/${s.id}/tickets`} className="text-sm font-medium text-accent hover:underline">
+                    <Link href={`/stores/${s.id}/tickets`} className="text-sm font-medium text-accent underline hover:opacity-80">
                       View tickets
                     </Link>
                   </li>

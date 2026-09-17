@@ -319,10 +319,10 @@ export default function OrdersListPage({ params }: { params: { storeId: string }
               onClick={() => selectBucket(b)}
               aria-pressed={bucket === b}
               className={`rounded-md border p-3 text-left transition-smooth-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
-                bucket === b ? "border-accent bg-accent/5" : "border-border bg-surface hover:border-border-strong"
+                bucket === b ? "border-2 border-accent bg-accent/5" : "border border-border bg-surface hover:border-border-strong"
               }`}
             >
-              <p className="text-2xl font-semibold tabular-nums text-ink">{overview.buckets[b]}</p>
+              <p className={`text-2xl tabular-nums text-ink ${bucket === b ? "font-bold" : "font-semibold"}`}>{overview.buckets[b]}</p>
               <p className="text-xs text-ink-muted">{label}</p>
             </button>
           ))}

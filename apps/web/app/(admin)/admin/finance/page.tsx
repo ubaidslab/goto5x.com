@@ -132,7 +132,7 @@ export default function AdminFinanceTerminalPage() {
         <DashCardHeader
           title="Pending payment verification"
           action={
-            <Link href="/admin/invoices" className="text-sm font-medium text-accent hover:opacity-80">
+            <Link href="/admin/invoices" className="text-sm font-medium text-accent underline hover:opacity-80">
               Full verification queue &rarr;
             </Link>
           }
@@ -198,7 +198,7 @@ export default function AdminFinanceTerminalPage() {
         <DashCardHeader
           title="Growth-program obligations (outstanding)"
           action={
-            <Link href="/admin/growth-programs/withdrawals" className="text-sm font-medium text-accent hover:opacity-80">
+            <Link href="/admin/growth-programs/withdrawals" className="text-sm font-medium text-accent underline hover:opacity-80">
               Withdrawal approval queue &rarr;
             </Link>
           }
@@ -225,7 +225,7 @@ export default function AdminFinanceTerminalPage() {
 
       <DashCard className="mb-4">
         <DashCardHeader title="Platform payment instructions" />
-        <Link href="/admin/payment-instructions" className="text-sm font-medium text-accent hover:opacity-80">
+        <Link href="/admin/payment-instructions" className="text-sm font-medium text-accent underline hover:opacity-80">
           Edit platform payment instructions &rarr;
         </Link>
       </DashCard>

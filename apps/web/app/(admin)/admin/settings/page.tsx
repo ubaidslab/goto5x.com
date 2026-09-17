@@ -195,7 +195,10 @@ export default function AdminSettingsPage() {
             <tbody className="divide-y divide-border">
               {definitions.map((d) => (
                 <tr key={d.key} className={selected?.key === d.key ? "bg-accent-subtle" : undefined}>
-                  <td className="py-2 pr-3 font-mono text-xs text-ink">{d.key}</td>
+                  <td className={`py-2 pr-3 font-mono text-xs text-ink ${selected?.key === d.key ? "font-bold" : ""}`}>
+                    {selected?.key === d.key && <span aria-hidden>&rarr; </span>}
+                    {d.key}
+                  </td>
                   <td className="py-2 pr-3 text-ink-muted">{d.valueType}</td>
                   <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{JSON.stringify(d.defaultValue)}</td>
                   <td className="py-2 pr-3">

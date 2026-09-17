@@ -1,39 +1,54 @@
 @import "tailwindcss";
 
 /*
- * UZEYN Design System — v1.2.1 (founder brand-palette pass, batch A2/A3,
- * plus a founder-caught post-ship correction)
+ * UZEYN Design System — v1.3 (FINAL brand-color decision: fully
+ * monochrome, no accent hue anywhere in the platform's own chrome)
  * -----------------------------------------------------------------------
- * v1.2 note: the founder's real brand colors replace the v1.1 placeholder
- * warm-paper/near-black scale, platform-wide - #FBF5DD (lightest/bg),
- * #E7E1B1 (secondary/muted), #306D29 (accent-hover), #0D530E (darkest,
- * matches the founder's logo - now the accent). Applied everywhere,
- * including the dashboard/admin terminal (their previous separate indigo
- * override is removed, not recolored - one brand identity, not two).
- * Alegreya SC (a display serif) replaces Geist as the headline face.
- * Status/semantic colors and per-seller cosmetic dashboard-accent presets
- * are untouched - functional/optional, not brand chrome.
- * v1.2.1 correction: the initial v1.2 rollout made ink/ink-muted/ink-faint
- * a "brand-tinted" scale mixed toward #0D530E - in light mode this went
- * as far as making --color-ink literally equal to --color-accent, the
- * exact standing-since-Phase-1 violation this system's own "one
- * restrained accent, never applied to body text" rule exists to prevent.
- * Reverted to true neutrals in both light and dark mode. See each token
- * group's own comment below for contrast numbers and the specific
- * before/after reasoning.
+ * v1.3 supersedes v1.2/v1.2.1 (founder batch A2/A3's cream-canvas +
+ * #0D530E-green accent + Alegreya SC headline pass) entirely. Founder
+ * decision: remove the accent color role altogether. Canvas/surface/
+ * border/ink are now TRUE neutral grayscale (R=G=B on every value, no
+ * warm/cream or green tint anywhere) and the interactive "accent" role
+ * (primary CTA fill, active nav, focus rings, links) is filled by
+ * near-black in light mode / near-white in dark mode instead of a hue -
+ * i.e. --color-accent is now intentionally the SAME value as --color-ink
+ * (the old "ink must never equal accent" rule from v1.2.1 doesn't apply
+ * once accent has no hue of its own to be confused with body text; the
+ * two are told apart by shape/underline/weight instead, see each call
+ * site's own fix - Button fills/pills, Sidebar/AdminSidebar's active-pill
+ * background, and the "links get a permanent underline" change below).
+ *
+ * Typography also reverts for dense UI: the v1.2/A3 rollout put Alegreya
+ * SC (a serif) on every h1-h4 platform-wide, including the seller
+ * dashboard and admin terminal - founder correction: dense UI (dashboard,
+ * admin, forms, tables, small text) is Inter-only again, hierarchy built
+ * from weight/size, never a serif face. The serif stays, deliberately,
+ * as the marketing site's own hero/display headline voice (app/page.tsx,
+ * about/careers/pricing's hero h1s, and the shared marketing components
+ * that explicitly opt in via `font-display` - SectionTitle, PricingCard,
+ * FeatureCard, etc.) - those already applied the class explicitly rather
+ * than relying on the blanket h1-h4 rule this pass removes, so they were
+ * unaffected by deleting it.
+ *
+ * NOT touched by this pass (explicit scope boundaries, founder-confirmed):
+ * - Semantic/status colors (--color-success/-warning/-danger/-info and
+ *   their -subtle pairs) - information signals, not brand chrome.
+ * - The Module 10/FR-28.4 seller-facing dashboard personalization presets
+ *   (emerald/amber/rose, [data-dashboard-theme="…"] below) - an opt-in
+ *   personalization of a seller's OWN workspace, not the platform's
+ *   default identity. Only the DEFAULT (before a seller picks one) is
+ *   now monochrome; the 3 presets are untouched, still colored, by
+ *   founder instruction.
+ * - Buyer-facing storefronts built via D-Studio (apps/web/app/storefront/
+ *   and lib/theme-presets.ts) - a completely separate, seller-chosen
+ *   theming system per the original Phase 1 three-system separation,
+ *   founder-reconfirmed in scope for this pass as untouched.
+ *
  * Single source of truth for every color, type, spacing, radius, shadow,
  * and motion value used across UZEYN's dashboard, marketing site,
- * storefronts, and admin terminal. Rebranding — a new accent color, an
- * adjusted type scale — is a change to this file only, never a per-screen
- * rewrite. See /design-system for the live contract every component below
- * is checked against.
- *
- * Direction: monochrome premium — near-white (now near-cream) surfaces,
- * a true near-black ink (never the accent hue), a full tonal scale
- * between, and AT MOST one restrained accent (used sparingly: links, the
- * primary CTA, active/selected state) — apple.com discipline,
- * horizonx.so-class motion, iOS-like polish; generous whitespace and
- * subtle depth rather than heavy borders/shadows.
+ * storefronts, and admin terminal. Rebranding is a change to this file
+ * only, never a per-screen rewrite. See /design-system for the live
+ * contract every component below is checked against.
  *
  * Values inside `@theme` are read by Tailwind v4 to generate matching
  * utilities (e.g. --color-accent -> bg-accent/text-accent/border-accent,
@@ -43,57 +58,50 @@
  * JS constants in lib/motion.ts for GSAP to read the same values from.
  */
 @theme {
-  /* Neutrals - founder brand-palette pass (batch A2), CORRECTED post-ship
-     (a founder-caught regression against the standing "one restrained
-     accent, never applied to body text" rule locked since Phase 1): the
-     canvas/surface/border trio below is the founder's own cream palette
-     (#FBF5DD lightest/bg, #E7E1B1 secondary/muted) - legitimate to tint,
-     these are backgrounds, not text. ink/ink-muted/ink-faint were WRONG
-     in the initial A2 rollout - mixed toward #0D530E, which made
-     --color-ink literally equal to --color-accent (the exact same hex),
-     so body text and the one-accent-only interactive color were
-     indistinguishable. Reverted to true neutral near-black/grays (this
-     project's own pre-rebrand v1.1 values, which were never the problem -
-     only the accent/canvas changed this pass, ink never should have).
-     Contrast re-verified against the NEW cream canvas/border-strong (not
-     assumed to still hold from the old near-white scale): ink #0A0A0A on
-     canvas #FBF5DD is 18.1:1 (AAA); ink-muted #5F5C56 is 6.1:1 on canvas /
-     5.0:1 on border-strong (AA+); ink-faint #7A766E is 4.1:1 on canvas /
-     3.4:1 on border-strong (clears the 3:1 floor this token needs - it's
-     never used for body-length text, see accessibility-performance
-     skill). Status/semantic colors below are deliberately untouched -
-     functional signals, not brand chrome, per the founder's explicit
-     scope note. */
-  --color-canvas: #fbf5dd;
-  --color-surface: #fdfaee;
+  /* Neutrals - v1.3 monochrome pass: every value below is a TRUE neutral
+     (R=G=B, zero hue) - no cream/warm tint (v1.2) and no green tint. Hand-
+     computed WCAG contrast (relative-luminance formula, not assumed from
+     the old palette's numbers):
+       - ink #0A0A0A on canvas #FAFAFA: 18.6:1 (AAA)
+       - ink-muted #5C5C5C on canvas #FAFAFA: 6.3:1 (AA, body-text safe)
+       - ink-faint #8A8A8A on canvas #FAFAFA: 3.3:1 (clears the 3:1 floor
+         this token needs - never used for body-length text, see the
+         accessibility-performance skill)
+     canvas/surface/surface-raised are a 3-tier near-white stack (canvas
+     very slightly recessed, surface/surface-raised pure white) so cards
+     read as "elevated" via that tiny lightness step plus shadow, never a
+     colored wash. border/border-strong are light/mid grays, no hue. */
+  --color-canvas: #fafafa;
+  --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-border: #f1ebc7;
-  --color-border-strong: #e7e1b1;
+  --color-border: #e5e5e5;
+  --color-border-strong: #d4d4d4;
   --color-ink: #0a0a0a;
-  --color-ink-muted: #5f5c56;
-  --color-ink-faint: #7a766e;
+  --color-ink-muted: #5c5c5c;
+  --color-ink-faint: #8a8a8a;
 
-  /* Accent - the ONE restrained color, still the same discipline as
-     before (marketing/hero: at most one appearance, the primary CTA;
-     dashboard/admin: also drives checked/on toggles, focus rings, the
-     active nav item - conventional UI state, not a second "brand voice
-     spend"). Founder-directed value (not a placeholder anymore):
-     #0D530E, matching the founder's logo - accent-hover steps UP to the
-     lighter #306D29 the founder named as the palette's own "primary
-     accent" shade (a confident, visible hover response rather than a
-     barely-there shift). This is the ONLY place #0D530E appears in the
-     light-mode token set - ink above is a true neutral specifically so
-     this color stays exclusively an interactive/emphasis signal, never
-     body text (see the neutrals comment above for the post-ship fix).
-     On dense/data-heavy screens (Settings Registry, admin queues,
-     analytics tables) this stays exactly as restrained as the old blue
-     was - interactive/emphasis elements only, never a tinted surface
-     wash. Contrast checked: white on-accent text on #0D530E is 9.31:1
-     (AAA). */
-  --color-accent: #0d530e;
-  --color-accent-hover: #306d29;
-  --color-accent-active: #093a0a;
-  --color-accent-subtle: #dee2c4;
+  /* Accent - v1.3: the accent HUE is removed entirely (founder's final
+     brand-color decision). The interactive/emphasis role it used to play
+     (primary CTA fill, active nav, checked toggles, focus rings, links)
+     is now filled by near-black - i.e. --color-accent deliberately equals
+     --color-ink's value. This is safe (unlike the v1.2.1 bug it looks
+     similar to) because there is no longer a hue for body text to be
+     confused with - accent-vs-body-text is now told apart by shape/fill
+     (a solid button, a filled active-nav pill) or an explicit underline
+     (links - see the many call sites that added `underline` alongside
+     `text-accent`), never by color alone.
+     accent-hover steps to a slightly lighter gray (a subtle "lift" on
+     hover, since a pure-black element can't visibly darken further);
+     accent-active goes to true #000000 (deepest/pressed state) - a
+     small 3-step tonal ramp exactly like Linear/Vercel/Stripe's own
+     monochrome button states. accent-subtle is a light neutral wash for
+     "selected row"/chip backgrounds, replacing the old cream-tinted value.
+     Contrast: on-accent (white) on accent #0A0A0A is 19.8:1 (AAA) - even
+     stronger than the old green's 9.31:1. */
+  --color-accent: #0a0a0a;
+  --color-accent-hover: #262626;
+  --color-accent-active: #000000;
+  --color-accent-subtle: #f0f0f0;
   --color-on-accent: #ffffff;
 
   /* Semantic status colors - kept muted/refined, never neon, for order
@@ -213,41 +221,35 @@
    utility class Tailwind generated from @theme above repaints for free.
    Not wired to a manual toggle yet (no dark-mode UI ships this checkpoint)
    - this proves the token architecture supports it when that ships.
-   Founder brand-palette pass (batch A2), CORRECTED post-ship (same fix as
-   the light-mode neutrals above): canvas/surface/border keep a dark,
-   desaturated-green tint derived from the brand hues - legitimate,
-   they're backgrounds. ink/ink-muted/ink-faint were wrong here too in the
-   initial rollout (b7c2a0/7c8a6c read as sage/olive - a visible green
-   tint on text, the same category of mistake as light mode's literal
-   ink==accent bug, just less extreme). Reverted to this project's
-   pre-rebrand true neutrals, re-verified against the NEW dark canvas
-   #0A130A: ink #F5F5F7 is 17.4:1 (AAA), ink-muted #A1A1A6 is 7.4:1 (AAA),
-   ink-faint #7A7A7E is 4.4:1 (comfortably past the 3:1 floor this token
-   needs). --color-accent is intentionally NOT #0D530E here -
-   that value is too dark to read as either text or a button fill against
-   a near-black canvas, so it's replaced with a brighter in-family green
-   calibrated for contrast at both jobs: #4A8F40 as accent TEXT (e.g. a
-   link) on canvas is 4.77:1 (AA); the same #4A8F40 as a button fill needs
-   dark (not white) on-accent text to clear AA - white-on-#4A8F40 is only
-   3.97:1, but near-black-on-#4A8F40 is 4.81:1, so --color-on-accent
-   flips to a dark value here (the one dark-mode-specific token override
-   the light scheme doesn't need). */
+   v1.3 monochrome pass: every value below is a true neutral, same
+   discipline as the light-mode rewrite above. Hand-computed contrast
+   against the dark canvas #0A0A0A: ink #F5F5F5 is 18.2:1 (AAA), ink-muted
+   #A3A3A3 is 7.8:1 (AAA), ink-faint #7A7A7A is 4.6:1 (comfortably past
+   the 3:1 floor this token needs). --color-accent here is near-white -
+   the founder's "inverse in dark mode" brief for primary buttons (white
+   fill, dark text) - deliberately equal to --color-ink's value, same
+   reasoning as light mode: there's no hue left to be confused with body
+   text, so accent==ink is intentional, not the old ink==accent bug this
+   comment used to warn against. --color-on-accent flips to near-black
+   (dark text ON the white button fill): on-accent #0A0A0A on accent
+   #F5F5F5 is 18.2:1 (AAA), far above the old green pairing's 3.97-4.81:1
+   this replaces. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #0a130a;
-    --color-surface: #12200f;
-    --color-surface-raised: #1a2e16;
-    --color-border: #24391e;
-    --color-border-strong: #35502c;
-    --color-ink: #f5f5f7;
-    --color-ink-muted: #a1a1a6;
-    --color-ink-faint: #7a7a7e;
+    --color-canvas: #0a0a0a;
+    --color-surface: #141414;
+    --color-surface-raised: #1c1c1c;
+    --color-border: #2e2e2e;
+    --color-border-strong: #3d3d3d;
+    --color-ink: #f5f5f5;
+    --color-ink-muted: #a3a3a3;
+    --color-ink-faint: #7a7a7a;
 
-    --color-accent: #4a8f40;
-    --color-accent-hover: #5ca751;
-    --color-accent-active: #3d7a35;
-    --color-accent-subtle: #162413;
-    --color-on-accent: #08150a;
+    --color-accent: #f5f5f5;
+    --color-accent-hover: #d4d4d4;
+    --color-accent-active: #ffffff;
+    --color-accent-subtle: #262626;
+    --color-on-accent: #0a0a0a;
 
     --color-success-subtle: #113322;
     --color-warning-subtle: #3a2a0d;
@@ -300,13 +302,15 @@ body:has(.app-shell-surface[data-dashboard-theme="rose"]) {
    accent (#5b5bf0) distinct from the marketing/storefront identity.
    Founder direction: "the platform needs one consistent brand identity
    everywhere; indigo was only ever a placeholder before the real brand
-   color existed." The base @theme tokens above (cream canvas, #0d530e
-   accent) now equal what this override used to set, so the block is
-   deleted rather than recolored - dashboard/admin inherit the platform
-   default directly, same as marketing/storefront. The per-seller cosmetic
-   accent presets immediately above this comment (emerald/amber/rose) are
-   unaffected - they still override on top of whatever the accent default
-   is, unchanged mechanism, unchanged colors. */
+   color existed." The base @theme tokens above (at the time: cream canvas,
+   #0d530e accent; as of v1.3, monochrome) equal what this override used
+   to set, so the block is deleted rather than recolored - dashboard/admin
+   inherit the platform default directly, same as marketing/storefront.
+   The per-seller cosmetic accent presets immediately above this comment
+   (emerald/amber/rose) are unaffected by either pass - they still
+   override on top of whatever the accent default is, unchanged mechanism,
+   unchanged colors, per the founder's explicit v1.3 instruction to keep
+   this opt-in feature working. */
 
 /* Phase 2 checkpoint color A/B (founder-requested comparison, not shipped
    copy) - a warmer "energy" accent + canvas tint scoped to
@@ -358,15 +362,33 @@ body:has(.app-shell-surface[data-dashboard-theme="rose"]) {
     text-rendering: optimizeLegibility;
   }
 
-  h1, h2, h3, h4 {
-    font-family: var(--font-display);
-  }
+  /* v1.3 REMOVED the blanket `h1, h2, h3, h4 { font-family: var(--font-
+     display) }` rule the A3 batch put here: it forced Alegreya SC (a
+     serif) onto every heading platform-wide, including the dense seller
+     dashboard and admin terminal, which the founder's monochrome-pass
+     brief explicitly reverses ("no serif anywhere in dense dashboard UI
+     ... hierarchy through deliberate weight and size contrast"). Plain
+     h1-h4 tags now fall through to `body`'s --font-sans (Inter) by
+     default, same as any other text - exactly what dense UI needs.
+     The serif voice is NOT gone - it's just no longer automatic. The
+     marketing site's own hero/display headlines and shared marketing
+     components (SectionTitle, PricingCard, FeatureCard, FAQAccordion,
+     etc.) already opt in explicitly via a `font-display` className on
+     themselves, independent of this rule, so removing it doesn't affect
+     them - confirmed by reading each one before this change, not
+     assumed. PageHeader/DialogTitle/EmptyState/UpgradeLockedCard (shared
+     dashboard/admin UI primitives) previously had their own explicit
+     `font-display` class layered on top of the blanket rule - those are
+     edited directly in their own files, not left to this rule alone. */
 
   /* A visible, on-brand focus ring everywhere - never suppressed, only
      restyled (accessibility non-negotiable, premium doesn't mean invisible
      focus states). Product-wide as of Phase 1 (previously scoped only to
      the dashboard's .app-shell-surface, back when auth/marketing/
-     storefront were still unstyled placeholder pages). */
+     storefront were still unstyled placeholder pages). v1.3: this ring is
+     now near-black on light backgrounds / near-white on dark backgrounds
+     purely because --color-accent itself changed value - no rule edit
+     needed here, the token architecture did the work. */
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
