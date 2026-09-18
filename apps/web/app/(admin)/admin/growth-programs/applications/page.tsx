@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -30,6 +31,7 @@ interface Participant {
  * already-approved participant stays on the Seller-360 page, unchanged.
  */
 export default function AdminGrowthApplicationsPage() {
+  const confirm = useConfirm();
   const [queue, setQueue] = useState<Participant[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -45,6 +47,16 @@ export default function AdminGrowthApplicationsPage() {
 
   async function decide(id: string, action: "approve" | "reject") {
     setError(null);
+    const ok = await confirm({
+      title: action === "approve" ? "Approve this program application?" : "Reject this application?",
+      description:
+        action === "approve"
+          ? "This admits the seller into the program - they'll immediately gain access to its rewards/referral mechanics."
+          : "This rejects the application.",
+      confirmLabel: action === "approve" ? "Approve" : "Reject",
+      tone: action === "reject" ? "danger" : "default",
+    });
+    if (!ok) return;
     try {
       await adminApi.post(`/admin/growth-programs/applications/${id}/${action}`, { notes: notes[id] || undefined });
       load();

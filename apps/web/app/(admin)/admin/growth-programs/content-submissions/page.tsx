@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -30,6 +31,7 @@ interface Submission {
  * nothing), with decision notes.
  */
 export default function AdminGrowthContentSubmissionsPage() {
+  const confirm = useConfirm();
   const [queue, setQueue] = useState<Submission[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -45,6 +47,18 @@ export default function AdminGrowthContentSubmissionsPage() {
 
   async function decide(id: string, action: "verify" | "reject") {
     setError(null);
+    const submission = queue?.find((s) => s.id === id);
+    const ok = await confirm({
+      title: action === "verify" ? "Verify this content submission?" : "Reject this submission?",
+      description:
+        action === "verify"
+          ? "This computes and posts the reward for the reported views - it credits the creator's payout balance."
+          : "This rejects the submission - it pays nothing.",
+      confirmLabel: action === "verify" ? "Verify" : "Reject",
+      tone: action === "reject" ? "danger" : "default",
+      changes: action === "verify" && submission ? [{ label: "Reported views", from: "-", to: submission.reportedViews.toLocaleString() }] : undefined,
+    });
+    if (!ok) return;
     try {
       await adminApi.post(`/admin/growth-programs/content-submissions/${id}/${action}`, { notes: notes[id] || undefined });
       load();

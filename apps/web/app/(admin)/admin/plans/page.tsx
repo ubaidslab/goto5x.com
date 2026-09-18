@@ -158,6 +158,17 @@ export default function AdminPlansPage() {
   async function grantPlan(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const plan = allPlans.find((p) => p.id === grantPlanId);
+    const ok = await confirm({
+      title: "Grant this plan to the seller?",
+      description: "This comps the plan directly onto the seller's subscription, bypassing billing/checkout entirely.",
+      changes: [
+        { label: "Seller ID", from: "-", to: grantSellerId },
+        { label: "Plan", from: "-", to: plan ? `${plan.name} (${plan.planGroup})` : grantPlanId },
+      ],
+      confirmLabel: "Grant plan",
+    });
+    if (!ok) return;
     try {
       await adminApi.post(`/admin/sellers/${grantSellerId}/plan`, { planId: grantPlanId });
       setGrantSellerId("");

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -75,6 +76,7 @@ function FlagTable({ headers, rows }: { headers: string[]; rows: (string | numbe
  * adminApi.
  */
 export default function AdminTrustSafetyPage() {
+  const confirm = useConfirm();
   const [cancellationRate, setCancellationRate] = useState<RateFlag[]>([]);
   const [pendingForeverRate, setPendingForeverRate] = useState<RateFlag[]>([]);
   const [signupVelocity, setSignupVelocity] = useState<SignupVelocityFlag[]>([]);
@@ -102,6 +104,17 @@ export default function AdminTrustSafetyPage() {
   useEffect(load, []);
 
   async function decideReview(storeId: string, decision: "approve" | "reject") {
+    const item = reviewQueue.find((r) => r.storeId === storeId);
+    const ok = await confirm({
+      title: decision === "approve" ? "Approve this payment instrument?" : "Reject this payment instrument?",
+      description:
+        decision === "approve"
+          ? `This clears the held payment instrument for ${item?.store?.name ?? storeId} to start receiving payouts.`
+          : `This rejects the held payment instrument for ${item?.store?.name ?? storeId} - it will need to be resubmitted.`,
+      confirmLabel: decision === "approve" ? "Approve" : "Reject",
+      tone: decision === "reject" ? "danger" : "default",
+    });
+    if (!ok) return;
     setDecidingStoreId(storeId);
     try {
       await adminApi.post(`/admin/trust-safety/payment-review/${storeId}/${decision}`, {});
@@ -113,6 +126,14 @@ export default function AdminTrustSafetyPage() {
 
   async function publishVersion(e: React.FormEvent) {
     e.preventDefault();
+    const ok = await confirm({
+      title: "Publish this Seller Agreement version?",
+      description: "Every seller will be required to accept this new version - it becomes the active agreement platform-wide immediately.",
+      changes: [{ label: "Version", from: currentVersion, to: newVersion }],
+      confirmLabel: "Publish",
+      tone: "danger",
+    });
+    if (!ok) return;
     setPublishing(true);
     try {
       await adminApi.post("/admin/trust-safety/agreement-versions", { version: newVersion });

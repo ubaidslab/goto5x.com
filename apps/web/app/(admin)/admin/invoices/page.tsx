@@ -52,20 +52,34 @@ export default function AdminWalletTopUpsPage() {
 
   useEffect(load, []);
 
-  async function verify(id: string) {
+  async function verify(r: TopUpRequest) {
     setError(null);
+    const ok = await confirm({
+      title: "Verify this top-up request?",
+      description: "This credits the wallet by the requested amount - only do this once the bank transfer is confirmed to have actually arrived.",
+      changes: [{ label: "Wallet credit", from: "0", to: `${r.currency} ${r.amount}` }],
+      confirmLabel: "Verify",
+    });
+    if (!ok) return;
     try {
-      await adminApi.post(`/admin/wallet-topups/${id}/verify`);
+      await adminApi.post(`/admin/wallet-topups/${r.id}/verify`);
       load();
     } catch {
       setError("Couldn't verify that top-up.");
     }
   }
 
-  async function reject(id: string) {
+  async function reject(r: TopUpRequest) {
     setError(null);
+    const ok = await confirm({
+      title: "Reject this top-up request?",
+      description: "This permanently rejects the request - it will not credit any wallet.",
+      confirmLabel: "Reject",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
-      await adminApi.post(`/admin/wallet-topups/${id}/reject`);
+      await adminApi.post(`/admin/wallet-topups/${r.id}/reject`);
       load();
     } catch {
       setError("Couldn't reject that top-up.");
@@ -154,10 +168,10 @@ export default function AdminWalletTopUpsPage() {
                 <Badge tone={statusTone[r.status]}>{r.status}</Badge>
                 {r.status === "pending" && (
                   <>
-                    <Button variant="secondary" size="sm" onClick={() => verify(r.id)}>
+                    <Button variant="secondary" size="sm" onClick={() => verify(r)}>
                       Verify
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => reject(r.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => reject(r)}>
                       Reject
                     </Button>
                   </>

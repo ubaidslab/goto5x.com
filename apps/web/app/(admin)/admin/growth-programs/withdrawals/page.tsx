@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -38,6 +39,7 @@ const statusTone: Record<string, "warning" | "success" | "info" | "danger" | "ne
  * top-ups (disbursement vs. collection).
  */
 export default function AdminGrowthWithdrawalsPage() {
+  const confirm = useConfirm();
   const [queue, setQueue] = useState<Payout[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -55,6 +57,14 @@ export default function AdminGrowthWithdrawalsPage() {
 
   async function approve(id: string) {
     setError(null);
+    const p = queue?.find((x) => x.id === id);
+    const ok = await confirm({
+      title: "Approve this payout request?",
+      description: "This moves the request toward disbursement - it does not itself send money, but signals the request is legitimate.",
+      changes: p ? [{ label: "Amount", from: "-", to: `${p.currency} ${p.amount}` }] : undefined,
+      confirmLabel: "Approve",
+    });
+    if (!ok) return;
     setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/approve`, { notes: notes[id] || undefined });
@@ -81,6 +91,15 @@ export default function AdminGrowthWithdrawalsPage() {
 
   async function markPaid(id: string) {
     setError(null);
+    const p = queue?.find((x) => x.id === id);
+    const ok = await confirm({
+      title: "Mark this payout as paid?",
+      description: "Confirm only once the money has actually been sent to the seller - this is a record of a real disbursement, not a trigger for one.",
+      changes: p ? [{ label: "Amount paid", from: "-", to: `${p.currency} ${p.amount}` }] : undefined,
+      confirmLabel: "Mark paid",
+      tone: "danger",
+    });
+    if (!ok) return;
     setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/paid`, { paymentReference: paymentRef[id] || undefined });
@@ -94,6 +113,13 @@ export default function AdminGrowthWithdrawalsPage() {
 
   async function reject(id: string) {
     setError(null);
+    const ok = await confirm({
+      title: "Reject this payout request?",
+      description: "This closes the request without disbursing anything.",
+      confirmLabel: "Reject",
+      tone: "danger",
+    });
+    if (!ok) return;
     setActingId(id);
     try {
       await adminApi.post(`/admin/growth-programs/withdrawals/${id}/reject`, { notes: notes[id] || undefined });

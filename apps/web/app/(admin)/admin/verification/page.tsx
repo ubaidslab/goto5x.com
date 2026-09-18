@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
@@ -44,6 +45,7 @@ interface ReReviewStore {
  * Also switched from hand-rolled fetch to adminApi.
  */
 export default function AdminVerificationPage() {
+  const confirm = useConfirm();
   const [queue, setQueue] = useState<Application[]>([]);
   const [reReview, setReReview] = useState<ReReviewStore[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -58,6 +60,16 @@ export default function AdminVerificationPage() {
   useEffect(load, []);
 
   async function decide(applicationId: string, decision: "approve" | "reject") {
+    const ok = await confirm({
+      title: decision === "approve" ? "Approve this Verified Store application?" : "Reject this application?",
+      description:
+        decision === "approve"
+          ? "This grants the store its Verified Store badge - approving is never automatic, even when every criterion passed."
+          : "This rejects the application and refunds the store's fee.",
+      confirmLabel: decision === "approve" ? "Approve" : "Reject",
+      tone: decision === "reject" ? "danger" : "default",
+    });
+    if (!ok) return;
     setActingId(applicationId);
     try {
       await adminApi.post(`/admin/verification/applications/${applicationId}/${decision}`, { notes: notes[applicationId] });
@@ -85,6 +97,13 @@ export default function AdminVerificationPage() {
       setError("Enter a reason before revoking.");
       return;
     }
+    const ok = await confirm({
+      title: "Revoke this store's Verified Store status?",
+      description: `This removes the badge and cannot be undone from here. Reason: "${reason}"`,
+      confirmLabel: "Revoke",
+      tone: "danger",
+    });
+    if (!ok) return;
     setActingId(storeId);
     try {
       await adminApi.post(`/admin/verification/stores/${storeId}/revoke`, { notes: reason });

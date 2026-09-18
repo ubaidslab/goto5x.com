@@ -60,6 +60,16 @@ export default function AdminReturnsPage() {
       setError("A reason is required to reject a return request.");
       return;
     }
+    const ok = await confirm({
+      title: status === "approved" ? "Approve this return request?" : "Reject this return request?",
+      description:
+        status === "approved"
+          ? "This overrides the seller's own decision (or lack of one) and lets the buyer proceed toward a refund."
+          : `This overrides the seller's own decision (or lack of one) and closes the request with reason: "${rejectNotes[returnId]}".`,
+      confirmLabel: status === "approved" ? "Approve" : "Reject",
+      tone: status === "rejected" ? "danger" : "default",
+    });
+    if (!ok) return;
     try {
       await adminApi.patch(`/admin/returns/${returnId}`, { status, sellerNote: rejectNotes[returnId] });
       load();

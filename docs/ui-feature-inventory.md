@@ -184,6 +184,17 @@ The `cancelled` disagreement above (danger vs. the real precedent's neutral) nee
 | Force remove product (admin, Moderation queue) | **Yes** — `useConfirm()`, danger tone |
 | Moderation bulk approve/reject (admin) | **Yes** — `useConfirm()` |
 | Wallet top-up bulk verify/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject |
+| Wallet top-up per-row verify/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject (autonomous punch-list fix — this exact per-row pair was missed by the original FR-8.16 batch; only the bulk action above was gated) |
+| Returns & Refunds approve/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject (punch-list fix — `complete()`'s refund step was already gated; `decide()`'s approve/reject was not) |
+| Verified Store application approve/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject (punch-list fix) |
+| Verified Store re-review revoke (admin) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Trust & Safety payment-instrument review approve/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject (punch-list fix) |
+| Seller Agreement publish new version (admin) | **Yes** — `useConfirm()`, danger tone, shows old→new version (punch-list fix) |
+| Growth-program application approve/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject (punch-list fix) |
+| Growth-program content-submission verify/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject (punch-list fix) |
+| Growth-program withdrawal approve/mark paid/reject (admin) | **Yes** — `useConfirm()`, danger tone on reject/mark paid (punch-list fix; "mark processing" left ungated - a non-disbursing intermediate status step) |
+| Careers job-posting status change / applicant stage change (admin) | **Yes** — `useConfirm()`, danger tone on close/reject (punch-list fix) |
+| Grant a plan to a seller (admin) | **Yes** — `useConfirm()`, shows seller ID + plan (punch-list fix) |
 | Retire plan (admin) | **Yes** — `useConfirm()`, danger tone |
 | Regenerate API client secret (admin) | **Yes** — `useConfirm()`, danger tone |
 | Supplier adapter enable/disable (admin) | **Yes** — `useConfirm()`, danger tone on disable |

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -45,6 +46,7 @@ const postingTone: Record<JobPostingStatus, "neutral" | "success" | "warning"> =
  * ever rendered here.
  */
 export default function AdminCareersPage() {
+  const confirm = useConfirm();
   const [postings, setPostings] = useState<JobPosting[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState("");
@@ -75,6 +77,20 @@ export default function AdminCareersPage() {
   }
 
   async function updatePostingStatus(postingId: string, status: JobPostingStatus) {
+    const posting = postings?.find((p) => p.id === postingId);
+    const ok = await confirm({
+      title: `Set this posting to "${status}"?`,
+      description:
+        status === "open"
+          ? "This makes the posting publicly visible on the careers page."
+          : status === "closed"
+            ? "This removes the posting from the public careers page - applicants already in the pipeline are unaffected."
+            : "This unpublishes the posting back to a draft.",
+      changes: posting ? [{ label: "Status", from: posting.status, to: status }] : undefined,
+      confirmLabel: `Set ${status}`,
+      tone: status === "closed" ? "danger" : "default",
+    });
+    if (!ok) return;
     await adminApi.patch(`/admin/careers/postings/${postingId}/status`, { status });
     loadPostings();
   }
@@ -91,6 +107,14 @@ export default function AdminCareersPage() {
   }
 
   async function updateApplicationStatus(applicationId: string, status: JobApplicationStatus) {
+    const app = applications?.find((a) => a.id === applicationId);
+    const ok = await confirm({
+      title: `Move ${app?.applicantName ?? "this applicant"} to "${status}"?`,
+      changes: app ? [{ label: "Stage", from: app.status, to: status }] : undefined,
+      confirmLabel: `Set ${status}`,
+      tone: status === "rejected" ? "danger" : "default",
+    });
+    if (!ok) return;
     await adminApi.patch(`/admin/careers/applications/${applicationId}/status`, { status });
     if (expandedPostingId) {
       adminApi.get<JobApplication[]>(`/admin/careers/postings/${expandedPostingId}/applications`).then(setApplications);
