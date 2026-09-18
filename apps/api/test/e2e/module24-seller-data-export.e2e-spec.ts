@@ -50,7 +50,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
       .useValue(fakeDriveClient)
       .compile();
     app = moduleRef.createNestApplication({ rawBody: true });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 

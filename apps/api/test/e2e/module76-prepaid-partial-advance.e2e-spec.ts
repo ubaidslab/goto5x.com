@@ -48,7 +48,7 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
       .useValue(fakeBank)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 

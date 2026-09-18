@@ -44,7 +44,7 @@ describe("Store-Wide Payment Model (e2e) - SRS §5.6l, FR-6.61-6.68", () => {
       .useValue(fakeBank)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 

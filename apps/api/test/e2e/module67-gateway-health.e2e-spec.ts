@@ -53,7 +53,7 @@ describe("Payment gateway health monitoring (e2e) - SRS §5.6k/§14.66 (Module 6
       .useValue(fakeBank)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 

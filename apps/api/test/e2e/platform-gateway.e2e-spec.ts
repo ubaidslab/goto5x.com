@@ -50,7 +50,7 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
       .useValue(fakeBank)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
     reconciliation = moduleRef.get(PlatformGatewayReconciliationService);
   });

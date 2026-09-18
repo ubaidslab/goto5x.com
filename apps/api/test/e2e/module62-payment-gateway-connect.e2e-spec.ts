@@ -52,7 +52,7 @@ describe("Seller Payment Gateway Connect (e2e) - SRS §5.6h, §14.65", () => {
       .useValue(fakeBank)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 

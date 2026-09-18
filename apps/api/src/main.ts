@@ -12,7 +12,14 @@ async function bootstrap() {
   // this only additionally exposes `req.rawBody` for the handful of
   // controllers that need it (external-api/*.controller.ts).
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // Autonomous punch-list fix (P1.4 input-validation sweep follow-up):
+  // `whitelist: true` alone silently STRIPS any field a DTO doesn't declare
+  // rather than rejecting the request - a client (or a stale/mistaken
+  // frontend call) sending an extra field it thinks is being applied gets a
+  // silent 200 with that field dropped, not an error telling it so.
+  // `forbidNonWhitelisted: true` turns that same case into a real 400,
+  // which is the actual input-validation posture FR-... intends.
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
   // Founder walkthrough finding (pre-Milestone-A): this previously only ran
   // via `test/e2e/setup.ts` (under the name `seedSettings`) or a manually-run

@@ -68,7 +68,7 @@ describe("Google Drive connect/status/revoke (e2e, with a fake Google client) - 
       .useValue(fakeDriveClient)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 

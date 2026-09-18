@@ -62,7 +62,7 @@ describe("Platform Event Log (e2e) - SRS §3.11/FR-26.x, §14.23", () => {
       .useValue(fakeDriveClient)
       .compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 
