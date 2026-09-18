@@ -5325,8 +5325,9 @@ storage integration.
   `EventsService.emit()`).
 - FR-36.5: **Explicit non-substitution statement.** This feature is
   seller-facing convenience only. The platform's own automated, off-box
-  database and media backups (§6's Availability NFR) are the actual
-  disaster-recovery mechanism and remain mandatory regardless of whether
+  database backup (§6's Availability NFR; shipped Sept 2026, see Risk 5 -
+  media/MinIO backup is not yet built, see Risk 13) is the actual
+  disaster-recovery mechanism and remains mandatory regardless of whether
   any given seller has ever connected Drive or received an export — this
   FR must never be read, marketed, or relied upon internally as satisfying
   that NFR.
@@ -5626,8 +5627,9 @@ protection logic verbatim)
   Google Drive backup convenience, delivered exactly the way FR-36.3
   already delivers the products/orders/customers CSVs. **Explicitly
   reaffirmed (not a new rule): this is not a replacement for the
-  platform's own off-box database backups (§6)** — FR-36.5's exact
-  non-substitution statement applies unchanged to this new artifact.
+  platform's own off-box database backup (§6, shipped Sept 2026)** —
+  FR-36.5's exact non-substitution statement applies unchanged to this new
+  artifact.
 - FR-39.7: **No third-party AI integration — explicit roadmap-only note,
   not a gap.** No ChatGPT/Claude-class (or any third-party LLM) feature is
   built anywhere in inventory management, or elsewhere, in v1.0. This is
@@ -7096,7 +7098,7 @@ Module 94)
 | Performance | Storefront pages should target sub-2s first contentful paint via CDN + edge caching of static assets |
 | Scalability | Architecture (modular monolith + row-level tenancy + statelessness principle, §3.1) must support scaling to a multi-VPS deployment without an application rewrite — verified module-by-module in §3.6 |
 | Security | See §6.5 (expanded below) |
-| Availability | Automated daily DB backups + point-in-time recovery, plus a MinIO data-directory backup, stored **off the primary VPS**, with a documented and periodically-tested restore runbook |
+| Availability | **Shipped (backups reality check, Sept 2026):** automated daily DB backup (`pg_dump`, gzipped, uploaded to a configurable off-box S3-compatible target — `apps/api/src/backups/`), with a documented and (per `docs/launch-runbook.md`'s real drill) tested restore runbook. **Not yet built:** point-in-time recovery/WAL archiving, and an off-box MinIO data-directory backup (see Risk 13) — both need a founder-provisioned off-box storage account before they can be built, same as this DB backup's own `BACKUP_S3_*` target did |
 | Maintainability | CI/CD pipeline, versioned + backward-compatible migrations, feature flags, a same-VPS staging environment mirroring production, rollback runbook |
 | Usability | Non-technical sellers must be able to fully customize a store without support tickets; dashboards must be usable on mobile |
 | Internationalization | No hard-coded UI strings or currency/date formatting outside a translation-key/locale layer, from v1.0 (§3.9) — RTL/Urdu later is content work, not a rewrite |
@@ -7324,7 +7326,7 @@ mode's eventual reactivation.
 | 2 | **Payment gateway access as an individual/new entity blocks launch — resolved differently than planned (v0.15):** Direct Seller Collection (§5.6c) removes this risk entirely rather than mitigating it — v1.0 needs no payment gateway at all, since the platform never holds buyer funds. Safepay onboarding research (§5.6a/§11) is retained for the dormant Platform-Collected mode's eventual reactivation | N/A — risk removed by the payment-model pivot, not mitigated |
 | 3 | **Cross-tenant data leakage** (row-level tenancy bug exposes seller A's data to seller B) | Mandatory scoping middleware + Postgres RLS backstop + release-gating cross-tenant test suite (§3.2, §6.5, §14) |
 | 4 | **Ledger/commission bugs cause silent financial loss or seller distrust** | Append-only ledger unchanged by the v0.15 pivot (FR-6.4/FR-6.16), no destructive balance edits; the dormant mode's gateway-settlement reconciliation (FR-6.6) has no v1.0 equivalent since there's no gateway to reconcile against — correctness instead rests on FR-6.19's anti-underreporting monitors and the admin's own manual invoice-payment verification (FR-6.17) |
-| 5 | **Single VPS is a single point of failure** | Off-box automated backups + tested restore runbook from day 1 (§6, Availability row) |
+| 5 | **Single VPS is a single point of failure** | **Shipped (backups reality check, Sept 2026):** automated daily `pg_dump` backup, off-box upload, admin-visible run status - see §6's Availability row and `apps/api/src/backups/`. Restore is a documented, once-tested runbook (`docs/launch-runbook.md` §6), not yet automated/scheduled itself |
 | 6 | **Superseded by Risk 21 (v0.15):** hold-bypass fraud is a Platform-Collected-mode risk (dormant, §5.6d) — its mitigation (FR-6.2, FR-6.3, FR-6.9, FR-6.13) is unchanged and retained for that mode's eventual reactivation, but it is not a v1.0 risk since v1.0 never holds seller funds to bypass a hold on | Mitigation retained for §5.6d's reactivation; not applicable to v1.0 — see Risk 21 for v1.0's actual top financial-integrity risk |
 | 7 | **Supplier API fragility/change** (Printify/CJ API changes or rate limits break live stores) | Adapter interface isolates blast radius to one adapter; cached last-known catalog degrades gracefully instead of breaking (§3.5, FR-4.3); admin adapter registry (FR-4.9) allows disabling a broken adapter instantly |
 | 8 | **Regulatory/legal exposure** (counterfeit goods, buyer data protection, Pakistani e-commerce/tax rules) | Listing moderation queue (FR-8.13) linked to the Trust & Safety enforcement ladder (§5.29/FR-29.4) — the dormant mode's payout-freeze linkage (FR-6.10) is retained for its reactivation; legal consultation on SECP/PECA/data-protection obligations tracked as an explicit open item (§13); legal content drafts in `docs/legal/` — now including the versioned Seller Agreement's facilitation-workspace/indemnification language (FR-29.1/FR-29.2) — flagged for human review |
@@ -7332,7 +7334,7 @@ mode's eventual reactivation.
 | 10 | **Over-building the theme engine/customizer** (a multi-year problem for a small team) | Phase 1 customizer is deliberately scoped to a bounded token set (FR-1.2); expand only after MVP validates demand |
 | 11 | **A bad admin config value breaks the platform** (e.g. commission set to 105%, or the wrong seller's store wrongly suspended for a paid invoice) | `settings_definitions` enforces a validation rule per key (range/type) rejected before it reaches the database; every change is audit-logged with before/after values (FR-8.9) |
 | 12 | **Superseded by Risk 22 (v0.15):** manual disbursement is a Platform-Collected-mode risk (dormant, §5.6d) — its mitigation (FR-6.11, FR-6.12) is unchanged and retained for that mode's eventual reactivation, but v1.0 disburses nothing (the platform never holds seller funds) | Mitigation retained for §5.6d's reactivation; not applicable to v1.0 — see Risk 22 for v1.0's actual manual-process risk |
-| 13 | **Self-hosted MinIO is a new single point of failure for media**, now living on the same VPS as everything else | Same off-box backup discipline as the database (Risk 5) extends to the MinIO data directory; the Cloudflare CDN cache in front of it means a brief MinIO hiccup doesn't immediately take already-cached images offline |
+| 13 | **Self-hosted MinIO is a new single point of failure for media**, now living on the same VPS as everything else | **Not yet built** - extending Risk 5's now-real off-box backup discipline to the MinIO data directory needs a founder-provisioned off-box storage account, same infra decision Risk 5's `BACKUP_S3_*` needed (see backups reality check, Sept 2026); the Cloudflare CDN cache in front of it means a brief MinIO hiccup doesn't immediately take already-cached images offline |
 | 14 | **Discount code abuse** (bulk-generated codes used to reduce effective commission, or a leaked code used far beyond its intended reach) | Usage limits and expiry are enforced server-side at checkout (FR-5.5, never client-side); commission is calculated on the post-discount amount (FR-6.1), so a discount reduces seller revenue and platform commission proportionally |
 | 15 | **CSV import/export scope, resolved (v0.6):** a shallow "Shopify-compatible" importer risks being compatible in name only | Bounded to core fields (title, description, price, variants/options, images, inventory) with unmapped fields listed explicitly per upload (FR-18.1); metafields/complex option combos are an explicit v1.1 fast-follow (FR-22.9), not a silent gap |
 | 16 | **Manual/draft orders payment-link integration surface, resolved (v0.6):** a second checkout entry point reconciling with commission/ledger logic | Bounded to mark-as-paid only for v1.0 (FR-17.1); the payment-link path is deferred to v1.1 (FR-22.8) |
@@ -8076,12 +8078,16 @@ going forward, per FR-6.28.
         queues' job counts (waiting/active/delayed/failed) via
         `getJobCounts()` against each queue's own name — proven by an
         e2e test asserting all three infra checks and at least 10 queues
-        report numeric counts. Email delivery failures and backups are
-        disclosed stub lines, not faked data: `EmailService` has no real
-        provider integrated yet in this environment (console-log
-        fallback only), and the founder explicitly authorized a
-        "backups: not yet configured" line until the OPS Security
-        Hardening pass lands.
+        report numeric counts. At the time, email delivery failures and
+        backups were disclosed stub lines, not faked data: `EmailService`
+        has no real provider integrated yet in this environment
+        (console-log fallback only), and the founder explicitly
+        authorized a "backups: not yet configured" line until the OPS
+        Security Hardening pass lands. **Backups reality check (Sept
+        2026):** that stub is now gone - `admin/system-status`'s
+        `backups` field reports `DatabaseBackupService`'s real latest
+        `pg_dump` sweep outcome (`apps/api/src/backups/`); email delivery
+        remains the one still-disclosed stub line.
   - [x] **Module 25 P1 (admin notification center):** a new
         `AdminUser.lastSeenNotificationsAt` column (migration
         `20260726150000_module25_p1_notification_center`) plus `GET

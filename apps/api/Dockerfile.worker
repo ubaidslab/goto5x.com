@@ -5,6 +5,10 @@
 FROM node:20-alpine AS base
 WORKDIR /repo
 RUN corepack enable
+# postgresql16-client (matching docker-compose.yml's postgres:16-alpine) -
+# needed for `pg_dump` (backups/database-backup.service.ts's automated
+# off-box backup sweep, Risk 5/13). Only the worker image runs that job.
+RUN apk add --no-cache postgresql16-client
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
@@ -28,6 +32,10 @@ RUN pnpm build
 FROM node:20-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
+# See the `base` stage's comment above - pg_dump must be present in this
+# final runtime image too, since this (not `base`/`dev`) is what actually
+# runs the worker in production.
+RUN apk add --no-cache postgresql16-client
 COPY --from=build /repo/apps/api/package.json ./
 COPY --from=build /repo/node_modules /repo/node_modules
 COPY --from=build /repo/apps/api/node_modules ./node_modules

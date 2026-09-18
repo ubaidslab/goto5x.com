@@ -4,6 +4,7 @@ import { Queue } from "bullmq";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { RedisService } from "../common/redis/redis.service";
 import { ObjectStorageService } from "../media/object-storage.service";
+import { DatabaseBackupService } from "../backups/database-backup.service";
 import { INVOICE_GENERATION_QUEUE_NAME } from "../billing/invoice-generation.queue";
 import { INVOICE_OVERDUE_QUEUE_NAME } from "../billing/invoice-overdue.queue";
 import { PLAN_FEE_DEBIT_QUEUE_NAME } from "../billing/plan-fee-debit.queue";
@@ -18,6 +19,7 @@ import { STORE_HEALTH_SWEEP_QUEUE_NAME } from "../store-health/store-health-swee
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
 import { GatewayHealthService } from "../payment-gateway/gateway-health.service";
+import { DATABASE_BACKUP_QUEUE_NAME } from "../backups/database-backup.queue";
 
 const QUEUE_NAMES = [
   INVOICE_GENERATION_QUEUE_NAME,
@@ -33,6 +35,7 @@ const QUEUE_NAMES = [
   STORE_HEALTH_SWEEP_QUEUE_NAME,
   SUPPLIER_SYNC_QUEUE_NAME,
   VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME,
+  DATABASE_BACKUP_QUEUE_NAME,
 ];
 
 /**
@@ -44,6 +47,14 @@ const QUEUE_NAMES = [
  * one place. Read-only: opens its own BullMQ `Queue` clients purely to
  * call `getJobCounts()` (same constructor pattern every scheduler already
  * uses), never a worker and never mutates a job.
+ *
+ * Backups reality check (Risk 5/13) - the hardcoded "not yet configured"
+ * line this class shipped with is gone: `backups` below now reports
+ * DatabaseBackupService's real latest sweep outcome (success/failed/
+ * skipped_not_configured, with its timestamp and size), the same
+ * "founder-authorized honest stub" discipline continued, not broken -
+ * `skipped_not_configured` is reported the same way a real failure would
+ * be, never silently blended into a healthy-looking status.
  *
  * Email delivery failures are NOT tracked below - disclosed, not silently
  * omitted: `EmailService` (notifications/email.service.ts) only has a
@@ -62,6 +73,7 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
     private readonly redis: RedisService,
     private readonly objectStorage: ObjectStorageService,
     private readonly gatewayHealth: GatewayHealthService,
+    private readonly databaseBackup: DatabaseBackupService,
   ) {}
 
   onModuleInit() {
@@ -74,7 +86,7 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getStatus() {
-    const [dbOk, redisOk, storageOk, queueStatuses, gatewayHealthRollup] = await Promise.all([
+    const [dbOk, redisOk, storageOk, queueStatuses, gatewayHealthRollup, latestBackupRun] = await Promise.all([
       this.checkDb(),
       this.checkRedis(),
       this.objectStorage.checkReachable(),
@@ -85,6 +97,7 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
         }),
       ),
       this.gatewayHealth.getProviderRollup(),
+      this.databaseBackup.getLatestRun(),
     ]);
 
     return {
@@ -96,7 +109,14 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
         provider: this.config.get<string>("EMAIL_PROVIDER", "console"),
         deliveryFailures: "not tracked - no real email provider integrated yet (console-only in this environment)",
       },
-      backups: "not yet configured",
+      backups: latestBackupRun
+        ? {
+            status: latestBackupRun.status,
+            finishedAt: latestBackupRun.finishedAt,
+            sizeBytes: latestBackupRun.sizeBytes,
+            errorMessage: latestBackupRun.errorMessage,
+          }
+        : { status: "never_run" as const },
       // Module 67 (SRS §5.6k, FR-6.44) - per-provider rollup aggregated
       // across every seller's connection to that provider.
       paymentGatewayHealth: gatewayHealthRollup,

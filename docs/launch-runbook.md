@@ -291,13 +291,28 @@ unmodified once granted.
 
 ## 6. Backup verification
 
-- [ ] Set up a scheduled `pg_dump` (or `docker compose exec -T postgres
-      pg_dump -U "$POSTGRES_SUPERUSER" "$POSTGRES_DB"`) to a location off
-      the VPS itself (object storage, a second host) — a backup that
-      lives only on the same disk as the database it backs up is not a
-      backup. A simple daily cron calling `pg_dump | gzip > backup-$(date
-      +%F).sql.gz` plus an `rclone`/`rsync` push off-box is sufficient for
-      launch; a managed Postgres backup service is a fine later upgrade.
+- [x] **Shipped (backups reality check, Sept 2026) — no longer a manual
+      cron to set up.** `apps/api/src/backups/` runs the daily `pg_dump`
+      itself (via `DatabaseBackupScheduler`/`DatabaseBackupService` in the
+      worker process), gzips it in-process, and uploads it to an
+      off-box, S3-compatible target — the same `.sql.gz` format this
+      section's restore steps below already expect. The only remaining
+      manual step is provisioning the target and setting its four env
+      vars in `.env` (see `.env.example`'s "Off-box database backups"
+      block): `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`,
+      `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY` — any real
+      S3-compatible bucket works (AWS S3, Cloudflare R2, Backblaze B2, a
+      second self-hosted MinIO on a different host). Leaving them unset
+      is not a silent failure: `admin/system-status`'s `backups` field
+      (and the admin Status page) reports `skipped_not_configured`
+      loudly instead of a fabricated success. The interval (default
+      daily) is a Settings Registry key
+      (`backups.database_backup_interval_hours`), adjustable without a
+      deploy.
+- [ ] Confirm the four `BACKUP_S3_*` env vars above are actually set in
+      production before relying on this — check `admin/system-status`'s
+      `backups` field after the first deploy; `skipped_not_configured`
+      there means the target still isn't provisioned.
 - [ ] **Actually test a restore once**, before launch, against a scratch
       database — `pg_dump` output that was never restored is unverified.
       `createdb uzeyn_restore_test && gunzip -c backup-*.sql.gz | psql -d

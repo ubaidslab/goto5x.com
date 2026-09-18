@@ -472,7 +472,10 @@ describe("Admin Completion (e2e) - Module 25 P1", () => {
     expect(status.body.db).toBe(true);
     expect(status.body.redis).toBe(true);
     expect(typeof status.body.objectStorage).toBe("boolean");
-    expect(status.body.backups).toBe("not yet configured");
+    // No worker process runs the backup sweep during e2e tests (that's a
+    // separate process - see worker.main.ts), so no DatabaseBackupRun row
+    // exists yet in this fresh test database.
+    expect(status.body.backups.status).toBe("never_run");
     expect(status.body.email.provider).toBe("console");
     expect(Array.isArray(status.body.queues)).toBe(true);
     expect(status.body.queues.length).toBeGreaterThanOrEqual(10);

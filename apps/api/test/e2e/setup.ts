@@ -65,7 +65,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       stores, admin_users, sellers, suppliers, user_security_events, users, plans,
       seller_signup_waitlist,
       impersonation_sessions, content_page_revisions, content_pages,
-      platform_brand_asset_revisions, platform_brand_assets, platform_messages
+      platform_brand_asset_revisions, platform_brand_assets, platform_messages,
+      database_backup_runs
     RESTART IDENTITY CASCADE
   `);
 }

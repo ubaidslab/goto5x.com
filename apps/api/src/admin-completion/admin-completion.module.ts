@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { BackupsModule } from "../backups/backups.module";
 import { BillingModule } from "../billing/billing.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
 import { MediaModule } from "../media/media.module";
@@ -26,7 +27,7 @@ import { AdminSystemStatusService } from "./admin-system-status.service";
  * needing to know it exists.
  */
 @Module({
-  imports: [TrustSafetyModule, GuardrailsModule, BillingModule, StoreHealthModule, AuthModule, MediaModule, PaymentGatewayModule],
+  imports: [TrustSafetyModule, GuardrailsModule, BillingModule, StoreHealthModule, AuthModule, MediaModule, PaymentGatewayModule, BackupsModule],
   controllers: [
     AdminOverviewController,
     AdminSearchController,

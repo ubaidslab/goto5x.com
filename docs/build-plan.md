@@ -2615,11 +2615,15 @@ full bucket listing), and `getJobCounts()` against 12 read-only BullMQ
 `Queue` clients (one per existing scheduler's queue name constant,
 opened in `onModuleInit`/closed in `onModuleDestroy`, same construction
 pattern every scheduler already uses — this service is never a worker).
-Email delivery failures and backups are disclosed stub lines rather than
-fabricated: `EmailService` has no real provider in this environment
-(console-log fallback only, throws for anything else configured), and
-the founder explicitly authorized a "backups: not yet configured" line
-until the OPS Security Hardening pass lands.
+At the time, email delivery failures and backups were disclosed stub
+lines rather than fabricated: `EmailService` has no real provider in this
+environment (console-log fallback only, throws for anything else
+configured), and the founder explicitly authorized a "backups: not yet
+configured" line until the OPS Security Hardening pass lands.
+**Backups reality check (Sept 2026):** that stub is gone - see the
+"Backups reality check" CHANGELOG entry; `backups` now reports a real
+`pg_dump` sweep's outcome. Email delivery remains the one still-disclosed
+stub line.
 
 **Admin notification center** (`admin-notifications.service.ts` +
 `.controller.ts`, `GET admin/notifications`, `POST

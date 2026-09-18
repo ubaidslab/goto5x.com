@@ -7,6 +7,7 @@ import { AdminEmailModule } from "./admin-email/admin-email.module";
 import { AdminModule } from "./admin/admin.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AuthModule } from "./auth/auth.module";
+import { BackupsModule } from "./backups/backups.module";
 import { BillingModule } from "./billing/billing.module";
 import { BrandingModule } from "./branding/branding.module";
 import { BuyerAccountModule } from "./buyer-account/buyer-account.module";
@@ -136,6 +137,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     AnalyticsModule,
     SellerNotificationsModule,
     FinanceTerminalModule,
+    BackupsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

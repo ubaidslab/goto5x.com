@@ -25,15 +25,36 @@ interface ProviderHealthRollup {
   lastFailedAt: string | null;
 }
 
+interface BackupStatus {
+  status: "success" | "failed" | "skipped_not_configured" | "never_run";
+  finishedAt?: string;
+  sizeBytes?: number | null;
+  errorMessage?: string | null;
+}
+
 interface SystemStatus {
   db: boolean;
   redis: boolean;
   objectStorage: boolean;
   queues: QueueStatus[];
   email: { provider: string; deliveryFailures: string };
-  backups: string;
+  backups: BackupStatus;
   paymentGatewayHealth: ProviderHealthRollup[];
 }
+
+const backupStatusLabel: Record<BackupStatus["status"], string> = {
+  success: "OK",
+  failed: "FAILED",
+  skipped_not_configured: "not configured",
+  never_run: "never run",
+};
+
+const backupStatusTone: Record<BackupStatus["status"], "success" | "danger" | "neutral"> = {
+  success: "success",
+  failed: "danger",
+  skipped_not_configured: "neutral",
+  never_run: "neutral",
+};
 
 function ServiceRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
   return (
@@ -87,7 +108,18 @@ export default function AdminSystemStatusPage() {
             <ServiceRow label="Email" ok detail={`${status.email.provider} · failures: ${status.email.deliveryFailures}`} />
             <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
               <span className="font-medium text-ink">Backups</span>
-              <span className="text-ink-muted">{status.backups}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-ink-muted">
+                  {status.backups.finishedAt
+                    ? `${new Date(status.backups.finishedAt).toLocaleString()}${
+                        status.backups.sizeBytes ? ` · ${(status.backups.sizeBytes / 1024 / 1024).toFixed(1)} MB` : ""
+                      }${status.backups.errorMessage ? ` · ${status.backups.errorMessage}` : ""}`
+                    : "no backup has run yet"}
+                </span>
+                <Badge tone={backupStatusTone[status.backups.status]} dot>
+                  {backupStatusLabel[status.backups.status]}
+                </Badge>
+              </span>
             </div>
           </div>
         </DashCard>

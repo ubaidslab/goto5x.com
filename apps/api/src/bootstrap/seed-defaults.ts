@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { seedAccountSecuritySettings } from "../auth/account-security.seed";
 import { seedAdminEmailSettings } from "../admin-email/admin-email.seed";
+import { seedBackupsSettings } from "../backups/backups.seed";
 import { seedCampaignsSettings } from "../campaigns/campaigns.seed";
 import { seedCareersSettings } from "../careers/careers.seed";
 import { seedBuyerChatSettings } from "../buyer-chat/buyer-chat.seed";
@@ -117,4 +118,5 @@ export async function seedDefaults(prisma: PrismaClient): Promise<void> {
   await seedSellerNotificationsSettings(prisma);
   await seedBuyerChatSettings(prisma);
   await seedWishlistSettings(prisma);
+  await seedBackupsSettings(prisma);
 }

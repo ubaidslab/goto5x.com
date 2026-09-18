@@ -380,6 +380,7 @@ visitor out, which is the same intended blast radius as a session.
 | `SUPPORT_CENTER_HOSTNAMES` (`apps/web`) | Comma-separated hostnames for the Support Center subdomain (Module 99, SRS FR-8.20), checked before the storefront fallback. Not a secret - production sets it to the real support subdomain (e.g. `support.uzeyn.com`) |
 | `EXTERNAL_API_SECRET_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts each `external_api_clients` row's HMAC signing secret at rest (SRS §5.24/§6.5), same mechanism/key-management discipline as `DRIVE_TOKEN_ENCRYPTION_KEY`, kept as its own key |
 | `API_BASE_URL` (`apps/web`, its own `apps/web/.env.local` — see `apps/web/.env.example`) | The `apps/api` base URL this Next.js app calls for every live data fetch. `next.config.js` maps it into the client-visible `NEXT_PUBLIC_API_BASE_URL`. Not a secret |
+| `BACKUP_S3_ENDPOINT` / `BACKUP_S3_BUCKET` / `BACKUP_S3_ACCESS_KEY_ID` / `BACKUP_S3_SECRET_ACCESS_KEY` | Optional (backups reality check, Sept 2026) - a real, off-box S3-compatible account (AWS S3, Cloudflare R2, Backblaze B2, a second self-hosted MinIO on a different host) for the automated daily database backup sweep (`apps/api/src/backups/`). Deliberately a SEPARATE account from `MINIO_*` above - that's the primary on-box store, not a backup target. Leave unset in local dev/CI; the sweep then records `skipped_not_configured` instead of running |
 
 ---
 

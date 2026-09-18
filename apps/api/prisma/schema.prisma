@@ -3808,3 +3808,27 @@ model PaymentGatewayHealthAlert {
 
   @@map("payment_gateway_health_alerts")
 }
+
+enum DatabaseBackupStatus {
+  success
+  failed
+  skipped_not_configured
+}
+
+// Backups reality check (Risk 5/13) - append-only record of every backup
+// sweep attempt, same "one row per run, never overwritten" discipline as
+// WalletReconciliationDrift. `skipped_not_configured` (not a silent no-op)
+// is the honest outcome when BACKUP_S3_* is unset - AdminSystemStatusService
+// reads the latest row here instead of a hardcoded stub string.
+model DatabaseBackupRun {
+  id           String               @id @default(uuid()) @db.Uuid
+  status       DatabaseBackupStatus
+  startedAt    DateTime             @map("started_at") @db.Timestamptz
+  finishedAt   DateTime             @map("finished_at") @db.Timestamptz
+  sizeBytes    Int?                 @map("size_bytes")
+  objectKey    String?              @map("object_key")
+  errorMessage String?              @map("error_message")
+
+  @@index([finishedAt])
+  @@map("database_backup_runs")
+}

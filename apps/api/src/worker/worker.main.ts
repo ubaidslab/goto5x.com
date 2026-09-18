@@ -49,6 +49,8 @@ import { PLATFORM_NEWSLETTER_QUEUE_NAME } from "../seller-notifications/platform
 import { StaffAccountsService } from "../staff/staff-accounts.service";
 import { STAFF_ACCOUNT_EXPIRY_QUEUE_NAME } from "../staff/staff-account-expiry.queue";
 import { SellerLifecycleService } from "../trust-safety/seller-lifecycle.service";
+import { DatabaseBackupService } from "../backups/database-backup.service";
+import { DATABASE_BACKUP_QUEUE_NAME } from "../backups/database-backup.queue";
 
 /**
  * Module 3 gives this worker its first real job (Module 1's comment said
@@ -83,6 +85,7 @@ async function main() {
   const platformNewsletter = appContext.get(PlatformNewsletterService);
   const staffAccounts = appContext.get(StaffAccountsService);
   const sellerLifecycle = appContext.get(SellerLifecycleService);
+  const databaseBackup = appContext.get(DatabaseBackupService);
 
   const domainWorker = new Worker(
     DOMAIN_VERIFICATION_QUEUE_NAME,
@@ -422,9 +425,22 @@ async function main() {
     console.error(`staff-account-expiry-sweep job ${job?.id} failed:`, err);
   });
 
+  // Backups reality check (Risk 5/13) - the real automated pg_dump sweep.
+  // DatabaseBackupService.runBackup() never throws (a dump/upload failure
+  // is caught inside it and recorded on the run row itself), same
+  // discipline as every other sweep above.
+  const databaseBackupWorker = new Worker(DATABASE_BACKUP_QUEUE_NAME, async () => databaseBackup.runBackup(), {
+    connection: { url: config.getOrThrow<string>("REDIS_URL") },
+  });
+
+  databaseBackupWorker.on("failed", (job, err) => {
+    // eslint-disable-next-line no-console
+    console.error(`database-backup job ${job?.id} failed:`, err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening; staff-account-expiry-sweep - Module 97, FR-52.10).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening; staff-account-expiry-sweep - Module 97, FR-52.10; database-backup - Risk 5/13 backups reality check).",
   );
 
   const shutdown = async () => {
@@ -450,6 +466,7 @@ async function main() {
     await dailySalesSummaryWorker.close();
     await monthlySellerReportWorker.close();
     await platformNewsletterWorker.close();
+    await databaseBackupWorker.close();
     await appContext.close();
     process.exit(0);
   };

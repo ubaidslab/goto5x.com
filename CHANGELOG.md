@@ -8,6 +8,55 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Backups reality check (Risk 5/13 discrepancy)
+
+`docs/SRS.md`'s Risk Register and §6 NFR table had claimed since early
+drafts that automated off-box database backups already existed - they
+didn't; `admin-system-status.service.ts` hardcoded `backups: "not yet
+configured"` and this line was the actual state of the platform. This
+closes the real gap for the database (not yet for MinIO media - see
+Risk 13, still open, needs its own off-box storage account).
+
+### Added
+- `apps/api/src/backups/` - `DatabaseBackupService` runs a real `pg_dump`
+  against `DATABASE_ADMIN_URL`, gzips it in-process, and uploads it to a
+  new, genuinely off-box S3-compatible target (`BACKUP_S3_*` - separate
+  from `MINIO_*`, which is the primary on-box store, not a backup
+  target). `BackupStorageService` reports honestly when that target
+  isn't configured (`skipped_not_configured`, recorded the same way a
+  real failure would be, never silently skipped). `DatabaseBackupScheduler`
+  runs it daily by default (`backups.database_backup_interval_hours`,
+  a Settings Registry key, adjustable without a deploy).
+- `DatabaseBackupRun` (new Prisma model + migration) - one append-only
+  row per sweep attempt, same discipline as `WalletReconciliationDrift`.
+- `admin/system-status`'s `backups` field now reports the real latest
+  run instead of the hardcoded stub; `/admin/status` (web) renders it
+  with a status badge instead of a plain string.
+- `.env.example`'s new "Off-box database backups" block
+  (`BACKUP_S3_ENDPOINT`/`BACKUP_S3_BUCKET`/`BACKUP_S3_ACCESS_KEY_ID`/
+  `BACKUP_S3_SECRET_ACCESS_KEY`/`BACKUP_S3_REGION`/
+  `BACKUP_S3_FORCE_PATH_STYLE`), all optional - unset in local dev/CI.
+- `postgresql16-client` added to `Dockerfile.worker` (both the `base`
+  and `production` stages) so `pg_dump` is actually present where this
+  job runs.
+- A new e2e spec (`backups-database-backup.e2e-spec.ts`) proves both
+  paths against real infra: a real `pg_dump` + a second, distinct s3rver
+  instance standing in for the off-box target (configured path - dump
+  uploaded, downloaded back, gunzipped, and checked for real schema
+  content), and the honest `skipped_not_configured` outcome when
+  unconfigured.
+
+### Fixed
+- `docs/SRS.md`'s Risk 5, Risk 13, §6 Availability row, FR-36.5, and
+  FR-39.6 corrected to describe what's actually shipped (the database
+  backup) versus what remains genuinely open (MinIO off-box backup,
+  point-in-time recovery/WAL archiving - both need a founder-provisioned
+  off-box storage account before they can be built).
+- `docs/launch-runbook.md` §6 rewritten: the manual "set up a cron"
+  checklist item is now "already automated - just provision the target
+  and set four env vars"; the restore-drill steps below it (untouched,
+  already real) still apply unchanged.
+
 ## UI/UX Design Phase, Part 1 of 8: Dashboard/Admin Tokens + Component Kit
 
 The founder's final, locked pre-launch UI/UX mandate begins - narrower
