@@ -120,6 +120,19 @@ export interface PublicNavigation {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 /**
+ * Security-audit fix (docs/security-audit-report.md, disclosed finding) -
+ * `NEXT_PUBLIC_`-prefixed so it's safe to embed in a browser-rendered link
+ * (unlike API_BASE's other server-only callers above, this one URL genuinely
+ * needs to be reachable from the buyer's own browser, not just this Next.js
+ * server). Used for the order-status/order-confirmation invoice download
+ * link, which now points at an ownership-checked endpoint (the order's own
+ * lookup token) instead of the old plain public MinIO URL.
+ */
+export function invoicePdfDownloadUrl(token: string): string {
+  return `${API_BASE}/storefront/order-status/${encodeURIComponent(token)}/invoice`;
+}
+
+/**
  * Server-side only - every storefront page/metadata function/sitemap/robots
  * file calls this with the *actual buyer-facing* hostname (from `headers()`
  * in the calling Server Component), not this Next.js server's own address.
@@ -303,7 +316,7 @@ export interface PublicOrderStatusArchived {
   deliveredAt: string | null;
   currency: string;
   totalAmount: string;
-  invoicePdfUrl: string | null;
+  hasInvoice: boolean;
   canRequestReturn: boolean;
   returnRequests: PublicReturnRequest[];
 }
@@ -316,7 +329,7 @@ export interface PublicOrderStatusFull {
   trackingState: BuyerFacingTrackingState;
   trackingMessage: string;
   currency: string;
-  invoicePdfUrl: string | null;
+  hasInvoice: boolean;
   totalAmount: string;
   shippingAmount: string;
   taxAmount: string;

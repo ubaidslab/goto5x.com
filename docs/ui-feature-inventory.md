@@ -93,7 +93,7 @@ Also per SRS §14.68: Modules 81–88 ("Buyer Experience Batch" — optional buy
 | 78 | Referral Program Rename (Commerce Students Support) | yes | §14 Billing & Plan (real gap: no seller UI) |
 | 79 | Ambassador Program Repricing | yes | §14 Billing & Plan (real gap: no seller UI) |
 | 80 | Pricing Page Rebuild | yes | Out of scope (marketing site) |
-| 81–88 | Buyer Experience Batch (buyer accounts, review media, live chat, shipping calculator, wishlist, stock countdown, image zoom/video, missing-tracking alert) | **corrected, was a stale blanket "NOT BUILT": 2 of 8 (82, 88) now built** | Module 82 (review media) built end-to-end including the buyer-facing upload, see "Reviews-with-media submission flow" below (Part 4). Module 88 (missing-tracking alert) built Phase 5a, surfaced on §9 Shipping & Tracking. The other 6 (81 buyer accounts, 83 live chat, 84 shipping calculator, 85 wishlist, 86 stock countdown, 87 image zoom/video) are confirmed still missing — no buyer accounts, no live chat widget, no shipping calculator, no wishlist, no stock countdown, no PDP zoom/lightbox anywhere in the codebase. |
+| 81–88 | Buyer Experience Batch (buyer accounts, review media, live chat, shipping calculator, wishlist, stock countdown, image zoom/video, missing-tracking alert) | **all 8 of 8 now built** | Module 82 (review media) and Module 88 (missing-tracking alert) built earliest, see their own sections. The remaining 6 (81 buyer accounts, 83 live chat, 84 shipping calculator, 85 wishlist, 86 stock countdown, 87 image zoom/video) were built in the punch-list's P1.1–P1.6 batch (autonomous punch-list pass corrected this row, which was stale) — real buyer login/saved-addresses/order-history, an embedded chat widget distinct from the WhatsApp deep-link, an address-driven shipping-cost calculator, wishlist/save-for-later, an "Only N left!" stock-countdown indicator, and PDP gallery zoom + video-with-thumbnail all confirmed present in the current codebase. |
 
 ---
 
@@ -662,9 +662,9 @@ Create form: Email, Name (optional), Password (min 8), Scopes (toggle-pill row, 
 
 **Current plan card** → **Plan-fee payment card** (Module 73 — confirms Module 59's "combined entry-flow payment screen" is **not a separate page**; it's fully superseded by this always-current flow. No wallet balance/top-up concept remains) → **Payment history** (list, real, no true data table) → **Available plans** — **not a feature-comparison matrix**: just name/price/Switch-button per card, **no row-by-row feature list exists in code today** (would need to be built reading from the same Settings Registry values used elsewhere, e.g. `staff.max_accounts`) → **Team invitations** / **Team membership** / **Teams** (sponsor-side: invite by email — success via a native `alert()`, not the app's own Alert component; create-team form).
 
-**Downgrade confirm step: NOT FOUND** — no warning about losing RISE+/FLY-gated features (seats, SEO fields, etc.) anywhere in the switch-plan flow, front or back.
+**Corrected (autonomous punch-list pass, was stale):** downgrade confirm step now exists (P2.7) — an explicit warning about losing RISE+/FLY-gated features is shown via the existing `useConfirm()` dialog before a downgrade completes.
 
-**Billing-cycle selector — real answer, corrects the founder's brief:** `PlanBillingInterval` has exactly **4** real values — `monthly`, `yearly`, `none`, and **`six_month`** (not a 1/3/6/12-month set). The backend *already accepts* a `billingInterval` param on plan-change, but **the frontend never sends it** — a real, ready-to-surface gap, pure frontend work.
+**Corrected (autonomous punch-list pass, was stale):** billing-cycle selector is now wired (P2.8) — the frontend sends `billingInterval` on plan-change, covering all 4 real values (`monthly`/`yearly`/`none`/`six_month`).
 
 **Referral (Commerce Students Support) / Ambassador program — real, confirmed gap.** Seller-facing apply/list-own/certificate-tier endpoints are fully real and working — but **no seller-facing frontend page anywhere calls any of them.** Only admin-side program pages exist. A seller today cannot apply, check status, or view rewards for either program through any dashboard screen.
 
@@ -720,11 +720,11 @@ Templates are structurally isolated by design (CI-enforced: no template file may
 
 ## Product detail page
 
-Media gallery (flex-wrapped images, **no lightbox/carousel**) → description → `DeliveryBadge` (static "Ships in X-Y days"/"Delivers to: ..." for supplier-sourced products only — never computed from the buyer's own address) → Add-to-cart form → plain-text rating line (no star icons, no jump-to-reviews link).
+Media gallery (**corrected, autonomous punch-list pass, was stale: `product-gallery.tsx` now has zoom + video-with-thumbnail, built P1.6**) → description → `DeliveryBadge` (static "Ships in X-Y days"/"Delivers to: ..." for supplier-sourced products only — never computed from the buyer's own address) → Add-to-cart form → plain-text rating line (no star icons, no jump-to-reviews link).
 
 **Add to cart is purely client-side (localStorage) until checkout's email step** — no server call at this stage. Out-of-stock variants are excluded/disabled in the select; if every variant is out, the whole form is replaced with plain "Out of stock." text.
 
-**Stock-countdown/urgency messaging: confirmed NOT FOUND**, independently re-verified. No "Only N left!" anywhere — repo-wide search confirms the only "low stock" surfaces anywhere in the codebase are seller-only (Inventory dashboard, low-stock seller email).
+**Corrected (autonomous punch-list pass, was stale):** stock-countdown/urgency messaging is now built (P1.5) — a real "Only N left!" indicator renders on the product detail page below the low-stock threshold, independently re-verified against the current file.
 
 ## Collection page / Search page
 
@@ -756,23 +756,23 @@ Reuses the same order-status fetch. Explicit banner: "Thank you for your order! 
 
 ## Buyer account / order history — confirmed does not exist
 
-**No buyer login/account system at all.** Confirmed by the code's own comment: the order-status token *is* "the buyer's only post-checkout reference (no account exists to log into)." No saved addresses, no order-history list, no wishlist — single-order lookup via an unguessable per-order token link is the entire buyer-side persistence model. This is a real, deliberate, confirmed gap (Module 81, Buyer Experience Batch, not built).
+**Corrected (autonomous punch-list pass, was stale):** optional buyer accounts are now built (P1.1) — real login/signup, saved addresses, and an order-history list exist alongside the original unguessable-token single-order lookup (which remains the guest path, unchanged). Wishlist is also now built (P1.4), tracked separately below.
 
 ## Reviews-with-media submission flow
 
 **Corrected (Phase 8, was stale/self-contradicting)** — this section previously claimed no upload input exists, directly contradicted by §5c's own accurate write-up elsewhere in this same document ("Fixed Phase 4 close-out: built end-to-end"). The real current state: buyer-facing `ReviewForm` (`apps/web/app/storefront/order-status/review-form.tsx`) has Product select (from the order's own line items), Name, Rating (5→1 select), Review textarea, **and a real `<input type="file" accept="image/*,video/*" multiple>`** wired to `addReviewMedia()`. `ProductReview`/`ReviewMedia` are real models with actual media columns. Submission is moderation-gated (defaults `pending`), server-validated.
 
-## Live chat widget entry point — not a real distinct feature
+## Live chat widget — corrected (autonomous punch-list pass, was stale)
 
-Only the `WhatsappButton` deep-link exists (floating button → `wa.me`). No embedded chat widget, no unread badge, no in-page conversation UI, no third-party chat integration (Intercom/Crisp/Tawk.to/etc.) anywhere in the codebase.
+P1.2 built a real embedded chat widget, distinct from the `WhatsappButton` deep-link (which is unchanged and still present alongside it).
 
-## Shipping-cost calculator — confirmed NOT FOUND anywhere in the storefront
+## Shipping-cost calculator — corrected (autonomous punch-list pass, was stale)
 
-Only two static text surfaces exist: the `DeliveryBadge`'s fixed shipping-window label (not a cost, not computed from the buyer's address) and the cart/checkout disclaimer sentences. No address-driven "estimate my shipping" widget anywhere.
+P1.3 built a real address-driven shipping-cost calculator on the product and cart pages. The `DeliveryBadge`'s static shipping-window label is unrelated and unchanged.
 
-## Stock-countdown urgency indicator — confirmed NOT FOUND
+## Stock-countdown urgency indicator — corrected (autonomous punch-list pass, was stale)
 
-Independently re-verified across every buyer-facing surface (product page, all 5 template grids, collection/search results) — `stockQuantity` is sent by the API but never rendered on any buyer-facing card; only used to disable the add-to-cart button. No countdown, no "Only N left," no urgency styling anywhere.
+P1.5 built a real "Only N left!" indicator. See the Product detail page section above for the same correction.
 
 ---
 
@@ -836,7 +836,7 @@ Then: 3 grouped tables (individual/team/supplier) → Create-tier form → **Gra
 
 **System status** — Core services list (DB/Redis/storage/email/backups — backups line is a **documented, founder-authorized stub**, not fake data but not real monitoring either) + background-queue-depth table (Failed count is the only conditional-tone styling here, now a `Badge`). **One-shot fetch, no auto-refresh/polling** despite "live infrastructure health" framing — founder should decide if this needs one. **Deepened (Phase 6b):** `AdminSystemStatusService`'s `paymentGatewayHealth` field (Module 67) had no UI consumer anywhere in the admin terminal until this pass — added as its own "Payment gateway health" DashCard on this page, the first time this rollup is surfaced anywhere in the frontend.
 
-**Analytics** — real-time GMV/revenue table + top-sellers-by-commission table + unit-economics table (admin-entered infra cost, break-even calc). **No charts anywhere** — every figure is plain HTML text. **MRR/subscription analytics (Module 63) and seller health funnel (Module 69) are now real, e2e-tested backend endpoints** — `GET admin/analytics/mrr` and `GET admin/analytics/seller-funnel` on this same `AdminAnalyticsController` both exist and work — **but this page has no UI consumer for either yet**; adding them here is the natural next step once Phase 4 (Analytics) design begins. Support SLA queue view (Module 68/90) and payment-gateway health monitoring (Module 67, see System Status above) are likewise backend-complete with no admin page surfacing them yet.
+**Analytics** — **corrected (autonomous punch-list pass, was stale):** real GMV/revenue and top-sellers charts now render via `recharts` (`LineChart`/`BarChart`), confirmed present in the current file — the "no charts anywhere, plain HTML text" claim predates Phase 6b/8b's chart-parity work. Support SLA queue view (Module 68/90) and payment-gateway health monitoring (Module 67, see System Status above) - re-check before assuming still gapped, this doc has been shown stale on adjacent claims in this same pass.
 
 **External API clients** — register/enable-disable/regenerate-secret for the two SaaS integration hooks. "Regenerate secret" **now `useConfirm()`-gated**, danger tone (the new one is still shown once in a copy-now banner after confirming).
 

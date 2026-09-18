@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { AnimatedElement } from "../../../../components/motion/AnimatedElement";
-import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
+import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore, invoicePdfDownloadUrl } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
 import { ChatWidget } from "../../chat/chat-widget";
@@ -90,9 +90,9 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
           </>
         )}
 
-        {order.invoicePdfUrl && (
+        {order.hasInvoice && (
           <p>
-            <a href={order.invoicePdfUrl} target="_blank" rel="noreferrer">
+            <a href={invoicePdfDownloadUrl(params.token)} target="_blank" rel="noreferrer">
               Download invoice (PDF)
             </a>
           </p>

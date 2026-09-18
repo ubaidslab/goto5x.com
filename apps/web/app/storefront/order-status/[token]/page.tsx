@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore } from "../../../../lib/storefront-api";
+import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontStore, invoicePdfDownloadUrl } from "../../../../lib/storefront-api";
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
 import { ChatWidget } from "../../chat/chat-widget";
@@ -47,9 +47,9 @@ export default async function OrderStatusPage({ params }: { params: { token: str
           <p>
             {order.currency} {order.totalAmount}
           </p>
-          {order.invoicePdfUrl && (
+          {order.hasInvoice && (
             <p>
-              <a href={order.invoicePdfUrl} target="_blank" rel="noreferrer">
+              <a href={invoicePdfDownloadUrl(params.token)} target="_blank" rel="noreferrer">
                 Download invoice (PDF)
               </a>
             </p>
@@ -156,9 +156,9 @@ export default async function OrderStatusPage({ params }: { params: { token: str
           {Number(order.discountAmount) > 0 && `, discount -${order.discountAmount}`})
         </p>
 
-        {order.invoicePdfUrl && (
+        {order.hasInvoice && (
           <p>
-            <a href={order.invoicePdfUrl} target="_blank" rel="noreferrer">
+            <a href={invoicePdfDownloadUrl(params.token)} target="_blank" rel="noreferrer">
               Download invoice (PDF)
             </a>
           </p>

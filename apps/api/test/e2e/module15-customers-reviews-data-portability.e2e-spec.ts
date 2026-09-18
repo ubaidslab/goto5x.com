@@ -367,11 +367,20 @@ describe("Customers, Reviews & Data Portability (e2e) - SRS §5.13/§5.14/§5.18
     expect(order.invoicePdfUrl).toBeTruthy();
 
     const statusLookup = await request(app.getHttpServer()).get(`/storefront/order-status/${order.statusLookupToken}`);
-    expect(statusLookup.body.invoicePdfUrl).toBe(order.invoicePdfUrl);
+    // Security-audit fix (docs/security-audit-report.md, disclosed finding):
+    // the raw invoicePdfUrl (a permanent, unsigned public MinIO URL) is no
+    // longer sent to the browser - only whether one exists.
+    expect(statusLookup.body.hasInvoice).toBe(true);
 
-    const pdfResponse = await request(order.invoicePdfUrl as string).get("");
+    // The actual bytes are only reachable through the token-gated download
+    // endpoint now, never the raw stored URL directly.
+    const pdfResponse = await request(app.getHttpServer()).get(`/storefront/order-status/${order.statusLookupToken}/invoice`);
     expect(pdfResponse.status).toBe(200);
     expect(pdfResponse.body.slice(0, 4).toString("latin1")).toBe("%PDF");
+
+    // Wrong/unknown token gets a 404, not the file.
+    const wrongToken = await request(app.getHttpServer()).get(`/storefront/order-status/not-a-real-token/invoice`);
+    expect(wrongToken.status).toBe(404);
   }, 30000);
 
   // ---------------------------------------------------------------------

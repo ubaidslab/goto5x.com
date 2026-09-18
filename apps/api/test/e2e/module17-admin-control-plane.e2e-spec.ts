@@ -530,4 +530,80 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       expect(view.body.id).toBe(seller.storeId);
     });
   });
+
+  /**
+   * FR-8.9 (§14.8) - closes the one previously-unchecked checklist item in
+   * this file's own section: proves the immutability claim rather than just
+   * asserting it. `20260716094921_rls_and_audit_grants/migration.sql` runs
+   * `REVOKE UPDATE, DELETE ON admin_audit_logs FROM app_runtime, app_admin`
+   * - this connects as those exact two roles (the same DATABASE_URL/
+   * DATABASE_ADMIN_URL the running application itself uses, never the test
+   * suite's own superuser escape hatch) and proves Postgres itself rejects
+   * both write paths at the grant level, for both roles independently -
+   * app_admin's BYPASSRLS is a row-visibility bypass, not a table-grant
+   * bypass, so it must be denied here exactly like app_runtime is.
+   */
+  describe("Audit log immutability (FR-8.9)", () => {
+    let runtimeRole: PrismaClient;
+    let adminRole: PrismaClient;
+    let auditRowId: string;
+
+    beforeAll(async () => {
+      runtimeRole = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      adminRole = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_ADMIN_URL } } });
+    });
+
+    afterAll(async () => {
+      await runtimeRole.$disconnect();
+      await adminRole.$disconnect();
+    });
+
+    beforeEach(async () => {
+      const adminToken = await createAndLoginAdmin(`audit-immutable-${Date.now()}@example.com`);
+      const seller = await signupLoginAndCreateStore(`audit-immutable-seller-${Date.now()}@example.com`, `audit-immutable-${Date.now()}`);
+      const start = await request(app.getHttpServer())
+        .post(`/admin/sellers/${seller.sellerId}/impersonate`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reason: "Setting up an audit-log row to test immutability against" });
+      expect(start.status).toBe(201);
+      const row = await superuser.adminAuditLog.findFirst({
+        where: { action: "impersonation.start" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(row).not.toBeNull();
+      auditRowId = row!.id;
+    });
+
+    it("app_runtime (the role the running application connects as) cannot UPDATE a row", async () => {
+      await expect(
+        runtimeRole.$executeRawUnsafe(`UPDATE admin_audit_logs SET action = 'tampered' WHERE id = $1::uuid`, auditRowId),
+      ).rejects.toThrow(/permission denied/i);
+    });
+
+    it("app_runtime (the role the running application connects as) cannot DELETE a row", async () => {
+      await expect(runtimeRole.$executeRawUnsafe(`DELETE FROM admin_audit_logs WHERE id = $1::uuid`, auditRowId)).rejects.toThrow(
+        /permission denied/i,
+      );
+    });
+
+    it("app_admin (BYPASSRLS) still cannot UPDATE a row - row-visibility bypass is not a table-grant bypass", async () => {
+      await expect(
+        adminRole.$executeRawUnsafe(`UPDATE admin_audit_logs SET action = 'tampered' WHERE id = $1::uuid`, auditRowId),
+      ).rejects.toThrow(/permission denied/i);
+    });
+
+    it("app_admin (BYPASSRLS) still cannot DELETE a row - row-visibility bypass is not a table-grant bypass", async () => {
+      await expect(adminRole.$executeRawUnsafe(`DELETE FROM admin_audit_logs WHERE id = $1::uuid`, auditRowId)).rejects.toThrow(
+        /permission denied/i,
+      );
+    });
+
+    it("the row survives both denied attempts unchanged", async () => {
+      await runtimeRole.$executeRawUnsafe(`UPDATE admin_audit_logs SET action = 'tampered' WHERE id = $1::uuid`, auditRowId).catch(() => {});
+      await adminRole.$executeRawUnsafe(`DELETE FROM admin_audit_logs WHERE id = $1::uuid`, auditRowId).catch(() => {});
+      const stillThere = await superuser.adminAuditLog.findUnique({ where: { id: auditRowId } });
+      expect(stillThere).not.toBeNull();
+      expect(stillThere!.action).toBe("impersonation.start");
+    });
+  });
 });

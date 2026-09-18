@@ -6,6 +6,7 @@ import { EventsModule } from "../events/events.module";
 import { GiftCardsModule } from "../gift-cards/gift-cards.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { InvoicesModule } from "../invoices/invoices.module";
+import { MediaModule } from "../media/media.module";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { OrderVerificationModule } from "../order-verification/order-verification.module";
 import { SellerNotificationsModule } from "../seller-notifications/seller-notifications.module";
@@ -40,6 +41,11 @@ import { OrdersService } from "./orders.service";
     TrustSafetyModule,
     CustomersModule,
     InvoicesModule,
+    // ObjectStorageService (OrderStatusLookupService's own signed-download
+    // fix, security-audit-report.md's disclosed invoicePdfUrl finding) -
+    // InvoicesModule imports MediaModule too but only re-exports
+    // InvoicePdfService, not the storage service itself.
+    MediaModule,
     OrderVerificationModule,
     GiftCardsModule,
     InventoryModule,

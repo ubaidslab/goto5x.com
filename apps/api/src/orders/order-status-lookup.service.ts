@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { ObjectStorageService } from "../media/object-storage.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { buyerFacingTrackingState, computeOrderTimeline } from "./order-timeline.util";
@@ -29,6 +30,7 @@ export class OrderStatusLookupService {
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   async lookup(token: string) {
@@ -87,7 +89,7 @@ export class OrderStatusLookupService {
         deliveredAt,
         currency: order.currency,
         totalAmount: order.totalAmount,
-        invoicePdfUrl: order.invoicePdfUrl,
+        hasInvoice: !!order.invoicePdfUrl,
         canRequestReturn:
           REFUND_ELIGIBLE_ORDER_STATUSES.includes(order.status) &&
           !order.returnRequests.some((r) => ACTIVE_RETURN_STATUSES.includes(r.status)),
@@ -115,9 +117,14 @@ export class OrderStatusLookupService {
       trackingMessage,
       archived: false as const,
       currency: order.currency,
-      // FR-19.1 - available from the buyer order-status page; null if
-      // rendering failed at placement time (best-effort, never blocks the order).
-      invoicePdfUrl: order.invoicePdfUrl,
+      // FR-19.1 - whether an invoice PDF was rendered at placement time
+      // (best-effort, never blocks the order - false just means it failed).
+      // Security-audit fix (docs/security-audit-report.md, disclosed
+      // finding): the actual invoicePdfUrl - a permanent, unsigned public
+      // MinIO URL - is never sent to the browser; the real bytes are only
+      // reachable through this token's own ownership-checked download
+      // endpoint below (GET storefront/order-status/:token/invoice).
+      hasInvoice: !!order.invoicePdfUrl,
       totalAmount: order.totalAmount,
       shippingAmount: order.shippingAmount,
       taxAmount: order.taxAmount,
@@ -166,5 +173,26 @@ export class OrderStatusLookupService {
         resolvedAt: r.resolvedAt,
       })),
     };
+  }
+
+  /**
+   * Security-audit fix (docs/security-audit-report.md, disclosed finding) -
+   * the actual private-storage fetch backing GET storefront/order-status/
+   * :token/invoice. Ownership is the same unguessable-token model the rest
+   * of this service already uses (FR-5.4) - possessing the token is what
+   * grants access, same as every other field this service returns; there
+   * is no separate buyer identity to check it against. Throws 404 for
+   * either an unknown token or an order with no rendered invoice, so a
+   * missing invoice and a wrong token are indistinguishable to a caller.
+   */
+  async getInvoicePdf(token: string): Promise<{ buffer: Buffer; contentType?: string }> {
+    const order = await this.prismaAdmin.order.findUnique({
+      where: { statusLookupToken: token },
+      select: { invoicePdfUrl: true },
+    });
+    if (!order || !order.invoicePdfUrl) throw new NotFoundException("Invoice not found.");
+    const key = this.objectStorage.keyFromUrl(order.invoicePdfUrl);
+    const { body, contentType } = await this.objectStorage.getObject(key);
+    return { buffer: body, contentType };
   }
 }

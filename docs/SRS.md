@@ -3708,10 +3708,13 @@ whole point is one rule per store, not per-order choice).
   founder-set data via the same plan editor, same as every other plan.
   **Full completion in Module 20 (new v0.20):** the plan DATA (Free/Premium
   supplier tiers) and the aggregation API/data (FR-3.3, `SupplierOrdersService`)
-  both already exist (Module 14 and Module 9 respectively) — what's missing
-  is the actual gate between them (`Subscription`/`SettingsContext` support a
-  seller, not a supplier, today) and the supplier-facing dashboard UI itself,
-  since no supplier login/dashboard surface has ever been built in `apps/web`.
+  both already exist (Module 14 and Module 9 respectively). Module 20 closed
+  the remaining gap: the Free/Premium gate (`apps/web/app/(supplier)/supplier/
+  page.tsx` checks `subscription.plan.tierOrder`, showing per-store toggles
+  on Free and the unified cross-store view on Premium) and the supplier-
+  facing dashboard UI itself (connected stores, fulfillment queue, plan
+  status, wallet balance, in-page upgrade) — both real and built, corrected
+  here after this session's own re-audit found this note stale.
   **Supplier wallet (supplemented v0.24):** the Premium tier's fee is
   collected via the identical prepaid-wallet mechanism §5.6e defines for
   sellers, but from a **separate, supplier-scoped wallet** — a supplier
@@ -7590,10 +7593,14 @@ next module starts. Each item is written to be testable, not aspirational.
       store they do not hold an active `store_supplier_links` row for
 - [x] Multi-store dashboard aggregates `order_items` across all linked stores
       correctly (FR-3.3) - proven in Module 9's test suite, once orders exist.
-      **The API/data half only** — the supplier-facing UI that actually
-      renders this view, gated by the Supplier Premium Plan (FR-7.10), is
-      built in Module 20 (new v0.20); no supplier login/dashboard surface
-      exists in `apps/web` yet
+- [x] The supplier-facing UI that renders this view, gated by the Supplier
+      Premium Plan (FR-7.10), is built in Module 20 (new v0.20) at
+      `apps/web/app/(supplier)/supplier/page.tsx` - connected stores,
+      per-store vs. aggregated order view (gated on `tierOrder`), plan
+      status with in-page upgrade, and wallet balance. Confirmed present
+      and re-verified against the real file during this session's re-audit
+      (corrects this checklist's own prior stale "no login/dashboard
+      surface exists yet" note).
 - [ ] Fulfillment checklist updates correctly and reflects live in the seller's
       dashboard (FR-3.4) - proven in Module 9's test suite
 - [ ] Tracking ID upload triggers the buyer notification (FR-5.2) - proven in
@@ -7933,8 +7940,15 @@ going forward, per FR-6.28.
       sellers/me/growth-programs/withdrawals` — all four now carry the same
       decorator, proven by an e2e test asserting each returns 403 under an
       impersonation token.
-- [ ] **Audit log immutability:** an attempt to `UPDATE` or `DELETE` an
-      `admin_audit_logs` row fails at the database grant level (FR-8.9)
+- [x] **Audit log immutability:** an attempt to `UPDATE` or `DELETE` an
+      `admin_audit_logs` row fails at the database grant level (FR-8.9) —
+      real, was already enforced since `20260716094921_rls_and_audit_grants`
+      (`REVOKE UPDATE, DELETE ON admin_audit_logs FROM app_runtime,
+      app_admin`), just never proven by a test until the autonomous
+      punch-list pass added 5 e2e tests connecting as both exact roles
+      the running application uses and asserting Postgres rejects both
+      write paths for each (module17-admin-control-plane.e2e-spec.ts's
+      "Audit log immutability (FR-8.9)" describe block)
 - [x] Enabling maintenance mode shows the maintenance page to buyers/sellers while
       an allowlisted admin IP still reaches the admin terminal (FR-8.7) — built
       Module 17. `/health` is excluded from the gate (infra liveness probe,
