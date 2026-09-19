@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
@@ -79,6 +80,7 @@ const GATEWAY_PROVIDER_HINT: Record<PaymentGatewayProvider, string> = {
  * the order automatically."
  */
 export default function PaymentsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [payment, setPayment] = useState<PaymentInstructions | null>(null);
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentSaved, setPaymentSaved] = useState(false);
@@ -224,6 +226,13 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
   }
 
   async function removeGatewayConnection(provider: PaymentGatewayProvider) {
+    const ok = await confirm({
+      title: `Remove ${GATEWAY_PROVIDER_LABELS[provider]}?`,
+      description: "Buyers won't be able to pay through this gateway anymore until you reconnect it. This can't be undone.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     setGatewayError(null);
     setRemovingGateway(provider);
     try {

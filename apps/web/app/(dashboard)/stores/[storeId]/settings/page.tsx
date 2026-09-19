@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -72,6 +73,7 @@ const DASHBOARD_THEMES: { id: string; label: string; swatch: string }[] = [
 ];
 
 export default function StoreSettingsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [accessMode, setAccessMode] = useState<AccessMode>("public");
   const [accessPassword, setAccessPassword] = useState("");
   const [policyText, setPolicyText] = useState("");
@@ -348,7 +350,14 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     }
   }
 
-  async function revokeSession(sessionId: string) {
+  async function revokeSession(sessionId: string, deviceLabel: string) {
+    const ok = await confirm({
+      title: `Revoke "${deviceLabel}"?`,
+      description: "That device will be signed out immediately and need to log in again.",
+      confirmLabel: "Revoke",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/sellers/me/sessions/${sessionId}`);
@@ -377,6 +386,13 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   }
 
   async function removeLogo() {
+    const ok = await confirm({
+      title: "Remove your store logo?",
+      description: "Your storefront will fall back to showing just your store name until you upload a new one.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     setRemovingLogo(true);
     try {
@@ -795,7 +811,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                         </p>
                       </div>
                       {session.sessionId !== currentSessionId && (
-                        <Button variant="ghost" size="sm" onClick={() => revokeSession(session.sessionId)}>
+                        <Button variant="ghost" size="sm" onClick={() => revokeSession(session.sessionId, session.deviceLabel)}>
                           Revoke
                         </Button>
                       )}

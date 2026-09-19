@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -54,6 +55,7 @@ const CHANNEL_LABEL: Record<Channel, string> = {
  * in this module.
  */
 export default function OrderVerificationPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [settings, setSettings] = useState<VerificationSettings | null>(null);
   const [emails, setEmails] = useState<VerificationEmail[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +118,14 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
     }
   }
 
-  async function revokeEmail(id: string) {
+  async function revokeEmail(id: string, emailAddress: string) {
+    const ok = await confirm({
+      title: `Revoke "${emailAddress}"?`,
+      description: "If this is your only connected sender, Email OTP verification will stop working until you connect another. This can't be undone.",
+      confirmLabel: "Revoke",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/sellers/me/verification-emails/${id}`);
       load();
@@ -212,7 +221,7 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
                     <div className="flex items-center gap-3">
                       <Badge tone={sender.status === "active" ? "success" : "neutral"}>{sender.status}</Badge>
                       {sender.status === "active" && (
-                        <Button type="button" variant="ghost" onClick={() => revokeEmail(sender.id)}>
+                        <Button type="button" variant="ghost" onClick={() => revokeEmail(sender.id, sender.emailAddress)}>
                           Revoke
                         </Button>
                       )}

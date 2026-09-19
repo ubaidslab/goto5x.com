@@ -164,13 +164,23 @@ The `cancelled` disagreement above (danger vs. the real precedent's neutral) nee
 
 **Seller dashboard: still zero confirm steps anywhere** (out of scope for FR-8.16, which covered only the admin terminal) — confirmed by grep across the whole dashboard tree for `window.confirm`/`confirm(`/any Dialog-based confirmation. Every `.delete(...)` call site fires immediately: bulk delete products (`products/page.tsx`, applied via `Promise.allSettled` across every selected product — no confirm even for multi-select bulk delete), discount code deletion, staff removal, and (by tree-wide absence of any confirm pattern) collections/customer-segments/domains/marketing/order-verification/orders/settings deletions too. This remains a real, open gap the founder should prioritize as a follow-up — the admin terminal is no longer the platform's weak point on this axis, the seller dashboard now is.
 
+**Corrected (autonomous punch-list pass, was stale in two waves).** The seller dashboard's own `useConfirm()` (`components/dashboard/ConfirmDialogProvider.tsx`, mounted in `stores/[storeId]/layout.tsx` — same primitive as the admin terminal's copy, deliberately a separate provider tree) is real and, as of this pass, applied everywhere a destructive action exists: discounts/campaigns/customer-segments/gift-cards/marketing/billing/reviews were wired in an earlier batch; bulk delete/archive on `products/page.tsx` and bulk cancel/dispute on `orders/page.tsx` already had their own inline "review affected count → Confirm/Cancel" gate (FR-58.4-style, predates `useConfirm()` and works the same way, just not the shared component); this pass closed the remaining gap on **staff-accounts** (revoke staff account, revoke all staff devices), **domains** (remove domain), **order-verification** (revoke sender email), **collections/[collectionId]** (remove product from a collection — non-danger tone, reversible), **settings** (revoke session, remove logo), and **payments** (remove gateway connection). The seller dashboard is no longer a weak point on this axis.
+
 | Action | Real confirm today? |
 |---|---|
-| Bulk delete products (seller) | No |
-| Discount code deletion (seller) | No |
-| Staff removal (seller) | No |
-| Gift card actions (seller) | No (inferred — no confirm pattern exists anywhere in the dashboard tree) |
-| Campaign send (seller) | No |
+| Bulk delete/archive/other bulk actions (seller, Products) | **Yes** — own inline "affected count → Confirm/Cancel" gate, predates `useConfirm()`, same effect |
+| Bulk cancel/dispute/other bulk actions (seller, Orders) | **Yes** — same inline gate as Products |
+| Discount code deletion (seller) | **Yes** — `useConfirm()`, danger tone |
+| Staff removal (seller) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Revoke all staff devices (seller) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Remove domain (seller) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Revoke sender email (seller, order verification) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Remove product from collection (seller) | **Yes** — `useConfirm()`, default tone — reversible, product itself unaffected (punch-list fix) |
+| Revoke device session (seller, Settings → Security) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Remove store logo (seller, Settings) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Remove payment gateway connection (seller) | **Yes** — `useConfirm()`, danger tone (punch-list fix) |
+| Gift card actions (seller) | **Yes** — `useConfirm()`, danger tone |
+| Campaign send (seller) | **Yes** — `useConfirm()`, danger tone |
 | Plan downgrade (seller) | **NOT FOUND — flag for founder to locate/verify** |
 | Refund/return approval (seller) | **NOT FOUND — flag for founder to locate/verify** |
 | Settings-registry high-impact key changes (admin, standalone editor) | **Yes** — `useConfirm()`, data-driven `requiresConfirmation` field |
@@ -203,7 +213,7 @@ The `cancelled` disagreement above (danger vs. the real precedent's neutral) nee
 | Unlink email account (admin) | **Yes** — `useConfirm()`, danger tone |
 | Send newsletter to whole platform (admin) | **Yes** — `useConfirm()`, danger tone, **types "SEND" to enable** |
 
-**Bottom line:** the admin terminal's confirmation coverage is now systematic rather than accidental — every destructive/money-moving action the audit flagged goes through the same shared, data-driven mechanism, styled with `Dialog.tsx`'s current (intentionally minimal) look pending Phase 6's admin-terminal re-skin. The seller dashboard's near-total absence of confirm steps is the platform's next-highest-leverage gap on this axis.
+**Bottom line:** the admin terminal's confirmation coverage is now systematic rather than accidental — every destructive/money-moving action the audit flagged goes through the same shared, data-driven mechanism, styled with `Dialog.tsx`'s current (intentionally minimal) look pending Phase 6's admin-terminal re-skin. **Corrected (autonomous punch-list pass, was stale):** the seller dashboard's own confirmation coverage is now equally systematic — every destructive action across both dashboards routes through a `useConfirm()` dialog (or, on Products/Orders bulk actions, an equivalent inline confirm gate that predates the shared component).
 
 ### Onboarding/setup-progress strip (Module 16)
 
@@ -621,7 +631,7 @@ Invite form (email) → list (Card rows) with status Badge (`pending_seller_revi
 
 **Two cards, real, reordered so the gateway (the thing this redesign is actually about) leads:**
 
-**A — "Payment gateway"** (Module 62, auto-confirm path, ungated on every plan): connections list (provider, merchant ID, Active toggle, Test button — result not persisted, lost on reload, Remove **no confirm**) → connect form (Provider select, Merchant ID optional, API key required/password-masked, API secret optional/password-masked). **Copy reframed per the founder's locked directive** (previously recorded here, now applied verbatim): *"so we can verify your buyer's payment was received and confirm the order automatically"* — order-verification framing, no mention of commission (there isn't one under the subscription-only model). **Fixed (Phase 5e):** a per-provider hint line under the form (`GATEWAY_PROVIDER_HINT`) now tells a seller which real-world credential to go find for their selected provider — still not a provider-accurate field set (the connect DTO is still one generic shape for all 4 providers; a real JazzCash hash-key field etc. would need backend DTO work, out of scope here) — flagged, not silently left as before.
+**A — "Payment gateway"** (Module 62, auto-confirm path, ungated on every plan): connections list (provider, merchant ID, Active toggle, Test button — result not persisted, lost on reload, Remove — **corrected, punch-list fix: now `useConfirm()`-gated, danger tone**) → connect form (Provider select, Merchant ID optional, API key required/password-masked, API secret optional/password-masked). **Copy reframed per the founder's locked directive** (previously recorded here, now applied verbatim): *"so we can verify your buyer's payment was received and confirm the order automatically"* — order-verification framing, no mention of commission (there isn't one under the subscription-only model). **Fixed (Phase 5e):** a per-provider hint line under the form (`GATEWAY_PROVIDER_HINT`) now tells a seller which real-world credential to go find for their selected provider — still not a provider-accurate field set (the connect DTO is still one generic shape for all 4 providers; a real JazzCash hash-key field etc. would need backend DTO work, out of scope here) — flagged, not silently left as before.
 
 **B — "Payment instructions"** (manual/COD path): Bank title/number/name, JazzCash number/title, Easypaisa number/title, "registered in my own legal name" checkbox (triggers admin review if inconsistent), "Accept Cash on Delivery" checkbox. `PATCH .../payment-instructions`.
 
@@ -661,7 +671,7 @@ Currently bridged via `/settings#reports` anchor. **Nav:** Admin → Reports (`F
 
 **Seat-limit gating, real** (`staff.max_accounts`): GO/RUN/Team-Starter = 0 (falls to global default), **RISE 3, FLY 10**, Team-Growth 2, Team-Scale 5. **No seat-limit display anywhere in the UI** — only discoverable via a failed-create error message.
 
-Create form: Email, Name (optional), Password (min 8), Scopes (toggle-pill row, ≥1 required client-side) → "Create staff account". List: name/email, scope Badges, status Badge, **Revoke** (active only, **no confirm step**, no un-revoke). Flat card list — no table, no sort/pagination/bulk-actions.
+Create form: Email, Name (optional), Password (min 8), Scopes (toggle-pill row, ≥1 required client-side) → "Create staff account". List: name/email, scope Badges, status Badge, **Revoke** (active only, no un-revoke; **Corrected, punch-list fix: now `useConfirm()`-gated, danger tone**). Flat card list — no table, no sort/pagination/bulk-actions.
 
 - **Icons:** none in-page. **Loading:** `PageSpinner`. **Error:** single page-level `Alert`. **Modal:** none.
 
@@ -679,6 +689,8 @@ Create form: Email, Name (optional), Password (min 8), Scopes (toggle-pill row, 
 
 **Referral (Commerce Students Support) / Ambassador program — real, confirmed gap.** Seller-facing apply/list-own/certificate-tier endpoints are fully real and working — but **no seller-facing frontend page anywhere calls any of them.** Only admin-side program pages exist. A seller today cannot apply, check status, or view rewards for either program through any dashboard screen.
 
+**Corrected (autonomous punch-list pass, was stale):** this gap is closed — `growth-programs/page.tsx` (Ambassador/Student Referral/Creator apply, status, referral-link copy, content submission, wallet balance, withdrawal request), linked from the Billing & plan page (not a new top-level nav slot, per `nav-items.ts`'s founder-locked "no more, no less" constraint). The `?ref=<code>` signup-attribution wiring that this page's referral link depends on was also closed — `/signup` now reads `ref` from the query string and passes it through to `POST /auth/signup`'s existing `referralCode` field.
+
 - **Icons:** none. **Loading:** `PageSpinner`. **Error:** single shared page-level `Alert` across every mutation on the page.
 
 ---
@@ -689,14 +701,14 @@ Create form: Email, Name (optional), Password (min 8), Scopes (toggle-pill row, 
 
 **Confirmed absorption (authoritative, from `nav-items.ts`'s own doc comment, founder-approved):** Settings hub (Part 5) absorbs Domains, Store Health, Verified Store, Import & export as tabs. Payments/Reports are bridged anchors into this same file today (see §11–12).
 
-**Sections, exact order:** Store branding (logo upload/replace/remove) → Storefront access (Public/Coming soon/Password-protected) → Store policy (feeds Store Health's profile-completeness check) → Invoice customization (see §12) → **Advanced SEO** (real-gated `seo.advanced_fields_enabled`, **RISE+FLY** — 4 checkboxes + custom head-tags textarea; **no proactive lock UI**, reactive error only) → **Data export** (see §12) → Payment instructions (see §11) → **Payment gateway** (see §11) → Identity verification (CNIC, masked once set, 5-bullet explainer, review-pending Alert) → **Notifications — the entire surface is one checkbox** ("Send me the UZEYN newsletter") — **no granular per-event control exists anywhere** (order alerts, low-stock alerts, etc. are always-on with no opt-out UI) → Security (2FA enroll — raw `otpauthUrl` text, **not a QR code**; signed-in devices with Revoke, no confirm; read-only support-access audit log) → Dashboard appearance (4 accent swatches, selecting one does a **full `window.location.reload()`** — no live theme-context switching).
+**Sections, exact order:** Store branding (logo upload/replace/remove) → Storefront access (Public/Coming soon/Password-protected) → Store policy (feeds Store Health's profile-completeness check) → Invoice customization (see §12) → **Advanced SEO** (real-gated `seo.advanced_fields_enabled`, **RISE+FLY** — 4 checkboxes + custom head-tags textarea; **no proactive lock UI**, reactive error only) → **Data export** (see §12) → Payment instructions (see §11) → **Payment gateway** (see §11) → Identity verification (CNIC, masked once set, 5-bullet explainer, review-pending Alert) → **Notifications — the entire surface is one checkbox** ("Send me the UZEYN newsletter") — **no granular per-event control exists anywhere** (order alerts, low-stock alerts, etc. are always-on with no opt-out UI) → Security (2FA enroll — raw `otpauthUrl` text, **not a QR code**; signed-in devices with Revoke, **corrected, punch-list fix: now `useConfirm()`-gated, danger tone**; read-only support-access audit log) → Dashboard appearance (4 accent swatches, selecting one does a **full `window.location.reload()`** — no live theme-context switching).
 
-**Zero destructive-action confirm steps anywhere across this file** — Remove logo, Remove domain, Remove gateway connection, Revoke session all fire immediately.
+**Corrected (autonomous punch-list pass, was stale):** the claim below (zero confirm steps in this file) no longer holds — Remove logo, Remove domain, Remove gateway connection, and Revoke session are all now `useConfirm()`-gated, danger tone. ~~Zero destructive-action confirm steps anywhere across this file — Remove logo, Remove domain, Remove gateway connection, Revoke session all fire immediately.~~
 
 **Genuinely not on this page** (explicit gaps vs. the brief): domain management (real, but a separate route — see below), legal/policy page links (not found anywhere), account deletion/data-retention info (not found anywhere in the codebase).
 
 ### Absorbed tab: Domains
-`domains/page.tsx` · Module 3. Attach form (domain name) + real CNAME/A-record config display → list (verification-status Badge, Verify now, Remove no-confirm) → domain-registrar affiliate referral block (unrelated to the growth-programs referral concept above).
+`domains/page.tsx` · Module 3. Attach form (domain name) + real CNAME/A-record config display → list (verification-status Badge, Verify now, Remove — **corrected, punch-list fix: now `useConfirm()`-gated, danger tone**) → domain-registrar affiliate referral block (unrelated to the growth-programs referral concept above).
 
 ### Absorbed tab: Store Health
 `health/page.tsx` · Module 23. Score (0-100) + threshold-based Badge (≥80 Healthy/≥50 Needs attention/else At risk) → plain-language "what's lowering your score" suggestions (no raw weighted-sum math shown, by design) → full breakdown list → history. Entirely read-only.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -41,6 +42,7 @@ const verificationTone: Record<VerificationStatus, "neutral" | "success" | "dang
  * shape, now also hosting the FR-11.3 referral block (v0.18).
  */
 export default function DomainsPage({ params }: { params: { storeId: string } }) {
+  const confirm = useConfirm();
   const [domains, setDomains] = useState<DomainRecord[] | null>(null);
   const [config, setConfig] = useState<DomainsConfig | null>(null);
   const [domainName, setDomainName] = useState("");
@@ -93,7 +95,14 @@ export default function DomainsPage({ params }: { params: { storeId: string } })
     }
   }
 
-  async function remove(domainId: string) {
+  async function remove(domainId: string, domainName: string) {
+    const ok = await confirm({
+      title: `Remove "${domainName}"?`,
+      description: "Buyers using this domain will no longer reach your store - only the free uzeyn.com subdomain will keep working. This can't be undone.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/stores/${params.storeId}/domains/${domainId}`);
@@ -171,7 +180,7 @@ export default function DomainsPage({ params }: { params: { storeId: string } })
                         Verify now
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => remove(domain.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => remove(domain.id, domain.domainName)}>
                       Remove
                     </Button>
                   </div>

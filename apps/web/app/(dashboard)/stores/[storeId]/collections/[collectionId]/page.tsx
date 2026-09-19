@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
@@ -37,6 +38,7 @@ interface CollectionDetail {
 }
 
 export default function ManageCollectionPage({ params }: { params: { storeId: string; collectionId: string } }) {
+  const confirm = useConfirm();
   const [title, setTitle] = useState<string | null>(null);
   const [entries, setEntries] = useState<CollectionProductEntry[]>([]);
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
@@ -153,7 +155,13 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
     }
   }
 
-  async function onRemoveProduct(id: string) {
+  async function onRemoveProduct(id: string, productTitle: string) {
+    const ok = await confirm({
+      title: `Remove "${productTitle}" from this collection?`,
+      description: "The product itself isn't affected - it just stops being grouped here. You can add it back anytime.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/stores/${params.storeId}/collections/${params.collectionId}/products/${id}`);
@@ -270,7 +278,7 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
               {entries.map((entry) => (
                 <div key={entry.productId} className="flex items-center justify-between gap-4 px-6 py-4">
                   <p className="text-sm font-medium text-ink">{entry.product.title}</p>
-                  <Button variant="ghost" size="sm" onClick={() => onRemoveProduct(entry.productId)}>
+                  <Button variant="ghost" size="sm" onClick={() => onRemoveProduct(entry.productId, entry.product.title)}>
                     Remove
                   </Button>
                 </div>

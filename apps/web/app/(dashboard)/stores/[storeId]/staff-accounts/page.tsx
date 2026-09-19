@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -151,6 +152,7 @@ function ScopePermissionGrid({
  * owner has, same as the underlying StaffAccount model.
  */
 export default function StaffAccountsPage() {
+  const confirm = useConfirm();
   const [staff, setStaff] = useState<StaffAccount[] | null>(null);
   const [templates, setTemplates] = useState<RoleTemplate[] | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
@@ -222,7 +224,14 @@ export default function StaffAccountsPage() {
     }
   }
 
-  async function handleRevoke(id: string) {
+  async function handleRevoke(id: string, label: string) {
+    const ok = await confirm({
+      title: `Revoke access for "${label}"?`,
+      description: "They'll be signed out of every device immediately and lose access to this store. This can't be undone.",
+      confirmLabel: "Revoke",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.delete(`/sellers/me/staff-accounts/${id}`);
@@ -261,6 +270,13 @@ export default function StaffAccountsPage() {
     loadDevices(staffId);
   }
   async function revokeAllDevices() {
+    const ok = await confirm({
+      title: "Revoke all staff devices?",
+      description: "Every staff device currently approved on this store will be signed out and need re-approval. This can't be undone.",
+      confirmLabel: "Revoke all",
+      tone: "danger",
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.post(`/sellers/me/staff-accounts/devices/revoke-all`);
@@ -369,7 +385,11 @@ export default function StaffAccountsPage() {
                     <div className="flex shrink-0 items-center gap-3">
                       <Badge tone={STATUS_TONE[account.status]}>{account.status}</Badge>
                       {account.status === "active" && (
-                        <Button variant="secondary" size="sm" onClick={() => handleRevoke(account.id)}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleRevoke(account.id, account.name || account.email)}
+                        >
                           Revoke
                         </Button>
                       )}
