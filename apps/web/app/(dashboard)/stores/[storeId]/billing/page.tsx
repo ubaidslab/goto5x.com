@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Check } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -94,7 +95,7 @@ type ChangePlanResult =
 // FR-7.17 - the whole point: this page renders entirely from /plans data,
 // never a hard-coded tier list. Adding/reordering a tier changes what's
 // displayed here with no deploy.
-export default function BillingPage() {
+export default function BillingPage({ params }: { params: { storeId: string } }) {
   const confirm = useConfirm();
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -331,6 +332,20 @@ export default function BillingPage() {
               </div>
             )}
           </div>
+        </DashCard>
+        </Reveal>
+
+        <Reveal>
+        <DashCard>
+          <DashCardHeader
+            title="Growth Programs"
+            description="Ambassador, Student Referral, and Creator programs - apply, track rewards, and request payouts."
+          />
+          <Link href={`/stores/${params.storeId}/growth-programs`}>
+            <Button variant="secondary" size="sm">
+              Open Growth Programs
+            </Button>
+          </Link>
         </DashCard>
         </Reveal>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -50,6 +50,16 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [submitting, setSubmitting] = useState(false);
+  // SRS §5.33/FR-33.1 - a Growth Programs participant's own referral link
+  // (see /stores/:storeId/growth-programs) points here as `?ref=<code>`.
+  // Read client-side rather than useSearchParams() so this page never
+  // needs a Suspense boundary just for this - a plain read at mount is
+  // enough since it's captured once, well before submit.
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setReferralCode(ref);
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,6 +80,7 @@ export default function SignupPage() {
           businessName,
           role,
           ...(role === "seller" ? { country, agreementAccepted } : {}),
+          ...(referralCode ? { referralCode } : {}),
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -111,6 +122,11 @@ export default function SignupPage() {
         <CardBody>
           <h1 className="text-h3 text-ink">Sign up</h1>
           <p className="mt-1.5 text-sm text-ink-muted">Start selling, or fulfill orders for sellers, on uzeyn.com.</p>
+          {referralCode && (
+            <Alert className="mt-4" tone="info">
+              You were referred - this signup is linked to that referral.
+            </Alert>
+          )}
 
           {error && (
             <Alert className="mt-4" tone="danger">
