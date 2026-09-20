@@ -96,6 +96,19 @@ interface OrderVerification {
   status: "pending" | "verified" | "failed" | "expired";
 }
 
+interface OrderReturnRequest {
+  id: string;
+  orderId: string;
+  status: "requested" | "approved" | "rejected" | "completed";
+}
+
+const RETURN_STATUS_TONE: Record<OrderReturnRequest["status"], "warning" | "info" | "success" | "danger"> = {
+  requested: "warning",
+  approved: "info",
+  rejected: "danger",
+  completed: "success",
+};
+
 const VERIFICATION_CHANNEL_LABEL: Record<OrderVerification["channel"], string> = {
   whatsapp_otp: "WhatsApp OTP",
   email_otp: "Email OTP",
@@ -130,6 +143,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   const [profit, setProfit] = useState<OrderProfit | null>(null);
   const [verification, setVerification] = useState<OrderVerification | null | undefined>(undefined);
   const [verifyActionLoading, setVerifyActionLoading] = useState(false);
+  const [returnRequest, setReturnRequest] = useState<OrderReturnRequest | null | undefined>(undefined);
   const [markingDeliveredItemId, setMarkingDeliveredItemId] = useState<string | null>(null);
 
   function load() {
@@ -158,8 +172,17 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
       .catch(() => setVerification(null));
   }
 
+  /** No orderId filter on the returns endpoint - it's a small, seller-scoped list, so fetch all and find this order's own. */
+  function loadReturnRequest() {
+    api
+      .get<OrderReturnRequest[]>(`/stores/${params.storeId}/returns`)
+      .then((requests) => setReturnRequest(requests.find((r) => r.orderId === params.orderId) ?? null))
+      .catch(() => setReturnRequest(null));
+  }
+
   useEffect(load, [params.storeId, params.orderId]);
   useEffect(loadVerification, [params.storeId, params.orderId]);
+  useEffect(loadReturnRequest, [params.storeId, params.orderId]);
   useEffect(() => {
     if (order && ["confirmed", "shipped", "delivered", "completed"].includes(order.status)) loadProfit();
   }, [params.storeId, params.orderId, order?.status]);
@@ -386,6 +409,18 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                   )}
                 </div>
               )}
+            </div>
+          </DashCard>
+        )}
+
+        {returnRequest && (
+          <DashCard>
+            <DashCardHeader title="Return request" description="Buyer-initiated - manage it (approve/reject/refund) from the Returns & Refunds page." />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Badge tone={RETURN_STATUS_TONE[returnRequest.status]}>{returnRequest.status}</Badge>
+              <Link href={`/stores/${params.storeId}/returns`}>
+                <Button variant="secondary">Open in Returns & Refunds</Button>
+              </Link>
             </div>
           </DashCard>
         )}

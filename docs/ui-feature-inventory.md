@@ -335,7 +335,7 @@ Below the tiles: conditional "*N* supplier-fulfilled item(s) still awaiting fulf
 
 ### ⚠️ Confirmed gaps on this page
 1. ~~**Verification status + resend action: NOT FOUND.**~~ **Fixed in Phase 3.** A "Verification" card now renders between the status bar and the order timeline whenever `GET .../verification` returns a real gate (channel + status badge), with a "Resend" action for the OTP channels and "Mark deposit received" for `prepaid_confirmation` — the exact two seller-triggered actions `seller-verification.controller.ts` already exposed.
-2. **Returns/refund initiation: NOT FOUND on this page.** Returns is a wholly separate, currently unlinked page (`/returns`) — real, working (approve/reject/complete with refund amount), not surfaced from order detail. Still open — deferred out of this Phase 3 pass (a real cross-page linking decision, not a quick add).
+2. ~~**Returns/refund initiation: NOT FOUND on this page.**~~ **Fixed (autonomous punch-list pass, was stale).** Returns are buyer-initiated only - a seller never creates one from Order detail, so there was no actual business decision here to defer, just a missing read-only link. A "Return request" card now renders (in the same slot as Verification) whenever one exists for this order, showing its status Badge and a link to Returns & Refunds to approve/reject/complete it - the returns endpoint has no `orderId` filter, so the page fetches the (small, seller-scoped) list and matches client-side rather than adding a backend param for one read.
 
 ### The tracking-upload paths, precisely named
 1. Seller manual, item-level (`POST .../items/:itemId/tracking`).
