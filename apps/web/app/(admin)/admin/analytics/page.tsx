@@ -30,6 +30,34 @@ interface SalesBucketPoint {
   revenue: number;
 }
 
+type FunnelStageName = "signed_up" | "store_created" | "first_product_listed" | "published" | "first_sale";
+
+interface FunnelStage {
+  stage: FunnelStageName;
+  count: number;
+  dropOffFromPrevious: number | null;
+}
+
+interface StuckSeller {
+  sellerId: string;
+  businessName: string;
+  stage: FunnelStageName;
+  daysAtStage: number;
+}
+
+interface SellerFunnel {
+  stages: FunnelStage[];
+  stuckSellers: StuckSeller[];
+}
+
+const FUNNEL_STAGE_LABEL: Record<FunnelStageName, string> = {
+  signed_up: "Signed up",
+  store_created: "Store created",
+  first_product_listed: "First product listed",
+  published: "Published",
+  first_sale: "First sale",
+};
+
 /**
  * Phase 6b (Admin Terminal re-skin) - FR-8.10 (real-time analytics) +
  * FR-23.4 (unit economics), same two data sources, restyled onto DashCard.
@@ -46,6 +74,7 @@ export default function AdminAnalyticsPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [unitEconomics, setUnitEconomics] = useState<UnitEconomics | null>(null);
   const [salesOverTime, setSalesOverTime] = useState<SalesBucketPoint[] | null>(null);
+  const [funnel, setFunnel] = useState<SellerFunnel | null>(null);
   const [bucket, setBucket] = useState<"day" | "week" | "month">("day");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -60,11 +89,15 @@ export default function AdminAnalyticsPage() {
   }, []);
 
   useEffect(() => {
+    adminApi.get<SellerFunnel>("/admin/analytics/seller-funnel").then(setFunnel).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const range = rangeStart && rangeEnd ? `&start=${rangeStart}&end=${rangeEnd}` : "";
     adminApi.get<SalesBucketPoint[]>(`/admin/analytics/sales-over-time?bucket=${bucket}${range}`).then(setSalesOverTime).catch(() => {});
   }, [bucket, rangeStart, rangeEnd]);
 
-  if (!analytics || !unitEconomics || !salesOverTime) return <PageSpinner />;
+  if (!analytics || !unitEconomics || !salesOverTime || !funnel) return <PageSpinner />;
 
   return (
     <div>
@@ -202,6 +235,65 @@ export default function AdminAnalyticsPage() {
           </div>
         </DashCard>
       </div>
+
+      <DashCard className="mt-4">
+        <DashCardHeader
+          title="Seller health funnel"
+          description="SRS §5.6k/FR-6.46 - signup -> store created -> first product listed -> published -> first sale, computed live (no separate tracking table)."
+        />
+        {funnel.stages.every((s) => s.count === 0) ? (
+          <p className="py-8 text-center text-sm text-ink-muted">No sellers yet.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart
+              data={funnel.stages.map((s) => ({ name: FUNNEL_STAGE_LABEL[s.stage], count: s.count }))}
+              layout="vertical"
+              margin={{ left: 24 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+              <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
+              <Tooltip
+                formatter={(value: unknown) => [String(value ?? 0), "Sellers"]}
+                contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
+              />
+              <Bar dataKey="count" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-xs text-ink-muted">
+          {funnel.stages.map((s) => (
+            <span key={s.stage}>
+              {FUNNEL_STAGE_LABEL[s.stage]}: <span className="font-medium text-ink">{s.count}</span>
+              {s.dropOffFromPrevious !== null && s.dropOffFromPrevious > 0 && (
+                <span className="text-danger"> (-{s.dropOffFromPrevious})</span>
+              )}
+            </span>
+          ))}
+        </div>
+      </DashCard>
+
+      <DashCard className="mt-4">
+        <DashCardHeader
+          title="Stuck sellers"
+          description="Sellers who haven't advanced past their current stage in longer than growth.funnel_stuck_days - sorted longest-stuck first."
+        />
+        {funnel.stuckSellers.length === 0 ? (
+          <p className="py-8 text-center text-sm text-ink-muted">No sellers currently stuck past the threshold.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {funnel.stuckSellers.map((s) => (
+              <div key={s.sellerId} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <span className="text-ink">{s.businessName}</span>
+                <span className="text-ink-muted">
+                  Stuck at <span className="font-medium text-ink">{FUNNEL_STAGE_LABEL[s.stage]}</span> for{" "}
+                  <span className="font-medium tabular-nums text-ink">{s.daysAtStage}</span> day{s.daysAtStage === 1 ? "" : "s"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </DashCard>
     </div>
   );
 }
