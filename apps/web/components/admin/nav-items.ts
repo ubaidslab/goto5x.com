@@ -11,6 +11,7 @@ import {
   Home,
   Landmark,
   LayoutGrid,
+  LifeBuoy,
   Mail,
   MessageSquare,
   Newspaper,
@@ -77,6 +78,7 @@ export const adminNavItems: AdminNavItem[] = [
   { href: "/admin/verification", label: "Verified Store", icon: ShieldCheck, group: "trust" },
   { href: "/admin/moderation", label: "Moderation queue", icon: Gavel, group: "trust" },
   { href: "/admin/trust-safety", label: "Trust & Safety", icon: ShieldAlert, group: "trust" },
+  { href: "/admin/support-tickets", label: "Support tickets", icon: LifeBuoy, group: "trust" },
 
   { href: "/admin/growth-programs/applications", label: "Growth: applications", icon: Handshake, group: "growth" },
   { href: "/admin/growth-programs/content-submissions", label: "Growth: content", icon: TrendingUp, group: "growth" },
