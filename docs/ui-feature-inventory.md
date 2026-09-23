@@ -71,7 +71,7 @@ Also per SRS §14.68: Modules 81–88 ("Buyer Experience Batch" — optional buy
 | 50 | Product Organization at Scale | yes | §3a Products list (search/filter) |
 | 51 | Bulk Product Operations | yes | §3a Products list (bulk actions) |
 | 52 | Bulk Order Operations, Tracking Entry & Advanced Search | yes | §2a Orders list |
-| 53 | Returns & Refunds Workflow | yes | Buyer-Facing Storefront → Order confirmation/status (buyer-facing); real gap — no seller-side entry point on Order detail, separate unlinked `/returns` page |
+| 53 | Returns & Refunds Workflow | yes | Buyer-Facing Storefront → Order confirmation/status (buyer-facing). **Corrected (autonomous punch-list pass, was stale):** Order detail's seller-side entry point gap is closed - a "Return request" card links through to `/returns` whenever one exists for that order (see §9 Order detail below for the full fix). |
 | 54 | Analytics Depth (seller-facing) | yes | §6a Analytics |
 | 55 | Seller Notifications | yes | §15 Settings → Notifications (real gap: only one checkbox, no granular event control) |
 | 56 | One-Click Full Export, Pro Gate | yes | §12 Reports (FLY-tier gate on Data export) |
