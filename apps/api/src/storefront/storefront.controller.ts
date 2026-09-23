@@ -70,8 +70,13 @@ export class StorefrontController {
       hostname,
       {
         q,
-        minPrice: minPrice !== undefined ? Number(minPrice) : undefined,
-        maxPrice: maxPrice !== undefined ? Number(maxPrice) : undefined,
+        // `minPrice`/`maxPrice` !== undefined isn't enough - a GET form's
+        // empty text input still submits an empty-string query param (never
+        // literally absent), and `Number("")` is `0`, not `NaN`: that
+        // silently turned "no maxPrice typed" into `price <= 0`, filtering
+        // out every real product. Only a real, non-empty string sets these.
+        minPrice: minPrice ? Number(minPrice) : undefined,
+        maxPrice: maxPrice ? Number(maxPrice) : undefined,
         categoryId,
         collectionId,
       },

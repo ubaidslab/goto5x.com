@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import {
   fetchStorefrontCategories,
+  fetchStorefrontCollections,
   fetchStorefrontNavigation,
   fetchStorefrontSearch,
   fetchStorefrontStore,
@@ -37,9 +38,10 @@ export default async function StorefrontSearchPage({ searchParams }: SearchPageP
   }
 
   const unlockToken = access.gated ? undefined : access.unlockToken;
-  const [results, categories, navigation] = await Promise.all([
+  const [results, categories, collections, navigation] = await Promise.all([
     fetchStorefrontSearch(host, searchParams, unlockToken),
     fetchStorefrontCategories(host),
+    fetchStorefrontCollections(host, unlockToken),
     fetchStorefrontNavigation(host),
   ]);
 
@@ -59,6 +61,14 @@ export default async function StorefrontSearchPage({ searchParams }: SearchPageP
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+              </option>
+            ))}
+          </select>
+          <select name="collectionId" defaultValue={searchParams.collectionId ?? ""}>
+            <option value="">All collections</option>
+            {collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
               </option>
             ))}
           </select>

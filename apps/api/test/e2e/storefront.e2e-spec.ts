@@ -209,4 +209,58 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
     const res = await request(app.getHttpServer()).get("/storefront/store");
     expect(res.status).toBe(400);
   });
+
+  /**
+   * Punch-list fix - found while wiring the search page's collection
+   * filter. The search page is a plain GET form: an empty minPrice/maxPrice
+   * text input still submits as an empty-string query param, never as a
+   * literally absent one. The controller used to set `maxPrice`/`minPrice`
+   * whenever the param was `!== undefined`, and `Number("")` is `0`, not
+   * `NaN` - so submitting the form with the price fields left blank
+   * silently applied `price <= 0`, zeroing every result regardless of `q`.
+   */
+  describe("search price filters", () => {
+    async function seedPricedProduct(email: string, slug: string, price: number) {
+      const { token, storeId } = await signupLoginAndCreateStore(email, slug);
+      const product = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title: "Priced Search Product", status: "active" });
+      await request(app.getHttpServer())
+        .post(`/stores/${storeId}/products/${product.body.id}/variants`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ sku: "SEARCH-PRICE-1", price, stockQuantity: 10 });
+      return `${slug}.uzeyn.com`;
+    }
+
+    it("an empty-string minPrice/maxPrice (a GET form's blank input) does not zero out results", async () => {
+      const hostname = await seedPricedProduct("storefront-search-empty-price@example.com", "storefront-search-empty-price", 500);
+
+      const res = await request(app.getHttpServer())
+        .get("/storefront/search")
+        .query({ hostname, q: "", minPrice: "", maxPrice: "", categoryId: "" });
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+    });
+
+    it("a real maxPrice still correctly excludes a product priced above it", async () => {
+      const hostname = await seedPricedProduct("storefront-search-real-maxprice@example.com", "storefront-search-real-maxprice", 500);
+
+      const withinRange = await request(app.getHttpServer()).get("/storefront/search").query({ hostname, maxPrice: 1000 });
+      expect(withinRange.body).toHaveLength(1);
+
+      const outOfRange = await request(app.getHttpServer()).get("/storefront/search").query({ hostname, maxPrice: 10 });
+      expect(outOfRange.body).toHaveLength(0);
+    });
+
+    it("a real minPrice still correctly excludes a product priced below it", async () => {
+      const hostname = await seedPricedProduct("storefront-search-real-minprice@example.com", "storefront-search-real-minprice", 500);
+
+      const withinRange = await request(app.getHttpServer()).get("/storefront/search").query({ hostname, minPrice: 100 });
+      expect(withinRange.body).toHaveLength(1);
+
+      const outOfRange = await request(app.getHttpServer()).get("/storefront/search").query({ hostname, minPrice: 1000 });
+      expect(outOfRange.body).toHaveLength(0);
+    });
+  });
 });

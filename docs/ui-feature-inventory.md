@@ -40,7 +40,7 @@ Also per SRS §14.68: Modules 81–88 ("Buyer Experience Batch" — optional buy
 | 19 | Product Design System (marketing site) | partial (Phases 1–2 only; superseded for dashboard/admin by the separate UI/UX Design Phase) | Out of scope for this document (storefront visual identity explicitly excluded) |
 | 20 | Wallet / Prepaid Credits (superseded, see 73) | yes, now dormant | §14 Billing & Plan (background) |
 | 21 | Hardening & Launch Readiness | yes | Cross-cutting, not a UI surface |
-| 22 | Growth & Partner Programs (Ambassador/Student Referral/Creator + Careers) | yes | §14 Billing & Plan (real gap: no seller UI); Admin Terminal → Growth: applications/content-submissions/withdrawals, Careers |
+| 22 | Growth & Partner Programs (Ambassador/Student Referral/Creator + Careers) | yes | **Corrected (autonomous punch-list pass, was stale):** seller UI gap closed - `growth-programs/page.tsx`, linked from §14 Billing & Plan; Admin Terminal → Growth: applications/content-submissions/withdrawals, Careers |
 | 23 | Store Health Score + Verified Store Program | yes | §15 Settings → Store Health / Verified Store tabs; Admin Terminal → Verified Store |
 | 24 | Seller Data Export to Personal Cloud Storage | yes | §12 Reports (Data export card) |
 | 25 | Admin Terminal Completion | yes | Admin Terminal (all pages, Part 5) |
@@ -90,8 +90,8 @@ Also per SRS §14.68: Modules 81–88 ("Buyer Experience Batch" — optional buy
 | 75 | Feature-Gate Ladder | yes | throughout (plan-gating sections per page) |
 | 76 | Prepaid Partial-Advance, 5% | yes | §2c / §11 Payments — **corrected, was stale**: built Phase 5c/5d, a real 5th Order Verification channel option (RUN+ gated) with the buyer-facing deposit-payment flow on the order-status page |
 | 77 | Verification-Channel Pricing | yes | §2c Order Verification settings |
-| 78 | Referral Program Rename (Commerce Students Support) | yes | §14 Billing & Plan (real gap: no seller UI) |
-| 79 | Ambassador Program Repricing | yes | §14 Billing & Plan (real gap: no seller UI) |
+| 78 | Referral Program Rename (Commerce Students Support) | yes | **Corrected (autonomous punch-list pass, was stale):** seller UI gap closed by the same `growth-programs/page.tsx` build as Module 22 - the program's status/referral-link/apply flow is all one page, not four separate UIs |
+| 79 | Ambassador Program Repricing | yes | **Corrected (autonomous punch-list pass, was stale):** same fix as Module 78 - `growth-programs/page.tsx` |
 | 80 | Pricing Page Rebuild | yes | Out of scope (marketing site) |
 | 81–88 | Buyer Experience Batch (buyer accounts, review media, live chat, shipping calculator, wishlist, stock countdown, image zoom/video, missing-tracking alert) | **all 8 of 8 now built** | Module 82 (review media) and Module 88 (missing-tracking alert) built earliest, see their own sections. The remaining 6 (81 buyer accounts, 83 live chat, 84 shipping calculator, 85 wishlist, 86 stock countdown, 87 image zoom/video) were built in the punch-list's P1.1–P1.6 batch (autonomous punch-list pass corrected this row, which was stale) — real buyer login/saved-addresses/order-history, an embedded chat widget distinct from the WhatsApp deep-link, an address-driven shipping-cost calculator, wishlist/save-for-later, an "Only N left!" stock-countdown indicator, and PDP gallery zoom + video-with-thumbnail all confirmed present in the current codebase. |
 
@@ -497,7 +497,7 @@ Locked nav: **Growth → Marketing**, one item, internal tabs over 6 real curren
 ### 7.1 Tab: Campaigns
 `campaigns/page.tsx` · Module 34. Gating: not feature-gated, only *volume*-gated via `email_campaigns.monthly_send_limit` (**GO 799/mo, RUN 2,499/mo, RISE 10,000/mo, FLY 1,000,000,000 sentinel**) — **Fixed (Phase 4):** new `GET .../campaigns/quota` read (`EmailCampaignsService.getQuota()`, the exact same computation `create()` itself enforces, factored out) now shown as a progress bar + "X remaining" up front, previously only discoverable via a rejected-send error message.
 
-Compose form: Segment (select), Send from (select, connected sender emails), Subject (≤200), Message (textarea, ≤20,000) → "Send campaign" (still no confirm step - an irreversible send-to-many action, left as-is this pass; the quota bar above is the more actionable fix). Campaign list: subject, segment/sender/date, sent/failed counts, status Badge, Reveal entrance motion. **Unsubscribe stats: NOT FOUND** — still never aggregated/displayed anywhere (out of scope), even though unsubscribed customers are excluded at send time.
+Compose form: Segment (select), Send from (select, connected sender emails), Subject (≤200), Message (textarea, ≤20,000) → "Send campaign" (**corrected, was stale: now `useConfirm()`-gated** - part of the seller-dashboard confirm-dialog rollout). Campaign list: subject, segment/sender/date, sent/failed counts, status Badge, Reveal entrance motion. **Unsubscribe stats: NOT FOUND** — still never aggregated/displayed anywhere (out of scope), even though unsubscribed customers are excluded at send time.
 
 ### 7.2 Tab: Customer Segments
 `customer-segments/page.tsx` · Module 33. **Create** is real-gated: `customer_segments.enabled`, off by default, **RISE+FLY**. Read (list/view/preview) is explicitly ungated.
@@ -751,7 +751,7 @@ Media gallery (**corrected, autonomous punch-list pass, was stale: `product-gall
 
 ## Collection page / Search page
 
-Collection: fixed manual seller-ordered product grid, no sort/filter controls. Search: plain GET form (URL-state, no client JS) — `q`, min/max price, category select. **No sort-by control** (price/newest/etc.). A `collectionId` filter exists in the backend type but has **no UI control** — dead capability.
+Collection: fixed manual seller-ordered product grid, no sort/filter controls. Search: plain GET form (URL-state, no client JS) — `q`, min/max price, category select. **No sort-by control** (price/newest/etc.). **Corrected (autonomous punch-list pass, was stale):** the `collectionId` filter dead capability is fixed - a collection `<select>` (same GET-form pattern as the category select, `fetchStorefrontCollections()` already existed for the collection-page use case) now lets a buyer scope a search to one collection. **Real bug found and fixed while verifying this:** `storefront.controller.ts`'s `search()` set `maxPrice`/`minPrice` whenever the query param was `!== undefined`, but a GET form's empty text input still submits an empty-string param (never literally absent) - `Number("")` is `0`, not `NaN`, so submitting the search form with the price fields left blank silently applied `price <= 0`, zeroing every result. Anyone who ever clicked "Search" rather than hand-editing the URL got zero results, regardless of query - fixed by checking the string is non-empty first, same truthy-check convention `q` already used one line above it.
 
 ## Cart
 
