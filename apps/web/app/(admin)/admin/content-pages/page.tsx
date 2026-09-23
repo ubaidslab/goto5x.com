@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialogProvider";
 import { adminApi, AdminApiError } from "@/lib/admin-api";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -44,9 +45,11 @@ interface BrandAsset {
  * fetch/authHeaders to adminApi.
  */
 export default function AdminContentPagesPage() {
+  const confirm = useConfirm();
   const [pages, setPages] = useState<Record<string, ContentPage>>({});
   const [drafts, setDrafts] = useState<Record<string, { title: string; bodyHtml: string }>>({});
   const [brandAssets, setBrandAssets] = useState<Record<string, string>>({});
+  const [brandAssetsOnLoad, setBrandAssetsOnLoad] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +65,9 @@ export default function AdminContentPagesPage() {
         setDrafts(
           Object.fromEntries(SLUGS.map((slug) => [slug, { title: bySlug[slug]?.title ?? "", bodyHtml: bySlug[slug]?.bodyHtml ?? "" }])),
         );
-        setBrandAssets(Object.fromEntries(assetList.map((a) => [a.kind, a.url])));
+        const assetsByKind = Object.fromEntries(assetList.map((a) => [a.kind, a.url]));
+        setBrandAssets(assetsByKind);
+        setBrandAssetsOnLoad(assetsByKind);
         setLoaded(true);
       })
       .catch((err) => setError(err instanceof AdminApiError ? err.message : "Couldn't load content pages."));
@@ -71,6 +76,18 @@ export default function AdminContentPagesPage() {
   useEffect(load, []);
 
   async function saveContentPage(slug: string) {
+    const current = pages[slug];
+    const draft = drafts[slug];
+    const ok = await confirm({
+      title: `Publish "${slug}"?`,
+      description: "This is public-facing legal/info content, live the moment it saves - no draft/preview step.",
+      changes: [
+        { label: "Title", from: current?.title ?? "(unset)", to: draft?.title ?? "" },
+        { label: "Body", from: current ? "changed" : "(unset)", to: current?.bodyHtml === draft?.bodyHtml ? "unchanged" : "changed" },
+      ],
+      confirmLabel: "Publish",
+    });
+    if (!ok) return;
     setStatus(null);
     setError(null);
     try {
@@ -82,12 +99,20 @@ export default function AdminContentPagesPage() {
     }
   }
 
-  async function saveBrandAsset(kind: string) {
+  async function saveBrandAsset(kind: string, label: string) {
+    const ok = await confirm({
+      title: `Save "${label}"?`,
+      description: "Platform-wide, live the moment it saves.",
+      changes: [{ label, from: brandAssetsOnLoad[kind] ?? "(unset)", to: brandAssets[kind] ?? "(unset)" }],
+      confirmLabel: "Save",
+    });
+    if (!ok) return;
     setStatus(null);
     setError(null);
     try {
       await adminApi.put(`/admin/brand-assets/${kind}`, { url: brandAssets[kind] ?? "" });
       setStatus(`Saved "${kind}".`);
+      setBrandAssetsOnLoad((prev) => ({ ...prev, [kind]: brandAssets[kind] ?? "" }));
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : `Couldn't save "${kind}".`);
     }
@@ -146,7 +171,7 @@ export default function AdminContentPagesPage() {
                     <Input value={brandAssets[kind] ?? ""} onChange={(e) => setBrandAssets({ ...brandAssets, [kind]: e.target.value })} />
                   </Field>
                 </div>
-                <Button size="sm" onClick={() => saveBrandAsset(kind)}>
+                <Button size="sm" onClick={() => saveBrandAsset(kind, kind)}>
                   Save {kind}
                 </Button>
               </div>
@@ -167,7 +192,7 @@ export default function AdminContentPagesPage() {
                     <Input value={brandAssets[kind] ?? ""} onChange={(e) => setBrandAssets({ ...brandAssets, [kind]: e.target.value })} />
                   </Field>
                 </div>
-                <Button size="sm" onClick={() => saveBrandAsset(kind)}>
+                <Button size="sm" onClick={() => saveBrandAsset(kind, label)}>
                   Save {label}
                 </Button>
               </div>
