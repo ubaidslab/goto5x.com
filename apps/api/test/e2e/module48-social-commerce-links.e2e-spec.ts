@@ -170,7 +170,7 @@ describe("Facebook/Instagram Shop Feed & WhatsApp Catalog Links (e2e) - SRS §5.
       // deeper (same shape every other 403/400 assertion in this suite
       // that checks structured content relies on, e.g. orders.e2e-spec.ts's
       // toMatchObject({ code: "store_suspended" }) on body.message).
-      expect(feed.body.message.message).toMatch(/growth/i);
+      expect(feed.body.message.message).toMatch(/rise/i);
 
       // The pre-existing, ungated Product Feed API is unaffected by this new gate.
       const legacyFeed = await request(app.getHttpServer())
@@ -208,7 +208,7 @@ describe("Facebook/Instagram Shop Feed & WhatsApp Catalog Links (e2e) - SRS §5.
         .get(`/stores/${seller.storeId}/whatsapp/products/${productId}/share-link`)
         .set("Authorization", `Bearer ${seller.token}`);
       expect(res.status).toBe(403);
-      expect(res.body.message.message).toMatch(/growth/i);
+      expect(res.body.message.message).toMatch(/rise/i);
     });
 
     it("rejects a draft (unpublished) product even for a RISE seller", async () => {
