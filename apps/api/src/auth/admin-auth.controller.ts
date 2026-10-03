@@ -2,6 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post, Req } from "@nestjs/commo
 import { Request } from "express";
 import { AdminAuthService } from "./admin-auth.service";
 import { AdminLoginDto, AdminMfaEnrollDto, AdminMfaVerifyDto } from "./dto/admin-login.dto";
+import { LogoutDto } from "./dto/logout.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 
 @Controller("admin/auth")
@@ -31,5 +32,12 @@ export class AdminAuthController {
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshTokenDto) {
     return this.adminAuth.refresh(dto.sessionId, dto.refreshToken);
+  }
+
+  /** Mirrors AuthController.logout() exactly - the admin terminal had no logout endpoint at all until this. */
+  @Post("logout")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  logout(@Body() dto: LogoutDto) {
+    return this.adminAuth.logout(dto.sessionId);
   }
 }

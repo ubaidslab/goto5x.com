@@ -1,10 +1,11 @@
 "use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { api } from "@/lib/dashboard-api";
 import { planTierSubtitle } from "@/lib/plan-tier-copy";
 import { NAV_GROUP_LABELS, NavGroup, navItems } from "./nav-items";
 
@@ -120,6 +121,24 @@ function NavLinks({
   );
 }
 
+function LogoutButton() {
+  const [loggingOut, setLoggingOut] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={loggingOut}
+      onClick={() => {
+        setLoggingOut(true);
+        api.logout();
+      }}
+      className="flex items-center gap-2.5 rounded-md border-t border-border px-3 py-2.5 text-sm font-medium text-ink-muted transition-smooth-fast hover:bg-canvas hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+    >
+      <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
+      {loggingOut ? "Logging out..." : "Log out"}
+    </button>
+  );
+}
+
 export function Sidebar({
   storeId,
   storeName,
@@ -172,6 +191,7 @@ export function Sidebar({
             </div>
             <StoreSwitcher storeId={storeId} storeName={storeName} stores={stores} />
             <NavLinks storeId={storeId} planName={planName} chatEnabled={chatEnabled} onNavigate={() => setMobileOpen(false)} />
+            <LogoutButton />
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
@@ -181,6 +201,7 @@ export function Sidebar({
         <Wordmark />
         <StoreSwitcher storeId={storeId} storeName={storeName} stores={stores} />
         <NavLinks storeId={storeId} planName={planName} chatEnabled={chatEnabled} />
+        <LogoutButton />
       </aside>
     </>
   );

@@ -1,10 +1,11 @@
 "use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Bell, Menu, X } from "lucide-react";
+import { Bell, LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { adminApi } from "@/lib/admin-api";
 import { ADMIN_NAV_GROUP_LABELS, AdminNavGroup, adminNavItems } from "./nav-items";
 
 const GROUP_ORDER: AdminNavGroup[] = ["overview", "commerce", "trust", "growth", "platform", "content"];
@@ -121,6 +122,24 @@ function NotificationsBell({ notifications, onMarkSeen }: { notifications: Notif
   );
 }
 
+function LogoutButton() {
+  const [loggingOut, setLoggingOut] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={loggingOut}
+      onClick={() => {
+        setLoggingOut(true);
+        adminApi.logout();
+      }}
+      className="flex items-center gap-2.5 rounded-md border-t border-border px-3 py-2.5 text-sm font-medium text-ink-muted transition-smooth-fast hover:bg-canvas hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+    >
+      <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
+      {loggingOut ? "Logging out..." : "Log out"}
+    </button>
+  );
+}
+
 export function AdminSidebar({ notifications, onMarkSeen }: { notifications: Notifications | null; onMarkSeen: () => void }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -159,6 +178,7 @@ export function AdminSidebar({ notifications, onMarkSeen }: { notifications: Not
               <NotificationsBell notifications={notifications} onMarkSeen={onMarkSeen} />
             </div>
             <NavLinks onNavigate={() => setMobileOpen(false)} />
+            <LogoutButton />
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
@@ -169,6 +189,7 @@ export function AdminSidebar({ notifications, onMarkSeen }: { notifications: Not
           <NotificationsBell notifications={notifications} onMarkSeen={onMarkSeen} />
         </div>
         <NavLinks />
+        <LogoutButton />
       </aside>
     </>
   );

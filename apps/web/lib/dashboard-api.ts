@@ -78,6 +78,25 @@ function clearSessionAndRedirectToLogin() {
   window.location.href = "/login";
 }
 
+/**
+ * Real session revocation (POST /auth/logout), not just a client-side
+ * token-forget - best-effort: a failed/offline revoke call still clears
+ * local state and redirects, since the user's intent to leave shouldn't be
+ * blocked by a network hiccup.
+ */
+async function logout() {
+  if (typeof window === "undefined") return;
+  const sessionId = window.localStorage.getItem("sessionId");
+  if (sessionId) {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    }).catch(() => {});
+  }
+  clearSessionAndRedirectToLogin();
+}
+
 async function request<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   // FormData bodies must let the browser set their own multipart boundary -
   // forcing application/json here would break upload() below.
@@ -137,4 +156,5 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   upload: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
   download,
+  logout,
 };

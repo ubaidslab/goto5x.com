@@ -189,6 +189,11 @@ export class AdminAuthService {
     return { accessToken, sessionId: newSessionId, refreshToken: newRefreshToken };
   }
 
+  /** Mirrors AuthService.logout() exactly - same shared SessionService, same destroy-on-logout contract. */
+  async logout(sessionId: string): Promise<void> {
+    await this.sessions.destroySession(sessionId);
+  }
+
   private verifyPreAuthToken(token: string): AdminPreAuthPayload {
     try {
       const payload = this.jwt.verify<AdminPreAuthPayload>(token, {

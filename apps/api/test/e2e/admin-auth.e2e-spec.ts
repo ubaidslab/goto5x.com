@@ -83,6 +83,37 @@ describe("Admin auth + MFA + audit log (e2e) - SRS FR-8.9/FR-8.12, §14.8/§14.1
     expect(auditLogs.body.some((e: any) => e.action === "admin.login")).toBe(true);
   });
 
+  /**
+   * Punch-list fix - the admin terminal had no logout endpoint at all
+   * (unlike the seller side's existing POST /auth/logout, which this
+   * mirrors exactly). Same real session-revocation contract: once
+   * destroyed, the session's own refresh token is dead too, not just the
+   * short-lived access token.
+   */
+  it("logout destroys the session - its refresh token no longer works afterward", async () => {
+    await createAdmin("admin-logout@example.com", "admin-password-logout");
+    const login = await request(app.getHttpServer())
+      .post("/admin/auth/login")
+      .send({ email: "admin-logout@example.com", password: "admin-password-logout" });
+    const enroll = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/enroll")
+      .send({ preAuthToken: login.body.preAuthToken });
+    const code = authenticator.generate(enroll.body.secret);
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code });
+
+    const logout = await request(app.getHttpServer())
+      .post("/admin/auth/logout")
+      .send({ sessionId: verify.body.sessionId });
+    expect(logout.status).toBe(204);
+
+    const refresh = await request(app.getHttpServer())
+      .post("/admin/auth/refresh")
+      .send({ sessionId: verify.body.sessionId, refreshToken: verify.body.refreshToken });
+    expect(refresh.status).toBe(401);
+  });
+
   it("rejects an invalid MFA code", async () => {
     await createAdmin("admin3@example.com", "admin-password-3");
     const login = await request(app.getHttpServer())

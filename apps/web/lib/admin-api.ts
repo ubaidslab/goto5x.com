@@ -79,6 +79,24 @@ function clearSessionAndRedirectToLogin() {
   window.location.href = "/admin/login";
 }
 
+/**
+ * Real session revocation (POST admin/auth/logout, added alongside this -
+ * the admin terminal had no logout endpoint at all before) - best-effort:
+ * a failed/offline revoke call still clears local state and redirects.
+ */
+async function logout() {
+  if (typeof window === "undefined") return;
+  const sessionId = window.localStorage.getItem("adminSessionId");
+  if (sessionId) {
+    await fetch(`${API_BASE}/admin/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    }).catch(() => {});
+  }
+  clearSessionAndRedirectToLogin();
+}
+
 async function request<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -130,4 +148,5 @@ export const adminApi = {
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   download,
+  logout,
 };
