@@ -37,6 +37,22 @@ interface Subscription {
   plan: Plan;
 }
 
+interface WalletTransaction {
+  id: string;
+  type: string;
+  amount: number;
+  currency: string;
+  createdAt: string;
+  label: string;
+}
+interface WalletTransactionPage {
+  items: WalletTransaction[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 /**
  * Module 20 (SRS FR-7.10) - the supplier-facing portal that never existed
  * in apps/web before this module: linked stores, fulfillment queue (per-
@@ -52,6 +68,8 @@ export default function SupplierDashboardPage() {
   const [items, setItems] = useState<OrderItem[] | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [plans, setPlans] = useState<{ supplier: Plan[] } | null>(null);
+  const [transactions, setTransactions] = useState<WalletTransactionPage | null>(null);
+  const [transactionsPage, setTransactionsPage] = useState(1);
 
   function loadAll() {
     api.get<StoreLink[]>("/supplier/store-links").then(setLinks).catch(() => setLinks([]));
@@ -61,6 +79,13 @@ export default function SupplierDashboardPage() {
   }
 
   useEffect(loadAll, []);
+
+  useEffect(() => {
+    api
+      .get<WalletTransactionPage>(`/suppliers/me/wallet/transactions?page=${transactionsPage}&limit=20`)
+      .then(setTransactions)
+      .catch(() => setTransactions(null));
+  }, [transactionsPage]);
 
   function loadItems(storeId?: string) {
     setItemsError(null);
@@ -117,6 +142,54 @@ export default function SupplierDashboardPage() {
           </CardBody>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader title="Wallet transaction history" />
+        <CardBody>
+          {!transactions ? (
+            <p className="py-4 text-sm text-ink-muted">Loading...</p>
+          ) : transactions.items.length === 0 ? (
+            <p className="py-4 text-sm text-ink-muted">No transactions yet.</p>
+          ) : (
+            <>
+              <div className="divide-y divide-border">
+                {transactions.items.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                    <span className="text-ink-muted">{new Date(t.createdAt).toLocaleString()}</span>
+                    <span className="flex-1 px-2 text-ink">{t.label}</span>
+                    <span className={`font-medium tabular-nums ${t.amount < 0 ? "text-danger" : "text-success"}`}>
+                      {t.amount < 0 ? "-" : "+"}Rs. {Math.abs(t.amount).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {transactions.totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={transactions.page <= 1}
+                    onClick={() => setTransactionsPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-ink-muted">
+                    Page {transactions.page} of {transactions.totalPages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={transactions.page >= transactions.totalPages}
+                    onClick={() => setTransactionsPage((p) => Math.min(transactions.totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader title="Connected stores" />
