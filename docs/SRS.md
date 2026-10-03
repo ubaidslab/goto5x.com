@@ -2811,7 +2811,11 @@ permanently, on the mechanisms this SRS actually built since then
   standing price, admin-configurable in one place rather than per plan;
   `firstCyclePrice` goes dormant/unread, same treatment as the already-
   dormant `yearlyDiscountPercent`. Promotional coupon codes remain a
-  separate, admin-controlled mechanism, out of scope here.
+  separate, admin-controlled mechanism, out of scope here. **RETIRED by
+  §5.72/FR-72.6 (v0.62, global launch) — first-month-free/any discounted
+  first cycle is removed entirely; every subscription starts at full
+  price from cycle one. This paragraph's text is preserved as the
+  historical record of what Module 74 built.**
 - FR-7.23 (Module 75): **Feature-gate ladder across GO/RUN/RISE/FLY** —
   store limits, staff accounts, email-campaign quotas, gift cards,
   customer segments, premium-template access, D-Studio/team-leader
@@ -4757,7 +4761,11 @@ system.
   FR-6.18's automated invoice-grace-period suspension, which is a distinct,
   narrowly-scoped billing mechanism, not a T&S escalation.
 
-### 5.30 Seller Identity & Commission-Fraud Defense (new, v0.16)
+### 5.30 Seller Identity & Commission-Fraud Defense (new, v0.16) — FR-30.1
+and the CNIC legs of FR-30.3/30.5/30.6 below RETIRED by §5.71 (v0.62,
+global launch). This section's text is preserved unmodified as the
+historical record of what Module 12 built; §5.71 states exactly what
+is removed and what is kept.
 Direct Seller Collection means the platform bills commission on a seller's
 *self-reported* sales (§5.29's anti-underreporting guard-rails already cover
 under-reporting volume). This section closes the adjacent gap: proving the
@@ -7089,6 +7097,664 @@ Module 94)
   explicitly out of scope here and would be new, separate functionality
   requiring its own amendment, not an extension of this one.
 
+### 5.70 Global Launch & Multi-Currency Display (new, v0.62 — PROPOSED,
+not yet built; founder's Global Launch Mandate, Part 1 items 1 & 3)
+
+UZEYN launches globally, not Pakistan-only. This section covers the
+one structural piece that touches many surfaces at once — currency
+display. The other two Pakistan-specific mechanisms (CNIC verification,
+subscription billing/pricing) each get their own dedicated section
+(§5.71, §5.72) since each is a real design decision in its own right,
+not a display concern.
+
+- FR-70.1: **Multi-currency DISPLAY, not a conversion engine.** Each
+  store operates and displays in exactly one currency, chosen by its
+  seller — no FX conversion logic anywhere, no live rate feed, no
+  "convert to buyer's currency" behavior. `Store.currency` (`String
+  @default("PKR")`, `schema.prisma:540`) already exists and is already
+  the documented single source of truth for this (`docs/
+  database-schema.md:52-65`): every transactional row (`Order`,
+  `Payment`, `LedgerEntry`, `PayoutRequest`, `SellerInvoice`,
+  `WalletTopUpRequest`, `GiftCard`, `VerifiedStoreApplication`,
+  `TemplatePurchaseRequest`) already denormalizes `currency` at
+  creation time from the owning store, never retroactively mutated; the
+  invoice/export PDF templates (`invoice-template.ts`,
+  `subscription-invoice-template.ts`, `finance-summary-template.ts`,
+  `export-summary-template.ts`) already declare `currency: string` and
+  share a `money(amount, currency)` formatter. **This FR is a plumbing
+  and write-path fix, not a schema change** — confirmed by direct
+  investigation, not assumed from the doc's own claim (see FR-70.5).
+- FR-70.2: **A seller can actually set their store's currency — today
+  nothing lets them.** `currency` is absent from `CreateStoreDto`/
+  `UpdateStoreDto` and from `StoresService` entirely. Add it as an
+  optional field (ISO-4217 code, validated against a short allowlist
+  matching whatever currencies UZEYN actually supports at launch — not
+  open free text), surfaced as a `<select>` on the seller Settings page
+  next to the existing "Store branding" card, set once at store creation
+  with an admin-only override path afterward (changing a store's
+  currency after it has live orders is a data-integrity hazard — new
+  orders would use the new currency while historical orders keep their
+  old one, which is correct per FR-70.1's denormalization but needs the
+  settings UI to say so explicitly, not changeable from a seller's own
+  settings page unprompted).
+- FR-70.3: **Display-surface sweep — swap hardcoded "Rs"/"Rs." literals
+  for the real `currency` field already on each object.** Confirmed
+  simple, no backend logic change, just JSX/string-template edits:
+  storefront wishlist price label; every seller-dashboard "Rs "/"Rs."
+  literal (`stores/[storeId]/page.tsx`, `analytics/page.tsx`, `pnl/
+  page.tsx`, `orders/[orderId]/page.tsx`'s P&L breakdown, `products/
+  page.tsx`, `deals/*`, `discounts/page.tsx`, `customer-segments/
+  page.tsx`, `suppliers/page.tsx`, `billing/page.tsx`'s wallet-amount
+  lines — note the *same file* already reads `plan.currency`/
+  `subscription.plan.currency` dynamically elsewhere, proving the
+  correct pattern already exists in this codebase, just applied
+  inconsistently — `growth-programs/page.tsx`, `verification/page.tsx`);
+  admin terminal's dashboard GMV/revenue tiles and `commission-invoices/
+  page.tsx`'s waive-amount message; the public `/pricing` page (5
+  hardcoded instances — the first page a global prospect sees).
+  `customizer/page.tsx`'s JSON-LD structured-data block hardcodes
+  `currency: "PKR"` and needs the same fix for SEO correctness.
+- FR-70.4: **Backend literal-`"PKR"` call sites — a second, smaller
+  sweep, seller/service-scoped rather than store-scoped.** `WalletService`
+  itself already accepts `currency` as a parameter correctly; the
+  hardcoding is entirely at call sites that pass the literal instead of
+  resolving a real currency: `wallet.controller.ts` (5 sites — top-up
+  request, plan-fee preview, plan-fee payment request, supplier top-up,
+  admin manual wallet adjust), `plan-fee-debit.service.ts`,
+  `program-reward.service.ts`, `program-withdrawal.service.ts` (×2),
+  `dstudio-pack.service.ts` (moot once §5.77 removes it),
+  `template-purchase.service.ts`, `verification-application.service.ts`'s
+  module-level `CURRENCY` constant, `admin-seller-overview.service.ts`
+  (feeds the otherwise-correct Seller-360 wallet widget a hardcoded
+  value). **Flagged architectural question, not resolved here, carried
+  to §13:** wallet/billing/invoices are seller-scoped (`docs/
+  database-schema.md`'s explicit "scoped by seller_id, not store_id"),
+  while FR-70.1/70.2's new currency concept is store-scoped — a seller
+  with multiple stores in different currencies has no single
+  well-defined "wallet currency" under today's model. Resolving this is
+  a real decision (e.g. a seller's primary/first store's currency
+  becomes their one billing currency; or UZEYN's own
+  subscription-billing currency is decoupled entirely from storefront
+  display currency, which §5.72's Paddle integration pushes toward
+  anyway since Paddle subscriptions are priced in UZEYN's own catalog
+  currency, not a seller's storefront currency).
+- FR-70.5: **Admin-aggregate reporting (GMV, MRR, platform-wide
+  revenue) is explicitly NOT solved by FR-70.1-70.4 and must not be
+  silently left broken.** `admin/page.tsx`'s GMV tiles and `finance/
+  page.tsx`'s MRR/ARPS figures sum order/revenue amounts *across every
+  seller's store* into one number under one label. Once stores can
+  genuinely carry different currencies, that sum becomes financially
+  meaningless without FX conversion — which this platform has
+  deliberately decided not to build (FR-70.1). This needs an explicit
+  founder decision (carried to §13, not guessed here): either (a) these
+  admin aggregates become per-currency breakdowns instead of one
+  summed figure, or (b) UZEYN defines one fixed "platform reporting
+  currency" and every aggregate explicitly states it's approximate/
+  reported-currency-only once multi-currency stores exist. Do not ship
+  Phase A's currency-display work and leave these admin screens
+  silently wrong in the meantime — at minimum, label them "PKR-only
+  figures, multi-currency stores excluded" until (a) or (b) is decided
+  and built.
+- FR-70.6: **Correction to a stale doc claim, not a new requirement.**
+  `docs/SRS.md`'s own existing text (checklist items referenced during
+  this amendment's research) asserts "no hardcoded PKR" as an
+  already-met bar — that assertion does not match the current codebase
+  per FR-70.3/70.4's findings above. This amendment is also the
+  correction: the bar is genuinely met only once FR-70.3 and FR-70.4
+  both ship.
+
+### 5.71 Identity Verification — CNIC Requirement Retired (new, v0.62 —
+PROPOSED, not yet built; founder's Global Launch Mandate, Part 1 item 2;
+retires FR-30.1, the CNIC leg of FR-30.3/30.5/30.6 from §5.30 in place)
+
+**§5.30's original text stays in the document unmodified as the
+historical record of what Module 12 built — the mechanism it describes
+is retired, not the record of it, same discipline as §5.6i/§5.6k's
+earlier revision.** CNIC (Pakistani national ID) cannot generalize to a
+global seller base, so the requirement is removed entirely — not made
+optional, not region-conditional. **Device/IP fingerprinting is
+explicitly NOT being built as a replacement — the founder's own
+decision, on the grounds that it is not worth the complexity it would
+add.** The resulting fraud-prevention gap is an accepted, deliberate
+tradeoff, not an oversight, mitigated by three things, none of them
+new: (a) the free tier (§5.73) is template/subdomain-only, so it carries
+no paid-tier abuse surface to protect; (b) every referral/challenge
+reward (§5.75) already only ever triggers off a referred seller's real,
+*verified-paid* Paddle subscription transaction (§5.72), never off
+signup alone — unaffected by this section; (c) Paddle's own built-in
+per-transaction fraud scoring and chargeback defense (cited with
+sources in §11's new Paddle subsection) now sits where CNIC-driven risk
+scoring used to. This tradeoff is logged in §12's Risk Register as its
+own entry, not buried here.
+
+- FR-71.1: **FR-30.1 retired — CNIC is no longer collected, required,
+  or checked anywhere.** Remove `SetCnicDto`, `PATCH /sellers/me/cnic`
+  (`sellers.controller.ts`), `SellerIdentityService.setCnic()`/
+  `hasCnic()`, the `cnicEncrypted`/`cnicHash` columns and their unique
+  index (`sellers_cnic_hash_key`) via a new migration, and
+  `cnic.util.ts` wholesale (CNIC-only, safe to delete entirely). Remove
+  the checkout hard-block (`checkout.service.ts`'s `hasCnic()` check)
+  and the store-publish gate's CNIC leg (`WalletGraceLadderService.
+  publish()` — note for whoever does this: the gating logic lives here,
+  not on `StorePublishController` itself, despite what some existing
+  comments/docs say). Remove the CNIC form/trust-messaging copy from
+  the seller Settings page and the "CNIC-backed seller identity checks"
+  bullet from the public `/pricing` page.
+- FR-71.2: **Shared crypto infrastructure is NOT deleted — only CNIC's
+  call sites are.** `identity-crypto.util.ts`'s `encryptIdentityValue`/
+  `decryptIdentityValue` (aliases of the Drive-token AES-256-GCM
+  functions) and its `fingerprintValue()` HMAC helper are also used by
+  FR-30.3's payment-instrument-number fingerprinting, which is
+  unaffected by this section and stays exactly as built. Do not delete
+  `identity-crypto.util.ts`, `IDENTITY_ENCRYPTION_KEY`, or
+  `IDENTITY_FINGERPRINT_HMAC_SECRET` — only CNIC's own call sites into
+  them.
+- FR-71.3: **The three downstream "CNIC as a signal" consumers each
+  need their own edit, not a single schema drop.**
+  `SubscriptionAbuseService`'s Trigger 2 (CNIC-match abuse detection)
+  loses its CNIC leg entirely — and since item 9 (§5.72) also retires
+  the first-cycle discount this abuse check existed to protect, this
+  whole trigger likely becomes dead code, not just CNIC-less; confirm
+  during implementation rather than assuming. `TrustSafetyMonitorsService`'s
+  self-referral detection (FR-33.10) loses its
+  `referrer.cnicHash === referred.cnicHash` comparison leg — its device-
+  fingerprint and payment-instrument-fingerprint legs (unaffected by
+  this section) continue unchanged. `RiskScoreService`'s CNIC-presence
+  risk-score input is removed; the score's other inputs
+  (name-consistency, payment-account reuse) continue unchanged.
+  Historical `SubscriptionAbuseFlag` rows with `matchedSignal = 'cnic'`
+  are **left as-is** — `matchedSignal` is free text with no FK/enum, so
+  there is nothing to clean up, and this project's standing
+  archive-not-delete discipline applies to this historical data exactly
+  as it does everywhere else.
+- FR-71.4: **FR-34.1 (Store Health completeness) and FR-35.1 (Verified
+  Store Program eligibility) both lose their CNIC-presence criterion**
+  — each becomes a 3-input rather than 4-input check; neither section's
+  other criteria change. The Verified Store Program's legal terms
+  document (`docs/legal/verified-store-program-terms.md:19`) names CNIC
+  as a contractual eligibility criterion and needs its own, separate
+  legal-doc amendment — flagged here, not resolved in an engineering
+  spec.
+- FR-71.5: **Ops/legal surface, not just code.** `docs/
+  launch-runbook.md`'s encryption key-rotation runbook names CNIC in its
+  domain table and carries a CNIC-specific breach-response clause
+  (NADRA-identity-data-specific legal language) — both need their own
+  amendment text once this section ships, since "CNIC can never be
+  rotated, only disclosed-and-remediated" stops being a live operational
+  concern once no CNIC is stored going forward (existing historical
+  rows, if any remain at cutover, still need that runbook's guidance
+  until they're deleted per FR-71.1).
+- FR-71.6: **Test removal, mechanical.** Delete `cnic.util.spec.ts`
+  wholesale and the three CNIC-specific `trust-safety.e2e-spec.ts`
+  tests (malformed rejection, encryption/masking, duplicate rejection),
+  plus `module71-subscription-abuse-prevention.e2e-spec.ts`'s Trigger-2
+  test. The ~35 other e2e specs that call `PATCH /sellers/me/cnic` or
+  seed `cnicHash` purely as incidental test setup (to satisfy the
+  now-removed publish/checkout gate) each need that one call deleted —
+  mechanical, not risky, but touches many files; budget real time for
+  it rather than treating it as a side effect of the main removal.
+
+### 5.72 Paddle Subscription Billing — UZEYN's Own Revenue Only (new,
+v0.62 — PROPOSED, not yet built; founder's Global Launch Mandate, Part
+2; retires FR-7.22's first-cycle-discount clause, see note below)
+
+**Scope boundary, stated as plainly as possible because it is the one
+easiest thing to blur: Paddle collects UZEYN's own subscription revenue
+from sellers, globally. Paddle never touches marketplace buyer-to-seller
+payments.** A Pakistani seller keeps using Easypaisa/JazzCash/Raast via
+the existing Payment Gateway Connect adapter architecture (§5.6d)
+exactly as built; a seller elsewhere needs their own region-appropriate
+gateway, which remains a separate, still-regional, explicitly
+unsolved-by-this-section problem. Payment Gateway Connect's adapter
+pattern itself is unchanged by this entire section.
+
+- FR-72.1: **Paddle as merchant of record for the GO/RUN/RISE/FLY
+  subscription fee, replacing the Platform Merchant Connection/Bank
+  Alfalah mechanism for this one purpose only.** Platform Merchant
+  Connection is **not deleted** — per the founder's own phased-rollout
+  instruction, it keeps running for regional marketplace payments
+  (FR-72's scope boundary above) and is only stopped being *used for
+  UZEYN's own subscription collection* once Paddle is proven live
+  end-to-end (a real test subscription, a real webhook received and
+  verified, real tax-inclusive pricing behavior confirmed) — the old
+  path runs in parallel, untouched, until that proof exists.
+- FR-72.2: **Tax-inclusive flat pricing — confirmed feasible, not
+  assumed.** Paddle Billing's account-level "Include VAT in the price"
+  checkout setting (Paddle dashboard → Checkout → Sales tax settings)
+  makes the listed price exactly what the customer pays, with VAT/GST
+  and Paddle's own fee both coming out of that price rather than being
+  added on top — per-`Price` override available via the API's
+  `tax_mode: "internal"` field if a non-default behavior is ever needed
+  for one specific plan. (Source:
+  https://www.paddle.com/help/sell/tax/do-you-support-tax-inclusiveexclusive-pricing,
+  https://developer.paddle.com/api-reference/prices/create-price —
+  full citations in §11's new Paddle subsection.) **Set the account-wide
+  default to inclusive before creating any catalog price.**
+- FR-72.3: **Flat global $ pricing, not auto-localized.** A Paddle
+  `Price` is one `unit_price` + currency; Paddle's optional
+  local-currency auto-conversion and per-country override prices are
+  both opt-in features — **do not enable either** (`offer-localized-
+  pricing`, country-specific price overrides), so every subscriber
+  worldwide is charged the identical base $ amount, matching the
+  founder's "exactly $25" requirement literally. Country coverage:
+  Paddle supports 200+ countries/territories as merchant of record, but
+  maintains an explicit sanctions-based unsupported-country list for
+  **both** buyer location and the seller's (UZEYN's) own domicile —
+  check UZEYN's own registration country against this list before
+  signing (full list in §11).
+- FR-72.4: **Subscription lifecycle via webhook, reliably confirmed.**
+  A completed Paddle `transaction` auto-creates the `subscription`,
+  firing `transaction.completed` then `subscription.created`/
+  `activated` — authenticated via an HMAC-SHA256 `Paddle-Signature`
+  header, with automatic retried delivery (up to 60 attempts over 60
+  days) on any non-2xx response, so a transient outage on UZEYN's side
+  does not silently lose a payment confirmation. This is the signal
+  `AdminSystemStatusService`/`GatewayHealthService`-style health
+  monitoring should watch, mirroring the existing Module 67 pattern for
+  the regional gateways rather than inventing a new monitoring shape.
+- FR-72.5: **Proposed tier pricing ladder — OPEN for founder's final
+  sign-off, not finalized here.** Redenominating the existing GO/RUN/
+  RISE/FLY progression (PKR 6,499 / 14,999 / 43,999 / 73,999, roughly
+  2.3x / 2.9x / 1.7x step multiples) into clean, standard SaaS price
+  points at the founder's stated GO ($20-25) and RUN (~$45) anchors:
+  **GO $24/mo · RUN $45/mo · RISE $99/mo · FLY $199/mo.** This keeps
+  comparable step proportions to the existing ladder (RUN/GO ≈1.9x,
+  RISE/RUN ≈2.2x, FLY/RISE = 2x) while landing on prices a buyer
+  actually expects to see ($99/$199, not $103.42/$187.98). **Carried
+  to §13 as an open question — this is a proposal, not a number this
+  document can authorize on its own.**
+- FR-72.6: **FR-7.22's `billing.first_cycle_discount_percent` mechanism
+  is retired — first-month-free (and every discounted first cycle) is
+  removed entirely.** Every subscription, on every tier, starts at full
+  price from cycle one; there is no discounted/free first cycle left
+  anywhere. `SubscriptionAbuseService`'s abuse-detection machinery that
+  existed specifically to guard the free-first-cycle (Trigger
+  2/CNIC-match, Trigger-1-style device/payment-reuse checks scoped to
+  "first cycle only") is removed as part of the same change, since
+  there is no longer a free-first-cycle incentive left to abuse — **but
+  the referral-attribution non-refundable-payment rule, FR-6.50, is
+  explicitly NOT touched by this retirement** and stays exactly as
+  built: a referred seller's payments remain excluded from the standing
+  50% refund policy (FR-6.49), since paid renewals can still be
+  refunded under that policy and the non-refund carve-out for referred
+  sellers remains just as relevant under full-price-from-cycle-one as
+  it was under a discounted first cycle.
+- FR-72.7: **Phase-B self-gate, restated from the founder's own
+  sequencing instruction so it isn't lost in implementation:** build
+  and fully verify Paddle subscription collection end-to-end — a real
+  test subscription, a real received-and-verified webhook, confirmed
+  tax-inclusive total behavior — strictly BEFORE FR-72.6's first-cycle
+  removal or any change to the live Platform Merchant Connection path
+  used for UZEYN's own billing. This is a technical proof gate, not a
+  human check-in, but it is a hard gate regardless.
+
+### 5.73 Free Template Tier — Permanent, Editable-Template/Subdomain
+(new, v0.62 — PROPOSED, not yet built; founder's Global Launch Mandate,
+Part 3; replaces the retired first-month-free as this platform's entry
+offer)
+
+- FR-73.1: **A genuinely permanent free tier, not a trial.** No time
+  limit, no "convert before day N" pressure, no countdown — by the
+  founder's own explicit reasoning, a time-pressured free tier is
+  exactly what would create an abuse incentive, and removing the time
+  pressure removes the incentive. A seller can stay on this tier
+  indefinitely.
+- FR-73.2: **Modeled as its own `planGroup`, not a renumbered GO.**
+  Rather than inserting a new `tierOrder` below GO=0 (which would force
+  renumbering every existing `tierOrder >= N` gate check across the
+  codebase — a large, unnecessary blast radius for a feature that is
+  deliberately *not* part of the GO/RUN/RISE/FLY progression), this
+  reuses the exact precedent `plans.seed.ts` already establishes for
+  Team and Supplier plans: a wholly separate `planGroup` (proposed:
+  `"starter_free"`) with its own single tier, coexisting alongside
+  `"individual"`'s GO-through-FLY ladder rather than extending it.
+  Every existing `tierOrder` comparison against the individual ladder
+  is completely unaffected — a free-tier seller simply never resolves
+  to an `"individual"` plan at all.
+- FR-73.3: **Proposed feature ceiling — OPEN for founder confirmation,
+  not finalized here**, sized deliberately below GO's existing limits
+  so GO remains the obvious first upgrade, not a wash:
+  - 10 products (GO's existing ceiling is 100).
+  - Subdomain only (`<store>.uzeyn.com`), reusing the existing
+    multi-tenant subdomain-routing infrastructure (`domains.
+    platform_root_domain`) already built — no custom-domain connection.
+  - A simpler, curated page editor — a small fixed set of sections
+    (hero, about, product grid, contact) from the existing D-Studio
+    section catalog, with **zero** of the GO-and-above animation
+    presets/premium sections/coded mode — deliberately closer to a
+    Carrd/Netlify-style static page than the full D-Studio builder,
+    per the founder's own description. This reuses the existing
+    section-catalog/theme-engine architecture restricted to a subset,
+    not a second, parallel page-building system.
+  - Order verification: email OTP only (no WhatsApp channel, no
+    prepaid-advance option) — consistent with "free tier carries no
+    paid-tier abuse surface" being one of the three accepted mitigants
+    for §5.71's CNIC removal; a free-tier store should have the
+    thinnest possible fraud surface by construction.
+  - No order-verification channel upsell messaging needed on this
+    tier specifically, since every paid tier already shows the
+    standard `UpgradeLockedCard` pattern for RUN+-gated channels.
+
+### 5.74 Dual Branding & Tier-Differentiated Removability (new, v0.62 —
+PROPOSED, not yet built; founder's Global Launch Mandate, Part 4;
+narrows the existing storefront-mark removability mechanism —
+`BrandingService`, `themes.seed.ts`'s `branding.powered_by_removable`/
+`branding.powered_by_hidden` settings pair)
+
+- FR-74.1: **A new branded loading state — net-new scope, confirmed
+  nothing like it exists today.** Neither `Spinner`/`PageSpinner` nor
+  `Skeleton` (the only two loading primitives in the codebase) has any
+  branding slot; no Next.js `loading.tsx` exists anywhere in the app.
+  Build a new loading component showing the seller's own logo alongside
+  UZEYN's own mark/wordmark (e.g. "[Seller logo] — managed by UZEYN"
+  styling), reusing the existing `Reveal`/GSAP motion conventions for
+  entrance, not a new animation system.
+- FR-74.2: **"Animated seller logo" — propose the lowest-lift option,
+  since true logo animation has zero existing support.** `MediaType` is
+  only `{ image, video }` — no Lottie/GIF concept exists, and the only
+  animation library present (GSAP) has never been wired to a logo
+  render. Building real Lottie/video-logo support is new infrastructure
+  this section does not require. **Proposed approach:** animate the
+  *existing* static `logoUrl` client-side via the already-present GSAP
+  `AnimatedElement` pattern (a reveal/scale/pulse tween on the loading
+  screen's mount) — satisfies "animated" without new media-pipeline
+  scope, and is the option explicitly flagged as lowest-risk during
+  this section's own research pass.
+- FR-74.3: **Loading-screen branding: removable on FLY only — narrower
+  than today's grant, carried to §13 as an open question.** Today's
+  `branding.powered_by_removable` Settings Registry eligibility
+  (`themes.seed.ts`) grants removability to individual FLY **and**
+  Team Growth/Team Scale (excluding Team Starter). This section's rule
+  only names FLY. **Open question, not resolved here:** does the new
+  loading-screen-specific removability also extend to Team Growth/
+  Scale, or is this deliberately an individual-FLY-only exception? Do
+  not assume either answer during implementation — ask.
+- FR-74.4: **Invoices: UZEYN branding, permanently non-removable on
+  every tier including FLY — codifying existing behavior, not changing
+  it.** `invoice-template.ts`'s platform-footer line is already
+  unconditional today (no settings check, no tier branch at all) — this
+  FR's only actual requirement is that it **stay** that way permanently;
+  explicitly document this as an invariant so a future change never
+  wires `branding.powered_by_removable`/`_hidden` into this template by
+  well-intentioned "consistency" with the storefront.
+- FR-74.5: **Buyer-facing order-review/checkout: UZEYN branding,
+  permanently non-removable on every tier including FLY — a real
+  behavior change from today, not a codification.** The relevant pages
+  are the storefront **cart** page and the **checkout** page (both
+  pre-purchase, where selected products are listed before the buyer
+  pays) — confirmed by direct inspection, not the order-confirmation/
+  status pages, which render only after the order already exists.
+  Today, both pages read the exact same site-wide `poweredByVisible`
+  flag as every other storefront page, so a FLY seller who hides the
+  mark today *also* loses it on cart/checkout. This FR requires these
+  two routes specifically to ignore the stored seller preference and
+  always render the mark, regardless of tier — implemented as a special
+  case in `SiteFooter`'s two call sites in `cart/page.tsx` and
+  `checkout/page.tsx` (`poweredByVisible={true}`, hardcoded, not
+  threaded from `store.poweredByVisible`), leaving every other
+  storefront page's behavior (product pages, order-confirmation,
+  order-status) completely unchanged.
+- FR-74.6: **Seller-facing dashboard color personalization (Module
+  10/FR-28.4) and the platform's own monochrome default are both
+  unaffected by this section** — this is purely about the storefront-
+  facing "Managed by UZEYN" mark and the new loading screen, never
+  about dashboard chrome color, which CLAUDE.md's binding monochrome
+  design direction already governs separately.
+
+### 5.75 Growth Programs — Flat $1 Referral Commission & the "Growth
+Challenge" Program (new, v0.62 — PROPOSED, not yet built; founder's
+Global Launch Mandate, Part 5; amends FR-33.5/FR-33.6's commission
+amounts, adds a 4th `ReferralProgramType`)
+
+- FR-75.1: **Referral commission becomes a flat $1 per qualifying
+  event, replacing the existing PKR-denominated amounts, on both of the
+  programs that pay a flat amount today.** Student Referral's Rs 345/
+  renewal (up to 2 renewal cycles, FR-33.5) and Ambassador's Rs 499/
+  referred-store/renewed-month (up to 3 months, FR-33.6) both become
+  $1, unchanged otherwise (same renewal-only gating, same cycle/month
+  caps, same admin-approval requirement to join). **Open question,
+  carried to §13, not guessed here:** the founder's instruction named
+  "the referral-commission amount" generically; this FR applies the
+  change to both existing flat-amount programs on the reasoning that
+  neither was singled out, but that reading needs explicit confirmation
+  before implementation. Creator's reward (a percent of plan-fee
+  amount, never a flat figure) was never denominated in PKR as a flat
+  sum and is **unaffected** by this FR — there is nothing to convert.
+  Mechanically this is a Settings Registry value change
+  (`growth.student_referral_flat_commission_pkr`,
+  `growth.ambassador_flat_commission_per_month_pkr` — both
+  admin-editable, confirmed not hardcoded), plus a currency-unit rename
+  of each key and its description string, not new accrual logic — the
+  accrual trigger (`ProgramCommissionService`, gated on a real
+  admin-verified plan-fee payment via `WalletController.verifyOne()`,
+  `planFeePortion !== null`, `isRenewal === true`) is unchanged.
+- FR-75.2: **"Growth Challenge" — new name proposed, founder open to a
+  better one.** A fourth `ReferralProgramType` enum value
+  (`growth_challenge`), standalone and never stacked on top of FR-75.1's
+  base commission — a referral counted toward this challenge uses its
+  own dedicated attribution channel, never double-counted against the
+  existing per-referral commission mechanism.
+- FR-75.3: **Enrollment reuses the existing apply → admin-approval →
+  active state machine verbatim** (`ProgramApplicationService`'s
+  pending/approved/rejected/suspended/terminated shape,
+  `SellerProgramApplicationController`/`AdminProgramApplicationController`'s
+  existing routes) — parameterized by the new enum value, same
+  seller-facing apply form and admin queue pattern as Ambassador/
+  Student Referral, not a new flow.
+- FR-75.4: **Qualifying referral = a real, verified Paddle subscription
+  purchase by the referred seller — never signup alone**, same
+  anti-abuse principle as every other program and consistent with
+  §5.71's CNIC-removal mitigant #2. **Architectural correction, surfaced
+  here explicitly rather than assumed away:** because `ReferralAttribution.
+  referredSellerId` is globally unique (one referred seller attributes
+  to exactly one program, ever, platform-wide), Growth Challenge cannot
+  reuse that table as-is without blocking a referred seller who is
+  already attributed to an existing program from ever counting toward a
+  Growth Challenge referral too. This FR requires a **new, parallel
+  attribution table** (e.g. `GrowthChallengeReferral`, unique on
+  `(challengeParticipantId, referredSellerId)`), written by a new
+  service modeled on `ReferralAttributionService` but never touching
+  `referral_attributions` — keeping the challenge's referral count
+  fully independent of the existing programs' attribution exclusivity,
+  with no shared mutable state to double-count against.
+- FR-75.5: **State machine, exact milestones, per the founder's own
+  spec, written out explicitly rather than left implicit:**
+  `enrolled` (approved, challenge-cycle clock not yet started) →
+  `counting` (cycle started, both milestone windows running in parallel
+  from the same enrollment/cycle-start date, not sequential) →
+  independently reachable `milestone_1_unlocked` (≥20 qualifying
+  referrals within 30 days of cycle start) and `milestone_2_unlocked`
+  (≥35 qualifying referrals within 60 days of the same start date) →
+  independently reachable `milestone_1_claimed`/`milestone_2_claimed`
+  (claiming one never forfeits or auto-claims the other) → `expired`
+  for whichever milestone's window closes without being reached.
+  Reaching a milestone does not auto-claim it — the reward sits
+  claimable, seller-initiated, until claimed or the *other* milestone's
+  own window also closes (there is no overall "challenge expired" state
+  that revokes an already-unlocked-but-unclaimed milestone — only each
+  milestone's own window gates whether it can still be *reached*, never
+  whether an already-unlocked one can still be *claimed*).
+- FR-75.6: **Re-enrollment after an expired cycle — a real schema
+  decision, flagged rather than silently resolved.** `ProgramParticipant`'s
+  `@@unique([sellerId, programType])` constraint means a seller can
+  never create a second `ProgramParticipant` row for the same program
+  once one exists, regardless of status — this would block the
+  founder's requested "re-attempt a new challenge cycle" if Growth
+  Challenge modeled each cycle as its own enrollment row. **Proposed
+  resolution:** one `ProgramParticipant` row per seller (created once,
+  at first approval, exactly like every other program), with a
+  **separate** `GrowthChallengeCycle` table tracking each attempt's own
+  `startedAt`, running counts, and milestone states — a new cycle row
+  is created (not a new enrollment) when a seller chooses to re-attempt
+  after a prior cycle's both windows have closed with at least one
+  milestone unreached. This needs founder sign-off before building,
+  carried to §13.
+- FR-75.7: **Claiming applies a free-cycle credit to the seller's next
+  subscription renewal — reusing the generic settings-override
+  primitive, with new wiring this document states plainly rather than
+  assuming exists.** `SettingsService.setValue(key, "seller", sellerId,
+  value, adminUserId, expiresAt)` is genuine, reusable infrastructure.
+  **Important correction surfaced during this amendment's research:**
+  contrary to the founder's framing that this is "the exact same
+  mechanism already built for D-Studio Pack grants," the D-Studio Pack
+  grant only ever unlocks *feature/tier access* (`dstudio.
+  tier_override_order`) — it is never read by `WalletService.
+  getPlanFeePaymentPreview()`/`requestPlanFeePayment()`, which compute
+  `amountDue` purely from plan price × interval, with no seller-scoped
+  override check at all (confirmed by direct inspection, not assumed).
+  Claiming a Growth Challenge reward therefore requires **new** billing
+  wiring: a new seller-scoped settings key (e.g. `billing.
+  free_cycle_credit_remaining`, time-limited via the same `expiresAt`
+  parameter) written at claim time, read inside
+  `getPlanFeePaymentPreview()`/`requestPlanFeePayment()` to zero
+  `amountDue` for exactly one cycle and then consume the grant. This is
+  new, real billing-logic work, not a drop-in reuse — stated here so it
+  is budgeted as such.
+- FR-75.8: **Admin visibility, mirroring the existing queue pattern.** A
+  new admin page under Growth Programs (structure copied from
+  `admin/growth-programs/applications/page.tsx` — `DashCard`/`Reveal`/
+  `Badge`/`useConfirm()` composition) lists active Growth Challenge
+  participants with live progress against both milestone windows,
+  backed by a new admin controller mirroring
+  `AdminProgramApplicationController`'s shape.
+
+### 5.76 Order Verification — Post-Payment Buyer Acknowledgment (new,
+v0.62 — PROPOSED, not yet built; founder's Global Launch Mandate, Part
+6; adds a new step alongside the existing pre-payment `OrderVerification`
+model, does not replace it)
+
+- FR-76.1: **Default verification posture shifts to a post-payment
+  buyer acknowledgment, global-first.** After a **prepaid** order's
+  payment is confirmed (`order.paymentModel === "prepaid"` — the
+  snapshot column already set at order placement, same discipline as
+  `OrderVerification.channel`), the buyer receives an OTP-based
+  confirmation step explicitly acknowledging "I placed this order and
+  will receive it," alongside admin-editable terms/rules-acknowledgment
+  text. **Open question, carried to §13:** whether orders using the
+  "advance" payment model or the `prepaid_partial_advance` verification
+  channel (both of which also reach `OrdersService.markAsPaid()`
+  through the identical funnel) should count as "prepaid" for this
+  purpose — both are plausible, and the decision changes who sees this
+  step.
+- FR-76.2: **This is architecturally a new, separate record — not
+  threaded through the existing `OrderVerification` model.**
+  `OrderVerification` is a pre-payment, one-row-per-order,
+  snapshot-at-placement-time gate, built and tested around the
+  invariant "verification happens *before* `markAsPaid()` runs" —
+  incompatible with "runs *after* payment, only for a subset of
+  orders." Hook this new step in directly inside/immediately after
+  `OrdersService.markAsPaid()`'s existing status-flip transaction (the
+  same call site `markAsPaid()` already uses for its own audit
+  logging), reusing `otp.util.ts`'s generation/hashing mechanics and
+  the existing `VerificationChannelAdapter` interface for send
+  mechanics only, in a new table of its own.
+- FR-76.3: **Default channel: email OTP — sequencing dependency flagged
+  explicitly, not glossed over.** Today's *practical* default channel
+  is WhatsApp, purely because it needs zero seller setup; a true
+  zero-setup, platform-sent email channel (SRS §5.43/FR-43.1-43.5,
+  "Built-in Email Verification Service") is specced but **confirmed not
+  yet built**. Defaulting this new post-payment step to email OTP
+  before that platform-wide capability ships would brick the step for
+  any seller with no SMTP sender connected (today's
+  `assertChannelReady()` hard-requires one for `email_otp`). **This
+  section must sequence after, or alongside, §5.43's build** — do not
+  ship a global email-OTP default against today's SMTP-dependent email
+  adapter and call it done. WhatsApp remains available as an explicit,
+  seller-chosen regional channel, never removed, no longer the default.
+- FR-76.4: **Admin-editable global terms text — a new settings key,
+  deliberately differently-scoped from the existing seller-editable OTP
+  template.** The existing `orders.verification_message_template`
+  (seller-editable, store+global scope) is the wrong home for this —
+  the new terms/acknowledgment copy is global-only, admin-controlled,
+  never seller-editable, written through a new admin-only controller
+  (mirroring the existing admin settings controller, not the seller
+  verification-settings one) and reusing the Module 92/A6 lockable-
+  settings-value mechanism so it can be locked against accidental
+  future seller-scoping.
+- FR-76.5: **Permanent record, reusing the two existing append-only
+  logs rather than a third mechanism.** Write both a new
+  `OrderTimelineEvent` type (e.g. `"buyer_acknowledgment_confirmed"`,
+  visible on the order's own timeline, same precedent as
+  `markAsPaid()`'s own `"status_changed"` event) and a new
+  `PlatformEvent` type via `EventsService.emit()` (genuinely DB-enforced
+  immutable via the established per-table `REVOKE UPDATE, DELETE`
+  migration pattern) — the timestamped record a chargeback/dispute
+  claim would need. If richer structured fields are ever needed than
+  `PlatformEvent.metadata: Json` comfortably holds, give a new dedicated
+  table the same one-line `REVOKE` treatment the Module 26/47 migrations
+  already used — reusing the *mechanism*, not inventing a fourth one.
+- FR-76.6: **The existing prepaid-advance and COD payment-model paths
+  are unchanged.** This section adds an acknowledgment layer on top of
+  a prepaid order's confirmed payment; it is not a fourth payment-model
+  option and does not touch `payments/page.tsx`'s existing three-option
+  Payment Model card.
+
+### 5.77 D-Studio Pack — Retired (new, v0.62 — PROPOSED, not yet built;
+founder's Global Launch Mandate, Part 7; retires Module 100/FR-8.21 in
+place)
+
+**FR-8.21's original text stays in the document unmodified as the
+historical record of what Module 100 built — the mechanism is retired,
+not the record of it, same discipline as §5.30/§5.6i's earlier
+revisions.** The GO/RUN/RISE/FLY tier ladder for D-Studio sections/
+animation presets is **completely unaffected** — that is the seller's
+free, tier-based D-Studio access, orthogonal to the Pack. The Template
+Marketplace (whole premium themes, individually purchasable —
+"Premium Motion Templates") is **confirmed, by direct inspection, to
+be a genuinely separate model/service with zero shared code or table**
+with the Pack (`Theme.tier = marketplace` + `TemplatePurchaseRequest` +
+permanent `TemplateEntitlement` grants, vs. the Pack's
+`DstudioPackPurchase` + time-limited settings override) — it remains
+the sole paid-design-content path, unchanged by this section.
+
+- FR-77.1: **Remove the purchase mechanism wholesale:**
+  `DstudioPackService`, `DstudioPackController`,
+  `AdminDstudioPackController`, the admin UI page
+  (`admin/dstudio-pack-purchases/page.tsx`) and its nav entry, the
+  `dstudio_pack_purchases` table and its RLS policy (new migration,
+  additive-safe since nothing else reads this table — confirmed, see
+  §11's dependency map), `dstudio.pack_price`/
+  `dstudio.pack_duration_days` Settings Registry seeds,
+  `module100-dstudio-pack.e2e-spec.ts` wholesale, and the two
+  Pack-specific tests inside `platform-gateway.e2e-spec.ts`
+  (confirmed exact lines during implementation, not re-derived here).
+  `theme-engine.module.ts` needs a surgical edit (remove the Pack
+  controllers/service registration) — the module itself is not
+  deleted, since `ThemesService`/`StoreThemeSettingsService`/
+  `TemplatePurchaseService` all stay registered in it.
+- FR-77.2: **Excise the inline Pack UI from `d-studio/page.tsx` without
+  disturbing the surrounding tier-gating logic in the same file** —
+  the Pack-related state, the "Get Pack" upsell CTA, and the purchase
+  modal are all embedded inline in this one large component alongside
+  the GO/RUN/RISE/FLY `notifyLocked()` tier-lock logic, which stays
+  completely unchanged.
+- FR-77.3: **Critical shared-infrastructure warning, stated loudly
+  because it is the single biggest risk in this removal:**
+  `dstudio.tier_override_order` (the settings key the Pack writes to)
+  and `StoreThemeSettingsService.getEffectiveTierOrder()` (the one
+  resolver that reads it) are **shared** with a separate, founder-
+  requested, payment-free manual admin override already built on the
+  Seller-360 page (`admin/sellers/[sellerId]/page.tsx`'s "grant/revoke
+  D-Studio access" action, which PUTs the identical key through the
+  generic Settings Registry endpoint). **Removing the Pack means
+  removing only its WRITER of this key — the key itself, its resolver,
+  and the manual-grant feature all stay fully intact and untouched.**
+- FR-77.4: **Pre-removal gate — a technical proof, run before dropping
+  the table, not a judgment call.** Before this migration ships, run
+  both: `SELECT seller_id, status, verified_at FROM
+  dstudio_pack_purchases WHERE status = 'verified';` (purchase
+  history) intersected with `SELECT scope_id, value, expires_at FROM
+  settings_values WHERE definition_key = 'dstudio.tier_override_order'
+  AND scope_type = 'seller' AND (expires_at IS NULL OR expires_at >
+  now());` (live overrides — filtered explicitly on `expires_at` since
+  expired rows are deleted lazily on next read, not swept, so row
+  absence alone doesn't prove "never had one"). The intersection
+  identifies any seller with a currently-active, Pack-originated grant.
+  **If any exist, let that grant run out naturally at its existing
+  `expiresAt` rather than cutting live access early** — consistent
+  with this platform's standing discipline of never silently revoking
+  something a seller already paid for.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -7316,6 +7982,32 @@ mode's eventual reactivation.
 | **Direct JazzCash / Easypaisa merchant APIs** | Deferred to Phase 1.x/2. Requires a direct merchant agreement with the telco/bank (registered company, settlement account), lower-level integration — better economics at volume, not the fastest Phase 1 path. |
 | **Stripe (via foreign entity)** | Deferred to Phase 4. Stripe does not onboard Pakistani entities directly; would require a foreign entity — relevant only once the platform serves international buyers. |
 
+### 11.1 Paddle — UZEYN's Own Subscription Billing (new, v0.62, §5.72)
+
+Researched specifically for §5.72's global-launch pivot — collecting
+UZEYN's own GO/RUN/RISE/FLY subscription fee from sellers worldwide,
+never marketplace buyer-to-seller payments (§5.72's scope boundary).
+Every claim below is sourced directly from Paddle's own current
+documentation, not general knowledge, since fee/feature details change
+over time.
+
+| Question | Finding | Source |
+|---|---|---|
+| Tax-inclusive flat pricing? | Yes — account-level "Include VAT in the price" checkout setting, or a per-`Price` `tax_mode: "internal"` override; the listed price is exactly what the customer pays. | paddle.com/help/sell/tax/do-you-support-tax-inclusiveexclusive-pricing; developer.paddle.com/api-reference/prices/create-price |
+| Flat global $ pricing (no per-country variation)? | Yes, and it's the default — local-currency conversion and country price overrides are both opt-in features; leaving them off charges every subscriber the identical base amount. | developer.paddle.com/build/products/offer-localized-pricing |
+| Reliable payment-confirmation signal? | Yes — `transaction.completed` → `subscription.created`/`activated` webhooks, HMAC-SHA256 `Paddle-Signature`-authenticated, retried up to 60 times over 60 days on non-2xx. | developer.paddle.com/webhooks/about; developer.paddle.com/webhooks/subscriptions/subscription-created |
+| Country coverage? | 200+ countries/territories as merchant of record, but an explicit sanctions-based unsupported list applies to **both** buyer location and the seller's (UZEYN's) own domicile — check before signing. | paddle.com/help/legal/sanctions/which-countries-are-supported-by-paddle |
+| Fees? | Published flat rate: 5% + $0.50/transaction, inclusive of processing, tax remittance, fraud protection, and chargeback handling; sub-~$10 products and high-volume accounts move to negotiated pricing. An FX margin applies separately when a payer's currency differs from UZEYN's chosen settlement currency. | paddle.com/pricing |
+| Built-in fraud detection? (cited in §5.71 as a CNIC-removal mitigant) | Yes — every transaction gets a fraud score (card-reuse/identity signals), auto-rejection above a threshold, plus bundled chargeback defense/dispute representation. | paddle.com/help/manage/risk-prevention/how-does-paddle-prevent-fraud; paddle.com/billing/fraud-protection |
+
+**Caveat, stated plainly:** direct `WebFetch`/`curl` access to paddle.com
+was blocked by this environment's own egress policy during this
+research pass — every finding above came from the `WebSearch` tool's
+live retrieval of Paddle's own pages, cross-checked across independent
+queries, not from memory. Click through the primary URLs directly
+before signing anything, per standard practice for a real financial/
+legal commitment.
+
 ---
 
 ## 12. Risk Register (ranked)
@@ -7351,6 +8043,10 @@ mode's eventual reactivation.
 | 27 | **Cost-Savings Calculator going stale (new, v0.31)** — Shopify's own pricing/fees change over time; if the admin-editable comparison figures (FR-45.2) aren't periodically reviewed, the calculator could quietly understate/overstate real savings while still looking authoritative | Figures are Settings Registry data specifically so a correction is a data update, not a deploy (FR-45.2), and the "estimate" disclaimer (FR-45.3) sets buyer/seller expectations correctly even if a figure drifts — but this is a genuine ongoing-maintenance risk, not one the architecture alone can fully close; flagged here so it gets a periodic admin review cadence rather than being treated as solved |
 | 28 | **Badge threshold flapping (new, v0.31)** — a store hovering exactly at a §5.46 badge threshold could rapidly gain/lose that badge across successive recomputes, looking unstable to buyers rather than genuinely earning/losing trust status | Accepted v1.0 limitation, documented rather than silently present: badges recompute on the same cadence as Store Health Score (§5.34), no faster; a future hysteresis band (e.g. require crossing by a margin, or holding for N consecutive recomputes, before flipping) is a roadmap note, not built in v1.0 |
 | 29 | **Pinned `next@14.2.35` carries two unpatched critical CVEs (2026-09-16, updated 2026-09-16)** — GHSA-p293-qw3h-jr36 (Windows-hosted RCE) and GHSA-2xp9-vwfh-vxw4 (AVIF Image-Optimization-API RCE) are both fixed only in `next@>=15.5.24`. Investigated same-day (`docs/security-audit-report.md` §5): neither is currently exploitable given this deployment's actual configuration - no Windows deployment path exists anywhere (`node:20-alpine` everywhere), and AVIF is now **explicitly** disabled (`apps/web/next.config.js`'s `images.formats: ["image/webp"]`, no longer relying on Next's own default) while the only two `next/image` call sites in the whole app feed it exclusively hardcoded local marketing screenshots, never user/seller-controllable content. CI's `pnpm audit --audit-level=critical` initially failed on every push as a result; `scripts/dependency-audit.sh` (wired in as the root `audit` script) now applies a narrowly-scoped, fully-commented `pnpm audit --ignore <GHSA-id>` exception for exactly these two advisories - the real mechanism this repo's pinned pnpm version (10.33.0) supports (the `pnpm.auditConfig.ignoreCves` package.json field was tried first and confirmed not respected by this version). `dependency-audit` is green again as of this update, on the basis of a documented, auditable, narrowly-scoped exception - not a blanket suppression | Not fixed by a config tweak - the real fix is the Next.js 14→15 major-version upgrade itself, deliberately NOT rushed into the middle of an urgent bug-fix pass: it requires React 19 and a full regression pass across every one of this app's 100+ pages (App Router behavior changes, GSAP/shadcn compatibility). Tracked here as its own dedicated future task with a clear reasoning trail rather than silently deferred or suppressed in CI. `scripts/dependency-audit.sh`'s own `TODO(next-15-upgrade)` comment, and this Risk Register entry, must both be revisited (the exception almost certainly deleted outright) the moment that upgrade lands |
+| 30 | **CNIC verification removed with no device/IP-fingerprint replacement (new, v0.62, §5.71) — an explicit, accepted tradeoff, not an oversight.** Removing CNIC removes the platform's strongest existing fraud/duplicate-account/self-referral signal, and the founder explicitly decided not to build device/IP fingerprinting as a replacement (not worth the added complexity). The resulting gap is real: a banned seller, a self-referring fraudster, or a subscription-abuse actor can no longer be caught by the identity/device signals FR-30.1/FR-30.5/FR-33.10 relied on. | Three mitigants, all already-existing mechanisms, not new ones built to compensate: (a) the free tier (§5.73) is template/subdomain-only, carrying no paid-tier abuse surface worth protecting; (b) every referral/Growth-Challenge reward (§5.75) triggers only off a referred seller's real, verified-paid Paddle transaction, never signup alone — unaffected by CNIC's removal; (c) Paddle's own per-transaction fraud scoring and chargeback defense (§11.1) now sits where CNIC-driven risk scoring used to. Residual risk (duplicate free-tier signups, since the free tier has no payment event to screen against at all) is accepted, not mitigated — flagged here explicitly rather than silently absorbed. |
+| 31 | **Paddle as a single, external, foreign dependency for 100% of UZEYN's own subscription revenue (new, v0.62, §5.72)** — an account suspension, policy change, fee increase, or service outage on Paddle's side could stop UZEYN from collecting any subscription revenue at all, with no fallback billing path live by construction (Platform Merchant Connection is kept running in parallel per FR-72.1/72.7, but only until Paddle is proven, not as a permanent dual-path). | Phase-B's own proof gate (FR-72.7) keeps the old path alive and untouched until Paddle is independently verified end-to-end; beyond that, this is accepted platform-vendor-concentration risk inherent to choosing a merchant-of-record model at all — the alternative (direct card processing, VAT/GST registration in every launch country) is explicitly the complexity Paddle exists to avoid. No further mitigation is specified here; flagged for founder awareness of the tradeoff being made. |
+| 32 | **Admin-aggregate revenue reporting (GMV/MRR) becomes misleading once multi-currency stores exist (new, v0.62, §5.70/FR-70.5)** — summing order/revenue amounts across stores in different currencies into one labeled number is financially meaningless without FX conversion, which this platform has deliberately chosen not to build. | Not yet resolved — FR-70.5 requires an explicit founder decision (per-currency breakdown vs. one fixed platform-reporting currency) before Phase A's currency-display work ships; until decided, admin aggregate screens must be labeled as PKR-only/approximate rather than silently presented as platform-wide truth. |
+| 33 | **Growth Challenge's claimed-reward billing wiring is new, untested financial logic (new, v0.62, §5.75/FR-75.7)** — a bug in the new seller-scoped free-cycle-credit resolver inside `getPlanFeePaymentPreview()`/`requestPlanFeePayment()` could zero out a cycle's charge incorrectly (either granting an unearned free month, or failing to honor an earned one), directly affecting real subscription revenue. | Build this behind the same append-only, audit-logged discipline every other billing mutation in this codebase already uses (every grant/claim audit-logged, same `AuditLogService` coverage pattern); test the zero-amount-due path explicitly in e2e coverage before this ships, the same release-gating discipline FR-6.x's existing billing logic already requires. |
 
 ---
 
@@ -7393,6 +8089,53 @@ mode's eventual reactivation.
    product's own business logic — uzeyn.com only needs the hook to exist, not an
    opinion on the Template Store's monetization model. Flagged explicitly per the
    founder's request rather than silently assumed.
+9. **Exact RUN/RISE/FLY dollar pricing (new, v0.62, §5.72/FR-72.5)** — GO
+   ($24) and RUN (~$45) are the founder's own stated anchors; RISE ($99)
+   and FLY ($199) are this amendment's proposal, sized to roughly match
+   the existing PKR ladder's step proportions while landing on clean
+   SaaS price points. Needs the founder's explicit final sign-off before
+   any Paddle catalog price is created — this document proposes, it does
+   not authorize a live price.
+10. **Free template tier's exact feature ceiling (new, v0.62, §5.73/
+    FR-73.3)** — the 10-product limit, subdomain-only restriction, and
+    curated section subset are this amendment's proposal, not a
+    founder-confirmed number. Needs sign-off before implementation,
+    same as item 9.
+11. **Does loading-screen branding removability extend to Team Growth/
+    Team Scale, or is it individual-FLY-only? (new, v0.62, §5.74/FR-74.3)**
+    Today's broader storefront-mark removability mechanism grants both;
+    the founder's stated new rule names only FLY. Needs an explicit
+    answer, not an assumption, before FR-74.1's loading screen ships.
+    Does an animated seller logo satisfy the requirement via the
+    proposed GSAP-reveal-of-the-existing-static-image approach (FR-74.2),
+    or does the founder want true Lottie/video-logo support built as new
+    infrastructure? The former is far lower-lift; confirm before
+    building either.
+12. **Does the flat-$1 referral commission apply to both the Student
+    Referral and Ambassador programs, or only one? (new, v0.62, §5.75/
+    FR-75.1)** The founder's instruction named "the existing
+    referral-commission amount" without distinguishing between the two
+    existing flat-amount programs; this amendment proposes applying it
+    to both. Confirm before the Settings Registry values change.
+13. **Growth Challenge re-enrollment architecture (new, v0.62, §5.75/
+    FR-75.6)** — a new `GrowthChallengeCycle` table (one enrollment,
+    many re-attemptable cycles) is this amendment's proposed resolution
+    to a real schema conflict (`ProgramParticipant`'s per-program
+    uniqueness constraint would otherwise block any re-enrollment at
+    all). Needs sign-off as a real design decision, not a detail to
+    discover during implementation.
+14. **Does a "prepaid" order verified via the partial-advance channel,
+    or the separate "advance" payment model, count toward the new
+    post-payment acknowledgment step? (new, v0.62, §5.76/FR-76.1)** Both
+    reach the identical `markAsPaid()` funnel as a fully-prepaid order;
+    the founder's text doesn't disambiguate. Confirm before implementing
+    FR-76.1's gating condition.
+15. **Sequencing of FR-76.3's email-OTP default against SRS §5.43's
+    not-yet-built platform email service (new, v0.62)** — ship the new
+    post-payment step gated on a seller already having a connected SMTP
+    sender (today's constraint), or hold the whole section until §5.43
+    ships? This is a real launch-sequencing decision, not an engineering
+    detail.
 
 ---
 
@@ -10558,6 +11301,61 @@ Live-verified via Playwright end-to-end: the dialog rendered the
 correct segment name, sender address, and subject; confirming actually
 submitted the campaign (appeared in the list, form reset); cancelling
 submitted nothing.
+
+### 14.74 Global Launch Mandate — Phased Rollout (new, v0.62, §5.70-5.77,
+PROPOSED — scoped and researched, implementation not yet started)
+
+**Phase sequencing below is the founder's own explicit instruction, not
+this amendment's invention — recorded verbatim in `docs/
+founder-decisions-log.md`'s corresponding entry.** No phase begins until
+this entire amendment has been reviewed; Phase B does not begin until
+Phase A is shipped and CI-green; Phase C does not begin until Phase B's
+Paddle path has real, live-verified proof of working end-to-end — a
+green test suite alone does not satisfy that gate.
+
+**Phase A — additive, no dependency on anything below, any order:**
+- [ ] §5.74 dual branding / loading-screen component (FR-74.1-74.2,
+      pending FR-74.3's open question)
+- [ ] §5.76 post-payment buyer acknowledgment (FR-76.1-76.6, pending
+      FR-76.1/76.3's open questions on scope and email-OTP sequencing)
+- [ ] §5.73 free editable-template tier (FR-73.1-73.3, pending FR-73.3's
+      ceiling sign-off)
+- [ ] §5.70 multi-currency display (FR-70.1-70.4) and the security-
+      checklist fixes identified in `docs/security-audit-report.md`'s
+      new Phase 6 (§5.70's own FR-70.5 aggregate-reporting question is
+      explicitly NOT required before Phase A ships — label admin
+      aggregates as approximate in the meantime, per FR-70.5)
+
+**Phase B — build the replacement before touching the original:**
+- [ ] §5.72 Paddle integration (FR-72.1-72.5), fully verified end-to-end
+      (a real test subscription, a real received-and-verified webhook,
+      confirmed tax-inclusive total behavior) BEFORE FR-72.6 (first-
+      cycle-discount removal) or any change to the live Platform
+      Merchant Connection path used for UZEYN's own billing — that path
+      stays running, untouched, until this proof exists
+- [ ] §5.75 Growth Challenge (FR-75.2-75.8), built and tested in
+      isolation (its own enrollment/attribution/billing wiring) before
+      going live; the flat-$1 commission change (FR-75.1) is a simple
+      config update, safe anytime, no dependency on the above
+
+**Phase C — the genuinely irreversible pieces, last, each gated on its
+own proof, not merely scheduled last:**
+- [ ] §5.77 D-Studio Pack removal (FR-77.1-77.4) — only after FR-77.4's
+      pre-removal query confirms zero active unexpired Pack grants (or
+      every existing grant's natural expiry is explicitly accepted as
+      the transition path)
+- [ ] §5.71 CNIC removal (FR-71.1-71.6) — only after Phase A's security-
+      checklist audit is complete AND Phase B's Paddle fraud detection
+      is confirmed live, since §5.71 explicitly names both as part of
+      why removing CNIC is an acceptable tradeoff (Risk 30) — do not
+      remove the old guard before the new one is actually standing
+- [ ] The actual pricing cutover — real customers charged the new
+      $-denominated amounts for the first time — is the single most
+      irreversible step in this entire amendment and is explicitly
+      **not** autonomous even under this project's standing autonomous-
+      operation rule: report back and get explicit founder go-ahead
+      before flipping real pricing live, after every other item above
+      is built, live-verified, and confirmed green on CI.
 
 ---
 
