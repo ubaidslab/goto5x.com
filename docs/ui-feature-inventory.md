@@ -655,7 +655,7 @@ Currently bridged via `/settings#reports` anchor. **Nav:** Admin → Reports (`F
 
 "Request export now" (seller-scoped, not store-scoped — spans every store a seller owns) → rate-limited (`data_export.on_demand_min_interval_hours`, default 24h) → history list, each row: trigger label, timestamp, status Badge, per-file download links (Products/Orders/Customers/Inventory CSVs + Summary PDF — exact real column headers confirmed for each) via authenticated blob download (PII-safe, not a plain URL). Delivery: Drive first, email fallback if not connected.
 
-**No `EmptyState` for zero exports** — the history block just doesn't render, no "no exports yet" copy (inconsistent with the rest of the product).
+**Corrected (autonomous punch-list pass, was stale):** a real `EmptyState` ("No exports yet") now renders when the history is empty, consistent with the rest of the product.
 
 **Invoice customization (Module 57) — a separate card on the same Settings page, not merged with Data export:** Tax/NTN number, Invoice footer text, Invoice terms text — all real, all confirmed rendered on generated invoice PDFs. Plus the store logo (set via the separate "Store branding" card) is also used on invoices. No NTN verification, no invoice-numbering-format field, no color/template picker exist.
 

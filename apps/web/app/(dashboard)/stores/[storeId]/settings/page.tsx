@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -644,6 +645,12 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             <Button loading={requestingExport} onClick={requestDataExport}>
               Request export now
             </Button>
+            {dataExports && dataExports.length === 0 && (
+              <EmptyState
+                title="No exports yet"
+                description="Request one above, or wait for your next subscription renewal - every renewal triggers one automatically."
+              />
+            )}
             {dataExports && dataExports.length > 0 && (
               <div className="divide-y divide-border">
                 {dataExports.map((e) => (
