@@ -7178,23 +7178,18 @@ not a display concern.
   display currency, which §5.72's Paddle integration pushes toward
   anyway since Paddle subscriptions are priced in UZEYN's own catalog
   currency, not a seller's storefront currency).
-- FR-70.5: **Admin-aggregate reporting (GMV, MRR, platform-wide
-  revenue) is explicitly NOT solved by FR-70.1-70.4 and must not be
-  silently left broken.** `admin/page.tsx`'s GMV tiles and `finance/
-  page.tsx`'s MRR/ARPS figures sum order/revenue amounts *across every
-  seller's store* into one number under one label. Once stores can
-  genuinely carry different currencies, that sum becomes financially
-  meaningless without FX conversion — which this platform has
-  deliberately decided not to build (FR-70.1). This needs an explicit
-  founder decision (carried to §13, not guessed here): either (a) these
-  admin aggregates become per-currency breakdowns instead of one
-  summed figure, or (b) UZEYN defines one fixed "platform reporting
-  currency" and every aggregate explicitly states it's approximate/
-  reported-currency-only once multi-currency stores exist. Do not ship
-  Phase A's currency-display work and leave these admin screens
-  silently wrong in the meantime — at minimum, label them "PKR-only
-  figures, multi-currency stores excluded" until (a) or (b) is decided
-  and built.
+- FR-70.5: **DECIDED (founder, 2026-10-03): admin aggregates become
+  per-currency breakdowns — never a blended, fake-converted number.**
+  `admin/page.tsx`'s GMV tiles and `finance/page.tsx`'s MRR/ARPS figures
+  currently sum order/revenue amounts *across every seller's store*
+  into one number under one label — financially meaningless once
+  stores carry different currencies, with no FX engine to make the sum
+  real (FR-70.1 deliberately builds none). Resolution: group these
+  figures by `currency` and render one line per currency present
+  (e.g. "GMV today: PKR 1,240,500 · USD 3,210"), rather than attempting
+  a single combined total. No FX conversion, no "platform reporting
+  currency" fallback — each currency's figures stay in that currency,
+  always.
 - FR-70.6: **Correction to a stale doc claim, not a new requirement.**
   `docs/SRS.md`'s own existing text (checklist items referenced during
   this amendment's research) asserts "no hardcoded PKR" as an
@@ -7352,17 +7347,14 @@ pattern itself is unchanged by this entire section.
   `AdminSystemStatusService`/`GatewayHealthService`-style health
   monitoring should watch, mirroring the existing Module 67 pattern for
   the regional gateways rather than inventing a new monitoring shape.
-- FR-72.5: **Proposed tier pricing ladder — OPEN for founder's final
-  sign-off, not finalized here.** Redenominating the existing GO/RUN/
-  RISE/FLY progression (PKR 6,499 / 14,999 / 43,999 / 73,999, roughly
-  2.3x / 2.9x / 1.7x step multiples) into clean, standard SaaS price
-  points at the founder's stated GO ($20-25) and RUN (~$45) anchors:
-  **GO $24/mo · RUN $45/mo · RISE $99/mo · FLY $199/mo.** This keeps
-  comparable step proportions to the existing ladder (RUN/GO ≈1.9x,
-  RISE/RUN ≈2.2x, FLY/RISE = 2x) while landing on prices a buyer
-  actually expects to see ($99/$199, not $103.42/$187.98). **Carried
-  to §13 as an open question — this is a proposal, not a number this
-  document can authorize on its own.**
+- FR-72.5: **APPROVED (founder, 2026-10-03): GO $24/mo · RUN $45/mo ·
+  RISE $99/mo · FLY $199/mo.** Redenominates the existing GO/RUN/RISE/
+  FLY progression (PKR 6,499 / 14,999 / 43,999 / 73,999) into clean,
+  standard SaaS price points at the founder's stated GO ($20-25) and
+  RUN (~$45) anchors, keeping comparable step proportions to the
+  existing ladder (RUN/GO ≈1.9x, RISE/RUN ≈2.2x, FLY/RISE = 2x). These
+  are the authorized catalog prices for the Paddle `Price` objects
+  created under FR-72.1-72.4.
 - FR-72.6: **FR-7.22's `billing.first_cycle_discount_percent` mechanism
   is retired — first-month-free (and every discounted first cycle) is
   removed entirely.** Every subscription, on every tier, starts at full
@@ -7411,9 +7403,9 @@ offer)
   Every existing `tierOrder` comparison against the individual ladder
   is completely unaffected — a free-tier seller simply never resolves
   to an `"individual"` plan at all.
-- FR-73.3: **Proposed feature ceiling — OPEN for founder confirmation,
-  not finalized here**, sized deliberately below GO's existing limits
-  so GO remains the obvious first upgrade, not a wash:
+- FR-73.3: **APPROVED as proposed (founder, 2026-10-03)**, sized
+  deliberately below GO's existing limits so GO remains the obvious
+  first upgrade, not a wash:
   - 10 products (GO's existing ceiling is 100).
   - Subdomain only (`<store>.uzeyn.com`), reusing the existing
     multi-tenant subdomain-routing infrastructure (`domains.
@@ -7460,15 +7452,19 @@ narrows the existing storefront-mark removability mechanism —
   screen's mount) — satisfies "animated" without new media-pipeline
   scope, and is the option explicitly flagged as lowest-risk during
   this section's own research pass.
-- FR-74.3: **Loading-screen branding: removable on FLY only — narrower
-  than today's grant, carried to §13 as an open question.** Today's
-  `branding.powered_by_removable` Settings Registry eligibility
-  (`themes.seed.ts`) grants removability to individual FLY **and**
-  Team Growth/Team Scale (excluding Team Starter). This section's rule
-  only names FLY. **Open question, not resolved here:** does the new
-  loading-screen-specific removability also extend to Team Growth/
-  Scale, or is this deliberately an individual-FLY-only exception? Do
-  not assume either answer during implementation — ask.
+- FR-74.3: **DECIDED (founder, 2026-10-03): individual-FLY-only — Team
+  plans are completely untouched by this section.** The new
+  loading-screen-specific rule (removable on individual FLY only;
+  invoice/order-review always permanent on every individual tier
+  including FLY) applies **only** to the GO/RUN/RISE/FLY ladder.
+  Team Growth/Team Scale keep today's existing branding-removability
+  behavior exactly as it already works — this section does not read,
+  gate, or modify any Team-tier branding logic anywhere. Implementation
+  must scope FR-74.1/74.2's new loading-screen component's removability
+  check to `planGroup === "individual" && tierOrder === 3` specifically,
+  never a bare `branding.powered_by_removable` read (which today also
+  resolves true for Team Growth/Scale and would incorrectly extend this
+  new rule to them).
 - FR-74.4: **Invoices: UZEYN branding, permanently non-removable on
   every tier including FLY — codifying existing behavior, not changing
   it.** `invoice-template.ts`'s platform-footer line is already
@@ -7506,28 +7502,26 @@ Challenge" Program (new, v0.62 — PROPOSED, not yet built; founder's
 Global Launch Mandate, Part 5; amends FR-33.5/FR-33.6's commission
 amounts, adds a 4th `ReferralProgramType`)
 
-- FR-75.1: **Referral commission becomes a flat $1 per qualifying
-  event, replacing the existing PKR-denominated amounts, on both of the
-  programs that pay a flat amount today.** Student Referral's Rs 345/
-  renewal (up to 2 renewal cycles, FR-33.5) and Ambassador's Rs 499/
-  referred-store/renewed-month (up to 3 months, FR-33.6) both become
-  $1, unchanged otherwise (same renewal-only gating, same cycle/month
-  caps, same admin-approval requirement to join). **Open question,
-  carried to §13, not guessed here:** the founder's instruction named
-  "the referral-commission amount" generically; this FR applies the
-  change to both existing flat-amount programs on the reasoning that
-  neither was singled out, but that reading needs explicit confirmation
-  before implementation. Creator's reward (a percent of plan-fee
-  amount, never a flat figure) was never denominated in PKR as a flat
-  sum and is **unaffected** by this FR — there is nothing to convert.
-  Mechanically this is a Settings Registry value change
-  (`growth.student_referral_flat_commission_pkr`,
-  `growth.ambassador_flat_commission_per_month_pkr` — both
-  admin-editable, confirmed not hardcoded), plus a currency-unit rename
-  of each key and its description string, not new accrual logic — the
+- FR-75.1: **DECIDED (founder, 2026-10-03): the flat $1 applies ONLY to
+  Student Referral ("Commerce Students Support"), never Ambassador.**
+  Student Referral's Rs 345/renewal (up to 2 renewal cycles, FR-33.5)
+  becomes $1/renewal, unchanged otherwise (same renewal-only gating,
+  same 2-cycle cap, same admin-approval requirement to join). The
+  Ambassador Program's existing Rs 499/referred-store/renewed-month
+  model (FR-33.6) is explicitly, structurally separate — a
+  performance-based program, not a flat per-referral commission in the
+  same sense — and is **untouched** by this FR, in PKR, unchanged.
+  Creator's reward (a percent of plan-fee amount, never a flat figure)
+  was already unaffected — there is nothing to convert. Mechanically
+  this is a single Settings Registry value change
+  (`growth.student_referral_flat_commission_pkr` → a new `_usd`-suffixed
+  key or an explicit currency field, admin-editable, confirmed not
+  hardcoded) plus its description string, not new accrual logic — the
   accrual trigger (`ProgramCommissionService`, gated on a real
   admin-verified plan-fee payment via `WalletController.verifyOne()`,
   `planFeePortion !== null`, `isRenewal === true`) is unchanged.
+  `growth.ambassador_flat_commission_per_month_pkr` is **not touched**
+  by this FR.
 - FR-75.2: **"Growth Challenge" — new name proposed, founder open to a
   better one.** A fourth `ReferralProgramType` enum value
   (`growth_challenge`), standalone and never stacked on top of FR-75.1's
@@ -7587,8 +7581,8 @@ amounts, adds a 4th `ReferralProgramType`)
   `startedAt`, running counts, and milestone states — a new cycle row
   is created (not a new enrollment) when a seller chooses to re-attempt
   after a prior cycle's both windows have closed with at least one
-  milestone unreached. This needs founder sign-off before building,
-  carried to §13.
+  milestone unreached. **APPROVED (founder, 2026-10-03)** — build
+  exactly as proposed.
 - FR-75.7: **Claiming applies a free-cycle credit to the seller's next
   subscription renewal — reusing the generic settings-override
   primitive, with new wiring this document states plainly rather than
@@ -7648,19 +7642,36 @@ model, does not replace it)
   logging), reusing `otp.util.ts`'s generation/hashing mechanics and
   the existing `VerificationChannelAdapter` interface for send
   mechanics only, in a new table of its own.
-- FR-76.3: **Default channel: email OTP — sequencing dependency flagged
-  explicitly, not glossed over.** Today's *practical* default channel
-  is WhatsApp, purely because it needs zero seller setup; a true
-  zero-setup, platform-sent email channel (SRS §5.43/FR-43.1-43.5,
-  "Built-in Email Verification Service") is specced but **confirmed not
-  yet built**. Defaulting this new post-payment step to email OTP
-  before that platform-wide capability ships would brick the step for
-  any seller with no SMTP sender connected (today's
-  `assertChannelReady()` hard-requires one for `email_otp`). **This
-  section must sequence after, or alongside, §5.43's build** — do not
-  ship a global email-OTP default against today's SMTP-dependent email
-  adapter and call it done. WhatsApp remains available as an explicit,
-  seller-chosen regional channel, never removed, no longer the default.
+- FR-76.3: **DECIDED (founder, 2026-10-03): delivery goes through
+  UZEYN's own platform-wide email service as the reliable primary
+  path, never dependent on a seller's own SMTP connection.** This
+  record is forming chargeback/dispute evidence — reliability of
+  delivery matters more than a seller-branded sending domain. This
+  explicitly means building out §5.43's "Built-in Email Verification
+  Service" far enough to actually send a real email through a real
+  configured provider for this one flow, not deferring behind it —
+  today's `EmailService` has exactly one working path
+  (`EMAIL_PROVIDER=console`, which only logs) and throws
+  `"not yet implemented"` for every other provider, so this FR's real
+  engineering work is wiring one real provider (e.g. SES/Postmark/
+  Resend — the specific choice and its API credentials are an infra
+  decision outside this document's scope, same category as Paddle's
+  own API keys; build the provider-adapter interface generically so
+  whichever is chosen plugs in without a second rewrite) behind that
+  existing abstraction. **A seller's own connected SMTP sender may be
+  used cosmetically** — its display name/reply-to on the "From" header
+  — when one exists, but the actual transport is always the platform
+  provider; a seller with no SMTP connected at all sends exactly the
+  same way, with a platform-default sender name. This is a strictly
+  different, non-seller-SMTP-dependent code path from the existing
+  `email_otp` *verification channel* adapter (FR-37.x), which keeps its
+  own `assertChannelReady()` requirement unchanged for its own,
+  separate, pre-payment purpose. WhatsApp remains available as an
+  explicit, seller-chosen regional channel for the *pre-payment*
+  verification gate, never removed, no longer that gate's default
+  (unchanged from this section's original text) — it has no role in
+  this new post-payment step at all, which is email-only by this
+  decision.
 - FR-76.4: **Admin-editable global terms text — a new settings key,
   deliberately differently-scoped from the existing seller-editable OTP
   template.** The existing `orders.verification_message_template`
@@ -8045,7 +8056,7 @@ legal commitment.
 | 29 | **Pinned `next@14.2.35` carries two unpatched critical CVEs (2026-09-16, updated 2026-09-16)** — GHSA-p293-qw3h-jr36 (Windows-hosted RCE) and GHSA-2xp9-vwfh-vxw4 (AVIF Image-Optimization-API RCE) are both fixed only in `next@>=15.5.24`. Investigated same-day (`docs/security-audit-report.md` §5): neither is currently exploitable given this deployment's actual configuration - no Windows deployment path exists anywhere (`node:20-alpine` everywhere), and AVIF is now **explicitly** disabled (`apps/web/next.config.js`'s `images.formats: ["image/webp"]`, no longer relying on Next's own default) while the only two `next/image` call sites in the whole app feed it exclusively hardcoded local marketing screenshots, never user/seller-controllable content. CI's `pnpm audit --audit-level=critical` initially failed on every push as a result; `scripts/dependency-audit.sh` (wired in as the root `audit` script) now applies a narrowly-scoped, fully-commented `pnpm audit --ignore <GHSA-id>` exception for exactly these two advisories - the real mechanism this repo's pinned pnpm version (10.33.0) supports (the `pnpm.auditConfig.ignoreCves` package.json field was tried first and confirmed not respected by this version). `dependency-audit` is green again as of this update, on the basis of a documented, auditable, narrowly-scoped exception - not a blanket suppression | Not fixed by a config tweak - the real fix is the Next.js 14→15 major-version upgrade itself, deliberately NOT rushed into the middle of an urgent bug-fix pass: it requires React 19 and a full regression pass across every one of this app's 100+ pages (App Router behavior changes, GSAP/shadcn compatibility). Tracked here as its own dedicated future task with a clear reasoning trail rather than silently deferred or suppressed in CI. `scripts/dependency-audit.sh`'s own `TODO(next-15-upgrade)` comment, and this Risk Register entry, must both be revisited (the exception almost certainly deleted outright) the moment that upgrade lands |
 | 30 | **CNIC verification removed with no device/IP-fingerprint replacement (new, v0.62, §5.71) — an explicit, accepted tradeoff, not an oversight.** Removing CNIC removes the platform's strongest existing fraud/duplicate-account/self-referral signal, and the founder explicitly decided not to build device/IP fingerprinting as a replacement (not worth the added complexity). The resulting gap is real: a banned seller, a self-referring fraudster, or a subscription-abuse actor can no longer be caught by the identity/device signals FR-30.1/FR-30.5/FR-33.10 relied on. | Three mitigants, all already-existing mechanisms, not new ones built to compensate: (a) the free tier (§5.73) is template/subdomain-only, carrying no paid-tier abuse surface worth protecting; (b) every referral/Growth-Challenge reward (§5.75) triggers only off a referred seller's real, verified-paid Paddle transaction, never signup alone — unaffected by CNIC's removal; (c) Paddle's own per-transaction fraud scoring and chargeback defense (§11.1) now sits where CNIC-driven risk scoring used to. Residual risk (duplicate free-tier signups, since the free tier has no payment event to screen against at all) is accepted, not mitigated — flagged here explicitly rather than silently absorbed. |
 | 31 | **Paddle as a single, external, foreign dependency for 100% of UZEYN's own subscription revenue (new, v0.62, §5.72)** — an account suspension, policy change, fee increase, or service outage on Paddle's side could stop UZEYN from collecting any subscription revenue at all, with no fallback billing path live by construction (Platform Merchant Connection is kept running in parallel per FR-72.1/72.7, but only until Paddle is proven, not as a permanent dual-path). | Phase-B's own proof gate (FR-72.7) keeps the old path alive and untouched until Paddle is independently verified end-to-end; beyond that, this is accepted platform-vendor-concentration risk inherent to choosing a merchant-of-record model at all — the alternative (direct card processing, VAT/GST registration in every launch country) is explicitly the complexity Paddle exists to avoid. No further mitigation is specified here; flagged for founder awareness of the tradeoff being made. |
-| 32 | **Admin-aggregate revenue reporting (GMV/MRR) becomes misleading once multi-currency stores exist (new, v0.62, §5.70/FR-70.5)** — summing order/revenue amounts across stores in different currencies into one labeled number is financially meaningless without FX conversion, which this platform has deliberately chosen not to build. | Not yet resolved — FR-70.5 requires an explicit founder decision (per-currency breakdown vs. one fixed platform-reporting currency) before Phase A's currency-display work ships; until decided, admin aggregate screens must be labeled as PKR-only/approximate rather than silently presented as platform-wide truth. |
+| 32 | **Admin-aggregate revenue reporting (GMV/MRR) becomes misleading once multi-currency stores exist (new, v0.62, §5.70/FR-70.5)** — summing order/revenue amounts across stores in different currencies into one labeled number is financially meaningless without FX conversion, which this platform has deliberately chosen not to build. | **Resolved (founder, 2026-10-03):** per-currency breakdown, never a blended/fake-converted total — see FR-70.5. |
 | 33 | **Growth Challenge's claimed-reward billing wiring is new, untested financial logic (new, v0.62, §5.75/FR-75.7)** — a bug in the new seller-scoped free-cycle-credit resolver inside `getPlanFeePaymentPreview()`/`requestPlanFeePayment()` could zero out a cycle's charge incorrectly (either granting an unearned free month, or failing to honor an earned one), directly affecting real subscription revenue. | Build this behind the same append-only, audit-logged discipline every other billing mutation in this codebase already uses (every grant/claim audit-logged, same `AuditLogService` coverage pattern); test the zero-amount-due path explicitly in e2e coverage before this ships, the same release-gating discipline FR-6.x's existing billing logic already requires. |
 
 ---
@@ -8089,53 +8100,38 @@ legal commitment.
    product's own business logic — uzeyn.com only needs the hook to exist, not an
    opinion on the Template Store's monetization model. Flagged explicitly per the
    founder's request rather than silently assumed.
-9. **Exact RUN/RISE/FLY dollar pricing (new, v0.62, §5.72/FR-72.5)** — GO
-   ($24) and RUN (~$45) are the founder's own stated anchors; RISE ($99)
-   and FLY ($199) are this amendment's proposal, sized to roughly match
-   the existing PKR ladder's step proportions while landing on clean
-   SaaS price points. Needs the founder's explicit final sign-off before
-   any Paddle catalog price is created — this document proposes, it does
-   not authorize a live price.
-10. **Free template tier's exact feature ceiling (new, v0.62, §5.73/
-    FR-73.3)** — the 10-product limit, subdomain-only restriction, and
-    curated section subset are this amendment's proposal, not a
-    founder-confirmed number. Needs sign-off before implementation,
-    same as item 9.
-11. **Does loading-screen branding removability extend to Team Growth/
-    Team Scale, or is it individual-FLY-only? (new, v0.62, §5.74/FR-74.3)**
-    Today's broader storefront-mark removability mechanism grants both;
-    the founder's stated new rule names only FLY. Needs an explicit
-    answer, not an assumption, before FR-74.1's loading screen ships.
-    Does an animated seller logo satisfy the requirement via the
-    proposed GSAP-reveal-of-the-existing-static-image approach (FR-74.2),
-    or does the founder want true Lottie/video-logo support built as new
-    infrastructure? The former is far lower-lift; confirm before
-    building either.
-12. **Does the flat-$1 referral commission apply to both the Student
-    Referral and Ambassador programs, or only one? (new, v0.62, §5.75/
-    FR-75.1)** The founder's instruction named "the existing
-    referral-commission amount" without distinguishing between the two
-    existing flat-amount programs; this amendment proposes applying it
-    to both. Confirm before the Settings Registry values change.
-13. **Growth Challenge re-enrollment architecture (new, v0.62, §5.75/
-    FR-75.6)** — a new `GrowthChallengeCycle` table (one enrollment,
-    many re-attemptable cycles) is this amendment's proposed resolution
-    to a real schema conflict (`ProgramParticipant`'s per-program
-    uniqueness constraint would otherwise block any re-enrollment at
-    all). Needs sign-off as a real design decision, not a detail to
-    discover during implementation.
-14. **Does a "prepaid" order verified via the partial-advance channel,
-    or the separate "advance" payment model, count toward the new
-    post-payment acknowledgment step? (new, v0.62, §5.76/FR-76.1)** Both
-    reach the identical `markAsPaid()` funnel as a fully-prepaid order;
-    the founder's text doesn't disambiguate. Confirm before implementing
-    FR-76.1's gating condition.
-15. **Sequencing of FR-76.3's email-OTP default against SRS §5.43's
-    not-yet-built platform email service (new, v0.62)** — ship the new
-    post-payment step gated on a seller already having a connected SMTP
-    sender (today's constraint), or hold the whole section until §5.43
-    ships? This is a real launch-sequencing decision, not an engineering
-    detail.
+9. **RESOLVED (founder, 2026-10-03), see FR-72.5:** GO $24 / RUN $45 /
+   RISE $99 / FLY $199, approved exactly as proposed.
+10. **RESOLVED (founder, 2026-10-03), see FR-73.3:** approved exactly
+    as proposed (10 products, subdomain-only).
+11. **RESOLVED (founder, 2026-10-03), see FR-74.3:** individual-FLY-only
+    — Team Growth/Scale's existing branding-removal behavior is
+    completely unchanged by this section. (The animated-logo
+    implementation-approach half of this question — GSAP-reveal of the
+    existing static logo vs. true Lottie/video support — was not
+    separately addressed; proceeding with the lower-lift GSAP-reveal
+    approach as FR-74.2 already proposed, since nothing has indicated
+    otherwise.)
+12. **RESOLVED (founder, 2026-10-03), see FR-75.1:** applies only to
+    Student Referral ("Commerce Students Support"). The Ambassador
+    Program's existing performance-based Rs 499/month model is
+    structurally separate and stays untouched, in PKR, unchanged.
+13. **RESOLVED (founder, 2026-10-03), see FR-75.6:** approved exactly
+    as proposed — a new `GrowthChallengeCycle` table, one enrollment
+    per seller with many re-attemptable cycles.
+14. **Still open — not addressed in the founder's 2026-10-03 resolution
+    round.** Does a "prepaid" order verified via the partial-advance
+    channel, or the separate "advance" payment model, count toward the
+    new post-payment acknowledgment step? (§5.76/FR-76.1) Both reach the
+    identical `markAsPaid()` funnel as a fully-prepaid order; confirm
+    before implementing FR-76.1's gating condition — do not guess during
+    implementation.
+15. **RESOLVED (founder, 2026-10-03), see FR-76.3:** delivery goes
+    through UZEYN's own platform-wide email service as the reliable
+    primary path, built out now rather than deferred behind §5.43 — not
+    gated on a seller's own SMTP connection. A connected seller SMTP
+    sender may be used cosmetically (From-header display name/reply-to)
+    only; transport is always the platform provider.
 
 ---
 
@@ -11313,18 +11309,22 @@ Phase A is shipped and CI-green; Phase C does not begin until Phase B's
 Paddle path has real, live-verified proof of working end-to-end — a
 green test suite alone does not satisfy that gate.
 
-**Phase A — additive, no dependency on anything below, any order:**
+**Phase A — additive, no dependency on anything below, any order.**
+Open questions #9-13/15 all resolved by the founder on 2026-10-03 (see
+each FR's own "DECIDED"/"APPROVED" note); #14 (does an advance-model/
+partial-advance order count as "prepaid" for FR-76.1) remains open and
+must be confirmed before that one specific item ships, not guessed:
 - [ ] §5.74 dual branding / loading-screen component (FR-74.1-74.2,
-      pending FR-74.3's open question)
-- [ ] §5.76 post-payment buyer acknowledgment (FR-76.1-76.6, pending
-      FR-76.1/76.3's open questions on scope and email-OTP sequencing)
-- [ ] §5.73 free editable-template tier (FR-73.1-73.3, pending FR-73.3's
-      ceiling sign-off)
-- [ ] §5.70 multi-currency display (FR-70.1-70.4) and the security-
-      checklist fixes identified in `docs/security-audit-report.md`'s
-      new Phase 6 (§5.70's own FR-70.5 aggregate-reporting question is
-      explicitly NOT required before Phase A ships — label admin
-      aggregates as approximate in the meantime, per FR-70.5)
+      scope confirmed by FR-74.3's resolution)
+- [ ] §5.76 post-payment buyer acknowledgment (FR-76.1-76.6 — FR-76.3's
+      platform-email approach is confirmed; FR-76.1's exact scope
+      question, open question #14, still needs an answer before this
+      one item ships)
+- [ ] §5.73 free editable-template tier (FR-73.1-73.3, ceiling approved)
+- [ ] §5.70 multi-currency display (FR-70.1-70.4, FR-70.5's
+      aggregate-reporting fix now has a confirmed design — per-currency
+      breakdown) and the security-checklist fixes identified in `docs/
+      security-audit-report.md`'s new Phase 6
 
 **Phase B — build the replacement before touching the original:**
 - [ ] §5.72 Paddle integration (FR-72.1-72.5), fully verified end-to-end

@@ -195,3 +195,49 @@ corresponding SRS/build work.
 findable by reading build-plan/SRS amendment prose written well after
 the fact, which conflates "what was decided" with "what was built" and
 loses the former once the latter is done. This file separates them.
+
+### Same-day resolutions — the 7 open questions from the SRS draft
+
+Resolved immediately after reviewing the draft SRS amendment above,
+before any implementation started. Each is also recorded inline at its
+own FR in `docs/SRS.md` (search "2026-10-03" for every resolution) —
+logged here too since this file's whole purpose is keeping the decision
+itself visible independent of the spec.
+
+1. **Currency rollup (§5.70/FR-70.5):** admin GMV/MRR shows a
+   per-currency breakdown, never a blended/fake-converted total. No FX
+   engine, consistent with the original currency-display decision.
+2. **Free-tier ceiling (§5.73/FR-73.3):** approved exactly as proposed
+   (10 products, subdomain-only).
+3. **Growth Challenge re-enrollment (§5.75/FR-75.6):** approved exactly
+   as proposed — new `GrowthChallengeCycle` table, including the
+   corrected (non-reuse) D-Studio Pack billing-wiring finding.
+4. **$1 referral commission scope (§5.75/FR-75.1):** applies only to
+   the general referral program (Student Referral / "Commerce Students
+   Support"). The Ambassador Program's existing $499/cycle
+   performance-based model is structurally separate and untouched.
+5. **Post-payment acknowledgment email delivery (§5.76/FR-76.3):**
+   goes through UZEYN's own platform-wide email service as the
+   reliable primary path — built out now, not deferred behind §5.43 —
+   never dependent on a seller's own SMTP connection, since this record
+   is forming dispute evidence and reliability outranks a
+   seller-branded sending address. A connected seller SMTP sender may
+   still be used cosmetically (From-header display name only).
+6. **Paddle pricing ladder (§5.72/FR-72.5):** approved as proposed — GO
+   $24 / RUN $45 / RISE $99 / FLY $199.
+7. **Team-tier branding (§5.74/FR-74.3):** Team Growth/Scale's existing
+   branding-removal behavior stays completely unchanged. The new
+   FLY-tier-specific loading-screen rule applies only to the individual
+   GO/RUN/RISE/FLY ladder — this section does not touch Team-plan
+   branding logic at all.
+
+**Still open, not part of this round:** whether an advance-model/
+partial-advance order counts as "prepaid" for FR-76.1's gating
+condition (SRS §13 item #14) — confirm before that one specific piece
+of §5.76 ships.
+
+**Instruction accompanying these resolutions:** start Phase A now on
+everything unblocked by them (security fixes, currency display,
+free-tier work, dual branding, post-payment acknowledgment) — same
+incremental commit / live-verify / independently-CI-confirm discipline
+as every prior item in this project, reported the same way throughout.
