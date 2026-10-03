@@ -17,6 +17,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 interface Theme {
   id: string;
@@ -431,7 +432,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
               </div>
             ) : (
               <UpgradeLockedCard
-                requiredTier="RISE"
+                requiredTier={planTierSubtitle("RISE") ? `RISE (${planTierSubtitle("RISE")})` : "RISE"}
                 title="Coded mode is a RISE+ feature"
                 description="Write raw HTML/CSS/JS beyond what the theme controls above can express, once you're on RISE or FLY."
                 action={

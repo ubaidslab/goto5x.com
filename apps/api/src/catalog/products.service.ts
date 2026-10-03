@@ -279,7 +279,7 @@ export class ProductsService {
       const planContext = await this.subscriptions.getPlanContext(sellerId);
       const enabled = await this.settings.resolve<boolean>("seo.advanced_fields_enabled", planContext);
       if (!enabled) {
-        throw new ForbiddenException("Advanced SEO controls are a Growth-plan feature - upgrade your plan to use them.");
+        throw new ForbiddenException("Advanced SEO controls are a RISE-plan feature - upgrade your plan to use them.");
       }
     }
 

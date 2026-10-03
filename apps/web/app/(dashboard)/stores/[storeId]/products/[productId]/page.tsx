@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 interface ProductResponse {
   id: string;
@@ -287,7 +288,7 @@ export default function EditProductPage({ params }: { params: { storeId: string;
             </div>
           ) : (
             <UpgradeLockedCard
-              requiredTier="RISE"
+              requiredTier={planTierSubtitle("RISE") ? `RISE (${planTierSubtitle("RISE")})` : "RISE"}
               title="Advanced SEO is a RISE+ feature"
               description="Override this product's canonical URL, search-engine indexing, social preview, structured data, and sitemap inclusion, once you're on RISE or FLY."
               action={

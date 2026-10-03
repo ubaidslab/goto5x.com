@@ -4,7 +4,7 @@ import request from "supertest";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
-const UPGRADE_MESSAGE = /Growth-plan feature/i;
+const UPGRADE_MESSAGE = /RISE-plan feature/i;
 
 /**
  * Module 58 (SRS §5.65, §14.64) - Advanced Store SEO Control. Covers what

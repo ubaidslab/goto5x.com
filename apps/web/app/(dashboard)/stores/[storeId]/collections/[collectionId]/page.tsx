@@ -211,7 +211,7 @@ export default function ManageCollectionPage({ params }: { params: { storeId: st
         <DashCard>
           <DashCardHeader
             title="Advanced SEO"
-            description="Growth-plan feature. Overrides this collection's canonical URL, search-engine indexing, social preview, and sitemap inclusion. Leave blank/on to use your store's defaults."
+            description="RISE-plan feature. Overrides this collection's canonical URL, search-engine indexing, social preview, and sitemap inclusion. Leave blank/on to use your store's defaults."
           />
           <div>
             <form onSubmit={saveAdvancedSeo} className="space-y-4">

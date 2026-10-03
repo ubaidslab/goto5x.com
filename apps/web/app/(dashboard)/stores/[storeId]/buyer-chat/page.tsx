@@ -10,6 +10,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { toast } from "@/lib/use-toast";
 import { api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 interface ChatThreadSummary {
   id: string;
@@ -96,7 +97,7 @@ export default function BuyerChatPage({ params }: { params: { storeId: string } 
       <PageHeader title="Live chat" description="Conversations buyers have started from your storefront's chat widget." />
       {!chatEnabled ? (
         <UpgradeLockedCard
-          requiredTier="RISE"
+          requiredTier={planTierSubtitle("RISE") ? `RISE (${planTierSubtitle("RISE")})` : "RISE"}
           title="Live chat is a RISE+ feature"
           description="Let buyers message you straight from your storefront and reply from one inbox here, once you're on RISE or FLY."
           action={

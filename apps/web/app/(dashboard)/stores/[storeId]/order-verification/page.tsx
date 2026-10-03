@@ -13,6 +13,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 type Channel = "none" | "whatsapp_otp" | "email_otp" | "prepaid_confirmation" | "prepaid_partial_advance";
 
@@ -174,14 +175,14 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
 
               {selectedChannel === "prepaid_partial_advance" && !settings.prepaidPartialAdvanceEnabled && (
                 <UpgradeLockedCard
-                  requiredTier="RUN"
+                  requiredTier={planTierSubtitle("RUN") ? `RUN (${planTierSubtitle("RUN")})` : "RUN"}
                   title="Prepaid partial-advance"
                   description={`A buyer pays ${settings.prepaidPartialAdvancePercent}% of the order total via your connected payment gateway before the order confirms - the rest stays cash/payment on delivery. One of our strongest defenses against fake COD orders.`}
                 />
               )}
               {selectedChannel === "whatsapp_otp" && !settings.whatsappVerificationEnabled && (
                 <UpgradeLockedCard
-                  requiredTier="RUN"
+                  requiredTier={planTierSubtitle("RUN") ? `RUN (${planTierSubtitle("RUN")})` : "RUN"}
                   title="WhatsApp OTP verification"
                   description="Send a one-time code to the buyer's WhatsApp before their order confirms."
                 />

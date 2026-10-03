@@ -11,6 +11,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { Reveal } from "@/components/motion/Reveal";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 type PaymentModel = "prepaid" | "cod" | "advance";
 
@@ -280,7 +281,7 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
 
               {effectiveModel === "prepaid" && !modelSettings.prepaidEnabled && (
                 <UpgradeLockedCard
-                  requiredTier="RUN"
+                  requiredTier={planTierSubtitle("RUN") ? `RUN (${planTierSubtitle("RUN")})` : "RUN"}
                   title="Prepaid payment model"
                   description="Buyers pay the full amount before you ship - no cash-on-delivery risk. Requires a connected payment gateway or your bank/JazzCash/Easypaisa details below."
                 />

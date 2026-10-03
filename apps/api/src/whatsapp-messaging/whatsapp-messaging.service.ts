@@ -128,7 +128,7 @@ export class WhatsAppMessagingService {
     const planContext = await this.subscriptions.getPlanContext(sellerId);
     const enabled = await this.settings.resolve<boolean>("whatsapp.product_share_enabled", planContext);
     if (!enabled) {
-      throw new ForbiddenException("WhatsApp product sharing is a Growth-plan feature - upgrade your plan to use it.");
+      throw new ForbiddenException("WhatsApp product sharing is a RISE-plan feature - upgrade your plan to use it.");
     }
 
     const { product, store } = await this.tenantPrisma.run(sellerId, async (tx) => {

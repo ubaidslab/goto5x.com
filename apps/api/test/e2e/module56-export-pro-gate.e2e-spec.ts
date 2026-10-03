@@ -62,7 +62,7 @@ describe("One-Click Full Export, Pro Gate (e2e) - SRS §5.63, §14.62", () => {
 
     const attempt = await request(app.getHttpServer()).post("/sellers/me/data-export").set("Authorization", `Bearer ${token}`);
     expect(attempt.status).toBe(403);
-    expect(attempt.body.message.message).toMatch(/Pro-plan feature/i);
+    expect(attempt.body.message.message).toMatch(/FLY-plan feature/i);
 
     // No row was created at all - not a degraded/partial export.
     const rows = await superuser.sellerDataExport.count();

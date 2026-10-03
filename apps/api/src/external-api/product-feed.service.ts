@@ -108,7 +108,7 @@ export class ProductFeedService {
     const planContext = await this.subscriptions.getPlanContext(tokenRow.sellerId);
     const enabled = await this.settings.resolve<boolean>("social_media.meta_catalog_feed_enabled", planContext);
     if (!enabled) {
-      throw new ForbiddenException("The Meta Commerce Catalog feed is a Growth-plan feature - upgrade your plan to use it.");
+      throw new ForbiddenException("The Meta Commerce Catalog feed is a RISE-plan feature - upgrade your plan to use it.");
     }
 
     const limit = await this.settings.resolve<number>("external_api.meta_catalog_feed_rate_limit_per_hour");

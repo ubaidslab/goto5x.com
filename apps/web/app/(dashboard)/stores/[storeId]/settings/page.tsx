@@ -13,6 +13,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 type AccessMode = "public" | "coming_soon" | "password_protected";
 
@@ -619,7 +620,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             </div>
           ) : (
             <UpgradeLockedCard
-              requiredTier="RISE"
+              requiredTier={planTierSubtitle("RISE") ? `RISE (${planTierSubtitle("RISE")})` : "RISE"}
               title="Advanced SEO is a RISE+ feature"
               description="Control robots directives, structured data, sitemap inclusion, and custom head tags for your whole store, once you're on RISE or FLY."
               action={

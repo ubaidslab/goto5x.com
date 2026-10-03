@@ -121,7 +121,7 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     const planContext = await this.subscriptions.getPlanContext(sellerId);
     const enabled = await this.settings.resolve<boolean>("data_export.on_demand_enabled", planContext);
     if (!enabled) {
-      throw new ForbiddenException("On-demand full export is a Pro-plan feature - upgrade your plan to use it.");
+      throw new ForbiddenException("On-demand full export is a FLY-plan feature - upgrade your plan to use it.");
     }
 
     const minHours = await this.settings.resolve<number>("data_export.on_demand_min_interval_hours");

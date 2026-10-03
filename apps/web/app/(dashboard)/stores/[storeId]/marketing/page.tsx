@@ -14,6 +14,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { UpgradeLockedCard } from "@/components/ui/UpgradeLockedCard";
 import { toast } from "@/lib/use-toast";
 import { ApiError, api } from "@/lib/dashboard-api";
+import { planTierSubtitle } from "@/lib/plan-tier-copy";
 
 interface ApiToken {
   id: string;
@@ -206,7 +207,7 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
           </div>
         ) : (
           <UpgradeLockedCard
-            requiredTier="RISE"
+            requiredTier={planTierSubtitle("RISE") ? `RISE (${planTierSubtitle("RISE")})` : "RISE"}
             title="The Meta catalog feed is a RISE+ feature"
             description="Sync your active products straight into Facebook & Instagram Shop, once you're on RISE or FLY."
             action={
@@ -248,7 +249,7 @@ export default function MarketingPage({ params }: { params: { storeId: string } 
           </div>
         ) : (
           <UpgradeLockedCard
-            requiredTier="RISE"
+            requiredTier={planTierSubtitle("RISE") ? `RISE (${planTierSubtitle("RISE")})` : "RISE"}
             title="WhatsApp product sharing is a RISE+ feature"
             description="Generate a one-tap share link for any published product, once you're on RISE or FLY."
             action={
