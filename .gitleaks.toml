@@ -1,0 +1,39 @@
+title = "UZEYN gitleaks config"
+
+# Extends (does not replace) gitleaks' own embedded default ruleset - this
+# file only adds allowlist entries for confirmed false positives, verified
+# by hand against the live gitleaks output, not blanket exclusions:
+#
+# 1. Settings Registry rows always shape as `key: "dotted.snake_case"`
+#    (SettingsDefinition's natural identifier column, e.g.
+#    apps/api/src/plans/plans.seed.ts) - gitleaks' generic-api-key rule
+#    triggers on the literal field name "key", then flags the value next to
+#    it regardless of that value's own shape. The allowlist regex below
+#    matches the captured VALUE (a human-readable dotted namespace, never a
+#    random/base64/hex credential) rather than listing every individual
+#    seed file one at a time - this also covers every other Settings
+#    Registry seed file already in the codebase and any added later, not
+#    just this one.
+# 2. apps/api/.env.test.example is a committed template of placeholder
+#    values (its own header comments say so explicitly), same category as
+#    the repo-root .env.example - allowlisted by path, matching how that
+#    file is already treated.
+# 3. ci.yml's "Write apps/api/.env.test" step duplicates that same
+#    DRIVE_TOKEN_ENCRYPTION_KEY placeholder value inline so the e2e job has
+#    a real env file to run against - it's inside an unquoted heredoc, so
+#    an inline `gitleaks:allow` comment isn't safe (it would become part of
+#    the literal env value written to disk). Allowlisted by its exact,
+#    already-public value instead, not by path, since ci.yml is a 200+
+#    line file that should otherwise stay fully scanned.
+[extend]
+useDefault = true
+
+[allowlist]
+  description = "Settings Registry seed keys and the committed test-env template, both confirmed non-secret"
+  paths = [
+    '''apps/api/\.env\.test\.example$''',
+  ]
+  regexes = [
+    '''^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$''',
+    '''cVKW5U8XxG2Wn9GxwZ8v4vQY2ZC1o9dCmR3hT5nQmZ4=''',
+  ]
