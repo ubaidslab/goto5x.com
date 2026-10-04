@@ -11361,7 +11361,9 @@ submitted the campaign (appeared in the list, form reset); cancelling
 submitted nothing.
 
 ### 14.74 Global Launch Mandate — Phased Rollout (new, v0.62, §5.70-5.77,
-PROPOSED — scoped and researched, implementation not yet started)
+Phase A IN PROGRESS as of 2026-10-04 — security-checklist fixes and
+§5.70 multi-currency display shipped and CI-green; the rest of Phase A
+not yet started)
 
 **Phase sequencing below is the founder's own explicit instruction, not
 this amendment's invention — recorded verbatim in `docs/
@@ -11383,10 +11385,22 @@ must be confirmed before that one specific item ships, not guessed:
       question, open question #14, still needs an answer before this
       one item ships)
 - [ ] §5.73 free editable-template tier (FR-73.1-73.3, ceiling approved)
-- [ ] §5.70 multi-currency display (FR-70.1-70.4, FR-70.5's
-      aggregate-reporting fix now has a confirmed design — per-currency
-      breakdown) and the security-checklist fixes identified in `docs/
-      security-audit-report.md`'s new Phase 6
+- [x] §5.70 multi-currency display and the security-checklist fixes
+      identified in `docs/security-audit-report.md`'s new Phase 6 —
+      BUILT and independently CI-confirmed green, 2026-10-04 (commits
+      8af7206/7b6b94d for the 8 security-checklist items; 6bbf1d3/
+      2a6299f/eb7999a for FR-70.2/70.5/70.3). FR-70.1 needed no code
+      (the SRS's own §5.70 text already confirmed `Store.currency`
+      pre-existed as the single source of truth). FR-70.6 is this
+      correction itself. **FR-70.4 is the one deliberate exception —
+      confirmed BLOCKED, not built:** every backend call site it names
+      is seller-wallet-scoped, not store-scoped, with no real currency
+      to resolve to until §13 item #16's wallet-currency architecture
+      question is answered (tracked there, not silently dropped;
+      likely resolved naturally once §5.72/Phase B's Paddle currency
+      model is real, so not worth guessing at now). FR-70.5's harder
+      half (MRR/ARPS) is the same deferral, same reason — see FR-70.5's
+      own text.
 
 **Phase B — build the replacement before touching the original:**
 - [ ] §5.72 Paddle integration (FR-72.1-72.5), fully verified end-to-end
