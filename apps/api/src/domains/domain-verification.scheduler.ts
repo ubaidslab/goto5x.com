@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { DOMAIN_VERIFICATION_JOB_SCHEDULER_ID, DOMAIN_VERIFICATION_QUEUE_NAME } from "./domain-verification.queue";
 
 /**
@@ -30,7 +31,11 @@ export class DomainVerificationScheduler implements OnModuleInit, OnModuleDestro
     const pollMinutes = await this.settings.resolve<number>("domains.verification_poll_minutes");
     // upsertJobScheduler is idempotent by design - safe to call on every app
     // boot without creating duplicate repeatable jobs.
-    await this.queue.upsertJobScheduler(DOMAIN_VERIFICATION_JOB_SCHEDULER_ID, { every: pollMinutes * 60_000 });
+    await this.queue.upsertJobScheduler(
+      DOMAIN_VERIFICATION_JOB_SCHEDULER_ID,
+      { every: pollMinutes * 60_000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Domain verification recheck scheduled every ${pollMinutes} minute(s).`);
   }
 

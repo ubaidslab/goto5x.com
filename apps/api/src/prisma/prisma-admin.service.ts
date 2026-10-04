@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { withConnectionLimit } from "../common/database-url.util";
 
 /**
  * Connects as `app_admin` (DATABASE_ADMIN_URL) - BYPASSRLS. RLS bypass is a
@@ -27,8 +28,9 @@ import { PrismaClient } from "@prisma/client";
 @Injectable()
 export class PrismaAdminService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
+    const limit = Number(process.env.DATABASE_ADMIN_CONNECTION_LIMIT ?? 5);
     super({
-      datasources: { db: { url: process.env.DATABASE_ADMIN_URL } },
+      datasources: { db: { url: withConnectionLimit(process.env.DATABASE_ADMIN_URL!, limit) } },
     });
   }
 

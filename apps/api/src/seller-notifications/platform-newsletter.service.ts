@@ -6,6 +6,7 @@ import { EmailService } from "../notifications/email.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { CreatePlatformNewsletterDto } from "./dto/create-platform-newsletter.dto";
 import { PLATFORM_NEWSLETTER_JOB_NAME, PLATFORM_NEWSLETTER_QUEUE_NAME } from "./platform-newsletter.queue";
+import { DEFAULT_TRIGGERED_JOB_OPTIONS } from "../common/queue-defaults.util";
 
 /**
  * Module 55 (SRS §5.62/FR-62.2-62.3) - the admin-composed platform
@@ -56,7 +57,7 @@ export class PlatformNewsletterService implements OnModuleInit, OnModuleDestroy 
     if (newsletter.status !== "draft") {
       throw new BadRequestException(`This newsletter is already "${newsletter.status}".`);
     }
-    await this.queue?.add(PLATFORM_NEWSLETTER_JOB_NAME, { newsletterId: id });
+    await this.queue?.add(PLATFORM_NEWSLETTER_JOB_NAME, { newsletterId: id }, DEFAULT_TRIGGERED_JOB_OPTIONS);
     return newsletter;
   }
 

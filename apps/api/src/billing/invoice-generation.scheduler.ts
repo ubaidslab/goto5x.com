@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { INVOICE_GENERATION_JOB_SCHEDULER_ID, INVOICE_GENERATION_QUEUE_NAME } from "./invoice-generation.queue";
 
 /** FR-6.17 - same pattern as CartAbandonmentScheduler/DomainVerificationScheduler. */
@@ -20,7 +21,11 @@ export class InvoiceGenerationScheduler implements OnModuleInit, OnModuleDestroy
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const checkHours = await this.settings.resolve<number>("billing.invoice_generation_check_hours");
-    await this.queue.upsertJobScheduler(INVOICE_GENERATION_JOB_SCHEDULER_ID, { every: checkHours * 60 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      INVOICE_GENERATION_JOB_SCHEDULER_ID,
+      { every: checkHours * 60 * 60 * 1000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Invoice generation checked every ${checkHours} hour(s).`);
   }
 

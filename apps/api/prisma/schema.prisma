@@ -707,6 +707,9 @@ model Domain {
 
   // No separate @@index on domainName - @unique above already creates the
   // btree index the hot-path lookup needs; a second one would be dead weight.
+  // Security-checklist audit finding: storeId's own FK had no index at all
+  // (a seller's "list my domains" query was doing a full table scan).
+  @@index([storeId], name: "idx_domains_store_id")
   @@map("domains")
 }
 
@@ -1142,6 +1145,9 @@ model Deal {
 
   @@unique([storeId, slug], name: "uniq_deal_store_slug")
   @@index([storeId, status], name: "idx_deals_store_status")
+  // Security-checklist audit finding: same missing-FK-index pattern as
+  // MediaAsset.thumbnailMediaId below.
+  @@index([thumbnailMediaId], name: "idx_deals_thumbnail_media_id")
   @@map("deals")
 }
 
@@ -1430,6 +1436,8 @@ model MediaAsset {
 
   @@index([storeId], name: "idx_media_store_id")
   @@index([productId], name: "idx_media_product_id")
+  // Security-checklist audit finding: this self-referential FK had no index.
+  @@index([thumbnailMediaId], name: "idx_media_thumbnail_media_id")
   @@map("media_assets")
 }
 
@@ -3097,6 +3105,13 @@ model LedgerEntry {
   invoice SellerInvoice? @relation(fields: [invoiceId], references: [id])
 
   @@index([sellerId, createdAt], name: "idx_ledger_seller_created")
+  // Security-checklist audit finding: neither FK had its own index - only
+  // the sellerId composite above existed, so looking up a ledger entry by
+  // its order or invoice (e.g. an order detail page's "ledger activity for
+  // this order" query) scanned every row for that seller instead of using
+  // an index.
+  @@index([orderId], name: "idx_ledger_order_id")
+  @@index([invoiceId], name: "idx_ledger_invoice_id")
   @@map("ledger_entries")
 }
 

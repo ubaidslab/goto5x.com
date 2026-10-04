@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { INVOICE_OVERDUE_JOB_SCHEDULER_ID, INVOICE_OVERDUE_QUEUE_NAME } from "./invoice-overdue.queue";
 
 /** FR-6.18 - grace-period-overdue sweep, same pattern as InvoiceGenerationScheduler. */
@@ -20,7 +21,11 @@ export class InvoiceOverdueScheduler implements OnModuleInit, OnModuleDestroy {
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const sweepHours = await this.settings.resolve<number>("billing.invoice_overdue_sweep_hours");
-    await this.queue.upsertJobScheduler(INVOICE_OVERDUE_JOB_SCHEDULER_ID, { every: sweepHours * 60 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      INVOICE_OVERDUE_JOB_SCHEDULER_ID,
+      { every: sweepHours * 60 * 60 * 1000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Overdue-invoice sweep scheduled every ${sweepHours} hour(s).`);
   }
 

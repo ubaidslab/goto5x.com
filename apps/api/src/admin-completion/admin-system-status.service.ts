@@ -20,7 +20,24 @@ import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
 import { GatewayHealthService } from "../payment-gateway/gateway-health.service";
 import { DATABASE_BACKUP_QUEUE_NAME } from "../backups/database-backup.queue";
+import { PLAN_CYCLE_QUEUE_NAME } from "../plans/plan-cycle.queue";
+import { SUPPORT_TICKET_SLA_QUEUE_NAME } from "../support-tickets/support-ticket-sla.queue";
+import { MISSING_TRACKING_ALERT_QUEUE_NAME } from "../orders/missing-tracking-alert.queue";
+import { STAFF_ACCOUNT_EXPIRY_QUEUE_NAME } from "../staff/staff-account-expiry.queue";
+import { RENEWAL_REMINDERS_QUEUE_NAME } from "../billing/renewal-reminders.queue";
+import { PLAN_FEE_RENEWAL_EXPORT_QUEUE_NAME } from "../billing/plan-fee-renewal-export.queue";
+import { RETENTION_QUEUE_NAME } from "../billing/retention.queue";
+import { PLATFORM_GATEWAY_RECONCILIATION_QUEUE_NAME } from "../platform-gateway/platform-gateway-reconciliation.queue";
+import { GATEWAY_HEALTH_QUEUE_NAME } from "../payment-gateway/gateway-health.queue";
+import { PLATFORM_NEWSLETTER_QUEUE_NAME } from "../seller-notifications/platform-newsletter.queue";
+import { DAILY_SALES_SUMMARY_QUEUE_NAME } from "../seller-notifications/daily-sales-summary.queue";
+import { MONTHLY_SELLER_REPORT_QUEUE_NAME } from "../seller-notifications/monthly-seller-report.queue";
+import { EMAIL_CAMPAIGNS_QUEUE_NAME } from "../campaigns/campaigns.queue";
 
+// Security-checklist audit finding: this list covered only 14 of the 27
+// real queue constants in the codebase (confirmed via a full `find
+// *.queue.ts` sweep) - 13 queues had no admin-visible failed-job count at
+// all. Every queue constant that exists now has a row here.
 const QUEUE_NAMES = [
   INVOICE_GENERATION_QUEUE_NAME,
   INVOICE_OVERDUE_QUEUE_NAME,
@@ -36,6 +53,19 @@ const QUEUE_NAMES = [
   SUPPLIER_SYNC_QUEUE_NAME,
   VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME,
   DATABASE_BACKUP_QUEUE_NAME,
+  PLAN_CYCLE_QUEUE_NAME,
+  SUPPORT_TICKET_SLA_QUEUE_NAME,
+  MISSING_TRACKING_ALERT_QUEUE_NAME,
+  STAFF_ACCOUNT_EXPIRY_QUEUE_NAME,
+  RENEWAL_REMINDERS_QUEUE_NAME,
+  PLAN_FEE_RENEWAL_EXPORT_QUEUE_NAME,
+  RETENTION_QUEUE_NAME,
+  PLATFORM_GATEWAY_RECONCILIATION_QUEUE_NAME,
+  GATEWAY_HEALTH_QUEUE_NAME,
+  PLATFORM_NEWSLETTER_QUEUE_NAME,
+  DAILY_SALES_SUMMARY_QUEUE_NAME,
+  MONTHLY_SELLER_REPORT_QUEUE_NAME,
+  EMAIL_CAMPAIGNS_QUEUE_NAME,
 ];
 
 /**

@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { withConnectionLimit } from "../common/database-url.util";
 
 /**
  * Connects as `app_runtime` (DATABASE_URL) - the RLS-restricted role used for
@@ -9,8 +10,9 @@ import { PrismaClient } from "@prisma/client";
 @Injectable()
 export class PrismaRuntimeService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
+    const limit = Number(process.env.DATABASE_RUNTIME_CONNECTION_LIMIT ?? 10);
     super({
-      datasources: { db: { url: process.env.DATABASE_URL } },
+      datasources: { db: { url: withConnectionLimit(process.env.DATABASE_URL!, limit) } },
     });
   }
 

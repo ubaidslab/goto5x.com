@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { CART_ABANDONMENT_JOB_SCHEDULER_ID, CART_ABANDONMENT_QUEUE_NAME } from "./cart-abandonment.queue";
 
 /**
@@ -24,7 +25,11 @@ export class CartAbandonmentScheduler implements OnModuleInit, OnModuleDestroy {
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const sweepMinutes = await this.settings.resolve<number>("cart.abandonment_sweep_minutes");
-    await this.queue.upsertJobScheduler(CART_ABANDONMENT_JOB_SCHEDULER_ID, { every: sweepMinutes * 60_000 });
+    await this.queue.upsertJobScheduler(
+      CART_ABANDONMENT_JOB_SCHEDULER_ID,
+      { every: sweepMinutes * 60_000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Abandoned-cart sweep scheduled every ${sweepMinutes} minute(s).`);
   }
 

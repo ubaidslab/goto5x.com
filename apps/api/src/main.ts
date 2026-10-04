@@ -12,6 +12,15 @@ async function bootstrap() {
   // this only additionally exposes `req.rawBody` for the handful of
   // controllers that need it (external-api/*.controller.ts).
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  // Security-checklist audit finding: unlike worker.main.ts's own
+  // SIGTERM/SIGINT handler (which closes every BullMQ worker cleanly),
+  // this process had none at all - a `docker stop`/orchestrator SIGTERM
+  // would hard-kill it mid-request instead of draining in-flight ones and
+  // closing DB connections cleanly. enableShutdownHooks() wires Nest's own
+  // lifecycle (onApplicationShutdown on every injectable, including
+  // PrismaRuntimeService/PrismaAdminService's existing $disconnect hooks)
+  // to these signals.
+  app.enableShutdownHooks();
   // Autonomous punch-list fix (P1.4 input-validation sweep follow-up):
   // `whitelist: true` alone silently STRIPS any field a DTO doesn't declare
   // rather than rejecting the request - a client (or a stale/mistaken

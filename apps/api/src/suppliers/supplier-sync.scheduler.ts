@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { SUPPLIER_SYNC_JOB_SCHEDULER_ID, SUPPLIER_SYNC_QUEUE_NAME } from "./supplier-sync.queue";
 
 /**
@@ -24,7 +25,11 @@ export class SupplierSyncScheduler implements OnModuleInit, OnModuleDestroy {
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const pollMinutes = await this.settings.resolve<number>("suppliers.sync_poll_minutes");
-    await this.queue.upsertJobScheduler(SUPPLIER_SYNC_JOB_SCHEDULER_ID, { every: pollMinutes * 60_000 });
+    await this.queue.upsertJobScheduler(
+      SUPPLIER_SYNC_JOB_SCHEDULER_ID,
+      { every: pollMinutes * 60_000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Supplier price/stock sync scheduled every ${pollMinutes} minute(s).`);
   }
 

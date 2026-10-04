@@ -4,6 +4,7 @@ import { Queue } from "bullmq";
 import { randomBytes } from "crypto";
 import { decryptSmtpCredential } from "../order-verification/smtp-credential-crypto.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { DEFAULT_TRIGGERED_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { CustomerSegmentsService } from "../customer-segments/customer-segments.service";
 import { EventsService } from "../events/events.service";
@@ -116,7 +117,7 @@ export class EmailCampaignsService implements OnModuleInit, OnModuleDestroy {
       });
     });
 
-    await this.queue!.add(EMAIL_CAMPAIGNS_JOB_NAME, { campaignId: created.id });
+    await this.queue!.add(EMAIL_CAMPAIGNS_JOB_NAME, { campaignId: created.id }, DEFAULT_TRIGGERED_JOB_OPTIONS);
     return created;
   }
 

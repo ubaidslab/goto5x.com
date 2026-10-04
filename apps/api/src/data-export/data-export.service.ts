@@ -13,6 +13,7 @@ import { SettingsService } from "../settings-registry/settings.service";
 import { toCsv } from "../data-portability/csv.util";
 import { renderExportSummaryHtml } from "./export-summary-template";
 import { DATA_EXPORT_JOB_NAME, DATA_EXPORT_QUEUE_NAME } from "./data-export.queue";
+import { DEFAULT_TRIGGERED_JOB_OPTIONS } from "../common/queue-defaults.util";
 
 const PRODUCT_HEADER = ["Store", "Product ID", "Title", "Status", "Created At"];
 const ORDER_HEADER = ["Store", "Order ID", "Placed At", "Status", "Currency", "Total Amount"];
@@ -203,7 +204,7 @@ export class DataExportService implements OnModuleInit, OnModuleDestroy {
     const record = await this.prismaAdmin.sellerDataExport.create({
       data: { sellerId, trigger, periodStart, periodEnd, status: "pending" },
     });
-    await this.queue!.add(DATA_EXPORT_JOB_NAME, { exportId: record.id });
+    await this.queue!.add(DATA_EXPORT_JOB_NAME, { exportId: record.id }, DEFAULT_TRIGGERED_JOB_OPTIONS);
     return record;
   }
 

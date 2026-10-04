@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { WALLET_RECONCILIATION_JOB_SCHEDULER_ID, WALLET_RECONCILIATION_QUEUE_NAME } from "./wallet-reconciliation.queue";
 
 /** Module 47 (new FR-6.29) - same pattern as WalletLowBalanceSweepScheduler/PlanFeeDebitScheduler before it. */
@@ -20,7 +21,11 @@ export class WalletReconciliationScheduler implements OnModuleInit, OnModuleDest
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const intervalHours = await this.settings.resolve<number>("billing.wallet_reconciliation_interval_hours");
-    await this.queue.upsertJobScheduler(WALLET_RECONCILIATION_JOB_SCHEDULER_ID, { every: intervalHours * 60 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      WALLET_RECONCILIATION_JOB_SCHEDULER_ID,
+      { every: intervalHours * 60 * 60 * 1000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Wallet balance reconciliation checked every ${intervalHours} hour(s).`);
   }
 

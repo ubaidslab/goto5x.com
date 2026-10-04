@@ -194,6 +194,19 @@ jobs:
       - name: Prove the audit mechanism itself blocks a known-vulnerable package
         run: pnpm run verify:dependency-audit-mechanism
 
+      - name: Secrets scan (gitleaks)
+        # Security-checklist audit finding: the clean result on record
+        # (docs/security-audit-report.md §3 #16) was a one-time manual
+        # full-history scan, not a recurring gate - nothing stopped a new
+        # secret from being committed and sitting undetected since. Runs
+        # the open-source gitleaks CLI directly (no third-party Action/
+        # license needed) against the current checkout's file content
+        # (--no-git), so it catches a secret present in the final tree
+        # this push produces, on every push.
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks detect --no-git --source . --redact -v
+
   web-build:
     runs-on: ubuntu-latest
     # apps/web has no automated test suite (see README's Module 4/5

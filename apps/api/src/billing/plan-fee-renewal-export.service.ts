@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { PLAN_FEE_RENEWAL_EXPORT_JOB_NAME, PLAN_FEE_RENEWAL_EXPORT_QUEUE_NAME } from "./plan-fee-renewal-export.queue";
+import { DEFAULT_TRIGGERED_JOB_OPTIONS } from "../common/queue-defaults.util";
 
 /**
  * Module 73 (v0.38) - bridges an admin-verified plan-fee RENEWAL payment to
@@ -34,6 +35,6 @@ export class PlanFeeRenewalExportTrigger implements OnModuleInit, OnModuleDestro
   }
 
   async trigger(sellerId: string): Promise<void> {
-    await this.queue!.add(PLAN_FEE_RENEWAL_EXPORT_JOB_NAME, { sellerId });
+    await this.queue!.add(PLAN_FEE_RENEWAL_EXPORT_JOB_NAME, { sellerId }, DEFAULT_TRIGGERED_JOB_OPTIONS);
   }
 }

@@ -101,23 +101,46 @@ export class CheckoutService {
       throw new BadRequestException("A discount code cannot be combined with a deal.");
     }
 
-    const { order, paymentInstructions } = await this.placeOrder({
-      storeId: store.id,
-      currency: store.currency,
-      buyerEmail: cart.buyerEmail,
-      buyerWhatsapp: dto.buyerWhatsapp ?? null,
-      buyerId,
-      items,
-      shippingAddress: dto.shippingAddress,
-      discountCode: dto.discountCode,
-      giftCardCode: dto.giftCardCode,
-      dealId: cart.dealId ?? undefined,
-      source: "storefront",
+    // Security-checklist audit finding: the status check above is a plain
+    // read, so two concurrent checkout() calls on the same sessionToken
+    // could both pass it before either commits, producing two orders from
+    // one cart. This atomic, WHERE-guarded updateMany is what actually
+    // closes the race (same technique this codebase already uses for the
+    // promo-code/discount-code/gift-card races) - only one concurrent
+    // caller's update can ever match a row still at status "active".
+    const claim = await this.prismaAdmin.cart.updateMany({
+      where: { id: cart.id, status: "active" },
+      data: { status: "converted" },
     });
+    if (claim.count === 0) throw new BadRequestException("This cart is no longer active.");
+
+    let order: Awaited<ReturnType<CheckoutService["placeOrder"]>>["order"];
+    let paymentInstructions: Awaited<ReturnType<CheckoutService["placeOrder"]>>["paymentInstructions"];
+    try {
+      ({ order, paymentInstructions } = await this.placeOrder({
+        storeId: store.id,
+        currency: store.currency,
+        buyerEmail: cart.buyerEmail,
+        buyerWhatsapp: dto.buyerWhatsapp ?? null,
+        buyerId,
+        items,
+        shippingAddress: dto.shippingAddress,
+        discountCode: dto.discountCode,
+        giftCardCode: dto.giftCardCode,
+        dealId: cart.dealId ?? undefined,
+        source: "storefront",
+      }));
+    } catch (err) {
+      // Placing the order failed (sold out, bad discount code, etc.) - this
+      // cart never actually converted, so release the claim back to active
+      // rather than stranding the buyer with a dead cart they can't retry.
+      await this.prismaAdmin.cart.updateMany({ where: { id: cart.id, status: "converted" }, data: { status: "active" } });
+      throw err;
+    }
 
     await this.prismaAdmin.cart.update({
       where: { id: cart.id },
-      data: { status: "converted", convertedOrderId: order.id },
+      data: { convertedOrderId: order.id },
     });
 
     const canonicalHostname = await this.storefront.canonicalHostnameFor(store);

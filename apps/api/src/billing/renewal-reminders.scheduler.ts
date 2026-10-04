@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { RENEWAL_REMINDERS_JOB_SCHEDULER_ID, RENEWAL_REMINDERS_QUEUE_NAME } from "./renewal-reminders.queue";
 
 /** SRS §5.6k/FR-6.42 (Module 65) - same pattern as RetentionScheduler. */
@@ -20,7 +21,11 @@ export class RenewalRemindersScheduler implements OnModuleInit, OnModuleDestroy 
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const checkHours = await this.settings.resolve<number>("billing.renewal_reminder_sweep_check_hours");
-    await this.queue.upsertJobScheduler(RENEWAL_REMINDERS_JOB_SCHEDULER_ID, { every: checkHours * 60 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      RENEWAL_REMINDERS_JOB_SCHEDULER_ID,
+      { every: checkHours * 60 * 60 * 1000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Renewal-reminder / win-back email sweep checked every ${checkHours} hour(s).`);
   }
 

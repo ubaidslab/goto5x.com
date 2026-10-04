@@ -5,6 +5,7 @@ import { Queue } from "bullmq";
 import { ObjectStorageService } from "../media/object-storage.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { PRODUCT_IMPORT_QUEUE_NAME } from "./product-import.queue";
+import { DEFAULT_TRIGGERED_JOB_OPTIONS } from "../common/queue-defaults.util";
 
 /**
  * FR-18.1/18.2 - creates the tracked job row and, for an import, enqueues
@@ -44,7 +45,7 @@ export class ImportJobsService implements OnModuleInit, OnModuleDestroy {
         data: { storeId, type: "product_import", status: "pending", fileUrl },
       });
 
-      await this.queue!.add("process", { importJobId: job.id });
+      await this.queue!.add("process", { importJobId: job.id }, DEFAULT_TRIGGERED_JOB_OPTIONS);
       return job;
     });
   }
@@ -69,7 +70,7 @@ export class ImportJobsService implements OnModuleInit, OnModuleDestroy {
         data: { storeId, type: "stock_import", status: "pending", fileUrl },
       });
 
-      await this.queue!.add("process", { importJobId: job.id, createdByUserId: userId });
+      await this.queue!.add("process", { importJobId: job.id, createdByUserId: userId }, DEFAULT_TRIGGERED_JOB_OPTIONS);
       return job;
     });
   }
@@ -87,7 +88,7 @@ export class ImportJobsService implements OnModuleInit, OnModuleDestroy {
         data: { storeId, type: "ad_spend_import", status: "pending", fileUrl },
       });
 
-      await this.queue!.add("process", { importJobId: job.id });
+      await this.queue!.add("process", { importJobId: job.id }, DEFAULT_TRIGGERED_JOB_OPTIONS);
       return job;
     });
   }
@@ -112,7 +113,7 @@ export class ImportJobsService implements OnModuleInit, OnModuleDestroy {
         data: { storeId, type: "tracking_import", status: "pending", fileUrl },
       });
 
-      await this.queue!.add("process", { importJobId: job.id, createdByUserId: userId });
+      await this.queue!.add("process", { importJobId: job.id, createdByUserId: userId }, DEFAULT_TRIGGERED_JOB_OPTIONS);
       return job;
     });
   }

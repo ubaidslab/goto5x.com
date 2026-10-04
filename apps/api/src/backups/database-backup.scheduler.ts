@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { DATABASE_BACKUP_JOB_SCHEDULER_ID, DATABASE_BACKUP_QUEUE_NAME } from "./database-backup.queue";
 
 /** Backups reality check (Risk 5/13) - same pattern as WalletReconciliationScheduler. */
@@ -20,7 +21,11 @@ export class DatabaseBackupScheduler implements OnModuleInit, OnModuleDestroy {
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const intervalHours = await this.settings.resolve<number>("backups.database_backup_interval_hours");
-    await this.queue.upsertJobScheduler(DATABASE_BACKUP_JOB_SCHEDULER_ID, { every: intervalHours * 60 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      DATABASE_BACKUP_JOB_SCHEDULER_ID,
+      { every: intervalHours * 60 * 60 * 1000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Database backup sweep scheduled every ${intervalHours} hour(s).`);
   }
 

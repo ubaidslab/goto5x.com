@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { SettingsService } from "../settings-registry/settings.service";
+import { DEFAULT_SWEEP_JOB_OPTIONS } from "../common/queue-defaults.util";
 import { PLAN_CYCLE_JOB_SCHEDULER_ID, PLAN_CYCLE_QUEUE_NAME } from "./plan-cycle.queue";
 
 /**
@@ -27,7 +28,11 @@ export class PlanCycleScheduler implements OnModuleInit, OnModuleDestroy {
       connection: { url: this.config.getOrThrow<string>("REDIS_URL") },
     });
     const checkHours = await this.settings.resolve<number>("billing.plan_cycle_sweep_check_hours");
-    await this.queue.upsertJobScheduler(PLAN_CYCLE_JOB_SCHEDULER_ID, { every: checkHours * 60 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      PLAN_CYCLE_JOB_SCHEDULER_ID,
+      { every: checkHours * 60 * 60 * 1000 },
+      { opts: DEFAULT_SWEEP_JOB_OPTIONS },
+    );
     this.logger.log(`Pending plan-cycle change sweep checked every ${checkHours} hour(s).`);
   }
 
