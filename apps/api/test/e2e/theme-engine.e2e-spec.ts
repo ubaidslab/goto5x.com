@@ -336,6 +336,12 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
 
     it("a GO seller cannot assign a RISE-tier animation preset to an element", async () => {
       const { token, storeId } = await signupLoginAndCreateStore("dstudio-go-anim@example.com", "dstudio-go-anim-store");
+      // SRS §5.73 - signup now defaults to starter_free, which bans EVERY
+      // animation preset outright (its own restricted-mode message), never
+      // reaching the tier-specific "...RISE..." message this test checks
+      // for - upgraded to GO so the RISE-tier-specific rejection path is
+      // the one actually exercised.
+      await upgradeToTier(await sellerIdFor("dstudio-go-anim@example.com"), 0);
       const res = await request(app.getHttpServer())
         .patch(`/stores/${storeId}/theme-settings`)
         .set("Authorization", `Bearer ${token}`)
@@ -346,6 +352,10 @@ describe("Theme Engine (e2e) - SRS FR-1.x, §14.1", () => {
 
     it("a GO seller CAN save a GO-tier section with its allowed variant and Fade Up", async () => {
       const { token, storeId } = await signupLoginAndCreateStore("dstudio-go-happy@example.com", "dstudio-go-happy-store");
+      // SRS §5.73 - signup now defaults to starter_free, which bans every
+      // animation preset (including Fade Up) outright - upgraded to GO so
+      // this "happy path" test exercises GO's actual allowance.
+      await upgradeToTier(await sellerIdFor("dstudio-go-happy@example.com"), 0);
       const res = await request(app.getHttpServer())
         .patch(`/stores/${storeId}/theme-settings`)
         .set("Authorization", `Bearer ${token}`)

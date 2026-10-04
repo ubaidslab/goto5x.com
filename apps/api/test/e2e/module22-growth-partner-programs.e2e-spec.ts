@@ -473,6 +473,14 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       await settings.setValue("growth.ambassador_monthly_reward_threshold_subscriptions", "global", null, 2, ADMIN_ID);
 
       const ambassador = await signup("reward-ambassador@example.com");
+      // SRS §5.73 - signup now defaults to starter_free (price 0); the
+      // ambassador's OWN reward is "a refund of their own current plan's
+      // price" (ProgramRewardService.runMonthlyAmbassadorRewardSweep()'s
+      // rewardAmount <= 0 guard correctly skips crediting $0) - upgraded
+      // before applying so there's a real fee to refund, and so the
+      // ambassador_eligible grant below targets their real plan.
+      const ambassadorGoPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: ambassador.sellerId }, data: { planId: ambassadorGoPlan.id } });
       const ambassadorCode = await applyApproveAmbassador(ambassador.token, ambassador.sellerId, ADMIN_ID);
       const referredA = await signup("reward-referred-a@example.com", ambassadorCode);
       const referredB = await signup("reward-referred-b@example.com", ambassadorCode);
