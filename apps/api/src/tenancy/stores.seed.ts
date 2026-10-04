@@ -23,6 +23,26 @@ export async function seedStoresSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // SRS §5.70/FR-70.2 (Global Launch Mandate) - the allowlist a new store's
+  // currency picker is validated against, same "founder edits this without
+  // a deploy" pattern as moderation.banned_keywords/dashboard.
+  // personalization_allowed_themes. PKR (the pre-global-launch default) and
+  // USD (the Paddle pricing ladder's own currency, §5.72) are the only two
+  // currencies anything in this codebase has evidence of actually needing
+  // at launch - extend this list, not CreateStoreDto, to add more.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "stores.supported_currencies" },
+    create: {
+      key: "stores.supported_currencies",
+      valueType: "json",
+      allowedScopes: ["global"],
+      defaultValue: ["PKR", "USD"],
+      description:
+        "ISO-4217 codes a seller may choose as their new store's currency (FR-70.2). Display-only - UZEYN runs no FX conversion, so this is the full set of currencies a store can ever operate in, not a default that gets converted later.",
+    },
+    update: {},
+  });
+
   // Module 75 (SRS §5.6j/FR-7.23) - the founder-approved feature-gate
   // ladder: GO 1/RUN 3/RISE 5/FLY 10. GO keeps the global default of 1 (no
   // override needed); RUN, previously also on the global default, now gets

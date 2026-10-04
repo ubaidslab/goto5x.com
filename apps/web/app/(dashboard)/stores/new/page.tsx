@@ -6,12 +6,23 @@ import { Reveal } from "@/components/motion/Reveal";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { DashCard } from "@/components/dashboard/ui/DashCard";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { api, ApiError } from "@/lib/dashboard-api";
 
 interface Store {
   id: string;
 }
+
+// SRS §5.70/FR-70.2 - mirrors the backend's stores.supported_currencies
+// Settings Registry default (apps/api/src/tenancy/stores.seed.ts). Not
+// fetched live - same "small hardcoded list that mirrors the Settings
+// Registry default" convention this codebase already uses for
+// DASHBOARD_THEMES in the Settings page; update both by hand if the
+// founder ever extends the allowlist.
+const SUPPORTED_CURRENCIES: { code: string; label: string }[] = [
+  { code: "PKR", label: "PKR - Pakistani Rupee" },
+  { code: "USD", label: "USD - US Dollar" },
+];
 
 function slugify(name: string): string {
   return name
@@ -38,6 +49,7 @@ export default function CreateStorePage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
+  const [currency, setCurrency] = useState(SUPPORTED_CURRENCIES[0].code);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,7 +63,7 @@ export default function CreateStorePage() {
     setError(null);
     setSubmitting(true);
     try {
-      const store = await api.post<Store>("/stores", { name, slug });
+      const store = await api.post<Store>("/stores", { name, slug, currency });
       router.push(`/stores/${store.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create your store - please try again.");
@@ -105,6 +117,19 @@ export default function CreateStorePage() {
                   maxLength={63}
                   pattern="[a-z0-9-]{3,63}"
                 />
+              </Field>
+              <Field
+                label="Currency"
+                htmlFor="new-store-currency"
+                hint="Choose carefully - this can't be changed once your store is live."
+              >
+                <Select id="new-store-currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  {SUPPORTED_CURRENCIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
               </Field>
               <Button type="submit" className="w-full" loading={submitting}>
                 Create store

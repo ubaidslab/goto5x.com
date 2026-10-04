@@ -58,13 +58,22 @@ export class StoresService {
       throw new BadRequestException(`Your plan's store limit (${maxStores}) has been reached.`);
     }
 
+    // SRS §5.70/FR-70.2 - founder-editable allowlist, not a compile-time
+    // enum on the DTO, so a new currency can be enabled without a deploy.
+    if (dto.currency) {
+      const supportedCurrencies = await this.settings.resolve<string[]>("stores.supported_currencies");
+      if (!supportedCurrencies.includes(dto.currency)) {
+        throw new BadRequestException(`"${dto.currency}" isn't a supported store currency.`);
+      }
+    }
+
     const store = await this.tenantPrisma.run(sellerId, async (tx) => {
       const existingSlug = await tx.store.findUnique({ where: { slug: dto.slug } });
       if (existingSlug) {
         throw new ConflictException(`Slug "${dto.slug}" is already taken.`);
       }
       const created = await tx.store.create({
-        data: { sellerId, name: dto.name, slug: dto.slug },
+        data: { sellerId, name: dto.name, slug: dto.slug, ...(dto.currency ? { currency: dto.currency } : {}) },
       });
       // SRS FR-1.2/§14.1 (Module 4) - every store gets a theme the moment it
       // exists, so the customizer/storefront never have to handle "no theme
