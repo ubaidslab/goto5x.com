@@ -35,6 +35,7 @@ interface Order {
 interface StoreSummary {
   id: string;
   publishedAt: string | null;
+  currency: string;
 }
 interface OnboardingProgress {
   theme: boolean;
@@ -512,7 +513,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
     <div>
       <PageHeader title="Dashboard" description="Here's what's happening in your store." />
 
-      <MilestoneBanner milestone={milestone} />
+      <MilestoneBanner milestone={milestone} currency={store.currency} />
 
       <Reveal className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.06}>
         <GaugeCard
@@ -527,7 +528,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
         <GaugeCard
           icon={BarChart3}
           label="Revenue (30d)"
-          value={`Rs ${revenueThisPeriod.toLocaleString()}`}
+          value={`${store.currency} ${revenueThisPeriod.toLocaleString()}`}
           percent={periodRatio(revenueThisPeriod, revenuePriorPeriod)}
           hint={periodChangeHint(revenueThisPeriod, revenuePriorPeriod)}
           isEmpty={!hasSalesHistory}
@@ -545,7 +546,7 @@ export default function DashboardHomePage({ params }: { params: { storeId: strin
         <GaugeCard
           icon={Receipt}
           label="Average order value"
-          value={`Rs ${Math.round(overview.aov).toLocaleString()}`}
+          value={`${store.currency} ${Math.round(overview.aov).toLocaleString()}`}
           percent={periodRatio(aovThisPeriod, aovPriorPeriod)}
           hint={periodChangeHint(aovThisPeriod, aovPriorPeriod)}
           isEmpty={!hasSalesHistory}

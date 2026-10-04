@@ -32,6 +32,7 @@ interface ProductPage {
   limit: number;
   total: number;
   totalPages: number;
+  currency: string;
 }
 interface Category {
   id: string;
@@ -119,7 +120,7 @@ export default function ProductsListPage({ params }: { params: { storeId: string
     api
       .get<ProductPage>(`/stores/${params.storeId}/products?${query.toString()}`)
       .then(setProductPage)
-      .catch(() => setProductPage({ items: [], page: 1, limit: 20, total: 0, totalPages: 1 }));
+      .catch(() => setProductPage({ items: [], page: 1, limit: 20, total: 0, totalPages: 1, currency: "" }));
   }
 
   useEffect(reload, [params.storeId, filters, page]);
@@ -491,7 +492,7 @@ export default function ProductsListPage({ params }: { params: { storeId: string
                         <p className="truncate text-sm font-medium text-ink">{product.title}</p>
                         <p className="mt-0.5 text-xs text-ink-muted">
                           {product.variants.length} variant{product.variants.length === 1 ? "" : "s"}
-                          {priced && ` · Rs ${priced.price}`}
+                          {priced && ` · ${productPage.currency} ${priced.price}`}
                           {product.tags.length > 0 && ` · ${product.tags.join(", ")}`}
                         </p>
                       </div>

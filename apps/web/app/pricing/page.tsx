@@ -173,13 +173,13 @@ export default function PricingPage() {
 
   function priceLabel(plan: Plan) {
     const value = cyclePriceFor(plan);
-    return value === 0 ? "Free" : `Rs ${value.toLocaleString()}`;
+    return value === 0 ? "Free" : `${plan.currency} ${value.toLocaleString()}`;
   }
 
   function regularPriceLabel(plan: Plan) {
     if (!plan.regularPrice || Number(plan.regularPrice) <= plan.activePrice) return undefined;
     if (cycle !== "monthly") return undefined; // the struck-through reference is only meaningful against the monthly figure
-    return `Rs ${Number(plan.regularPrice).toLocaleString()}`;
+    return `${plan.currency} ${Number(plan.regularPrice).toLocaleString()}`;
   }
 
   function savingsLabel(plan: Plan): string | undefined {
@@ -191,7 +191,7 @@ export default function PricingPage() {
     const saved = payingMonthlyTotal - cyclePrice;
     if (saved <= 0) return undefined;
     const effectiveMonthly = Math.round(cyclePrice / months);
-    return `Rs ${effectiveMonthly.toLocaleString()}/mo effective - save Rs ${saved.toLocaleString()} vs. paying monthly ${months} times (${multiplier}x total)`;
+    return `${plan.currency} ${effectiveMonthly.toLocaleString()}/mo effective - save ${plan.currency} ${saved.toLocaleString()} vs. paying monthly ${months} times (${multiplier}x total)`;
   }
 
   return (
@@ -289,7 +289,7 @@ export default function PricingPage() {
                 <PricingCard
                   key={plan.id}
                   name={plan.name}
-                  priceLabel={`Rs ${plan.seatPrice}`}
+                  priceLabel={`${plan.currency} ${plan.seatPrice}`}
                   cadence={`seat/${plan.billingInterval === "yearly" ? "year" : "month"}`}
                   description="Per teammate, on top of your base plan."
                   features={["Everything in Individual", "Role-based permissions", "Shared wallet & payouts"]}
@@ -309,7 +309,7 @@ export default function PricingPage() {
                 <PricingCard
                   key={plan.id}
                   name={plan.name}
-                  priceLabel={plan.price === "0" ? "Free" : `Rs ${plan.price}`}
+                  priceLabel={plan.price === "0" ? "Free" : `${plan.currency} ${plan.price}`}
                   cadence={plan.price === "0" ? undefined : plan.billingInterval === "yearly" ? "year" : "month"}
                   description="Aggregated order dashboard across every seller you fulfill for."
                   features={["Aggregated order dashboard", "Wallet & payouts", "Email support"]}

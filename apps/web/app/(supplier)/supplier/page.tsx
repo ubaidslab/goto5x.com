@@ -30,6 +30,7 @@ interface Plan {
   name: string;
   tierOrder: number;
   price: string;
+  currency: string;
 }
 
 interface Subscription {
@@ -128,7 +129,7 @@ export default function SupplierDashboardPage() {
             <p className="mt-1 text-lg font-semibold text-ink">{subscription?.plan.name ?? "Loading..."}</p>
             {!isPremium && premiumPlan && (
               <Button size="sm" className="mt-3" onClick={() => upgrade(premiumPlan.id)}>
-                Upgrade to {premiumPlan.name} (Rs. {premiumPlan.price}/mo)
+                Upgrade to {premiumPlan.name} ({premiumPlan.currency} {premiumPlan.price}/mo)
               </Button>
             )}
           </CardBody>

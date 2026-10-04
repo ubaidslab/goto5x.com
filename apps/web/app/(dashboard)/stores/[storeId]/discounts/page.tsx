@@ -22,6 +22,7 @@ interface DiscountCode {
   usageLimit: number | null;
   usageCount: number;
   isActive: boolean;
+  currency: string;
 }
 
 export default function DiscountsPage({ params }: { params: { storeId: string } }) {
@@ -146,7 +147,7 @@ export default function DiscountsPage({ params }: { params: { storeId: string } 
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">{discountCode.code}</p>
                   <p className="mt-0.5 text-xs text-ink-muted">
-                    {discountCode.type === "percentage" ? `${discountCode.value}% off` : `Rs ${discountCode.value} off`}
+                    {discountCode.type === "percentage" ? `${discountCode.value}% off` : `${discountCode.currency} ${discountCode.value} off`}
                     {discountCode.usageLimit && ` · ${discountCode.usageCount}/${discountCode.usageLimit} used`}
                     {!discountCode.usageLimit && discountCode.usageCount > 0 && ` · ${discountCode.usageCount} used`}
                     {discountCode.expiresAt && ` · expires ${new Date(discountCode.expiresAt).toLocaleDateString()}`}

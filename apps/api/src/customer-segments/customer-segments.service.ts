@@ -44,6 +44,7 @@ export class CustomerSegmentsService {
       const withCounts = await Promise.all(
         segments.map(async (segment) => ({
           ...segment,
+          currency: store.currency,
           memberCount: (await this.matchCustomers(tx, storeId, this.segmentToCriteria(segment))).length,
         })),
       );

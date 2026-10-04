@@ -41,6 +41,7 @@ export class AnalyticsService {
   private async assertStoreExists(tx: Prisma.TransactionClient, storeId: string) {
     const store = await tx.store.findUnique({ where: { id: storeId } });
     if (!store) throw new NotFoundException("Store not found.");
+    return store;
   }
 
   /** FR-61.1 - top products by revenue or units. */
@@ -79,7 +80,7 @@ export class AnalyticsService {
   /** FR-61.3/61.4/61.5 - the stat-tile summary: repeat-customer rate, overall return rate, AOV, best sales day/hour. */
   async getOverview(sellerId: string, storeId: string) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
-      await this.assertStoreExists(tx, storeId);
+      const store = await this.assertStoreExists(tx, storeId);
 
       const [customers, confirmedOrders, returnEligibleOrderCount, returnedOrderCount] = await Promise.all([
         tx.customer.findMany({ where: { storeId }, select: { ordersCount: true } }),
@@ -101,7 +102,7 @@ export class AnalyticsService {
         confirmedOrders.map((o) => ({ placedAt: o.placedAt, totalAmount: Number(o.totalAmount) })),
       );
 
-      return { repeatCustomerRate, returnRate, aov, ...bestSalesTimes };
+      return { repeatCustomerRate, returnRate, aov, currency: store.currency, ...bestSalesTimes };
     });
   }
 

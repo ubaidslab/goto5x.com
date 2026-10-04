@@ -183,7 +183,14 @@ describe("Analytics Depth (e2e) - SRS §5.61/§14.60 (Module 54)", () => {
 
     const overview = await request(app.getHttpServer()).get(`/stores/${storeId}/analytics/overview`).set("Authorization", `Bearer ${token}`);
     expect(overview.status).toBe(200);
-    expect(overview.body).toEqual({ repeatCustomerRate: 0, returnRate: 0, aov: 0, bestDayOfWeek: null, bestHourOfDay: null });
+    expect(overview.body).toEqual({
+      repeatCustomerRate: 0,
+      returnRate: 0,
+      aov: 0,
+      currency: "PKR",
+      bestDayOfWeek: null,
+      bestHourOfDay: null,
+    });
 
     const topProducts = await request(app.getHttpServer()).get(`/stores/${storeId}/analytics/top-products`).set("Authorization", `Bearer ${token}`);
     expect(topProducts.body).toEqual([]);

@@ -557,23 +557,23 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                   )}
                   <div className="flex justify-between text-ink-muted">
                     <span>Revenue</span>
-                    <span className="text-ink">Rs {profit.revenue.toLocaleString()}</span>
+                    <span className="text-ink">{order.currency} {profit.revenue.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-ink-muted">
                     <span>Commission</span>
-                    <span className="text-ink">- Rs {profit.commission.toLocaleString()}</span>
+                    <span className="text-ink">- {order.currency} {profit.commission.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-ink-muted">
                     <span>Cost of goods</span>
-                    <span className="text-ink">- Rs {profit.cogs.toLocaleString()}</span>
+                    <span className="text-ink">- {order.currency} {profit.cogs.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-ink-muted">
                     <span>Courier + handling</span>
-                    <span className="text-ink">- Rs {(profit.courierCost + profit.handlingCost).toLocaleString()}</span>
+                    <span className="text-ink">- {order.currency} {(profit.courierCost + profit.handlingCost).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-1.5 font-medium text-ink">
                     <span>Net profit</span>
-                    <span>Rs {profit.netProfit.toLocaleString()}</span>
+                    <span>{order.currency} {profit.netProfit.toLocaleString()}</span>
                   </div>
                 </div>
               )}

@@ -9,12 +9,12 @@ export interface Milestone {
   threshold: number;
 }
 
-function copyFor(milestone: Milestone): string {
+function copyFor(milestone: Milestone, currency: string): string {
   if (milestone.metric === "order_count") {
     if (milestone.threshold === 1) return "You got your first order!";
     return `You've crossed ${milestone.threshold.toLocaleString()} confirmed orders.`;
   }
-  return `You've crossed Rs ${milestone.threshold.toLocaleString()} in total sales.`;
+  return `You've crossed ${currency} ${milestone.threshold.toLocaleString()} in total sales.`;
 }
 
 function dismissKey(id: string): string {
@@ -29,7 +29,7 @@ function dismissKey(id: string): string {
  * (MilestonesService.getRecent) keeps an old milestone from resurrecting
  * itself indefinitely if that localStorage entry is ever cleared.
  */
-export function MilestoneBanner({ milestone }: { milestone: Milestone | null }) {
+export function MilestoneBanner({ milestone, currency }: { milestone: Milestone | null; currency: string }) {
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export function MilestoneBanner({ milestone }: { milestone: Milestone | null }) 
     <div className="mb-6 flex items-center justify-between gap-4 rounded-[14px] bg-accent-subtle px-5 py-4">
       <div className="flex items-center gap-3">
         <PartyPopper className="h-5 w-5 shrink-0 text-accent" strokeWidth={1.75} aria-hidden />
-        <p className="text-sm font-medium text-ink">{copyFor(milestone)}</p>
+        <p className="text-sm font-medium text-ink">{copyFor(milestone, currency)}</p>
       </div>
       <button
         type="button"

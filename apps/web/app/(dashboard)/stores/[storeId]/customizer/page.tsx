@@ -48,9 +48,9 @@ const SECTION_LABELS: Record<SectionId, string> = Object.fromEntries(
  */
 export default function CustomizerPage({ params }: { params: { storeId: string } }) {
   const [themes, setThemes] = useState<Theme[]>([]);
-  const [store, setStore] = useState<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"] } | null>(
-    null,
-  );
+  const [store, setStore] = useState<
+    { id: string; name: string; slug: string; accessMode: PublicStore["accessMode"]; currency: string } | null
+  >(null);
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [themeId, setThemeId] = useState("");
   const [settings, setSettings] = useState<ThemeSettings>({});
@@ -93,8 +93,10 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     api.get<{ url: string | null }>("/themes/template-store-showcase-url").then((r) => setShowcaseUrl(r.url)).catch(() => {});
 
     api
-      .get<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"] }>(`/stores/${params.storeId}`)
-      .then((s) => setStore({ id: s.id, name: s.name, slug: s.slug, accessMode: s.accessMode }))
+      .get<{ id: string; name: string; slug: string; accessMode: PublicStore["accessMode"]; currency: string }>(
+        `/stores/${params.storeId}`,
+      )
+      .then((s) => setStore({ id: s.id, name: s.name, slug: s.slug, accessMode: s.accessMode, currency: s.currency }))
       .catch(() => {});
 
     api
@@ -234,7 +236,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     id: store.id,
     name: store.name,
     slug: store.slug,
-    currency: "PKR",
+    currency: store.currency,
     accessMode: store.accessMode,
     canonicalHostname: `${store.slug}.uzeyn.com`,
     seoTitle: store.name,

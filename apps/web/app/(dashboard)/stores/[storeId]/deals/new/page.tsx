@@ -25,12 +25,14 @@ interface Product {
 }
 interface ProductPage {
   items: Product[];
+  currency: string;
 }
 
 /** SRS §5.67/FR-67.1/67.4 - item picker builds the DealItem set at creation time (create() validates every variant belongs to this store). */
 export default function NewDealPage({ params }: { params: { storeId: string } }) {
   const router = useRouter();
   const [products, setProducts] = useState<Product[] | null>(null);
+  const [currency, setCurrency] = useState("");
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
@@ -42,7 +44,10 @@ export default function NewDealPage({ params }: { params: { storeId: string } })
   useEffect(() => {
     api
       .get<ProductPage>(`/stores/${params.storeId}/products?limit=100`)
-      .then((page) => setProducts(page.items.filter((p) => p.status === "active")))
+      .then((page) => {
+        setProducts(page.items.filter((p) => p.status === "active"));
+        setCurrency(page.currency);
+      })
       .catch(() => setProducts([]));
   }, [params.storeId]);
 
@@ -136,7 +141,7 @@ export default function NewDealPage({ params }: { params: { storeId: string } })
                   {product.variants.map((variant) => (
                     <label key={variant.id} className="flex cursor-pointer items-center gap-2 py-1 pl-2 text-sm text-ink-muted">
                       <Checkbox checked={selected.has(variant.id)} onCheckedChange={() => toggleVariant(variant.id)} />
-                      {variant.sku} - Rs {variant.price} - {variant.stockQuantity} in stock
+                      {variant.sku} - {currency} {variant.price} - {variant.stockQuantity} in stock
                     </label>
                   ))}
                 </div>

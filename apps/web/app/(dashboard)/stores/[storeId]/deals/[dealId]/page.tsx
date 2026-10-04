@@ -27,6 +27,7 @@ interface Deal {
   discountPercent: string;
   status: "draft" | "active" | "archived";
   items: DealItem[];
+  currency: string;
 }
 
 const statusTone = { active: "success", draft: "neutral", archived: "neutral" } as const;
@@ -143,7 +144,7 @@ export default function DealDetailPage({ params }: { params: { storeId: string; 
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-ink">{item.product.title}</p>
                     <p className="mt-0.5 text-xs text-ink-muted">
-                      {item.variant.sku} - Rs {item.variant.price}
+                      {item.variant.sku} - {deal.currency} {item.variant.price}
                     </p>
                   </div>
                   <Button variant="ghost" size="sm" loading={removingItemId === item.id} onClick={() => removeItem(item.id)}>

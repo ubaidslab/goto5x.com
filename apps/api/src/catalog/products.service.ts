@@ -49,6 +49,7 @@ export interface ProductListPage {
   limit: number;
   total: number;
   totalPages: number;
+  currency: string;
 }
 
 /**
@@ -245,7 +246,7 @@ export class ProductsService {
         tx.product.count({ where }),
       ]);
 
-      return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
+      return { items, page, limit, total, totalPages: Math.ceil(total / limit), currency: store.currency };
     });
   }
 

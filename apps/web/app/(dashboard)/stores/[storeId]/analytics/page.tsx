@@ -28,6 +28,7 @@ interface Overview {
   repeatCustomerRate: number;
   returnRate: number;
   aov: number;
+  currency: string;
 }
 
 interface ReturnRateByProductRow {
@@ -123,7 +124,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
       .then(setOverview)
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : "Couldn't load the analytics overview.");
-        setOverview({ repeatCustomerRate: 0, returnRate: 0, aov: 0 });
+        setOverview({ repeatCustomerRate: 0, returnRate: 0, aov: 0, currency: "" });
       });
   }, [params.storeId]);
 
@@ -166,7 +167,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
           <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-3">
             <StatTile icon={Users} label="Repeat customers" value={`${overview!.repeatCustomerRate}%`} hint="Ordered more than once" />
             <StatTile icon={RotateCcw} label="Return rate" value={`${overview!.returnRate}%`} hint="Of confirmed orders" />
-            <StatTile icon={Wallet} label="Average order value" value={`Rs ${overview!.aov.toLocaleString()}`} />
+            <StatTile icon={Wallet} label="Average order value" value={`${overview!.currency} ${overview!.aov.toLocaleString()}`} />
           </Reveal>
 
           <Reveal>
@@ -218,7 +219,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                     <XAxis dataKey="bucketStart" tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
                     <YAxis tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
                     <Tooltip
-                      formatter={(value: unknown) => [`Rs ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
+                      formatter={(value: unknown) => [`${overview!.currency} ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
                       contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
                     />
                     <Line type="monotone" dataKey="revenue" stroke="var(--color-accent)" strokeWidth={2} dot={false} />
@@ -266,7 +267,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                     <Tooltip
                       formatter={(value: unknown) =>
                         topProductsBy === "revenue"
-                          ? [`Rs ${Number(value ?? 0).toLocaleString()}`, "Revenue"]
+                          ? [`${overview!.currency} ${Number(value ?? 0).toLocaleString()}`, "Revenue"]
                           : [Number(value ?? 0), "Units"]
                       }
                       contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
@@ -321,7 +322,7 @@ export default function AnalyticsPage({ params }: { params: { storeId: string } 
                     <XAxis type="number" tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
                     <YAxis type="category" dataKey="title" width={140} tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }} />
                     <Tooltip
-                      formatter={(value: unknown) => [`Rs ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
+                      formatter={(value: unknown) => [`${overview!.currency} ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
                       contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", fontSize: 12 }}
                     />
                     <Bar dataKey="revenue" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />

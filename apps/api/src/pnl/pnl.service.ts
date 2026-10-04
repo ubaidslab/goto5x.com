@@ -76,6 +76,7 @@ export class PnLService {
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1); // periodEnd is inclusive on input
 
     return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId }, select: { currency: true } });
       const orders = await tx.order.findMany({
         where: { storeId, status: { in: CONFIRMED_OR_BEYOND as never }, placedAt: { gte: start, lt: endExclusive } },
         include: { items: { include: { variant: true } } },
@@ -94,14 +95,21 @@ export class PnLService {
       });
       const adSpendTotal = adSpendEntries.reduce((sum, e) => sum + Number(e.amount), 0);
 
-      return { periodStart, periodEnd, ...aggregatePeriodProfit({ orders: perOrder, adSpendTotal }) };
+      return {
+        periodStart,
+        periodEnd,
+        currency: store?.currency ?? "",
+        ...aggregatePeriodProfit({ orders: perOrder, adSpendTotal }),
+      };
     });
   }
 
   async listAdSpendEntries(sellerId: string, storeId: string) {
-    return this.tenantPrisma.run(sellerId, async (tx) =>
-      tx.adSpendEntry.findMany({ where: { storeId }, orderBy: { periodStart: "desc" } }),
-    );
+    return this.tenantPrisma.run(sellerId, async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: storeId }, select: { currency: true } });
+      const entries = await tx.adSpendEntry.findMany({ where: { storeId }, orderBy: { periodStart: "desc" } });
+      return entries.map((entry) => ({ ...entry, currency: store?.currency ?? "" }));
+    });
   }
 
   async createAdSpendEntry(

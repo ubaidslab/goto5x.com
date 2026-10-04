@@ -102,7 +102,8 @@ export class DiscountCodesService {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
-      return tx.discountCode.findMany({ where: { storeId }, orderBy: { createdAt: "desc" } });
+      const codes = await tx.discountCode.findMany({ where: { storeId }, orderBy: { createdAt: "desc" } });
+      return codes.map((code) => ({ ...code, currency: store.currency }));
     });
   }
 

@@ -112,7 +112,7 @@ export default function Home() {
   }, [apiBase]);
 
   function priceLabel(plan: Plan) {
-    return plan.price === "0" ? "Free" : `Rs ${plan.price}`;
+    return plan.price === "0" ? "Free" : `${plan.currency} ${plan.price}`;
   }
 
   return (

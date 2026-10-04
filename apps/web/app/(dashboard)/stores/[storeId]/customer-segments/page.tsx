@@ -62,6 +62,7 @@ interface CustomerSegment {
   locationCity: string | null;
   locationCountry: string | null;
   memberCount: number;
+  currency: string;
 }
 
 interface SegmentMember {
@@ -76,8 +77,8 @@ function criteriaSummary(segment: CustomerSegment): string {
   const parts: string[] = [];
   if (segment.minOrders != null) parts.push(`${segment.minOrders}+ orders`);
   if (segment.maxOrders != null) parts.push(`up to ${segment.maxOrders} orders`);
-  if (segment.minTotalSpent != null) parts.push(`spent Rs ${segment.minTotalSpent}+`);
-  if (segment.maxTotalSpent != null) parts.push(`spent up to Rs ${segment.maxTotalSpent}`);
+  if (segment.minTotalSpent != null) parts.push(`spent ${segment.currency} ${segment.minTotalSpent}+`);
+  if (segment.maxTotalSpent != null) parts.push(`spent up to ${segment.currency} ${segment.maxTotalSpent}`);
   if (segment.lastOrderAfter) parts.push(`ordered after ${new Date(segment.lastOrderAfter).toLocaleDateString()}`);
   if (segment.lastOrderBefore) parts.push(`ordered before ${new Date(segment.lastOrderBefore).toLocaleDateString()}`);
   if (segment.locationCity) parts.push(`city: ${segment.locationCity}`);
@@ -287,7 +288,7 @@ export default function CustomerSegmentsPage({ params }: { params: { storeId: st
                           <li key={member.id} className="flex items-center justify-between text-xs text-ink">
                             <span>{member.email}</span>
                             <span className="text-ink-muted">
-                              {member.ordersCount} orders · Rs {member.totalSpent}
+                              {member.ordersCount} orders · {segment.currency} {member.totalSpent}
                               {member.lastOrderAt && ` · last ${new Date(member.lastOrderAt).toLocaleDateString()}`}
                             </span>
                           </li>

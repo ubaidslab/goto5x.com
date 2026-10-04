@@ -104,10 +104,14 @@ export class DealsService {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const deal = await tx.deal.findUnique({
         where: { id: dealId },
-        include: { items: { include: { product: true, variant: true }, orderBy: { sortOrder: "asc" } } },
+        include: {
+          items: { include: { product: true, variant: true }, orderBy: { sortOrder: "asc" } },
+          store: { select: { currency: true } },
+        },
       });
       if (!deal || deal.storeId !== storeId) throw new NotFoundException("Deal not found.");
-      return deal;
+      const { store, ...rest } = deal;
+      return { ...rest, currency: store.currency };
     });
   }
 

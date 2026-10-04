@@ -30,6 +30,7 @@ interface PeriodProfit {
   adSpend: number;
   netProfit: number;
   incomplete: boolean;
+  currency: string;
 }
 
 interface AdSpendEntry {
@@ -39,6 +40,7 @@ interface AdSpendEntry {
   amount: string;
   source: "manual" | "csv_import";
   note: string | null;
+  currency: string;
 }
 
 function todayIso(): string {
@@ -200,7 +202,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
               <DashCard>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Revenue</p>
-                  <p className="mt-1 text-3xl font-semibold text-ink">Rs {period.revenue.toLocaleString()}</p>
+                  <p className="mt-1 text-3xl font-semibold text-ink">{period.currency} {period.revenue.toLocaleString()}</p>
                   <p className="mt-1 text-xs text-ink-muted">{period.orderCount} confirmed order{period.orderCount === 1 ? "" : "s"}</p>
                 </div>
               </DashCard>
@@ -208,7 +210,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Net profit</p>
                   <p className={`mt-1 text-3xl font-semibold ${period.netProfit < 0 ? "text-danger" : "text-ink"}`}>
-                    Rs {period.netProfit.toLocaleString()}
+                    {period.currency} {period.netProfit.toLocaleString()}
                   </p>
                   <p className="mt-1 text-xs text-ink-muted">What Shopify doesn't show you</p>
                 </div>
@@ -221,31 +223,31 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between text-ink-muted">
                   <span>Revenue</span>
-                  <span className="text-ink">Rs {period.revenue.toLocaleString()}</span>
+                  <span className="text-ink">{period.currency} {period.revenue.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Commission</span>
-                  <span className="text-ink">- Rs {period.commission.toLocaleString()}</span>
+                  <span className="text-ink">- {period.currency} {period.commission.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Cost of goods</span>
-                  <span className="text-ink">- Rs {period.cogs.toLocaleString()}</span>
+                  <span className="text-ink">- {period.currency} {period.cogs.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Courier cost</span>
-                  <span className="text-ink">- Rs {period.courierCost.toLocaleString()}</span>
+                  <span className="text-ink">- {period.currency} {period.courierCost.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Handling cost</span>
-                  <span className="text-ink">- Rs {period.handlingCost.toLocaleString()}</span>
+                  <span className="text-ink">- {period.currency} {period.handlingCost.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-muted">
                   <span>Ad spend</span>
-                  <span className="text-ink">- Rs {period.adSpend.toLocaleString()}</span>
+                  <span className="text-ink">- {period.currency} {period.adSpend.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between border-t border-border pt-1.5 font-medium text-ink">
                   <span>Net profit</span>
-                  <span>Rs {period.netProfit.toLocaleString()}</span>
+                  <span>{period.currency} {period.netProfit.toLocaleString()}</span>
                 </div>
               </div>
             </DashCard>
@@ -296,7 +298,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                       {entry.note && <p className="mt-0.5 text-xs text-ink-muted">{entry.note}</p>}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-ink">Rs {Number(entry.amount).toLocaleString()}</span>
+                      <span className="text-ink">{entry.currency} {Number(entry.amount).toLocaleString()}</span>
                       <Badge tone={entry.source === "manual" ? "neutral" : "info"}>{entry.source === "manual" ? "Manual" : "CSV"}</Badge>
                     </div>
                   </div>
