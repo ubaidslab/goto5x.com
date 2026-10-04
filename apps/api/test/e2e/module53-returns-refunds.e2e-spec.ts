@@ -4,7 +4,7 @@ import request from "supertest";
 import { ReturnsService } from "../../src/returns/returns.service";
 import { UnitEconomicsService } from "../../src/guardrails/unit-economics.service";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, pkrAmount, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
@@ -251,8 +251,8 @@ describe("Returns & Refunds Workflow (e2e) - SRS §5.60/§14.59 (Module 53)", ()
       // /admin/analytics controller itself calls.
       const unitEconomics = app.get(UnitEconomicsService);
       const beforeAnalytics = await unitEconomics.computeRealTimeAnalytics();
-      const gmvBefore = beforeAnalytics.gmv;
-      const commissionBefore = beforeAnalytics.commissionEarned;
+      const gmvBefore = pkrAmount(beforeAnalytics.gmvByCurrency);
+      const commissionBefore = pkrAmount(beforeAnalytics.commissionEarnedByCurrency);
 
       const pnlBefore = await request(app.getHttpServer())
         .get(`/stores/${storeId}/pnl/orders/${order.orderId}`)
@@ -279,8 +279,8 @@ describe("Returns & Refunds Workflow (e2e) - SRS §5.60/§14.59 (Module 53)", ()
       expect(pnlAfter.status).toBe(400);
 
       const afterAnalytics = await unitEconomics.computeRealTimeAnalytics();
-      expect(afterAnalytics.gmv).toBeCloseTo(gmvBefore - order.totalAmount, 2);
-      expect(afterAnalytics.commissionEarned).toBeLessThan(commissionBefore);
+      expect(pkrAmount(afterAnalytics.gmvByCurrency)).toBeCloseTo(gmvBefore - order.totalAmount, 2);
+      expect(pkrAmount(afterAnalytics.commissionEarnedByCurrency)).toBeLessThan(commissionBefore);
       void sellerId;
     });
   });

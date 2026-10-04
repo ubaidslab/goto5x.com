@@ -7154,49 +7154,84 @@ not a display concern.
   hardcoded instances — the first page a global prospect sees).
   `customizer/page.tsx`'s JSON-LD structured-data block hardcodes
   `currency: "PKR"` and needs the same fix for SEO correctness.
-- FR-70.4: **Backend literal-`"PKR"` call sites — a second, smaller
-  sweep, seller/service-scoped rather than store-scoped.** `WalletService`
-  itself already accepts `currency` as a parameter correctly; the
-  hardcoding is entirely at call sites that pass the literal instead of
-  resolving a real currency: `wallet.controller.ts` (5 sites — top-up
-  request, plan-fee preview, plan-fee payment request, supplier top-up,
-  admin manual wallet adjust), `plan-fee-debit.service.ts`,
+- FR-70.4: **Backend literal-`"PKR"` call sites — CONFIRMED BLOCKED on
+  §13 item #16, not a simple sweep.** This FR's original framing as "a
+  second, smaller sweep" was optimistic, not verified — direct
+  investigation during Phase A implementation (2026-10-04) confirmed
+  every one of the call sites below is seller-wallet or seller-purchase
+  scoped, never store-scoped, so none of them has a `store.currency` (or
+  any other real value already in scope) to swap the literal for.
+  `WalletService` itself already accepts `currency` as a parameter
+  correctly; the hardcoding is entirely at call sites that pass the
+  literal instead of resolving a real one: `wallet.controller.ts` (5
+  sites — top-up request, plan-fee preview, plan-fee payment request,
+  supplier top-up, admin manual wallet adjust), `plan-fee-debit.service.ts`,
   `program-reward.service.ts`, `program-withdrawal.service.ts` (×2),
-  `dstudio-pack.service.ts` (moot once §5.77 removes it),
-  `template-purchase.service.ts`, `verification-application.service.ts`'s
-  module-level `CURRENCY` constant, `admin-seller-overview.service.ts`
-  (feeds the otherwise-correct Seller-360 wallet widget a hardcoded
-  value). **Flagged architectural question, not resolved here, carried
-  to §13:** wallet/billing/invoices are seller-scoped (`docs/
-  database-schema.md`'s explicit "scoped by seller_id, not store_id"),
-  while FR-70.1/70.2's new currency concept is store-scoped — a seller
-  with multiple stores in different currencies has no single
-  well-defined "wallet currency" under today's model. Resolving this is
-  a real decision (e.g. a seller's primary/first store's currency
-  becomes their one billing currency; or UZEYN's own
-  subscription-billing currency is decoupled entirely from storefront
-  display currency, which §5.72's Paddle integration pushes toward
-  anyway since Paddle subscriptions are priced in UZEYN's own catalog
-  currency, not a seller's storefront currency).
+  `dstudio-pack.service.ts` (moot once §5.77 removes it, left alone),
+  `template-purchase.service.ts` (confirmed seller-scoped via
+  `tenantPrisma.run(sellerId, ...)`, not tied to any specific store),
+  `verification-application.service.ts`'s module-level `CURRENCY`
+  constant, `admin-seller-overview.service.ts` (feeds the otherwise-
+  correct Seller-360 wallet widget a hardcoded value). Left as `"PKR"`
+  exactly as found, correct for every existing seller today — **not
+  fixed in this pass, and not guessed at** — pending §13 item #16's
+  wallet-currency architecture question. (FR-70.3's sibling frontend
+  sweep did NOT have this problem - every site there really was
+  store-scoped, and shipped the same day this FR's scope was
+  corrected.)
 - FR-70.5: **DECIDED (founder, 2026-10-03): admin aggregates become
-  per-currency breakdowns — never a blended, fake-converted number.**
-  `admin/page.tsx`'s GMV tiles and `finance/page.tsx`'s MRR/ARPS figures
-  currently sum order/revenue amounts *across every seller's store*
-  into one number under one label — financially meaningless once
-  stores carry different currencies, with no FX engine to make the sum
-  real (FR-70.1 deliberately builds none). Resolution: group these
-  figures by `currency` and render one line per currency present
-  (e.g. "GMV today: PKR 1,240,500 · USD 3,210"), rather than attempting
-  a single combined total. No FX conversion, no "platform reporting
-  currency" fallback — each currency's figures stay in that currency,
-  always.
-- FR-70.6: **Correction to a stale doc claim, not a new requirement.**
+  per-currency breakdowns — never a blended, fake-converted number.
+  BUILT (GMV/revenue), DEFERRED (MRR/ARPS — see below), 2026-10-04.**
+  `admin/page.tsx`'s and `admin/analytics/page.tsx`'s GMV/revenue tiles
+  (not `finance/page.tsx` — that file doesn't exist; corrected here)
+  summed order/commission amounts *across every seller's store* into
+  one number under one label — financially meaningless once stores
+  carry different currencies, with no FX engine to make the sum real
+  (FR-70.1 deliberately builds none). Fixed: `UnitEconomicsService.
+  computeRealTimeAnalytics()` and `AdminOverviewService.getOverview()`
+  now use Prisma `groupBy(["currency"])` instead of `aggregate()` for
+  GMV (from `Order.currency`, already denormalized) and commission/
+  revenue (from `LedgerEntry.currency`, same), returned as a new shared
+  `apps/api/src/common/currency-breakdown.util.ts` shape and rendered
+  via a new shared `CurrencyBreakdown` component — "GMV today: PKR
+  1,240,500 · USD 3,210", exactly the format this bullet originally
+  proposed. Live-verified: e2e specs asserting exact GMV/commission
+  values after real orders and a real refund (module17, module53) all
+  still pass against the new shape (41/41). The `topSellers` leaderboard
+  in `admin/analytics/page.tsx` still ranks by a single per-seller
+  commission number, not split by currency - a smaller, lower-stakes
+  gap (a ranking order nuance, not a headline financial total) left
+  for a later pass rather than scope-creeping this one.
+
+  **MRR/ARPS (`MrrAnalyticsService.compute()`, the finance/analytics
+  page's other half) is explicitly NOT done — deferred, not
+  overlooked.** Unlike GMV, this isn't yet a live bug: every individual-
+  ladder `Plan` row is still PKR-priced today (no non-PKR plan exists
+  until §5.72/Phase B's Paddle ladder ships), so nothing is actually
+  blending currencies yet. Fixing it now would mean restructuring
+  `compute()`'s churn/LTV/ARPS/conversion-rate math (nearly the whole
+  method) around a currency this document hasn't decided the shape of
+  — the same wallet/billing-currency question §13 item #16 already
+  tracks for FR-70.4. Revisit once Phase B's Paddle currency model is
+  real; building this today risks guessing at an architecture Paddle's
+  own integration will likely just answer.
+- FR-70.6: **Correction to a stale doc claim, not a new requirement —
+  itself now updated once more after FR-70.4 turned out not to ship.**
   `docs/SRS.md`'s own existing text (checklist items referenced during
   this amendment's research) asserts "no hardcoded PKR" as an
-  already-met bar — that assertion does not match the current codebase
-  per FR-70.3/70.4's findings above. This amendment is also the
-  correction: the bar is genuinely met only once FR-70.3 and FR-70.4
-  both ship.
+  already-met bar — that assertion did not match the codebase at the
+  time of this amendment's first draft, per FR-70.3/70.4's findings.
+  FR-70.3 (every storefront/dashboard/admin/pricing display site) has
+  since shipped. FR-70.4 (seller-wallet/billing-scoped backend call
+  sites) did not — confirmed blocked on §13 item #16's unresolved
+  wallet-currency architecture question, not a deploy that simply
+  hasn't happened yet. **The accurate bar, as of this correction: no
+  hardcoded PKR remains anywhere a real currency was available to
+  resolve against (every store-scoped display site); a bounded,
+  identified, and documented set of seller-wallet-scoped backend call
+  sites still hardcode PKR, correctly for every current seller, pending
+  that architecture question** — not the unconditional "both ship"
+  claim this bullet originally made.
 
 ### 5.71 Identity Verification — CNIC Requirement Retired (new, v0.62 —
 PROPOSED, not yet built; founder's Global Launch Mandate, Part 1 item 2;
@@ -8132,6 +8167,33 @@ legal commitment.
     gated on a seller's own SMTP connection. A connected seller SMTP
     sender may be used cosmetically (From-header display name/reply-to)
     only; transport is always the platform provider.
+16. **Still open — FR-70.4's wallet-currency question, confirmed blocking
+    during implementation, not merely theoretical.** FR-70.4's own text
+    said this would be "carried to §13" but never actually got a
+    numbered entry until now; this entry corrects that gap and records
+    what direct investigation (not assumption) found: every one of the
+    specific call sites FR-70.4 names — `wallet.controller.ts`'s 5
+    sites, `plan-fee-debit.service.ts`, `program-reward.service.ts`,
+    `program-withdrawal.service.ts` (×2), `template-purchase.service.ts`,
+    `verification-application.service.ts`'s module-level `CURRENCY`
+    constant, `admin-seller-overview.service.ts` — is a seller-wallet or
+    seller-level purchase amount, never a store-scoped one. None of them
+    has a `store.currency` (or any other real value) to resolve to
+    without first answering: does a seller's wallet/billing currency
+    follow their primary store, or is it UZEYN's own fixed
+    subscription-billing currency, decoupled from storefront display
+    currency entirely (which §5.72's Paddle integration already pushes
+    toward, since Paddle prices subscriptions in UZEYN's own catalog
+    currency regardless of a seller's storefront currency)? Left as
+    `"PKR"` exactly as found — correct for every existing seller today,
+    not a regression — rather than guessing an architecture this
+    document has not decided. Likely moot in practice: the old
+    wallet-based plan-fee flow these call sites mostly serve is the same
+    one §5.72/Phase B replaces with Paddle, so the pragmatic path is
+    probably to let Paddle's own currency model answer this rather than
+    rearchitect a billing path that's about to be superseded — but that
+    is this entry's own suggestion, not a founder decision, and
+    implementation should not treat it as one.
 
 ---
 

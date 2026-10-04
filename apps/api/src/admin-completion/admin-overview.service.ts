@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { toCurrencyBreakdown } from "../common/currency-breakdown.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TrustSafetyMonitorsService } from "../trust-safety/trust-safety-monitors.service";
 import { PaymentReviewQueueService } from "../trust-safety/payment-review-queue.service";
@@ -60,7 +61,8 @@ export class AdminOverviewService {
     ] = await Promise.all([
       this.prismaAdmin.seller.count({ where: { createdAt: { gte: since } } }),
       this.prismaAdmin.order.count({ where: { placedAt: { gte: since } } }),
-      this.prismaAdmin.order.aggregate({
+      this.prismaAdmin.order.groupBy({
+        by: ["currency"],
         where: { placedAt: { gte: since }, status: { not: "pending" } },
         _sum: { totalAmount: true },
       }),
@@ -102,7 +104,7 @@ export class AdminOverviewService {
       today: {
         signups: todaySignups,
         orders: todayOrders,
-        gmv: Number(todayGmv._sum.totalAmount ?? 0),
+        gmvByCurrency: toCurrencyBreakdown(todayGmv, "totalAmount"),
       },
       allTime: analytics,
       queues,

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
+import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -15,9 +16,14 @@ interface QueueCount {
   href: string;
 }
 
+interface CurrencyAmount {
+  currency: string;
+  amount: number;
+}
+
 interface Overview {
-  today: { signups: number; orders: number; gmv: number };
-  allTime: { gmv: number; revenue: number; activeStoreCount: number };
+  today: { signups: number; orders: number; gmvByCurrency: CurrencyAmount[] };
+  allTime: { gmvByCurrency: CurrencyAmount[]; revenueByCurrency: CurrencyAmount[]; activeStoreCount: number };
   queues: QueueCount[];
   pendingActionCount: number;
 }
@@ -55,15 +61,21 @@ export default function AdminHomePage() {
         </DashCard>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">GMV today</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">PKR {overview.today.gmv.toFixed(2)}</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            <CurrencyBreakdown amounts={overview.today.gmvByCurrency} />
+          </p>
         </DashCard>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">All-time GMV</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">PKR {overview.allTime.gmv.toFixed(2)}</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            <CurrencyBreakdown amounts={overview.allTime.gmvByCurrency} />
+          </p>
         </DashCard>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">All-time revenue</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">PKR {overview.allTime.revenue.toFixed(2)}</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            <CurrencyBreakdown amounts={overview.allTime.revenueByCurrency} />
+          </p>
         </DashCard>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Active stores</p>

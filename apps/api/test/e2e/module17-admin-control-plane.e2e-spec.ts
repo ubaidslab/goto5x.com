@@ -2,7 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, pkrAmount, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
@@ -308,7 +308,7 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
       const analytics = await request(app.getHttpServer())
         .get("/admin/analytics")
         .set("Authorization", `Bearer ${adminToken}`);
-      expect(analytics.body.gmv).toBe(5000);
+      expect(pkrAmount(analytics.body.gmvByCurrency)).toBe(5000);
     });
 
     it("FR-8.19 (Module 98, founder batch B16): optional start/end scopes GMV to a range; omitted, it stays all-time", async () => {
@@ -346,13 +346,13 @@ describe("Admin Control Plane completion (e2e) - SRS §5.8/§5.12, FR-8.4/8.10/8
         .get(`/admin/analytics?start=${yesterday}&end=${tomorrow}`)
         .set("Authorization", `Bearer ${adminToken}`);
       expect(rangeScoped.status).toBe(200);
-      expect(rangeScoped.body.gmv).toBe(3000); // only the recent order - the backdated one falls outside the range
+      expect(pkrAmount(rangeScoped.body.gmvByCurrency)).toBe(3000); // only the recent order - the backdated one falls outside the range
 
       const allTime = await request(app.getHttpServer())
         .get("/admin/analytics")
         .set("Authorization", `Bearer ${adminToken}`);
       expect(allTime.status).toBe(200);
-      expect(allTime.body.gmv).toBe(6000); // both orders - omitting start/end preserves the old all-time behavior
+      expect(pkrAmount(allTime.body.gmvByCurrency)).toBe(6000); // both orders - omitting start/end preserves the old all-time behavior
 
       const lopsided = await request(app.getHttpServer())
         .get(`/admin/analytics?start=${yesterday}`)

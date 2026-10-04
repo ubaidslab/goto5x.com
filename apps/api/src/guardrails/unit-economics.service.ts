@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { OrderStatus } from "@prisma/client";
 import { bucketSalesOverTime, SalesBucket } from "../analytics/analytics.util";
+import { toCurrencyBreakdown } from "../common/currency-breakdown.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 
@@ -77,8 +78,9 @@ export class UnitEconomicsService {
     const orderDateFilter = start && end ? { placedAt: { gte: start, lte: end } } : {};
     const ledgerDateFilter = start && end ? { createdAt: { gte: start, lte: end } } : {};
 
-    const [gmv, activeStoreCount, commissionResult, topSellerRows] = await Promise.all([
-      this.prismaAdmin.order.aggregate({
+    const [gmvByCurrencyRows, activeStoreCount, commissionByCurrencyRows, topSellerRows] = await Promise.all([
+      this.prismaAdmin.order.groupBy({
+        by: ["currency"],
         // Module 53 (FR-60.4) - a fully refunded order stops counting as
         // GMV the same instant it stops counting as revenue/commission
         // (the ledger reversal below); partially_refunded is excluded too,
@@ -88,7 +90,13 @@ export class UnitEconomicsService {
         _sum: { totalAmount: true },
       }),
       this.prismaAdmin.store.count({ where: { status: "active" } }),
-      this.prismaAdmin.ledgerEntry.aggregate({
+      // SRS §5.70/FR-70.5 (DECIDED, founder 2026-10-03) - grouped by
+      // currency rather than a single aggregate, same reasoning as GMV
+      // above: summing commission across stores in different currencies
+      // into one blended number would be financially meaningless with no
+      // FX engine to make the sum real.
+      this.prismaAdmin.ledgerEntry.groupBy({
+        by: ["currency"],
         where: { type: { in: ["commission_accrued", "commission_waived", "refund_adjustment"] }, ...ledgerDateFilter },
         _sum: { amount: true },
       }),
@@ -108,10 +116,12 @@ export class UnitEconomicsService {
     });
     const sellerById = new Map(sellers.map((s) => [s.id, s.businessName]));
 
+    const commissionByCurrency = toCurrencyBreakdown(commissionByCurrencyRows, "amount");
+
     return {
-      gmv: Number(gmv._sum.totalAmount ?? 0),
-      revenue: Number(commissionResult._sum.amount ?? 0),
-      commissionEarned: Number(commissionResult._sum.amount ?? 0),
+      gmvByCurrency: toCurrencyBreakdown(gmvByCurrencyRows, "totalAmount"),
+      revenueByCurrency: commissionByCurrency,
+      commissionEarnedByCurrency: commissionByCurrency,
       activeStoreCount,
       topSellers: topSellerRows.map((row) => ({
         sellerId: row.sellerId,

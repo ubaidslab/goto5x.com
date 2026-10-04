@@ -3,16 +3,22 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
+import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Reveal } from "@/components/motion/Reveal";
 import { adminApi } from "@/lib/admin-api";
 
+interface CurrencyAmount {
+  currency: string;
+  amount: number;
+}
+
 interface Analytics {
-  gmv: number;
-  revenue: number;
-  commissionEarned: number;
+  gmvByCurrency: CurrencyAmount[];
+  revenueByCurrency: CurrencyAmount[];
+  commissionEarnedByCurrency: CurrencyAmount[];
   activeStoreCount: number;
   topSellers: { sellerId: string; businessName: string | null; commissionEarned: number }[];
 }
@@ -134,11 +140,15 @@ export default function AdminAnalyticsPage() {
       <Reveal className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4" stagger={0.06}>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">GMV</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{analytics.gmv.toFixed(2)}</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            <CurrencyBreakdown amounts={analytics.gmvByCurrency} />
+          </p>
         </DashCard>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Revenue (commission)</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{analytics.revenue.toFixed(2)}</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            <CurrencyBreakdown amounts={analytics.revenueByCurrency} />
+          </p>
         </DashCard>
         <DashCard className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Active stores (live)</p>

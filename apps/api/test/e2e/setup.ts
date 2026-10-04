@@ -121,3 +121,14 @@ export async function seedLedgerEntry(
     update: { balance: { increment: delta } },
   });
 }
+
+/**
+ * SRS §5.70/FR-70.5 - UnitEconomicsService.computeRealTimeAnalytics()/
+ * AdminOverviewService.getOverview() now group GMV/revenue by currency
+ * instead of returning one blended number. Every store these e2e specs
+ * create defaults to PKR (none of them pass a currency), so tests only
+ * ever need the PKR line out of the breakdown.
+ */
+export function pkrAmount(breakdown: { currency: string; amount: number }[]): number {
+  return breakdown.find((row) => row.currency === "PKR")?.amount ?? 0;
+}
