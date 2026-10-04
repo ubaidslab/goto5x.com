@@ -67,38 +67,37 @@ export class SubscriptionsService {
 
   /**
    * Called once, from AuthService.signup() - every seller starts on the
-   * entry individual tier (tier 0, v0.33/FR-7.1/7.3, made a PERMANENT tier
-   * by Module 61/FR-7.20): a real, tracked, paid first billing cycle -
-   * there is no more Free Plan and no free trial. Module 61 retires the
-   * old auto-transition-to-next-tier mechanism (no more pendingPlanId
-   * queued here) - a seller who signs up on the entry tier may stay on it
-   * indefinitely, same as any other tier, unless they explicitly request a
-   * change via requestPlanChange(). Method name is deliberately
-   * brand-agnostic (this tier has been renamed twice already - First
-   * Month, then Basic, now GO per Module 74/v0.39 - see plans.seed.ts) so
-   * a future rename never requires touching this call site again. The
-   * signup-time discount is a global Settings-driven percentage off the
-   * active price (Module 74, `billing.first_cycle_discount_percent`),
-   * applied by WalletService's plan-fee-payment flow, not by this method.
-   * `referralSource` (SRS FR-33.1) is captured here, once, since this is
-   * the only place a Subscription row is ever created for a seller -
-   * already-shape-validated by resolveReferralSource(), never re-validated
-   * against a program table here since none exist yet (Module 22).
+   * starter_free planGroup (SRS §5.73/FR-73.1-73.2, Global Launch Mandate,
+   * founder-confirmed 2026-10-04 - this REVERSES the prior v0.33/Module 61
+   * design this method's own history carried: "no more Free Plan... a
+   * real, tracked, paid first billing cycle." That removal is itself now
+   * superseded, not this comment forgetting it happened - see docs/
+   * founder-decisions-log.md for the reasoning). No `currentPeriodEnd` is
+   * set, same precedent as assignFreeSupplierPlanAtSignup() below (a plan
+   * that's never billed has no cycle to track) - requestPlanChange()
+   * already branches on `currentPeriodEnd === null` for its immediate-
+   * apply path, so a seller's first upgrade off this tier needs no special
+   * case there. `referralSource` (SRS FR-33.1) is captured here, once,
+   * since this is the only place a Subscription row is ever created for a
+   * seller - already-shape-validated by resolveReferralSource(), never
+   * re-validated against a program table here since none exist yet
+   * (Module 22). GO remains reachable immediately via requestPlanChange()
+   * - this method only changes what a brand-new seller starts on, not
+   * whether GO/RUN/RISE/FLY still exist or work.
    */
   async assignEntryTierAtSignup(sellerId: string, referralSource: string | null = null): Promise<void> {
     const entryPlan = await this.prisma.plan.findFirst({
-      where: { planGroup: "individual", tierOrder: 0 },
+      where: { planGroup: "starter_free", tierOrder: 0 },
     });
     if (!entryPlan) {
       // Seeding failure, not a seller-facing condition - plans.seed.ts always
       // creates this row before the app accepts signups.
-      throw new Error("No entry (individual, tier 0) plan exists - plans.seed.ts must run before signup.");
+      throw new Error("No entry (starter_free, tier 0) plan exists - plans.seed.ts must run before signup.");
     }
     await this.prisma.subscription.create({
       data: {
         sellerId,
         planId: entryPlan.id,
-        currentPeriodEnd: addInterval(new Date(), "monthly"),
         referralSource,
       },
     });

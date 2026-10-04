@@ -67,6 +67,18 @@ export class StoresService {
       }
     }
 
+    // SRS §5.73 founder resolution (2026-10-04) - confirmed gap: the
+    // existing slug check below only enforces UNIQUENESS (not already
+    // taken by another store), nothing ever stopped a new store claiming
+    // "admin"/"api"/a payment-brand name as ITS OWN slug, which becomes
+    // that word's own uzeyn.com subdomain. Global-only (not plan-scoped) -
+    // every tier is confusable/impersonatable the same way, this isn't a
+    // free-tier-specific abuse surface.
+    const reservedSlugs = await this.settings.resolve<string[]>("stores.reserved_slugs");
+    if (reservedSlugs.includes(dto.slug)) {
+      throw new BadRequestException(`"${dto.slug}" is a reserved name and can't be used as a store URL.`);
+    }
+
     const store = await this.tenantPrisma.run(sellerId, async (tx) => {
       const existingSlug = await tx.store.findUnique({ where: { slug: dto.slug } });
       if (existingSlug) {

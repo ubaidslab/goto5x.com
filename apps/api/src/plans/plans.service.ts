@@ -41,7 +41,11 @@ export class PlansService {
         mostPopular: plan.planGroup === "individual" && plan.tierOrder === mostPopularTierOrder,
       })),
     );
-    const groups: Record<string, typeof withCycles> = { individual: [], team: [], supplier: [] };
+    // starter_free (SRS §5.73) is included here (GET /plans is unfiltered by
+    // planGroup) so it doesn't crash listGrouped(), but no frontend surface
+    // reads groups.starter_free - it's assigned automatically at signup, not
+    // self-selected from a pricing grid.
+    const groups: Record<string, typeof withCycles> = { individual: [], team: [], supplier: [], starter_free: [] };
     for (const plan of withCycles) {
       groups[plan.planGroup].push(plan);
     }

@@ -13,12 +13,33 @@ const TIER_NAMES = ["GO", "RUN", "RISE", "FLY"];
  * is a 400 (client bug), a tier violation is a 403 naming the section/
  * preset and the tier it actually requires (same UX contract as every other
  * plan-gated write in this codebase).
+ *
+ * SRS §5.73/FR-73.3 - `allowedSectionIds` is a second, INTERSECTING filter
+ * on top of the tierFloor check above, not a replacement for it - the
+ * starter_free planGroup needs a ceiling narrower than GO's own floor
+ * (GO is deliberately never the empty set, so a floor comparison alone
+ * can't express "fewer sections than GO"), resolved from the
+ * dstudio.allowed_section_ids Settings Registry key. Empty (the default
+ * for every other plan) means no additional restriction. The same flag
+ * also means "zero animation presets" - FR-73.3 asks for both together as
+ * one restriction, not two independently configurable ones, so a single
+ * list parameter correctly captures that rather than a second knob.
  */
-export function validateSections(rawSections: unknown, sellerTierOrder: number): void {
+export function validateSections(
+  rawSections: unknown,
+  sellerTierOrder: number,
+  allowedSectionIds: string[] = [],
+): void {
   if (rawSections === undefined) return;
   if (!Array.isArray(rawSections)) {
     throw new BadRequestException("settings.sections must be an array.");
   }
+  const isRestricted = allowedSectionIds.length > 0;
+  // sellerTierOrder alone can't distinguish GO from starter_free (both are
+  // tierOrder 0 by design, see plans.seed.ts's starter_free comment) - once
+  // restricted, fall back to a plan-neutral label instead of misreporting
+  // "you're on GO" to a starter_free seller.
+  const sellerLabel = isRestricted ? "your current plan" : TIER_NAMES[sellerTierOrder];
 
   for (const raw of rawSections) {
     if (typeof raw !== "object" || raw === null) {
@@ -37,9 +58,10 @@ export function validateSections(rawSections: unknown, sellerTierOrder: number):
     }
 
     if (catalog.tierFloor > sellerTierOrder) {
-      throw new ForbiddenException(
-        `The "${id}" section requires the ${TIER_NAMES[catalog.tierFloor]} plan or above - you're on ${TIER_NAMES[sellerTierOrder]}.`,
-      );
+      throw new ForbiddenException(`The "${id}" section requires the ${TIER_NAMES[catalog.tierFloor]} plan or above - you're on ${sellerLabel}.`);
+    }
+    if (isRestricted && !allowedSectionIds.includes(id)) {
+      throw new ForbiddenException(`The "${id}" section isn't available on your current plan.`);
     }
 
     const variant = entry.variant === undefined ? 0 : entry.variant;
@@ -48,7 +70,7 @@ export function validateSections(rawSections: unknown, sellerTierOrder: number):
     }
     const maxAllowedIndex = sellerTierOrder >= 2 ? catalog.variantCount - 1 : catalog.maxVariantIndexByTier[Math.min(sellerTierOrder, 1)];
     if (variant > maxAllowedIndex) {
-      throw new ForbiddenException(`That layout variant for "${id}" requires a higher plan tier than ${TIER_NAMES[sellerTierOrder]}.`);
+      throw new ForbiddenException(`That layout variant for "${id}" requires a higher plan tier than ${sellerLabel}.`);
     }
 
     if (entry.elementAnimations !== undefined) {
@@ -59,10 +81,16 @@ export function validateSections(rawSections: unknown, sellerTierOrder: number):
         if (typeof animationId !== "string" || !ALL_ANIMATION_IDS.includes(animationId as AnimationId)) {
           throw new BadRequestException(`Section "${id}", element "${slot}": unknown animation preset "${String(animationId)}".`);
         }
+        // FR-73.3 - "zero of the GO-and-above animation presets" for a
+        // restricted (starter_free) plan, regardless of that preset's own
+        // tierFloor - "none" is the only usable value once restricted.
+        if (isRestricted && animationId !== "none") {
+          throw new ForbiddenException(`Animation presets aren't available on your current plan.`);
+        }
         const animTierFloor = ANIMATION_CATALOG[animationId as AnimationId].tierFloor;
         if (animTierFloor > sellerTierOrder) {
           throw new ForbiddenException(
-            `The "${animationId}" animation preset requires the ${TIER_NAMES[animTierFloor]} plan or above - you're on ${TIER_NAMES[sellerTierOrder]}.`,
+            `The "${animationId}" animation preset requires the ${TIER_NAMES[animTierFloor]} plan or above - you're on ${sellerLabel}.`,
           );
         }
       }

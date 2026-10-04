@@ -22,6 +22,70 @@ export async function seedPlansSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // SRS §5.73/FR-73.3 (Global Launch Mandate) - no tier has ever gated
+  // custom-domain attachment before now (confirmed by direct investigation:
+  // DomainsService.attach() had zero plan checks) - global default true so
+  // every existing tier (GO through FLY, Team, Supplier) is unaffected;
+  // only the new starter_free tier overrides it false.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "domains.custom_domain_enabled" },
+    create: {
+      key: "domains.custom_domain_enabled",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan"],
+      defaultValue: true,
+      description: "Whether a store may attach a custom domain, vs. the default <store>.uzeyn.com subdomain only (FR-73.3).",
+    },
+    update: {},
+  });
+
+  // SRS §5.73/FR-73.3 - a JSON allow-list, not a tierFloor number: the
+  // existing SECTION_CATALOG/ANIMATION_CATALOG tierFloor model (apps/api/
+  // src/theme-engine/section-catalog.ts) is a FLOOR comparison and
+  // structurally can't express "narrower than GO," since GO is
+  // deliberately never the empty set (that file's own comment: "GO must
+  // never feel crippled"). starter_free needs a ceiling below GO's floor,
+  // so this is an INTERSECTING filter checked in addition to (not instead
+  // of) the existing tierFloor check - an empty array (the global default)
+  // means "no additional restriction, tierFloor alone decides," preserving
+  // today's behavior for every other plan untouched; only a non-empty
+  // array actually narrows anything. Same "JSON array, plan-scoped" shape
+  // as dashboard.personalization_allowed_themes.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "dstudio.allowed_section_ids" },
+    create: {
+      key: "dstudio.allowed_section_ids",
+      valueType: "json",
+      allowedScopes: ["global", "plan"],
+      defaultValue: [],
+      description: "When non-empty, the only D-Studio section IDs a plan may use, on top of (not replacing) the existing tierFloor gate (FR-73.3).",
+    },
+    update: {},
+  });
+
+  // SRS §5.73 founder resolution (2026-10-04) - confirmed by direct
+  // investigation that email verification has never gated anything
+  // (emailVerifiedAt is only a risk-score input, see risk-score.service.ts)
+  // - not even on the old GO-only signup. Global default false leaves every
+  // existing tier's publish flow unchanged; only starter_free overrides it
+  // true, since a free, no-CNIC-required tier is this platform's one real
+  // disposable-account abuse surface once email is the only identity signal
+  // left standing on it (CNIC + payment-method verification, the existing
+  // publish-gate checks in WalletGraceLadderService.publish(), aren't
+  // waived for starter_free, so this is additive, not a replacement for
+  // either of those).
+  await prisma.settingsDefinition.upsert({
+    where: { key: "publishing.require_email_verification" },
+    create: {
+      key: "publishing.require_email_verification",
+      valueType: "boolean",
+      allowedScopes: ["global", "plan"],
+      defaultValue: false,
+      description: "Whether a seller must verify their email (User.emailVerifiedAt set) before WalletGraceLadderService.publish() will go live for this resolved plan.",
+    },
+    update: {},
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "catalog.storage_quota_bytes" },
     create: {
@@ -393,6 +457,47 @@ export async function seedPlansData(prisma: PrismaClient) {
     }
   }
 
+  // SRS §5.73/FR-73.1-73.3 (Global Launch Mandate) - a wholly separate
+  // planGroup, not a renumbered GO (FR-73.2's own reasoning: inserting a
+  // new tierOrder below GO=0 would force renumbering every tierOrder>=N
+  // gate check across the codebase for one feature). tierOrder 0 here
+  // means "this group's own floor," not "numerically equal to GO."
+  //
+  // Settings Registry resolution is unaffected by that overlap -
+  // SubscriptionsService.getPlanContext() keys every plan-scoped setting
+  // off the real `planId` (a distinct row per plan, see its own `{
+  // sellerId, planId }` return shape), never off the bare tierOrder
+  // number, so catalog.product_limit/domains.custom_domain_enabled/
+  // dstudio.allowed_section_ids below all correctly tell starter_free
+  // apart from GO. The ONE place that genuinely only has a bare number is
+  // D-Studio's own tierFloor comparison (SubscriptionsService.
+  // getSellerTierOrder(), confirmed by reading it: `subscription?.plan?.
+  // tierOrder ?? 0`, no planGroup awareness at all) - dstudio.
+  // allowed_section_ids exists specifically to correct for that one gap,
+  // as an intersecting filter layered on top in section-validation.ts,
+  // not by changing getSellerTierOrder() itself (every other caller of
+  // that method is a correct, intentional "treat starter_free like GO's
+  // floor" default - see FR-73.3's product_limit/domain/order-
+  // verification gates below, which all rely on exactly that).
+  //
+  // price 0/billingInterval "none" mirrors Supplier Free's existing shape
+  // (no subscription-cycle machinery for a plan that's never billed).
+  // Permanent, no time limit, by design (FR-73.1).
+  const starterFreeTiers = [{ name: "Starter Free", tierOrder: 0, price: 0, billingInterval: "none" as const }];
+  for (const tier of starterFreeTiers) {
+    const plan = await upsertPlan(prisma, { planGroup: "starter_free", ...tier });
+    await setPlanScopedSetting(prisma, "catalog.product_limit", plan.id, 10);
+    await setPlanScopedSetting(prisma, "domains.custom_domain_enabled", plan.id, false);
+    await setPlanScopedSetting(prisma, "dstudio.allowed_section_ids", plan.id, ["hero", "about", "featured_products", "footer_contact"]);
+    await setPlanScopedSetting(prisma, "publishing.require_email_verification", plan.id, true);
+    // No overrides needed for theme.coded_mode_enabled, theme.premium_tier_
+    // enabled, orders.prepaid_partial_advance_enabled, orders.whatsapp_
+    // verification_enabled, or payments.prepaid_model_enabled - all five
+    // already default to their correct "off" value globally (same default
+    // GO itself relies on, confirmed by reading each one's own seed file),
+    // so a plan row with no override for them is already correct.
+  }
+
   // FR-7.18 - team tiers carry seatPrice (per sponsored seat), not `price`
   // for the leader's own subscription (v1.0: leader pays nothing extra to
   // hold a Team tier beyond whatever individual plan they're already on).
@@ -422,7 +527,7 @@ export async function seedPlansData(prisma: PrismaClient) {
 async function upsertPlan(
   prisma: PrismaClient,
   data: {
-    planGroup: "individual" | "team" | "supplier";
+    planGroup: "individual" | "team" | "supplier" | "starter_free";
     name: string;
     tierOrder: number;
     price: number;
@@ -457,7 +562,7 @@ async function upsertPlan(
 }
 
 /** Same plan-scoped upsert pattern as staff.seed.ts/themes.seed.ts's per-tier settings loops. */
-async function setPlanScopedSetting(prisma: PrismaClient, definitionKey: string, planId: string, value: number | boolean) {
+async function setPlanScopedSetting(prisma: PrismaClient, definitionKey: string, planId: string, value: number | boolean | string[]) {
   await prisma.settingsValue.upsert({
     where: { uniq_settings_scope: { definitionKey, scopeType: "plan", scopeId: planId } },
     create: { definitionKey, scopeType: "plan", scopeId: planId, value },

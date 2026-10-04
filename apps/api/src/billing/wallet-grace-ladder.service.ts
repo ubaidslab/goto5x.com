@@ -5,6 +5,7 @@ import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 import { hasAnyPaymentMethod } from "../store-settings/payment-instructions.service";
 import { EmailService } from "../notifications/email.service";
 import { EventsService } from "../events/events.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { WalletService } from "./wallet.service";
 
 /**
@@ -23,6 +24,7 @@ export class WalletGraceLadderService {
     private readonly wallet: WalletService,
     private readonly email: EmailService,
     private readonly events: EventsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   /**
@@ -38,11 +40,40 @@ export class WalletGraceLadderService {
    * requestPlanFeePayment()) and is unrelated to whether a store may go
    * live - a seller publishes as soon as they've configured a payment
    * method and verified their identity.
+   *
+   * SRS §5.73 founder resolution (2026-10-04) - confirmed by direct
+   * investigation that NEITHER of the two checks above is "an active paid
+   * UZEYN subscription": hasAnyPaymentMethod() is the store's OWN
+   * buyer-payment-collection setup and hasCnic() is seller identity, so
+   * neither is waived for starter_free - a free-tier store still needs a
+   * way to actually receive orders and a verified seller behind it, same
+   * as every paid tier. The real "no publish without active paid
+   * subscription" mechanism the founder meant is PlanFeeDebitService's
+   * grace-day sweep (pauseActiveStoresForNonPayment(), gated on
+   * currentPeriodEnd/planGroup==="individual"), which already structurally
+   * can never fire for a starter_free subscription (null currentPeriodEnd,
+   * wrong planGroup) - zero change needed there. The one genuinely new
+   * check is additive: publishing.require_email_verification (plan-scoped,
+   * true only for starter_free) closes the one abuse surface a free,
+   * no-recurring-payment tier opens that CNIC+payment-method don't already
+   * cover - a disposable email signing up for unlimited free stores.
    */
   async publish(sellerId: string, storeId: string): Promise<{ publishedAt: Date }> {
     const store = await this.prismaAdmin.store.findUnique({ where: { id: storeId } });
     if (!store || store.sellerId !== sellerId) throw new NotFoundException("Store not found.");
     if (store.publishedAt) return { publishedAt: store.publishedAt };
+
+    const planContext = await this.subscriptions.getPlanContext(sellerId);
+    const requireEmailVerification = await this.settings.resolve<boolean>("publishing.require_email_verification", planContext);
+    if (requireEmailVerification) {
+      const seller = await this.prismaAdmin.seller.findUniqueOrThrow({
+        where: { id: sellerId },
+        include: { user: { select: { emailVerifiedAt: true } } },
+      });
+      if (!seller.user.emailVerifiedAt) {
+        throw new BadRequestException("Verify your email address before publishing this store.");
+      }
+    }
 
     const paymentInstructions = await this.prismaAdmin.storePaymentInstructions.findUnique({ where: { storeId } });
     if (!paymentInstructions || !hasAnyPaymentMethod(paymentInstructions)) {

@@ -43,6 +43,48 @@ export async function seedStoresSettings(prisma: PrismaClient) {
     update: {},
   });
 
+  // SRS §5.73 founder resolution (2026-10-04) - a store's slug has only
+  // ever been checked for UNIQUENESS, never against a reserved-name list;
+  // confirmed by direct investigation, not a pre-existing gate this just
+  // documents. Global-only (not plan-scoped), since impersonation/
+  // confusion risk is identical regardless of which tier claims it.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "stores.reserved_slugs" },
+    create: {
+      key: "stores.reserved_slugs",
+      valueType: "json",
+      allowedScopes: ["global"],
+      defaultValue: [
+        "admin",
+        "api",
+        "app",
+        "www",
+        "support",
+        "help",
+        "mail",
+        "ftp",
+        "billing",
+        "status",
+        "blog",
+        "docs",
+        "cdn",
+        "static",
+        "assets",
+        "dashboard",
+        "login",
+        "signup",
+        "auth",
+        "payment",
+        "paddle",
+        "easypaisa",
+        "jazzcash",
+        "uzeyn",
+      ],
+      description: "Store slugs no seller may claim, regardless of plan - platform-own subdomains and payment-brand names a buyer could mistake for the real thing.",
+    },
+    update: {},
+  });
+
   // Module 75 (SRS §5.6j/FR-7.23) - the founder-approved feature-gate
   // ladder: GO 1/RUN 3/RISE 5/FLY 10. GO keeps the global default of 1 (no
   // override needed); RUN, previously also on the global default, now gets

@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
+import { SubscriptionsService } from "../plans/subscriptions.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { TraefikDynamicConfigService } from "./traefik-dynamic-config.service";
 
@@ -20,6 +21,7 @@ export class DomainsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prismaAdmin: PrismaAdminService,
     private readonly settings: SettingsService,
+    private readonly subscriptions: SubscriptionsService,
     private readonly traefikConfig: TraefikDynamicConfigService,
     private readonly events: EventsService,
   ) {}
@@ -28,6 +30,17 @@ export class DomainsService {
     const domainName = domainNameInput.trim().toLowerCase();
     if (!HOSTNAME_RE.test(domainName)) {
       throw new BadRequestException(`"${domainNameInput}" is not a valid domain name.`);
+    }
+
+    // SRS §5.73/FR-73.3 - the first-ever plan check on this method
+    // (confirmed by direct investigation: every tier could attach a
+    // custom domain, ungated, before this). Global default true, so GO
+    // through FLY/Team/Supplier are all unaffected; only starter_free
+    // overrides it false.
+    const context = await this.subscriptions.getPlanContext(sellerId);
+    const customDomainEnabled = await this.settings.resolve<boolean>("domains.custom_domain_enabled", context);
+    if (!customDomainEnabled) {
+      throw new ForbiddenException("Custom domains aren't available on your current plan - your store's free uzeyn.com subdomain still works.");
     }
 
     const rootDomain = await this.settings.resolve<string>("domains.platform_root_domain");

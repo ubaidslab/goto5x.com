@@ -54,10 +54,29 @@ export class ProgramRewardService {
       });
       if (alreadyRewardedThisMonth) continue;
 
-      const newAttributionsThisMonth = await this.prismaAdmin.referralAttribution.count({
+      // SRS §5.73 founder resolution (2026-10-04) - this doc comment's own
+      // "12+ paid store subscriptions" was always the intended condition,
+      // but the implementation counted every ReferralAttribution row
+      // regardless of payment - latent and harmless before starter_free
+      // existed (every signup was immediately a paid GO subscription by
+      // construction, so the two counts always coincided), but a real
+      // "free signups never count" violation now that most signups never
+      // convert. Same referredSellerId -> Subscription.plan.price>0 join as
+      // currentCertificateTier() below, just windowed to this month instead
+      // of lifetime.
+      const attributionsThisMonth = await this.prismaAdmin.referralAttribution.findMany({
         where: { participantId: ambassador.id, attributedAt: { gte: periodStart } },
+        select: { referredSellerId: true },
       });
-      if (newAttributionsThisMonth < threshold) continue;
+      if (attributionsThisMonth.length === 0) continue;
+
+      const paidReferralsThisMonth = await this.prismaAdmin.subscription.count({
+        where: {
+          sellerId: { in: attributionsThisMonth.map((a) => a.referredSellerId) },
+          plan: { price: { gt: 0 } },
+        },
+      });
+      if (paidReferralsThisMonth < threshold) continue;
 
       const subscription = await this.prismaAdmin.subscription.findUnique({
         where: { sellerId: ambassador.sellerId },

@@ -170,9 +170,10 @@ export class AuthService {
       // signals are available now, before the discounted first cycle is
       // ever paid.
       await this.subscriptionAbuse.checkAtSignup(user.seller!.id, ip, dto.deviceFingerprint);
-      // SRS §5.7/FR-7.1/7.3 (v0.33) - every seller starts on First Month
-      // (individual, tier 0): a real, paid first billing cycle, not a Free
-      // Plan - see subscriptions.service.ts's own note.
+      // SRS §5.73 (v0.62) - every seller starts on starter_free, the
+      // permanent free entry tier (superseding v0.33's "every seller starts
+      // on a real, paid first billing cycle, not a Free Plan") - see
+      // subscriptions.service.ts's own note.
       await this.subscriptions.assignEntryTierAtSignup(user.seller!.id, referralSource);
       // SRS §5.33 FR-33.3 - resolves the just-captured referralSource
       // against an approved program participant's referral code, if any;

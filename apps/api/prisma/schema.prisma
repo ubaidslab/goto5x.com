@@ -58,6 +58,13 @@ enum PlanGroup {
   individual
   team
   supplier
+  // SRS §5.73/FR-73.2 (Global Launch Mandate) - a wholly separate group
+  // coexisting alongside "individual"'s GO-through-FLY ladder, not a
+  // renumbered GO. Its one tier always has tierOrder 0, same as GO, but
+  // the two are told apart by planGroup everywhere a tier check matters -
+  // see getSellerTierOrder()'s own note on why a bare tierOrder number is
+  // not enough once this group exists.
+  starter_free
 }
 
 // Module 14 (FR-7.5) - `active` covers a subscription with no billing

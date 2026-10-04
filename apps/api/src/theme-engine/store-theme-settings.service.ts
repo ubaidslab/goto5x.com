@@ -30,15 +30,25 @@ export class StoreThemeSettingsService {
    * and update()'s validateSections() (what the server actually enforces)
    * read from, so a grant can never be visible in the UI without also
    * being enforced, or vice versa.
+   *
+   * SRS §5.73 founder resolution (2026-10-04) - `hasActiveOverride` also
+   * decides whether to apply `dstudio.allowed_section_ids` (see both call
+   * sites below): the grant is NOT admin-courtesy-only - DstudioPackService
+   * writes this exact same key after a seller PAYS for the time-boxed
+   * full-catalog unlock (FR-8.21), a purchase a starter_free seller must be
+   * just as able to use as anyone else. A live override therefore lifts the
+   * starter_free ceiling entirely for its duration, the same way it already
+   * lifts the tierFloor check - "effective tier" means the whole D-Studio
+   * surface, not only the floor comparison.
    */
-  private async getEffectiveTierOrder(sellerId: string): Promise<number> {
+  private async getEffectiveTierContext(sellerId: string): Promise<{ effectiveTierOrder: number; hasActiveOverride: boolean }> {
     const [realTierOrder, override] = await Promise.all([
       this.subscriptions.getSellerTierOrder(sellerId),
       this.subscriptions
         .getPlanContext(sellerId)
         .then((context) => this.settings.resolve<number>("dstudio.tier_override_order", context)),
     ]);
-    return Math.max(realTierOrder, override);
+    return { effectiveTierOrder: Math.max(realTierOrder, override), hasActiveOverride: override > -1 };
   }
 
   async getForStore(sellerId: string, storeId: string) {
@@ -60,7 +70,14 @@ export class StoreThemeSettingsService {
     // update() itself enforces server-side (FR-1.6).
     const context = await this.subscriptions.getPlanContext(sellerId);
     const codedModeEnabled = await this.settings.resolve<boolean>("theme.coded_mode_enabled", context);
-    const effectiveTierOrder = await this.getEffectiveTierOrder(sellerId);
+    const { effectiveTierOrder, hasActiveOverride } = await this.getEffectiveTierContext(sellerId);
+    // SRS §5.73/FR-73.3 - empty for every plan except starter_free (and for
+    // a starter_free seller with a live dstudio.tier_override_order grant -
+    // see getEffectiveTierContext()'s own comment); lets the picker UI show
+    // only what update()'s validateSections() would actually accept, same
+    // "server resolves it, never a client guess" discipline as
+    // codedModeEnabled/effectiveTierOrder above.
+    const allowedSectionIds = hasActiveOverride ? [] : await this.settings.resolve<string[]>("dstudio.allowed_section_ids", context);
     // Founder walkthrough finding (Phase 2 item 13) - lets the Home page's
     // onboarding wizard render the real two-choice Light/Dark starter
     // picker without hardcoding either theme's id client-side - same
@@ -70,7 +87,7 @@ export class StoreThemeSettingsService {
       this.settings.resolve<string>("dstudio.first_touch_light_theme_id"),
       this.settings.resolve<string>("dstudio.first_touch_dark_theme_id"),
     ]);
-    return { ...themeSettings, codedModeEnabled, effectiveTierOrder, firstTouchLightThemeId, firstTouchDarkThemeId };
+    return { ...themeSettings, codedModeEnabled, effectiveTierOrder, allowedSectionIds, firstTouchLightThemeId, firstTouchDarkThemeId };
   }
 
   async update(sellerId: string, storeId: string, dto: UpdateStoreThemeSettingsDto) {
@@ -93,8 +110,13 @@ export class StoreThemeSettingsService {
     // client-hidden UpgradeLockedCard. Runs before the transaction below so
     // a rejected write never partially persists.
     if (dto.settings && typeof dto.settings === "object" && "sections" in dto.settings) {
-      const effectiveTierOrder = await this.getEffectiveTierOrder(sellerId);
-      validateSections((dto.settings as Record<string, unknown>).sections, effectiveTierOrder);
+      const context = await this.subscriptions.getPlanContext(sellerId);
+      const [{ effectiveTierOrder, hasActiveOverride }, planAllowedSectionIds] = await Promise.all([
+        this.getEffectiveTierContext(sellerId),
+        this.settings.resolve<string[]>("dstudio.allowed_section_ids", context),
+      ]);
+      const allowedSectionIds = hasActiveOverride ? [] : planAllowedSectionIds;
+      validateSections((dto.settings as Record<string, unknown>).sections, effectiveTierOrder, allowedSectionIds);
     }
 
     return this.tenantPrisma.run(sellerId, async (tx) => {

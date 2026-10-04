@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { PlansModule } from "../plans/plans.module";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { DomainVerificationService } from "./domain-verification.service";
 import { DomainVerificationScheduler } from "./domain-verification.scheduler";
@@ -11,7 +12,7 @@ import { TLS_PROBER } from "./tls-prober.interface";
 import { TraefikDynamicConfigService } from "./traefik-dynamic-config.service";
 
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, PlansModule],
   controllers: [DomainsController],
   providers: [
     DomainsService,
