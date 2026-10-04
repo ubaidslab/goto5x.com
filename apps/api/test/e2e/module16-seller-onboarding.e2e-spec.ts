@@ -181,6 +181,13 @@ describe("Seller Onboarding Wizard (e2e) - SRS §5.20/§5.25, FR-20.1/FR-25.5, �
 
     it("attaching a domain completes the domain step; the explicit 'use free subdomain' ack also completes it on its own", async () => {
       const a = await signupLoginAndCreateStore("onboard-domain-a@example.com", "onboard-domain-a-store");
+      // SRS §5.73 - signup now defaults to starter_free, which gates off
+      // custom domains entirely; upgraded since this test is about the
+      // onboarding-progress step completing, not that gate.
+      const userA = await superuser.user.findUniqueOrThrow({ where: { email: "onboard-domain-a@example.com" } });
+      const sellerA = await superuser.seller.findUniqueOrThrow({ where: { userId: userA.id } });
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: sellerA.id }, data: { planId: goPlan.id } });
       await request(app.getHttpServer())
         .post(`/stores/${a.storeId}/domains`)
         .set("Authorization", `Bearer ${a.token}`)

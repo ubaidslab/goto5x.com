@@ -58,12 +58,12 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
   }
 
   async function createUnpublishedStore(email: string, slug: string) {
-    const { token, sellerId } = await signup(email);
+    const { token, userId, sellerId } = await signup(email);
     const store = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
       .send({ name: `Store for ${email}`, slug });
-    return { token, storeId: store.body.id as string, sellerId };
+    return { token, storeId: store.body.id as string, userId, sellerId };
   }
 
   async function makeReadyExceptWallet(token: string, storeId: string, sellerId: string) {
@@ -135,7 +135,13 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
 
   describe("Publish gate (FR-6.21)", () => {
     it("Module 73 (v0.38) - cannot go live without payment method and CNIC, but publishes with no wallet interaction at all (the third original condition, minimum wallet top-up, was dropped)", async () => {
-      const { token, storeId, sellerId } = await createUnpublishedStore("publish-gate@example.com", "publish-gate-store");
+      const { token, userId, storeId, sellerId } = await createUnpublishedStore("publish-gate@example.com", "publish-gate-store");
+      // SRS §5.73 - signup now defaults to starter_free, which (unlike
+      // every other plan) also requires a verified email before publish.
+      // Verified upfront here so this test isolates exactly what it always
+      // has - the payment-method and CNIC gates - see the dedicated
+      // starter_free-email-verification tests below for that gate itself.
+      await superuser.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });
 
       // Signup/store creation itself required no wallet interaction.
       const balanceBeforeAnything = await request(app.getHttpServer())
@@ -175,6 +181,42 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
 
       const blocked = await createAndPayManualOrder(token, storeId, productId, variantId);
       expect(blocked.status).toBe(400);
+    });
+
+    it("SRS §5.73 founder resolution (2026-10-04) - a starter_free seller with payment method + CNIC configured is still blocked from publishing until their email is verified; verifying it unblocks with no other change", async () => {
+      const { token, userId, storeId, sellerId } = await createUnpublishedStore("free-tier-unverified@example.com", "free-tier-unverified-store");
+      await makeReadyExceptWallet(token, storeId, sellerId);
+
+      const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId }, include: { plan: true } });
+      expect(subscription.plan.planGroup).toBe("starter_free");
+
+      const beforeVerification = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/publish`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(beforeVerification.status).toBe(400);
+      expect(beforeVerification.body.message.message).toMatch(/verify your email/i);
+
+      await superuser.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });
+      const afterVerification = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/publish`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(afterVerification.status).toBe(201);
+    });
+
+    it("SRS §5.73 founder resolution (2026-10-04) - a GO (paid-tier) seller with payment method + CNIC configured publishes with no email-verification requirement at all - 'paid tiers keep the existing rule unchanged'", async () => {
+      const { token, userId, storeId, sellerId } = await createUnpublishedStore("go-tier-unverified@example.com", "go-tier-unverified-store");
+      await makeReadyExceptWallet(token, storeId, sellerId);
+
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: goPlan.id } });
+
+      const user = await superuser.user.findUniqueOrThrow({ where: { id: userId } });
+      expect(user.emailVerifiedAt).toBeNull();
+
+      const published = await request(app.getHttpServer())
+        .post(`/stores/${storeId}/publish`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(published.status).toBe(201);
     });
   });
 
@@ -386,6 +428,17 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       const planFeeDebit = app.get(PlanFeeDebitService);
       const settings = app.get(SettingsService);
       const graceDays = await settings.resolve<number>("billing.plan_fee_grace_days");
+
+      // SRS §5.73 - signup now defaults to starter_free, which this sweep
+      // explicitly skips (planGroup !== "individual", confirmed in
+      // PlanFeeDebitService.debitDuePlanFees()) - a starter_free
+      // subscription can never be "overdue" by design (FR-73's whole
+      // point), so this test (about a real paying subscriber's non-payment
+      // pause) needs an individual-group plan to actually exercise that
+      // path, same upgrade-by-direct-write idiom as tenancy.e2e-spec.ts's
+      // upgradeToMultiStoreTier().
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: goPlan.id } });
 
       const subscriptionRow = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
       const planBeforeShortfall = subscriptionRow.planId;

@@ -41,12 +41,48 @@ describe("Custom domains & TLS (e2e) - SRS FR-11.1/FR-11.2, §14.11", () => {
       .post("/auth/login")
       .send({ email, password: "correct-horse-battery" });
     const token = login.body.accessToken as string;
+    const user = await superuser.user.findUniqueOrThrow({ where: { email } });
+    const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+    // SRS §5.73 founder resolution (2026-10-04) - signup now defaults to
+    // starter_free, which domains.custom_domain_enabled deliberately gates
+    // OFF (FR-73.3). Every test in this file is about the custom-domain
+    // feature itself (FR-11.1/11.2), not that gate - which gets its own
+    // dedicated test below - so upgraded to GO here to restore each test's
+    // original fixture precondition.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.id }, data: { planId: goPlan.id } });
     const store = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
       .send({ name: `Store for ${email}`, slug });
-    return { token, storeId: store.body.id as string };
+    return { token, storeId: store.body.id as string, sellerId: seller.id as string };
   }
+
+  it("SRS §5.73 founder resolution (2026-10-04) - a starter_free (signup-default) seller is blocked from attaching a custom domain, naming the plan limitation; the free uzeyn.com subdomain is unaffected", async () => {
+    await request(app.getHttpServer())
+      .post("/auth/signup")
+      .send({ agreementAccepted: true, email: "free-tier-domain@example.com", password: "correct-horse-battery", businessName: "Free Tier Domain Co" });
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: "free-tier-domain@example.com", password: "correct-horse-battery" });
+    const token = login.body.accessToken as string;
+    const store = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Free Tier Domain Store", slug: "free-tier-domain-store" });
+
+    const attach = await request(app.getHttpServer())
+      .post(`/stores/${store.body.id}/domains`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ domainName: "free-tier-custom.example.com" });
+    expect(attach.status).toBe(403);
+    expect(attach.body.message.message).toMatch(/custom domains aren't available/i);
+
+    const list = await request(app.getHttpServer())
+      .get(`/stores/${store.body.id}/domains`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(list.body).toHaveLength(0);
+  });
 
   it("attaches a domain (pending/pending) and lists it", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("domain-owner@example.com", "domain-owner-store");

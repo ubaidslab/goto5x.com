@@ -109,6 +109,11 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
       const adminToken = await createAndLoginAdmin("amb79-admin@example.com");
       const { referralCode } = await makeEligibleAndApplyApproveAmbassador(referrer.token, referrer.sellerId, adminToken);
       const referred = await signup("amb79-referred@example.com", referralCode);
+      // SRS §5.73 - signup now defaults to starter_free (price 0); the
+      // REFERRED seller is upgraded so payOneCycle() below has a real fee
+      // to pay, which the flat per-renewed-month commission is keyed off.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: goPlan.id } });
 
       await payOneCycle(referred.token, adminToken); // first/initial payment
       let commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
@@ -128,10 +133,13 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
       const adminToken = await createAndLoginAdmin("amb79-prorate-admin@example.com");
       const { referralCode } = await makeEligibleAndApplyApproveAmbassador(referrer.token, referrer.sellerId, adminToken);
       const referred = await signup("amb79-prorate-referred@example.com", referralCode);
-      // A six-month cycle covers 6 months per payment - more than the
-      // default 3-month cap, so the first renewal must pro-rate down to
+      // SRS §5.73 - signup now defaults to starter_free (price 0); the
+      // REFERRED seller is upgraded so payOneCycle() below has a real fee
+      // to pay. A six-month cycle covers 6 months per payment - more than
+      // the default 3-month cap, so the first renewal must pro-rate down to
       // exactly the 3 months remaining, not pay for all 6.
-      await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { billingInterval: "six_month" } });
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: goPlan.id, billingInterval: "six_month" } });
 
       await payOneCycle(referred.token, adminToken); // first/initial payment - no commission
       await payOneCycle(referred.token, adminToken); // renewal #1 - pro-rated to 3 months (the whole cap)
@@ -172,6 +180,13 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
     it("an ambassador within their granted slot count is never paused by the overdue sweep; their cycle advances silently instead", async () => {
       const referrer = await signup("amb79-exempt-referrer@example.com");
       const adminToken = await createAndLoginAdmin("amb79-exempt-admin@example.com");
+      // SRS §5.73 - signup now defaults to starter_free, which
+      // PlanFeeDebitService.debitDuePlanFees() skips entirely regardless of
+      // currentPeriodEnd (planGroup !== "individual") - this test is about
+      // the ambassador EXEMPTION inside that sweep, which only applies to a
+      // real individual-tier subscriber in the first place.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: referrer.sellerId }, data: { planId: goPlan.id } });
       await makeEligibleAndApplyApproveAmbassador(referrer.token, referrer.sellerId, adminToken);
       await createStore(referrer.token, "amb79-exempt-store"); // 1 store, well within the granted 3
 
@@ -192,6 +207,12 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
     it("suspending the ambassador reverts to normal billing at the NEXT cycle, not an immediate catch-up pause", async () => {
       const referrer = await signup("amb79-revoke-referrer@example.com");
       const adminToken = await createAndLoginAdmin("amb79-revoke-admin@example.com");
+      // SRS §5.73 - signup now defaults to starter_free, which the plan-fee
+      // sweep skips entirely regardless of currentPeriodEnd; this test is
+      // about the exemption-then-normal-billing transition, which only
+      // applies to a real individual-tier subscriber.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: referrer.sellerId }, data: { planId: goPlan.id } });
       const { participantId } = await makeEligibleAndApplyApproveAmbassador(referrer.token, referrer.sellerId, adminToken);
       await createStore(referrer.token, "amb79-revoke-store");
 

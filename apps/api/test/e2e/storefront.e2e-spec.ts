@@ -74,6 +74,13 @@ describe("Storefront public read API (e2e) - SRS FR-1.5/FR-11.2, §14.1", () => 
 
   it("a verified custom domain takes precedence over the free subdomain as canonicalHostname", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("storefront-domain@example.com", "storefront-domain-store");
+    // SRS §5.73 - signup now defaults to starter_free, which gates off
+    // custom domains entirely; upgraded since this test is about hostname
+    // resolution/canonicalization, not that gate.
+    const user = await superuser.user.findUniqueOrThrow({ where: { email: "storefront-domain@example.com" } });
+    const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.id }, data: { planId: goPlan.id } });
     await superuser.settingsValue.create({
       data: { definitionKey: "domains.cname_target", scopeType: "global", scopeId: null, value: "github.com" },
     });

@@ -141,6 +141,10 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       const runPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
       const adminId = "00000000-0000-0000-0000-000000000000";
+      // SRS §5.73 - signup now defaults to starter_free, not GO; upgraded
+      // explicitly here since this test is about the individual-ladder's
+      // own commission-precedence mechanism, not the signup default.
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: goPlan.id } });
       await app.get(SettingsService).setValue("billing.commission_rate_percent", "plan", goPlan.id, 2, adminId);
       await app.get(SettingsService).setValue("billing.commission_rate_percent", "plan", runPlan.id, 0.5, adminId);
 
@@ -168,7 +172,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
           .set("Authorization", `Bearer ${token}`);
       }
 
-      // GO (signup default, v0.33): the 2% override injected above.
+      // GO (upgraded to above, SRS §5.73): the 2% override injected above.
       await placeAndPay(1000);
       const goEntries = await superuser.ledgerEntry.findMany({ where: { sellerId, type: "commission_accrued" } });
       expect(Number(goEntries[0].amount)).toBeCloseTo(20, 2); // 2% of 1000
@@ -191,10 +195,22 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       const runPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
       const risePlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
 
-      // v0.33 - every seller starts on the entry tier with a real billing
-      // cycle already active (assignEntryTierAtSignup), so even the very
-      // FIRST self-service change request defers to the next cycle; there
-      // is no more "no cycle yet -> immediate" case at signup.
+      // SRS §5.73 - signup now defaults to starter_free with NO billing
+      // cycle at all (currentPeriodEnd null - "never billed, no cycle"),
+      // which is exactly the condition requestPlanChange() treats as
+      // "nothing to defer, apply immediately" (confirmed in
+      // subscriptions.service.ts). This test's whole point is the
+      // DEFERRED-to-next-cycle path (FR-7.5), which only exists once a real
+      // paid cycle is already active, so the fixture seller is moved onto
+      // GO with a real future currentPeriodEnd first - the v0.33 comment
+      // this replaces ("every seller starts on the entry tier with a real
+      // billing cycle already active") is no longer true of signup itself,
+      // only of an upgraded seller like this one.
+      await superuser.subscription.update({
+        where: { sellerId },
+        data: { planId: goPlan.id, currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+      });
+
       const firstChange = await request(app.getHttpServer())
         .post("/sellers/me/subscription/change")
         .set("Authorization", `Bearer ${token}`)
@@ -273,6 +289,13 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       // test-owned 2% override so the campaign-discount subtraction below
       // (2% - 1% = 1%) has a real base rate to subtract from.
       const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      // SRS §5.73 - signup now defaults to starter_free, not GO; both
+      // fixture sellers upgraded explicitly so the plan-scoped override
+      // below actually lands on the plan they're resolved against. Signup
+      // RANK (the seller-limit counter condition) is unaffected - it's
+      // ordered by signup time, not plan.
+      await superuser.subscription.update({ where: { sellerId: firstSellerId }, data: { planId: goPlan.id } });
+      await superuser.subscription.update({ where: { sellerId: secondSellerId }, data: { planId: goPlan.id } });
       await settings.setValue("billing.commission_rate_percent", "plan", goPlan.id, 2, adminId);
 
       async function orderAndCommission(token: string, storeSlug: string, sellerId: string) {
@@ -310,9 +333,9 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
         return Number(entries[0].amount);
       }
 
-      // Both sellers start on GO (v0.33), whose plan-scoped override was
-      // just set to 2% above - the first-ever seller is within the counter
-      // condition (rank 1 <= limit 1): 2% - 1% = 1%.
+      // Both sellers are now on GO (upgraded above), whose plan-scoped
+      // override was just set to 2% - the first-ever seller is within the
+      // counter condition (rank 1 <= limit 1): 2% - 1% = 1%.
       const firstAmount = await orderAndCommission(firstToken, "campaign-first-store", firstSellerId);
       expect(firstAmount).toBeCloseTo(10, 2);
 
@@ -337,7 +360,12 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
 
       const log = await superuser.adminAuditLog.findFirst({ where: { action: "plans.admin_granted", targetType: "subscription" } });
       expect(log).not.toBeNull();
-      expect((log!.beforeValue as { planName: string }).planName).toBe("GO");
+      // SRS §5.73 - signup now defaults to starter_free, not GO; this is
+      // now the real "before" state for a freshly-signed-up seller, and
+      // this test's actual point (audit-log before/after accuracy) is
+      // equally well covered starting from it - adminGrantPlan() has no
+      // planGroup restriction on the seller's current plan either way.
+      expect((log!.beforeValue as { planName: string }).planName).toBe("Starter Free");
       expect((log!.afterValue as { planName: string }).planName).toBe("FLY");
     });
   });

@@ -105,6 +105,10 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     const { token, sellerId } = await signup("first-payment@example.com");
     const adminToken = await createAndLoginAdmin("first-payment-admin@example.com");
     const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    // SRS §5.73 - signup now defaults to starter_free (price 0), not this
+    // entry individual tier; upgraded explicitly since this whole file is
+    // about the paid plan-fee payment/renewal mechanism itself.
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: entryPlan.id } });
     const settings = app.get(SettingsService);
     const discountPercent = await settings.resolve<number>("billing.first_cycle_discount_percent");
     const expectedFirstCycle = round2(resolveActivePlanPrice(entryPlan) * (1 - discountPercent / 100));
@@ -141,6 +145,9 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     const { token, sellerId } = await signup("renewal@example.com");
     const adminToken = await createAndLoginAdmin("renewal-admin@example.com");
     const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    // SRS §5.73 - signup now defaults to starter_free (price 0); upgraded
+    // so the first/second payment amounts below are meaningfully nonzero.
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: basic.id } });
 
     await payPlanFee(token, adminToken);
     const afterFirst = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
@@ -217,6 +224,14 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     const referrer = await signup("referrer@example.com");
     const referred = await signup("referred@example.com");
     const adminToken = await createAndLoginAdmin("referral-admin@example.com");
+    // SRS §5.73 - signup now defaults to starter_free (price 0); the
+    // REFERRED seller (whose plan-fee payments the commission is a percent
+    // of) is upgraded so there's a real nonzero amount to accrue a percent
+    // of. The referrer's own plan is irrelevant here - this test grants
+    // program participation directly (superuser.programParticipant.create
+    // below), bypassing the plan-eligibility apply/approve flow entirely.
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: entryPlan.id } });
 
     // Module 79 (v0.39) moved Ambassador to a flat, RENEWAL-only model
     // (never the first payment) - this test's actual point is the call-
@@ -262,6 +277,13 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Grace Sweep Store", slug: "grace-sweep-store" });
     const storeId = store.body.id as string;
+
+    // SRS §5.73 - signup now defaults to starter_free, which
+    // PlanFeeDebitService.debitDuePlanFees() explicitly skips regardless of
+    // currentPeriodEnd (planGroup !== "individual") - this test is about
+    // that sweep actually pausing a real paying seller, so upgraded first.
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: entryPlan.id } });
 
     await payPlanFee(token, adminToken); // establish a real paid cycle first
     const settings = app.get(SettingsService);

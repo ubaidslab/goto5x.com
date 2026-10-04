@@ -85,7 +85,17 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
     const planFeeDebit = app.get(PlanFeeDebitService);
     const settings = app.get(SettingsService);
     const graceDays = await settings.resolve<number>("billing.plan_fee_grace_days");
-    await superuser.subscription.update({ where: { sellerId }, data: { currentPeriodEnd: new Date(Date.now() - 1000) } });
+    // SRS §5.73 - signup now defaults to starter_free, which
+    // PlanFeeDebitService.debitDuePlanFees() explicitly skips regardless of
+    // currentPeriodEnd (planGroup !== "individual") - every test in this
+    // file is about the non-payment pause/retention mechanism itself,
+    // which only ever applies to a real individual-tier subscriber in the
+    // first place, so upgrade onto GO before backdating currentPeriodEnd.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({
+      where: { sellerId },
+      data: { planId: goPlan.id, currentPeriodEnd: new Date(Date.now() - 1000) },
+    });
     await planFeeDebit.runMonthlyDebitSweep(new Date(Date.now() + (graceDays + 1) * DAY_MS));
   }
 

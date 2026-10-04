@@ -95,6 +95,11 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     const referralCode = await applyApproveStudentReferral(referrer.token, "00000000-0000-0000-0000-000000000000");
 
     const referred = await signup("csr-referred@example.com", referralCode);
+    // SRS §5.73 - signup now defaults to starter_free (price 0); the
+    // REFERRED seller is upgraded so payOneCycle() below has a real fee
+    // to pay, which the flat per-renewal commission is keyed off.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: goPlan.id } });
     const attribution = await superuser.referralAttribution.findUniqueOrThrow({ where: { referredSellerId: referred.sellerId } });
     expect(attribution.programType).toBe("student_referral");
     expect(attribution.renewalPayoutCount).toBe(0);
@@ -134,6 +139,11 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     const adminToken = await createAndLoginAdmin("csr-config-admin@example.com");
     const referralCode = await applyApproveStudentReferral(referrer.token, "00000000-0000-0000-0000-000000000000");
     const referred = await signup("csr-config-referred@example.com", referralCode);
+    // SRS §5.73 - signup now defaults to starter_free (price 0); the
+    // REFERRED seller is upgraded so payOneCycle() below has a real fee
+    // to pay, which the flat per-renewal commission is keyed off.
+    const goPlanConfig = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: goPlanConfig.id } });
 
     await app.get(SettingsService).setValue("growth.student_referral_flat_commission_pkr", "global", null, 500, "00000000-0000-0000-0000-000000000000");
     await app.get(SettingsService).setValue("growth.student_referral_max_renewal_payouts", "global", null, 1, "00000000-0000-0000-0000-000000000000");

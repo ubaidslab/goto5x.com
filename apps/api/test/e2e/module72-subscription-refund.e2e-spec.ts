@@ -104,6 +104,13 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   it("FR-6.49: a qualifying first-cycle cancellation posts a 50% refund_adjustment credit and cancels the subscription, audit-logged", async () => {
     const adminToken = await createAndLoginAdmin("refund-admin2@example.com");
     const seller = await signup("refund-qualifying@example.com");
+
+    // SRS §5.73 - signup now defaults to starter_free (price 0, no plan fee
+    // ever due); upgraded to GO so this test's cancellation-refund math below
+    // has a real nonzero first-cycle payment to refund a percentage of.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: goPlan.id } });
+
     await payPlanFee(seller.token, adminToken);
 
     const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
@@ -175,6 +182,13 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   it("FR-6.49: cancelling a second time is rejected (already cancelled), and never double-refunds", async () => {
     const adminToken = await createAndLoginAdmin("refund-admin3@example.com");
     const seller = await signup("refund-double@example.com");
+
+    // SRS §5.73 - signup now defaults to starter_free (price 0, no plan fee
+    // ever due); upgraded to GO so this test's cancellation-refund math below
+    // has a real nonzero first-cycle payment to refund a percentage of.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: goPlan.id } });
+
     await payPlanFee(seller.token, adminToken);
     await request(app.getHttpServer())
       .post(`/admin/sellers/${seller.sellerId}/subscription/cancel`)

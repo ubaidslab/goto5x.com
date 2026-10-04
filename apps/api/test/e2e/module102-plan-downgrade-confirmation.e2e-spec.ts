@@ -120,6 +120,16 @@ describe("Plan-downgrade confirmation (e2e) - SRS §5.6/§14.70 (Module 102, FR-
     const seller = await signup("downconf-confirmed@example.com");
     await createStore(seller.token, "downconf-confirmed-store");
     await grantPlan(adminToken, seller.sellerId, 3); // FLY
+    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd
+    // null); grantPlan() (the admin-grant endpoint) only ever changes
+    // planId, never currentPeriodEnd. Without a real cycle,
+    // requestPlanChange() treats this as "nothing to defer, apply
+    // immediately" - this test is specifically about the DEFERRED
+    // (pendingPlanId) path once confirmed, so a real cycle is required.
+    await superuser.subscription.update({
+      where: { sellerId: seller.sellerId },
+      data: { currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+    });
 
     const runPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } }); // RUN
     const first = await request(app.getHttpServer())
@@ -142,6 +152,14 @@ describe("Plan-downgrade confirmation (e2e) - SRS §5.6/§14.70 (Module 102, FR-
     const seller = await signup("downconf-nolosses@example.com");
     await createStore(seller.token, "downconf-nolosses-store");
     await grantPlan(adminToken, seller.sellerId, 1); // RUN - no active gate flips true below RUN, and 0 staff accounts
+    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd
+    // null); grantPlan() never sets one, so without this the change below
+    // would apply immediately rather than defer, and pendingPlanId below
+    // would never be set.
+    await superuser.subscription.update({
+      where: { sellerId: seller.sellerId },
+      data: { currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+    });
 
     const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } }); // GO
     const change = await request(app.getHttpServer())
@@ -184,6 +202,14 @@ describe("Plan-downgrade confirmation (e2e) - SRS §5.6/§14.70 (Module 102, FR-
     const seller = await signup("downconf-compose@example.com");
     const store1 = await createStore(seller.token, "downconf-compose-1");
     await grantPlan(adminToken, seller.sellerId, 3); // FLY (max stores 10)
+    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd
+    // null); grantPlan() never sets one, so without this the final change
+    // below would apply immediately rather than defer, and pendingPlanId
+    // would never be set.
+    await superuser.subscription.update({
+      where: { sellerId: seller.sellerId },
+      data: { currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+    });
     await createStore(seller.token, "downconf-compose-2");
 
     const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } }); // GO (max stores 1)

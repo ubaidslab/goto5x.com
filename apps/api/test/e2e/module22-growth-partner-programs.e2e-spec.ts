@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { SettingsService } from "../../src/settings-registry/settings.service";
+import { ProgramRewardService } from "../../src/growth-programs/program-reward.service";
 import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -462,6 +463,56 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       const flags = await request(app.getHttpServer()).get("/admin/trust-safety/monitors/self-referral").set("Authorization", `Bearer ${adminToken}`);
       expect(flags.status).toBe(200);
       expect(flags.body).toEqual([]);
+    });
+  });
+
+  describe("Monthly ambassador reward sweep (FR-33.5) - paid referrals only", () => {
+    it("SRS §5.73 founder resolution (2026-10-04) - bare starter_free signups never cross the reward threshold, no matter how many; only referred sellers who actually upgrade to a paid plan count", async () => {
+      const settings = app.get(SettingsService);
+      const rewardService = app.get(ProgramRewardService);
+      await settings.setValue("growth.ambassador_monthly_reward_threshold_subscriptions", "global", null, 2, ADMIN_ID);
+
+      const ambassador = await signup("reward-ambassador@example.com");
+      const ambassadorCode = await applyApproveAmbassador(ambassador.token, ambassador.sellerId, ADMIN_ID);
+      const referredA = await signup("reward-referred-a@example.com", ambassadorCode);
+      const referredB = await signup("reward-referred-b@example.com", ambassadorCode);
+
+      // Two bare (starter_free, never-paid) referred signups - below the
+      // old (buggy) bare-attribution-count threshold check too, but the
+      // real point is that this must stay zero even if a third/fourth free
+      // signup were added - counting signups was exactly the bug.
+      const sweepBeforeAnyUpgrade = await rewardService.runMonthlyAmbassadorRewardSweep();
+      expect(sweepBeforeAnyUpgrade.rewarded).toBe(0);
+      const creditsBeforeAnyUpgrade = await superuser.ledgerEntry.findMany({
+        where: { sellerId: ambassador.sellerId, type: "program_reward_credit" },
+      });
+      expect(creditsBeforeAnyUpgrade).toHaveLength(0);
+
+      // One of the two referred sellers upgrades to a real paid plan - still below the threshold (2).
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: referredA.sellerId }, data: { planId: goPlan.id } });
+      const sweepAfterOneUpgrade = await rewardService.runMonthlyAmbassadorRewardSweep();
+      expect(sweepAfterOneUpgrade.rewarded).toBe(0);
+
+      // The second referred seller also upgrades - now 2 of 2 referred sellers are paid, crossing the threshold.
+      await superuser.subscription.update({ where: { sellerId: referredB.sellerId }, data: { planId: goPlan.id } });
+      const sweepAfterBothUpgrade = await rewardService.runMonthlyAmbassadorRewardSweep();
+      expect(sweepAfterBothUpgrade.rewarded).toBe(1);
+
+      const ambassadorSubscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: ambassador.sellerId }, include: { plan: true } });
+      const creditsAfterBothUpgrade = await superuser.ledgerEntry.findMany({
+        where: { sellerId: ambassador.sellerId, type: "program_reward_credit" },
+      });
+      expect(creditsAfterBothUpgrade).toHaveLength(1);
+      expect(Number(creditsAfterBothUpgrade[0].amount)).toBe(Number(ambassadorSubscription.plan.price));
+
+      // Idempotent within the same calendar month - a second sweep pass never double-rewards.
+      const secondSweepThisMonth = await rewardService.runMonthlyAmbassadorRewardSweep();
+      expect(secondSweepThisMonth.rewarded).toBe(0);
+      const creditsAfterSecondSweep = await superuser.ledgerEntry.findMany({
+        where: { sellerId: ambassador.sellerId, type: "program_reward_credit" },
+      });
+      expect(creditsAfterSecondSweep).toHaveLength(1);
     });
   });
 

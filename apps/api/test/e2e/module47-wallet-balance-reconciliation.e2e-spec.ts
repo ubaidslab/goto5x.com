@@ -290,7 +290,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
   });
 
   it("Module 73 (v0.38) - the publish gate no longer checks wallet balance at all; the wallet-low-balance grace ladder stays dormant-but-intact when invoked directly", async () => {
-    const { token, sellerId } = await signup("gate-still-works@example.com");
+    const { token, userId, sellerId } = await signup("gate-still-works@example.com");
     const store = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
@@ -299,6 +299,10 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
 
     await superuser.storePaymentInstructions.update({ where: { storeId }, data: { codEnabled: true } });
     await superuser.seller.update({ where: { id: sellerId }, data: { cnicHash: `hash-${sellerId}` } });
+    // SRS §5.73 - signup now defaults to starter_free, which also requires
+    // a verified email before publish; verified here since this test's
+    // actual point is the wallet-balance gate (dropped), not this one.
+    await superuser.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });
 
     // Module 73 - payment method + CNIC alone now publish a store; wallet
     // balance is 0 (never topped up, and there is no seller-facing top-up

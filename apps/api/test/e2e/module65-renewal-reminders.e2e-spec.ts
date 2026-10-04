@@ -49,6 +49,22 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
     const token = login.body.accessToken as string;
     const user = await superuser.user.findUniqueOrThrow({ where: { email } });
     const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+
+    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd null,
+    // "never billed"), which this file's renewal-reminder math can't run
+    // against at all, and which PlanFeeDebitService also can't ever pause
+    // (planGroup !== "individual") - upgraded every fixture seller here, in
+    // this one shared helper, to a real individual-tier (GO) subscriber.
+    // Deliberately NOT also stamping currentPeriodEnd by hand: every test in
+    // this file calls payPlanFee() immediately after signup(), and that real
+    // plan-fee-payment/admin-verify flow is what actually sets a real
+    // currentPeriodEnd (WalletService.verifyTopUp()) once the plan priced
+    // above zero - exactly what the pre-expiry tests need, and exactly what
+    // PlanFeeDebitService's sweep needs (planGroup === "individual") to be
+    // able to pause a store at all for the win-back tests.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.id }, data: { planId: goPlan.id } });
+
     return { token, sellerId: seller.id as string };
   }
 

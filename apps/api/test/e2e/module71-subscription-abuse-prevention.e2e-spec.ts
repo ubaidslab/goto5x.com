@@ -86,6 +86,16 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
     return Number(goPlan.price);
   }
 
+  // SRS §5.73 - signup now defaults to starter_free (price 0, no plan fee
+  // ever due); this whole file is about the first-cycle-discount-abuse
+  // mechanism on a REAL plan fee, so every test below that checks a
+  // specific price (not just "some discount applies") upgrades its
+  // fixture seller explicitly.
+  async function upgradeToGo(sellerId: string): Promise<void> {
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: goPlan.id } });
+  }
+
   it("FR-6.48: no signal match provisionally grants the first-cycle discount", async () => {
     const seller = await signup("abuse-clean@example.com");
     const preview = await request(app.getHttpServer()).get("/sellers/me/wallet/plan-fee-payment").set("Authorization", `Bearer ${seller.token}`);
@@ -98,6 +108,7 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
     await superuser.user.update({ where: { id: sellerA.userId }, data: { phone: "03001112222" } });
     const sellerB = await signup("abuse-phone-b@example.com");
     await superuser.user.update({ where: { id: sellerB.userId }, data: { phone: "03001112222" } });
+    await upgradeToGo(sellerB.sellerId);
 
     const abuseService = app.get(SubscriptionAbuseService);
     await abuseService.checkAtSignup(sellerB.sellerId, undefined, undefined);
@@ -141,6 +152,7 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
     await superuser.user.update({ where: { id: sellerA.userId }, data: { phone: "03005556666" } });
     const sellerB = await signup("abuse-cnic-b@example.com");
     await superuser.user.update({ where: { id: sellerB.userId }, data: { phone: "03005556666" } });
+    await upgradeToGo(sellerB.sellerId);
 
     // No match detected at signup (phones set AFTER signup here for test-setup convenience)...
     const before = await request(app.getHttpServer()).get("/sellers/me/wallet/plan-fee-payment").set("Authorization", `Bearer ${sellerB.token}`);
@@ -166,6 +178,7 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
 
     // sellerB pays their FIRST cycle at the discounted rate before any match is found.
     const sellerB = await signup("abuse-chargeback-b@example.com");
+    await upgradeToGo(sellerB.sellerId);
     const submit = await request(app.getHttpServer()).post("/sellers/me/wallet/plan-fee-payment").set("Authorization", `Bearer ${sellerB.token}`).send({});
     await request(app.getHttpServer()).post(`/admin/wallet-topups/${submit.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
 
@@ -200,6 +213,7 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
 
     // sellerB already used the first-cycle discount.
     const sellerB = await signup("abuse-instrument-b@example.com");
+    await upgradeToGo(sellerB.sellerId);
     const submit = await request(app.getHttpServer()).post("/sellers/me/wallet/plan-fee-payment").set("Authorization", `Bearer ${sellerB.token}`).send({});
     await request(app.getHttpServer()).post(`/admin/wallet-topups/${submit.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
 

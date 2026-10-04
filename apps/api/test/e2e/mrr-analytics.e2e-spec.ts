@@ -81,10 +81,15 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     const adminToken = await createAndLoginAdmin("mrr-admin1@example.com");
     const a = await signup("mrr-a@example.com");
     const b = await signup("mrr-b@example.com");
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    // SRS §5.73 - signup now defaults to starter_free (price 0, no plan
+    // fee ever due); upgraded so payPlanFee() below has a real nonzero
+    // fee, which this test's MRR sum is actually about.
+    await superuser.subscription.update({ where: { sellerId: a.sellerId }, data: { planId: entryPlan.id } });
+    await superuser.subscription.update({ where: { sellerId: b.sellerId }, data: { planId: entryPlan.id } });
     await payPlanFee(a.token, adminToken);
     await payPlanFee(b.token, adminToken);
 
-    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     const standingMonthly = resolveActivePlanPrice(entryPlan);
 
     const res = await request(app.getHttpServer()).get("/admin/analytics/mrr").set("Authorization", `Bearer ${adminToken}`);
@@ -111,6 +116,12 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
   it("a subscription with currentPeriodEnd already in the past counts as expired-not-renewed, not toward MRR or upcoming renewals", async () => {
     const adminToken = await createAndLoginAdmin("mrr-admin3@example.com");
     const seller = await signup("mrr-expired@example.com");
+    // SRS §5.73 - signup now defaults to starter_free (price 0); upgraded
+    // so payPlanFee() below has a real fee, and so this subscription is
+    // "individual"-group (the MRR endpoint's own active/expired logic is
+    // scoped to real paid subscriptions, never starter_free).
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: entryPlan.id } });
     await payPlanFee(seller.token, adminToken);
     await superuser.subscription.update({
       where: { sellerId: seller.sellerId },
@@ -128,6 +139,12 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
   it("a subscription renewing within the next 7 days counts toward both the 7-day and 30-day upcoming-renewal windows", async () => {
     const adminToken = await createAndLoginAdmin("mrr-admin4@example.com");
     const seller = await signup("mrr-renewing-soon@example.com");
+    // SRS §5.73 - signup now defaults to starter_free (price 0); upgraded
+    // so payPlanFee() below has a real fee, and so this subscription is
+    // "individual"-group (confirmed in mrr-analytics.service.ts: its
+    // query is scoped to plan.planGroup === "individual" && price > 0).
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: entryPlan.id } });
     await payPlanFee(seller.token, adminToken);
     await superuser.subscription.update({
       where: { sellerId: seller.sellerId },

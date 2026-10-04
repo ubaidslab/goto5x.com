@@ -75,6 +75,12 @@ describe("Finance Terminal (e2e) - founder-approved scope", () => {
     it("sums refund_adjustment ledger entries platform-wide and lists them with seller attribution", async () => {
       const admin = await createAndLoginAdmin("finance-refund-admin1@example.com");
       const seller = await signup("finance-refund-1@example.com");
+      // SRS §5.73 - signup now defaults to starter_free (price 0, no plan
+      // fee ever due); upgraded to GO so payPlanFee() below has a real
+      // nonzero first-cycle payment for the cancellation refund to be a
+      // percentage of.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: goPlan.id } });
       await payPlanFee(seller.token, admin.token);
 
       const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });

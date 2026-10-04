@@ -146,6 +146,15 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
     fakeEasypaisa.verifyPayment.mockResolvedValue({ verified: true, providerReference: "EP-TXN-1" });
 
     const { token, sellerId } = await signupLoginSeller("platform-gw-auto@example.com", "platform-gw-auto-store");
+    // SRS §5.73 - signup now defaults to starter_free (price 0, no plan
+    // fee ever due); upgraded to GO so there's a real fee for this
+    // gateway-verified payment to actually advance a cycle for - the
+    // point of this test is that verified-payment advancement, not the
+    // signup default. currentPeriodEnd deliberately left null (same
+    // "never billed yet" state a real starter_free->GO upgrade would have)
+    // so setting it is this payment's own effect, not a fixture shortcut.
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: goPlan.id } });
     const res = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)

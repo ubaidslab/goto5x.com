@@ -70,7 +70,11 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
       // plan scope, not global, to actually take effect.
       const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       await app.get(SettingsService).setValue("catalog.product_limit", "plan", firstMonthPlan.id, 1, ADMIN_ID);
-      const { token, storeId } = await signupAndCreateStore("product-limit@example.com", "product-limit-store");
+      const { token, storeId, sellerId } = await signupAndCreateStore("product-limit@example.com", "product-limit-store");
+      // SRS §5.73 - signup now defaults to starter_free, which carries its
+      // OWN catalog.product_limit override (10) - upgraded to First Month
+      // so the override just set above actually applies to this seller.
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: firstMonthPlan.id } });
       const category = await superuser.category.create({ data: { name: "Limit", slug: `limit-${Date.now()}` } });
 
       const first = await request(app.getHttpServer())
@@ -89,7 +93,11 @@ describe("Business Guard-Rails (e2e) - SRS §5.23/§14.21", () => {
     it("P2 fix (docs/security-audit-report.md #17's follow-up): two genuinely concurrent creates, each individually within the limit but together over it, no longer both succeed", async () => {
       const firstMonthPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       await app.get(SettingsService).setValue("catalog.product_limit", "plan", firstMonthPlan.id, 3, ADMIN_ID);
-      const { token, storeId } = await signupAndCreateStore("product-limit-race@example.com", "product-limit-race-store");
+      const { token, storeId, sellerId } = await signupAndCreateStore("product-limit-race@example.com", "product-limit-race-store");
+      // SRS §5.73 - signup now defaults to starter_free, which carries its
+      // OWN catalog.product_limit override (10) - upgraded to First Month
+      // so the override just set above actually applies to this seller.
+      await superuser.subscription.update({ where: { sellerId }, data: { planId: firstMonthPlan.id } });
       const category = await superuser.category.create({ data: { name: "Race", slug: `race-${Date.now()}` } });
 
       // Two existing products, created sequentially (uncontested) so the

@@ -114,6 +114,17 @@ describe("Multi-store downgrade rule (e2e) - SRS §5.6k/§14.66 (Module 66, FR-6
     const seller = await signup("downgrade-chosen@example.com");
     await createStore(seller.token, "downgrade-chosen-1");
     await grantPlan(adminToken, seller.sellerId, 1); // RUN (max 3)
+    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd
+    // null, "never billed"); grantPlan() (the admin-grant endpoint) only
+    // ever changes planId, never currentPeriodEnd, so without this the
+    // seller would still have no active cycle here - and requestPlanChange()
+    // treats "no cycle yet" as "nothing to defer, apply immediately,"
+    // which is exactly what this test is proving does NOT happen for a
+    // real paying subscriber already mid-cycle.
+    await superuser.subscription.update({
+      where: { sellerId: seller.sellerId },
+      data: { currentPeriodEnd: new Date(Date.now() + 30 * DAY_MS) },
+    });
     const keepStoreId = await createStore(seller.token, "downgrade-chosen-2");
     const otherStoreId = await createStore(seller.token, "downgrade-chosen-3");
 

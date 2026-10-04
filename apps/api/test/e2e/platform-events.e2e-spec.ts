@@ -155,6 +155,13 @@ describe("Platform Event Log (e2e) - SRS §3.11/FR-26.x, §14.23", () => {
 
   it("attaching and verifying a domain produce domain.attached and domain.verified", async () => {
     const { token, storeId } = await signupLoginAndCreateStore("events-domain@example.com", "events-domain-store");
+    // SRS §5.73 - signup now defaults to starter_free, which gates off
+    // custom domains entirely; upgraded since this test is about the
+    // domain.attached/domain.verified events, not that gate.
+    const user = await superuser.user.findUniqueOrThrow({ where: { email: "events-domain@example.com" } });
+    const seller = await superuser.seller.findUniqueOrThrow({ where: { userId: user.id } });
+    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+    await superuser.subscription.update({ where: { sellerId: seller.id }, data: { planId: goPlan.id } });
     // www.github.com's real CNAME (github.com) - same genuine-DNS proof as domains.e2e-spec.ts.
     await superuser.settingsValue.create({
       data: { definitionKey: "domains.cname_target", scopeType: "global", scopeId: null, value: "github.com" },

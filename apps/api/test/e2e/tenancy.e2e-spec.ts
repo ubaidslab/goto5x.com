@@ -186,6 +186,29 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     expect(third.body.message.message).toMatch(/store limit \(2\) has been reached/i);
   });
 
+  it("SRS §5.73 founder resolution (2026-10-04) - a reserved slug (platform-own subdomain or a payment-brand name) is rejected regardless of plan tier, a non-reserved slug is unaffected", async () => {
+    const { token } = await signupAndLogin("reserved-slug@example.com");
+
+    const reserved = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Admin Store", slug: "admin" });
+    expect(reserved.status).toBe(400);
+    expect(reserved.body.message.message).toMatch(/reserved name/i);
+
+    const paymentBrand = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Easypaisa Store", slug: "easypaisa" });
+    expect(paymentBrand.status).toBe(400);
+
+    const ok = await request(app.getHttpServer())
+      .post("/stores")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Real Store", slug: "reserved-slug-test-store" });
+    expect(ok.status).toBe(201);
+  });
+
   it("a seller who owns two stores cannot see or mutate one store's data from the other store's dashboard context (explicit cross-store assertion, not just relying on the RLS guarantee)", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-isolation@example.com");
     await upgradeToMultiStoreTier(sellerId);
