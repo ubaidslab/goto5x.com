@@ -28,7 +28,11 @@ export default async function StorefrontCartPage() {
         <h1>Your cart</h1>
         <CartContents hostname={host} currency={store.currency} theme={theme} />
       </main>
-      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
+      {/* FR-74.5 (§5.74) - cart is pre-purchase order review; the UZEYN mark
+          is permanently non-removable here on every tier, unlike every
+          other storefront page, so this intentionally ignores
+          store.poweredByVisible. */}
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={true} />
       <WhatsappButton theme={theme} />
       <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>

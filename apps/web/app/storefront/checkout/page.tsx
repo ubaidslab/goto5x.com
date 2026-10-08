@@ -49,7 +49,11 @@ export default async function StorefrontCheckoutPage() {
           paymentInstructions={paymentInstructions}
         />
       </main>
-      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={store.poweredByVisible} />
+      {/* FR-74.5 (§5.74) - checkout is pre-purchase order review; the UZEYN
+          mark is permanently non-removable here on every tier, unlike
+          every other storefront page, so this intentionally ignores
+          store.poweredByVisible. */}
+      <SiteFooter navigation={navigation} theme={theme} poweredByVisible={true} />
       <WhatsappButton theme={theme} />
       <ChatWidget theme={theme} enabled={store.chatEnabled} />
     </>

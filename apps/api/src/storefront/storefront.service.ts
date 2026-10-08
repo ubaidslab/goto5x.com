@@ -210,7 +210,14 @@ export class StorefrontService {
     // left to the client to decide, since this is a monetization/plan-tier
     // gate (FR: mandatory on Free, removable only once a paid plan grants
     // it), not a cosmetic preference.
-    const poweredByVisible = await this.branding.getVisibleForStorefront(store.id);
+    // FR-74.1/74.3 (§5.74) - the new branded loading screen's own
+    // removability gate, individual-FLY-only; resolved separately from
+    // poweredByVisible (never reusing branding.powered_by_removable), since
+    // Team Growth/Scale must not inherit this new rule.
+    const [poweredByVisible, loadingScreenBrandingVisible] = await Promise.all([
+      this.branding.getVisibleForStorefront(store.id),
+      this.branding.getLoadingScreenBrandingVisible(store.id),
+    ]);
 
     // FR-66.3 (Module 83) - resolved server-side (same "never left to the
     // client to decide" discipline as poweredByVisible just above), so
@@ -246,6 +253,7 @@ export class StorefrontService {
       // no propagation delay beyond normal page-render freshness.
       verified: store.verifiedStatus === "verified",
       poweredByVisible,
+      loadingScreenBrandingVisible,
       chatEnabled,
       wishlistEnabled,
       lowStockThreshold,

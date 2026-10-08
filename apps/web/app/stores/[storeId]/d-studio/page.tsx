@@ -610,6 +610,7 @@ export default function DStudioPage({ params }: { params: { storeId: string } })
     logoUrl: resolved.logoUrl ?? null,
     verified: false,
     poweredByVisible: true,
+    loadingScreenBrandingVisible: true,
     chatEnabled: false,
     wishlistEnabled: false,
     lowStockThreshold: 5,

@@ -145,6 +145,7 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     </tfoot>
   </table>
   ${noteBlocks ? `<div class="invoice-notes">${noteBlocks}</div>` : ""}
+  <!-- SRS §5.74 FR-74.4 - permanent invariant, every tier including FLY: never wire branding.powered_by_removable/_hidden into this line. -->
   <div class="platform-footer">Generated on uzeyn.com</div>
 </body>
 </html>`;

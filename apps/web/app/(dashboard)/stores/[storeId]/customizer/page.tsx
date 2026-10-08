@@ -244,6 +244,7 @@ export default function CustomizerPage({ params }: { params: { storeId: string }
     logoUrl: null,
     verified: false,
     poweredByVisible: branding?.visible ?? true,
+    loadingScreenBrandingVisible: branding?.visible ?? true,
     chatEnabled: false,
     wishlistEnabled: false,
     lowStockThreshold: 5,

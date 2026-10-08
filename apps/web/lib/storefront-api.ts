@@ -13,6 +13,8 @@ export interface PublicStore {
   verified: boolean;
   /** Templates module (v0.31 design phase) - server-resolved; mandatory on Free, removable only on a paid plan (branding.powered_by_removable/hidden). */
   poweredByVisible: boolean;
+  /** SRS §5.74 FR-74.3 - the branded loading screen's own removability gate (individual-FLY only); resolved independently of poweredByVisible/branding.powered_by_removable. */
+  loadingScreenBrandingVisible: boolean;
   /** FR-66.3 (Module 83) - server-resolved plan gate (RISE+FLY); the storefront only renders the chat widget when true. */
   chatEnabled: boolean;
   /** FR-66.5 (Module 85) - same RISE+FLY plan gate as chatEnabled; the storefront only renders the wishlist button/nav link when true. */

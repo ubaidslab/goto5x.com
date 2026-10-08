@@ -73,4 +73,25 @@ export class BrandingService {
     ]);
     return !(removable && hidden);
   }
+
+  /**
+   * SRS §5.74 FR-74.3 - the new loading-screen's own removability gate,
+   * individual-FLY only (planGroup === "individual" && tierOrder === 3).
+   * Deliberately NOT branding.powered_by_removable - that setting also
+   * resolves true for Team Growth/Scale (see seedTemplatesBrandingSettings),
+   * and this new rule must never reach Team-tier branding, which keeps its
+   * existing behavior untouched. Same fail-open-to-visible philosophy as
+   * getVisibleForStorefront above on any lookup gap.
+   */
+  async getLoadingScreenBrandingVisible(storeId: string): Promise<boolean> {
+    const store = await this.prismaAdmin.store.findUnique({ where: { id: storeId } });
+    if (!store) return true;
+    const subscription = await this.prismaAdmin.subscription.findUnique({
+      where: { sellerId: store.sellerId },
+      select: { plan: { select: { planGroup: true, tierOrder: true } } },
+    });
+    const removable = subscription?.plan.planGroup === "individual" && subscription?.plan.tierOrder === 3;
+    const hidden = await this.settings.resolve<boolean>("branding.powered_by_hidden", { storeId });
+    return !(removable && hidden);
+  }
 }

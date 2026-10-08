@@ -57,6 +57,11 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     await superuser.subscription.update({ where: { sellerId }, data: { planId: plan.id } });
   }
 
+  async function moveToTeamPlan(sellerId: string, tierOrder: number) {
+    const plan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "team", tierOrder } });
+    await superuser.subscription.update({ where: { sellerId }, data: { planId: plan.id } });
+  }
+
   it("is mandatory on First Month (signup default) - the seller cannot hide it, and it always renders on the storefront", async () => {
     const { token, storeId, hostname } = await signupLoginAndCreateStore("branding-entry@example.com", "branding-entry-store");
 
@@ -71,10 +76,13 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
 
     const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
     expect(store.body.poweredByVisible).toBe(true);
+    // FR-74.3 (§5.74) - the new loading-screen gate; mandatory for every
+    // non-FLY individual tier same as poweredByVisible above.
+    expect(store.body.loadingScreenBrandingVisible).toBe(true);
   });
 
   it("is still mandatory on Starter and Growth - only Pro grants removal (v0.33 SRS 'Plans & Pricing')", async () => {
-    const { token, storeId, sellerId } = await signupLoginAndCreateStore("branding-starter@example.com", "branding-starter-store");
+    const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("branding-starter@example.com", "branding-starter-store");
     await movePlan(sellerId, 1); // Starter
     const starter = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(starter.body.removable).toBe(false);
@@ -82,6 +90,11 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     await movePlan(sellerId, 2); // Growth
     const growth = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(growth.body.removable).toBe(false);
+
+    // FR-74.3 (§5.74) - same individual-FLY-only boundary on the new
+    // loading-screen gate; still mandatory on Growth (tierOrder 2).
+    const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
+    expect(store.body.loadingScreenBrandingVisible).toBe(true);
   });
 
   it("a Pro seller can hide the mark, and it actually disappears from the live storefront", async () => {
@@ -100,6 +113,26 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
 
     const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
     expect(store.body.poweredByVisible).toBe(false);
+    // FR-74.3 (§5.74) - individual FLY is the one tier where the new
+    // loading-screen gate DOES follow the seller's hidden preference.
+    expect(store.body.loadingScreenBrandingVisible).toBe(false);
+  });
+
+  it("FR-74.3 (§5.74) - the new loading-screen gate is individual-FLY-only; Team Growth/Scale keep it mandatory even though the existing mark is removable for them", async () => {
+    const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore(
+      "branding-team-growth@example.com",
+      "branding-team-growth-store",
+    );
+    await moveToTeamPlan(sellerId, 1); // Team Growth
+
+    const branding = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
+    expect(branding.body.removable).toBe(true); // existing mechanism: unaffected, still extends to Team Growth
+
+    await request(app.getHttpServer()).patch(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`).send({ hidden: true });
+
+    const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
+    expect(store.body.poweredByVisible).toBe(false); // existing "Managed by UZEYN" mark: unaffected by this section
+    expect(store.body.loadingScreenBrandingVisible).toBe(true); // NEW gate never reaches Team tiers - stays mandatory
   });
 
   it("downgrading off Pro reverts the mark to shown, even though the stored 'hidden' preference is untouched", async () => {
