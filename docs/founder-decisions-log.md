@@ -1119,3 +1119,162 @@ incremental-commit/live-verify/independently-CI-confirmed discipline as
 every prior item in this project — amended per D59 for docs-only
 commits once that work lands, unchanged for every code commit before
 and after.
+
+---
+
+## 2026-10-09 — Founder decisions on the M0 report (D82–D91)
+
+Source: the founder, directly, replying to this session's M0
+checkpoint report (§10 of the MVP Execution Prompt). Status legend as
+the prior entries: **LOCKED** = the founder stated it directly. All
+ten below are LOCKED.
+
+### D82. Auth/session hardening — Option A approved, hardened beyond the proposal
+**Status:** LOCKED.
+**Decision:** Option A (`docs/auth-session-design.md` Part 2) approved
+with specifics stricter than the original proposal: refresh token in
+an `HttpOnly`, `Secure`, `SameSite` cookie using the `__Host-` prefix
+(host-only, no `Domain` attribute — the strictest cookie-scoping
+option available); CSRF defense is a custom header **plus** an
+Origin/`Sec-Fetch-Site` check, not the header alone; reuse detection
+revokes the entire token family on a tombstone hit, not just the one
+session. Applies to the admin terminal too, with stricter lifetimes
+and MFA step-up required on sensitive/destructive actions. **Nothing
+may remain in `localStorage`** on either surface — stated as an
+absolute, not a target to approach.
+**Reasoning:** not elaborated beyond the decision itself.
+**Implementation note:** `docs/auth-session-design.md` Part 2 needs a
+revision pass to record these specifics (the `__Host-` prefix, the
+Origin/`Sec-Fetch-Site` check, token-family revocation, the admin-
+specific stricter lifetime + step-up MFA) as the locked target, not
+just the original Option A sketch — tracked as M1/1B work.
+
+### D83. Real email transport is a hard publish-gate, not just infrastructure
+**Status:** LOCKED.
+**Decision:** M1 builds a provider interface, a real SMTP transport,
+and one real API provider (exact choice TBD), with Mailpit staying the
+local-dev-only provider. A new application-level gate: **a store
+cannot be published while email sending is non-functional** — whether
+because `EMAIL_PROVIDER` still resolves to the dev-only console logger,
+or because the configured provider fails its own health/send check.
+**Reasoning:** not elaborated beyond the decision itself — a stronger,
+product-level requirement than "build the transport": it must be
+enforced as working before commerce starts, not just available.
+**Implementation note:** this is a new FR, not yet specced in
+`docs/SRS.md` — needs a store-publish-flow touchpoint identified
+(wherever a store's `status` transitions to published/live today) and
+a new acceptance-checklist item; tracked for M1/1B.
+
+### D84. Buyer password reset ships in M2; passwordless proposal invited
+**Status:** LOCKED.
+**Decision:** M2 builds a buyer password-reset flow mirroring the
+existing seller/admin pattern exactly: single-use hashed token, short
+expiry, no content-based account enumeration, reset-link base URL from
+`APP_BASE_URL` config (never the request's `Host` header). Separately:
+the founder is open to a passwordless buyer login (e.g. magic
+link/email OTP) instead, if it's genuinely simpler than building and
+maintaining password + reset for buyers specifically — asked for a
+proposal rather than a default build.
+**Reasoning:** not elaborated beyond the decision itself.
+**Implementation note:** a short passwordless-vs-password-reset
+proposal is owed before M2's buyer-auth work starts (not yet written) —
+tracked as a required M1/M2-boundary deliverable.
+
+### D85. Plan matrix approved, conditional on three M1 code changes
+**Status:** LOCKED — approves `docs/plan-matrix-mvp.md` (D78) as the
+MVP marketing source of truth, contingent on the three items below.
+**Decision:** (1) Free-tier email-campaign cap enforced at 0 in code
+(M1) — today it falls through to the 500/mo global default; (2) the
+loading-mark gate flip, FLY→RISE (§5.74 FR-74.3, D76d) lands in M1,
+and that matrix row **stays unpublished until the corresponding commit
+is independently CI-confirmed green** — not published ahead of the
+code; (3) Free-tier D-Studio marketing copy is worded as section
+counts ("8/14/20 of 22 sections"), never an "animation" claim.
+**Reasoning:** not elaborated beyond the decision itself — consistent
+with D78's own "copy follows shipped code" rule applied to the three
+rows the matrix itself flagged as not-yet-true.
+
+### D86. Legacy PK gateways default to dormant when the registry lands
+**Status:** LOCKED — supersedes the interim "live and ungated" state
+Risk #50 recorded, as of the M1 registry landing.
+**Decision:** Raast/Easypaisa/JazzCash/bank-transfer adapters default
+to **off** the moment the gateway registry ships (M1). Each may only
+be re-enabled individually, and only after real sandbox-verification
+evidence exists in `docs/gateway-verification/<name>.md` — no blanket
+reactivation. Pakistan's day-one payment path is COD/advance/manual-
+mark-as-paid (payment *models*, not gateways) — confirms D4/D73r's
+framing and build order.
+**Reasoning:** not elaborated beyond the decision itself — closes
+Risk #50's exposure (live, ungated, zero real-HTTP test coverage) at
+the earliest point the registry makes closing it possible.
+
+### D87. Merge the four duplicated credential-encryption implementations
+**Status:** LOCKED, P0, tagged to D57/S4 (gateway-secret custody).
+**Decision:** consolidate `drive-token-crypto.util.ts`,
+`payment-gateway-credential-crypto.util.ts`,
+`smtp-credential-crypto.util.ts`, and
+`admin-email-credential-crypto.util.ts`'s hand-copied AES-256-GCM logic
+into one shared module parametrized by key — matching
+`identity-crypto.util.ts`'s existing import pattern, which is already
+correct. Closes Risk #51.
+**Reasoning:** not elaborated beyond the decision itself — a future
+correctness fix to the shared AES-256-GCM shape should only need to
+land in one place, especially now that real seller payment-gateway
+credentials are about to flow through one of the four duplicates.
+
+### D88. RLS hardening follow-ups
+**Status:** LOCKED.
+**Decision:** four concrete M1 items: (1) route `WalletService` and
+`SubscriptionInvoiceService` through `TenantPrismaService` instead of
+the `app_admin` bypass client; (2) replace
+`TenantPrismaService.run()`'s UUID-regex-gated string-concatenation
+`SET LOCAL` with `set_config('app.current_seller_id', $1, true)`
+passed as a real bind parameter — removes the one remaining string-
+built SQL fragment in the codebase rather than just validating it;
+(3) add a CI test that allowlists every call site using the
+`app_admin` bypass client by name/path and fails the build the moment
+a new, un-reviewed call site appears; (4) review the ~20 cross-tenant
+background-job queues the M0 report identified, prioritized by data
+sensitivity — money-touching and PII-touching queues first.
+**Reasoning:** not elaborated beyond the decision itself — closes the
+two hardening refinements and the background-job trust-model gap the
+M0 report's RLS re-verification surfaced, with concrete, scoped fixes
+rather than leaving them noted-but-unaddressed.
+
+### D89. CI hardening ships first, ahead of M1's own sub-phases
+**Status:** LOCKED — sequenced **before** D90's 1A/1B/1C.
+**Decision:** (a) remove `next/font/google` from the codebase in favor
+of self-hosted font files, eliminating the build-time network
+dependency that caused the M0 report's `web-build` flake; (b) land D59
+(shard e2e across parallel runners; path-filter docs-only commits to
+skip the full suite). Time-boxed to one working day total; report the
+new CI time once both land.
+**Reasoning:** not elaborated beyond the decision itself — removes the
+*cause* of the flake (an avoidable external network dependency at
+build time) rather than just tolerating retries going forward.
+**Sequencing note:** both are CI infrastructure, not docs — ships as
+its own small, code-touching push per the standing one-push-at-a-time
+rule, before 1A starts.
+
+### D90. M1 build order: three founder-visible sub-phases
+**Status:** LOCKED — confirms the sub-phase split proposed in the M0
+report's own estimates (§5).
+**Decision:** **1A** = single-store enforcement + plan reseed +
+programs gating + gateway registry; **1B** = auth hardening (D82) +
+email transport (D83) + security P0 items tagged M1; **1C** = Stripe
+adapter + Paddle sandbox billing + the founder-local-run guide — 1C
+explicitly needs founder-supplied keys (Stripe, Paddle) before it can
+complete.
+**Reasoning:** not elaborated beyond the decision itself — a
+checkpoint after each sub-phase instead of one long M1 stretch.
+
+### D91. Minimum viable private beta — estimate and date owed after 1A
+**Status:** LOCKED (process requirement, alongside D70).
+**Decision:** once 1A lands and is independently CI-confirmed, restate
+the M1–M4 estimates, and separately define the minimum feature/doc set
+for an invite-only private beta that needs **neither** billing **nor**
+any live (non-sandbox) seller gateway key — plus a target date for
+reaching that minimum.
+**Reasoning:** not elaborated beyond the decision itself — a faster,
+narrower path to something real sellers can touch than waiting for all
+of M1–M4 to land.
