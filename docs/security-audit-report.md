@@ -638,6 +638,31 @@ standing "disclosed, not silently absorbed" discipline.
 
 ---
 
+## 7. Pricing/Programs/Partners Amendment — New Risk Items (2026-10-08)
+
+Four new risk items surfaced by the 2026-10-08 pricing/programs
+amendment (`docs/founder-decisions-log.md`, `docs/SRS.md` §5.78-5.92).
+**Every item below is a planned control for not-yet-built work — none
+of this is fixed, none of it is built, and nothing here should be read
+as "closed."** Full decisions: D4, D20, D25-D27.
+
+| # | Item | Status | Planned control |
+|---|---|---|---|
+| 1 | Store-domain/cookie-scope separation (D25) | **Planned control; partially already true by accident, not by design** | §5.89 FR-89.1 — confirmed the *outcome* already holds today (dashboard uses `localStorage`, the one buyer cookie is already host-only), but this is an emergent property of unrelated implementation choices, not an explicit architecture. The real control going forward is a review-checklist item: never introduce a shared `domain: ".uzeyn.com"` cookie attribute in future auth work. |
+| 2 | Free-tier abuse surface (D26) | **Planned control, not built** | A report-abuse link, a takedown process with an SLA, a brand-impersonation blocklist, signup rate limits (extends the existing `RateLimitService`), AUP/ToS liability-limit language, and phishing/spam monitoring — none of these exist specifically for free-tier storefronts today. §5.89 FR-89.2. |
+| 3 | UZEYN Partners identity/KYC data (D20 FR-84.6) | **Planned control, not built** | Partner identity documents, if unavoidable, must be stored encrypted (AES-256-GCM, reusing the existing canonical encryption utility rather than a new implementation), access-logged, and deleted after verification — keeping only the result, reviewer, and date. No CNIC-style long-term document retention. This is a design requirement for not-yet-built Phase-B/post-launch work, not a statement about any data currently held (no Partner program exists in code yet). |
+| 4 | UZEYN Partners payout release (D20 FR-84.5) | **Planned control, not built** | Payout release must be an admin money-moving action gated by step-up MFA, a typed confirmation, and a full audit-log entry — the same discipline already proven out elsewhere in the admin terminal (e.g. the Newsletters "Send" typed-confirmation gate, §5 Part 5 of this document's own UI inventory cross-reference). Not built because the Partner ledger itself is not built. |
+
+**Relationship to the existing Risk Register:** items 1-2 above (domain
+separation, free-tier abuse) both fold into `docs/SRS.md` §12 Risk
+Register item #37; items 3-4 (Partner KYC data, payout release) both
+fold into item #38 (the Partner bonus money-moving risk, which already
+names fraud/clawback/KYC/payout controls together) — this table is the
+security-specific elaboration of those two risk-register rows, not a
+parallel list. See §12 for the full #34-44 set.
+
+---
+
 *This document was compiled from a full audit of the session transcript
 covering the original 5-phase pass, cross-verified line-by-line against
 the live codebase rather than taken on faith from commit messages alone.

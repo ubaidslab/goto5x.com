@@ -4463,5 +4463,70 @@ of that work begins.
 
 ---
 
+## Pricing, Billing, Programs, Partners, Gateways — Work Items (2026-10-08, DOCS ONLY, not yet started)
+
+Full decisions and reasoning: `docs/founder-decisions-log.md`'s
+2026-10-08 entry (D1-D41). Full spec: `docs/pricing-and-programs.md`
+and `docs/SRS.md` §5.78-5.92. This section records the sequencing only
+— no code in this amendment. Each item tagged **launch-blocker** or
+**post-launch**.
+
+### Phase A (continues)
+- §5.74 Dual branding + loading state — **BUILT**, CI-confirmed green
+  (see commit history; FR-74.1-74.6). **launch-blocker**, done.
+- §5.76 Post-payment buyer acknowledgment — not yet started.
+  **launch-blocker.**
+- Remaining gaps in multi-currency display (§5.70) and the global-
+  launch security checklist (`docs/security-audit-report.md` §6), if
+  any genuinely remain — re-check against the current state of both
+  before assuming more work is needed; both were already shipped and
+  CI-confirmed earlier in this project's history. **launch-blocker**
+  (residual-gap check only).
+
+### Phase B (Paddle track) — not yet started, all **launch-blocker**
+unless noted
+- Paddle integration: tax-exclusive pricing (§5.79), the full
+  billing-cycle price list (§5.78), custom 3/6/12-month cycles,
+  6-month bonus-days delivery.
+- Pricing page rebuild: billing-cycle toggle, Shopify savings
+  calculator, Launch Assurance + Founding Member badges (§5.87).
+- Founding Members mechanism (§5.82).
+- Launch Assurance mechanism (§5.81).
+- Cancel flow + retention-rule UI (§5.88).
+- Seller gateway allowlist: Settings-Registry-driven, Stripe + Simpaisa
+  + Razorpay adapters (§5.80).
+- Store-domain separation review + free-tier abuse controls (§5.89).
+- Internal funnel-analytics event instrumentation (§5.90).
+- Onboarding/launch-checklist UX, performance budget as a launch gate
+  (D30).
+
+### Phase C (irreversible, last — founder go-ahead required)
+- D-Studio Pack removal (check active grants first) — unaffected by
+  this amendment, carried over from the prior Global Launch Mandate
+  sequencing.
+- CNIC removal — only after its replacements (the Verified Store badge,
+  §5.89 FR-89.3) stand on their own.
+- Live pricing cutover — needs the founder's explicit go-ahead; the new
+  GO/RUN/RISE/FLY price points (§5.78) are LOCKED-DEFAULT, not yet a
+  green light to actually change what a real customer is charged.
+
+### Post-launch — **not launch-blockers**
+- Earn Your Plan campaign (§5.83) — starts once ~50 paying sellers
+  exist.
+- UZEYN Partners v1, manual (§5.84).
+- Airwallex/Skypay Global/EBANX gateway adapters (§5.80 FR-80.4).
+- Students plan redesign (§5.92).
+- Education-portal feasibility analysis (§5.84 FR-84.1 item 7,
+  roadmap-only per §5.91 — not scheduled).
+
+### Launch blockers that are not code (founder-owned)
+Domain registration, the live marketing site, Paddle account approval,
+lawyer review of both growth-program terms
+(`docs/legal/growth-partner-programs-terms.md` §8-9), a support email
+address, a backup storage account, and the CA questions logged in
+`docs/launch-runbook.md` §11 — see that file for the full checklist.
+
+---
+
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*

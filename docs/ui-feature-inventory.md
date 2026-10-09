@@ -888,3 +888,62 @@ A real 375px-viewport Playwright sweep, not a code-reading exercise — every fi
 **Storefront buyer funnel — confirmed clean, zero fixes needed:** a full add-to-cart → cart → checkout flow, plus home and search, tested at 375px against a real store/product/variant. Every page rendered correctly on the first pass with no code changes: full-width CTAs, clean stacked forms, zero horizontal overflow, zero console errors. The D-Studio section architecture's mobile behavior (already built with a device-size preview toggle in the Studio shell, per §8.0) carried through correctly to the real rendered storefront.
 
 **Verification method:** real Playwright browser at a 375×812 viewport throughout (not a resize of a desktop screenshot) - `document.documentElement.scrollWidth` checked against the viewport width on every page (`>375` = a real overflow bug) - the mobile drawer nav opened/closed and a nav-and-close-on-click cycle exercised on both shells - the storefront's tenant-hostname resolution exercised for real (a Chromium `--host-resolver-rules` remap to get a real, correctly-formatted Host header, not a header-spoofing hack that Chromium's network stack actually rejects for the `Host` header specifically) rather than testing against `localhost` (which only ever hits the platform's own marketing site, never a tenant storefront).
+
+---
+
+# Part 7 — Pricing/Programs/Partners UI Backlog (2026-10-08, not yet built)
+
+Items implied by the 2026-10-08 pricing/programs amendment
+(`docs/founder-decisions-log.md`, `docs/pricing-and-programs.md`,
+`docs/SRS.md` §5.78-5.92) that need new UI, listed here so this
+inventory stays a complete picture of built-vs-planned, not just built.
+None of these exist in the app today — this is a backlog list, not a
+description of shipped screens.
+
+**Pricing page** — billing-cycle toggle (Monthly/3mo/6mo "Most
+popular"/12mo "Best value"); a tax note reflecting tax-exclusive
+pricing; the Shopify savings calculator (sales + gateway-type inputs,
+computed saving, dated/sourced competitor figures, a footnote on
+tax/fee exclusions); Launch Assurance and Founding Member badges shown
+contextually.
+
+**Cancel flow** — "keep my store on Free" / pause / one-question exit
+survey, reusing the existing starter_free downgrade path as its
+technical foundation.
+
+**Launch Assurance banner/state** — a dashboard-visible indicator once
+relief has been applied to a GO seller's account; possibly a visible
+eligibility-window indicator beforehand (not specified by the
+amendment, a UI-copy decision left to the implementer).
+
+**Partner portal** (net-new page set) — an application form; a partner
+dashboard (referral link, click/signup/paid-referral counts, accrued
+bonus, payout status, downloadable certificate/badge assets); a public
+partner directory with opt-in profiles; a printable/downloadable
+certificate view.
+
+**Earn Your Plan progress page** — a seller-facing view of their own
+referral count against the published rungs, with a clear "X of Y
+referrals toward your next reward" framing and claimed/unclaimed state
+per rung.
+
+**Founding + Partner badges** — a Founding badge on a seller's profile
+and store; a "UZEYN Partner" badge on a store. Neither exists today; no
+badge-rendering component currently covers either case.
+
+**First-10-minutes onboarding flow** — signup → subdomain → niche
+template → first product → publish, target under 15 minutes; a
+dashboard launch checklist showing progress with sample products.
+
+**Contextual upgrade prompts** at real limit moments: the 11th product
+on a capped tier, a custom-domain attempt below the gate, the animation
+toggle on a tier that doesn't include it.
+
+**Share set** on the storefront/dashboard: copy link, QR code, and
+direct share to WhatsApp/Instagram/Facebook/X.
+
+**Region-gating** — extends the existing "hide features not in your
+plan" pattern (already shipped broadly across the dashboard) to also
+"hide features not in your region" for Pakistan-specific features
+(supplier network, local gateways) once a global seller base exists —
+no region-aware hiding exists in the UI today.

@@ -1,19 +1,38 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.63 (Founder walkthrough Phase 3 item 17: adds FR-8.22,
-**broadcast announcements**. Investigated first, per the founder's own
-instruction to "check whether the existing in-app messaging system
-already covers this" before building anything new — confirmed FR-8.15's
-messaging system was a genuine partial match but was missing 4 specific
-things: an image field, a shown-count-limit trigger (only date-range
-existed), persistent per-account shown-count tracking (the old popup
-dismissal was `sessionStorage`-only — client-side, reset every session/
-device, and could not enforce a shown-count limit at all), and any
-supplier delivery path whatsoever (`targetType` had no `supplier` value
-and no supplier-facing endpoint existed). Closes all 4 by extending the
-existing `PlatformMessage` system in place rather than building a
-parallel one — see FR-8.22 for the full breakdown. Implementation
-proceeds.
+**Version:** 0.64 (Pricing, Billing, Programs, Partners & Gateways
+amendment, 2026-10-08 — **docs only, nothing in this amendment is built
+yet**. Turns a founder/advisor pricing-and-programs discussion into 41
+recorded decisions (`docs/founder-decisions-log.md`) and a new
+canonical reference (`docs/pricing-and-programs.md`). Adds §5.78-5.92:
+new GO/RUN/RISE/FLY pricing and billing cycles, tax-exclusive pricing
+and merchant-of-record (supersedes §5.72 FR-72.2/§11.1's tax-inclusive
+text), a Settings-Registry-driven seller payment-gateway allowlist,
+Launch Assurance, Founding Members, Earn Your Plan (renames and
+supersedes §5.75's Growth Challenge spec), UZEYN Partners, a shared
+referral attribution engine, a discount floor, the pricing page +
+Shopify savings calculator, cancel-flow/retention rules, store-domain
+separation + free-tier abuse controls, internal funnel analytics, a
+not-yet-scheduled roadmap note, and the formal removal of the general
+referral/Ambassador programs and the dormant PKR Students plan. Adds
+Risk Register items #34-44 and Open Questions items #17-27. Every new
+section is explicitly PROPOSED/not yet built — see `docs/build-plan.md`
+for the Phase B implementation sequencing this amendment unlocks.)
+
+Prior amendment — 0.63 (Founder walkthrough Phase 3 item 17: adds
+FR-8.22, **broadcast announcements**. Investigated first, per the
+founder's own instruction to "check whether the existing in-app
+messaging system already covers this" before building anything new —
+confirmed FR-8.15's messaging system was a genuine partial match but
+was missing 4 specific things: an image field, a shown-count-limit
+trigger (only date-range existed), persistent per-account shown-count
+tracking (the old popup dismissal was `sessionStorage`-only — client-
+side, reset every session/device, and could not enforce a shown-count
+limit at all), and any supplier delivery path whatsoever (`targetType`
+had no `supplier` value and no supplier-facing endpoint existed).
+Closes all 4 by extending the existing `PlatformMessage` system in
+place rather than building a parallel one — see FR-8.22 for the full
+breakdown. Implementation proceeds.
 
 Prior amendment — 0.62 (Security-audit fix amendment — closes the two P0
 (launch-blocking) findings from `docs/security-audit-report.md`: (1)
@@ -7801,6 +7820,406 @@ the sole paid-design-content path, unchanged by this section.
   with this platform's standing discipline of never silently revoking
   something a seller already paid for.
 
+### 5.78 Plans, Prices & Billing Cycles (new, v0.64 — PROPOSED, not yet
+built; founder/advisor pricing amendment, 2026-10-08; supersedes §5.72's
+GO/RUN/RISE/FLY price points and the 2026-10-03 pricing-ladder
+resolution wherever they conflict — see `docs/pricing-and-programs.md`
+for the canonical numbers)
+
+- FR-78.1: **USD-only list prices, globally** (D6): GO $24 · RUN $49 ·
+  RISE $119 · FLY $249/month. No PKR/regional price list. **Supersedes**
+  the 2026-10-03 same-day resolution's $24/$45/$99/$199 ladder — that
+  text stays in `docs/founder-decisions-log.md` as the historical
+  record, not deleted.
+- FR-78.2: **Four billing cycles**, each a flat percentage off the
+  monthly list price (D10): Monthly (no discount); 3 months (−7%); 6
+  months (−12%, plus 15 bonus days of service — a 6.5-month entitlement
+  for a 6-month payment); 12 months (−25%). Exact dollar figures per
+  tier are `docs/pricing-and-programs.md`'s billing-cycle table — this
+  FR is the mechanism, that doc is the source of truth for the numbers.
+  Pricing-page toggle order: Monthly · 3mo · 6mo ("Most popular",
+  default selected) · 12mo ("Best value").
+- FR-78.3: **Cumulative ladder, strict superset** (D12): every tier is
+  "everything in the tier below, plus…" — never a lateral trade-off.
+  Trust/safety basics (verified-store eligibility, abuse controls) are
+  free on every tier, never gated.
+- FR-78.4: **Feature distribution per tier** (D13) — target state, see
+  `docs/pricing-and-programs.md` for the full table and the gap report
+  against current `plans.seed.ts` gates (§5.3 of the amendment's own
+  report-back). Implementation is Phase B, not this amendment.
+- FR-78.5: **Retention/cancel mechanics** (D11): 14-day money-back per
+  cycle, no refund after except where law requires; a renewal reminder
+  7-14 days pre-renewal; cancel flow offers "keep my store on Free" +
+  pause + a one-question exit survey (reuses the starter_free downgrade
+  path); upgrade = immediate + proration; downgrade = at period end;
+  cycle is switchable at renewal. See §5.88 for the UI/UX spec.
+- FR-78.6: **Discount floor** (D23, LOCKED-DEFAULT, reconfirm D40.7):
+  the effective price after a cycle discount plus at most one promotion
+  must never fall below 50% of list price. Earn Your Plan credits
+  (§5.83) are exempt. Admin-editable Settings Registry value.
+- FR-78.7: **Net-revenue economics** (D36, record only, not a
+  requirement): see `docs/pricing-and-programs.md`'s economics section
+  for the full after-fees/after-tax figures per tier and the blended
+  break-even illustration — informs pricing decisions, implements
+  nothing on its own.
+
+### 5.79 Tax Mode & Merchant of Record (new, v0.64 — PROPOSED, not yet
+built; **supersedes §5.72 FR-72.2 and §11.1's "tax-inclusive flat
+pricing" text** — confirmed zero Paddle code exists anywhere in
+`apps/api` today, so this is a specification change, not an in-flight
+feature being redirected)
+
+- FR-79.1: **Tax-exclusive pricing** (D7, LOCKED): the customer pays
+  list price + applicable tax, computed and shown at checkout (e.g.
+  "$24 + tax"). When Paddle integration is built (Phase B), its
+  `tax_mode` must be configured for the exclusive behavior — the
+  opposite of what §5.72 FR-72.2 originally specified.
+- FR-79.2: **Paddle remains merchant of record** for UZEYN's own
+  subscription revenue only (D8, LOCKED-DEFAULT re-confirmed from
+  2026-10-03) — never marketplace buyer-to-seller payments, which stay
+  on the regional gateway adapters (§5.80). Polar is the recorded Plan
+  B if Paddle's account approval stalls (lists Pakistan as a Stripe-
+  Connect-Express payout country). The founder-owned Paddle approval
+  critical path (domain → live marketing site → Paddle domain approval
+  → ID verification → test mode) lives in `docs/launch-runbook.md`.
+- FR-79.3: **EU consumer tax-display rules vs. "for business use"
+  positioning** is an open lawyer question (D39, D40.10) — Paddle's
+  tax-inclusive-by-location display option for EU consumers specifically
+  may still be needed regardless of FR-79.1's general rule; not resolved
+  by this amendment.
+
+### 5.80 Seller Payment Gateway Allowlist (new, v0.64 — PROPOSED, not
+yet built; narrows and generalizes the existing Payment Gateway Connect
+mechanism, `apps/api/src/payment-gateway/`)
+
+- FR-80.1: **Allowlist** (D4, LOCKED): sellers may connect only Stripe,
+  Razorpay, Simpaisa, Airwallex, Skypay Global, and EBANX, each with
+  their own account. The allowlist must be Settings-Registry-admin-
+  editable — **a real gap found by this amendment's own research**:
+  today's four-gateway list (Raast/Easypaisa/JazzCash/bank) is hardcoded
+  in two places (the `PaymentGatewayProvider` Prisma enum and a DTO's
+  `@IsEnum([...])` array), with zero Settings Registry key governing it
+  at all. Making it admin-editable is new scope, not a reframing.
+- FR-80.2: **Existing adapters stay dormant**, not deleted, not
+  selectable at launch. COD/advance/manual-mark-as-paid remain payment
+  *models* (`PaymentModel` enum) — a separate axis from gateways,
+  confirmed unaffected by this section.
+- FR-80.3: **New adapter pattern**: each of the six follows the
+  existing Payment Gateway Connect design (AES-256-GCM credential
+  encryption, health monitoring via `GatewayHealthScheduler`, manual
+  fallback) — confirmed by this amendment's research to require 5
+  touchpoints per new gateway (the Prisma enum + migration, the DTO's
+  allowlist, a new adapter class implementing
+  `SellerPaymentGatewayAdapter`, `PaymentGatewayService`'s priority map
+  and adapter registration, and `PaymentGatewayModule`'s provider list).
+- FR-80.4: **Rollout order** (D5, LOCKED-DEFAULT): launch with Stripe,
+  Simpaisa, Razorpay; Airwallex, Skypay Global, EBANX follow on demand.
+  The pricing page's gateway list shows only live adapters as
+  "supported." Reconfirm before Phase B (D40.8).
+
+### 5.81 Launch Assurance (new, v0.64 — PROPOSED, not yet built;
+GO-only, one-time, D18 LOCKED)
+
+- FR-81.1: **Eligibility**: a customer's first-ever GO purchase only,
+  matched on email + Paddle customer ID, once per customer, void if the
+  plan changes before evaluation.
+- FR-81.2: **Trigger condition**: confirmed non-refunded order value in
+  days 1-30 below a threshold — default PKR 25,000 ≈ $90 (**OPEN,
+  D40.1**: exact currency/amount not yet confirmed), admin-editable
+  per-currency table, no FX engine. **Effort gate** (prevents rewarding
+  inactivity): published, ≥5 products, ≥~50 visitors in the window, all
+  admin-editable Settings Registry values.
+- FR-81.3: **Relief mechanism**: a monthly customer's next invoice is
+  50% off; a 3/6/12-month customer instead gets +15 days of service.
+  Auto-evaluated days 30-35 after the qualifying purchase; the seller
+  gets a confirmation email once relief is applied, paired with a 3-4-
+  step "slow-start coach" email series.
+- FR-81.4: **Cost cap**: roughly $12 per GO customer, once. Success
+  metric: month-3 retention of relief recipients vs. non-recipients —
+  reviewed at that point, not before.
+- FR-81.5 (feasibility note, no code yet): whether the 50%-off/+15-day
+  relief is delivered as a Paddle discount code applied to the next
+  invoice or as a direct entitlement-extension record is an open
+  developer-level implementation question, not a founder-level one.
+
+### 5.82 Founding Members (new, v0.64 — PROPOSED, not yet built; D17
+LOCKED)
+
+- FR-82.1: the first 100 paying sellers (globally, across every plan)
+  get: a price lock for as long as their subscription stays
+  continuously active; a Founding badge on their profile and store
+  (§5.87's badge spec); direct support via a dedicated priority channel
+  — explicitly not the founder's personal WhatsApp.
+- FR-82.2: stacks with billing-cycle discounts (§5.78 FR-78.2). No
+  additional percentage discount beyond the price lock itself, and no
+  lifetime deal of any kind.
+
+### 5.83 Earn Your Plan (new, v0.64 — PROPOSED, not yet built; renames
+and **supersedes §5.75's "Growth Challenge" spec** — including its
+20-referrals/30-days and 35-referrals/60-days windows and GO/RUN reward
+mapping — wherever they conflict; the internal `programType` key for
+this program's row stays whatever was already stable in code, per the
+founder's "keep internal key stable" instruction, D19)
+
+- FR-83.1: **Not a launch blocker.** Starts post-launch, once roughly
+  50 paying sellers exist; time-boxed 60-90 days; tracked against one
+  success metric. §5.75's prior spec was itself never built (confirmed:
+  no `growth_challenge`/`GrowthChallengeCycle` code exists anywhere in
+  `apps/api` today) — this is a specification change, not a redirect of
+  in-flight work.
+- FR-83.2: **A referral counts only when**: the referred account is
+  new, buys a paid subscription, has used and paid for one complete
+  month, the 14-day refund window has passed with no refund, and there
+  is no open chargeback/dispute. A free signup never counts — no
+  exception, founder-restated rule.
+- FR-83.3: **Rungs** (LOCKED-DEFAULT, numbers to reconfirm): entry rung
+  at 5 verified referrals, next at 20, next at 35. Proposed rewards: 5 →
+  1 free GO month, 20 → 3 free GO months, 35 → 6 free GO months.
+  Default windows: 5-and-20 within 30 days of enrollment, 35 within 60
+  days — all three measured in parallel from one shared enrollment date,
+  not sequentially. Each rung is an independent threshold; claiming a
+  reward is optional. Enrollment requires admin approval.
+- FR-83.4: **Reward form**: account credit/entitlement only, never
+  cash; non-transferable; clawed back on a chargeback. A Free-tier
+  member's reward is a time-limited GO entitlement using the existing
+  `expiresAt` grant mechanism (reverts to starter_free at expiry) — the
+  equivalent delivery mechanism for an already-paying member is an open
+  developer-level question, not yet answered.
+- FR-83.5: **Non-stacking with UZEYN Partners** (§5.84) — one customer
+  belongs to one referral program at a time, enforced by the shared
+  attribution engine (§5.85).
+- FR-83.6 (economics note): self-referral is unprofitable by
+  construction — 5 referrals cost roughly $120 against a $24 reward.
+
+### 5.84 UZEYN Partners (new, v0.64 — PROPOSED, not yet built; D20/D21
+LOCKED except where noted OPEN)
+
+- FR-84.1: **Invite-only, local-first, not fixed-cash.** Benefits: (1)
+  a certificate with a verification code/QR; (2) a "UZEYN Partner" store
+  badge (§5.87); (3) an opt-in public profile in a partner directory, no
+  private data shown; (4) free access to special plans (FR-84.4 below);
+  (5) free meetup access — an operational benefit, no v1 software
+  surface; (6) a community-admin designation, manually verified by
+  URL/member count; (7) a future education portal — **roadmap only, not
+  scheduled** (§5.91), since it implies its own checkout/tax/marketplace
+  obligations needing separate analysis; (8) a referral bonus (FR-84.3);
+  (9) explicitly **not offered**: special payment gateways.
+- FR-84.2: **SECP-safe design** (D21, LOCKED): single-level only — no
+  reward for recruiting other partners; rewards trigger only on genuine
+  paid subscriptions (same verified-referral rule as §5.83 FR-83.2,
+  shared attribution engine, §5.85); written terms with a 14-day refund
+  right; no purchase required to participate; no income guarantees or
+  earnings claims anywhere in partner-facing copy; an affiliate-
+  disclosure requirement in partner content; both this program and
+  §5.83 need lawyer review before launch (D39). Re-check against
+  Pakistan's draft S.R.O. 2440(I)/2025 before launch — the regulation
+  applies directly once UZEYN incorporates and registers with SECP.
+- FR-84.3: **Referral bonus** — 8.88% of cleared net revenue (after tax
+  and Paddle fees) from the referred customer's payments, for the first
+  12 months (**OPEN, D40.2**: recurring-forever vs. capped-at-12-months
+  not yet confirmed). Rate and duration are Settings Registry keys
+  (`partner.commission_rate_percent` = 8.88,
+  `partner.commission_duration_months` = 12), not hardcoded. Released
+  only after identity verification and an onboarding call. Honest
+  expectation (record only): 8.88% of a GO subscription is roughly
+  $1.91/month per referred customer (~$22.90 over 12 months) — the non-
+  cash benefits (FR-84.1) carry most of this program's real value.
+  Review the rate after 90 days live.
+- FR-84.4: **Free plan access** (**OPEN, D40.4** — default stated here,
+  not yet confirmed): a Verified Partner gets GO free while active (≥1
+  paying referral per rolling 90 days); a Verified Teacher/Community
+  Partner with ≥3 paying referrals per rolling 90 days gets RUN free.
+- FR-84.5: **Accounting** (feasibility note, no code yet): accrue via
+  the existing `WalletService.postLedgerEntry` ledger path — evaluate
+  reusing the dormant commission engine already present in
+  `program-reward.service.ts`/`growth-programs.seed.ts` rather than
+  building a parallel one. States: `pending_verification` →
+  `releasable` → `paid`. Clawback on refund/chargeback. Payout release
+  is an admin money-moving action (step-up MFA, typed confirmation,
+  audit log) — manual, PKR via bank/Easypaisa/JazzCash for Pakistani
+  partners at launch, other methods later. Minimum payout: **OPEN,
+  D40.3**, default ≈Rs 5,000-equivalent, admin setting.
+- FR-84.6: **Verification**: application → admin review → identity +
+  payout-account check → onboarding call → activation. No CNIC system
+  revival. Identity documents, if unavoidable, are stored encrypted
+  (AES-256-GCM), access-logged, and deleted after verification —
+  keeping only the result, reviewer, and date.
+- FR-84.7: **Partner dashboard v1** (UI, §5.87): referral link, clicks,
+  signups, paid referrals, accrued bonus, payout status, downloadable
+  assets (certificate, badge).
+- FR-84.8: build v1 manually — the existing attribution engine (§5.85)
+  plus an admin ledger report, no external affiliate tool. Revisit
+  FirstPromoter/Rewardful (both confirmed Paddle-compatible) only past
+  roughly 20 active partners, and verify PKR payouts would still need to
+  stay manual either way.
+
+### 5.85 Referral Attribution Engine (new, v0.64 — PROPOSED, not yet
+built; shared infrastructure behind §5.83 and §5.84, D19/D20/D24)
+
+- FR-85.1: **One engine, two `programType` values** (`earn_your_plan`,
+  `partner`) rather than two parallel attribution systems.
+- FR-85.2: **One program per customer**: the first valid referral link
+  a new signup used, within a 60-day attribution window, wins — no
+  double-counting, no switching programs after the fact.
+- FR-85.3: **Self-referral blocked** at the attribution layer, not just
+  by the economics (§5.83 FR-83.6).
+- FR-85.4: **Program hygiene** (D24, LOCKED): one owner, one success
+  metric, one sunset date per program; account credit preferred over
+  cash everywhere except the Partner bonus (§5.84 FR-84.3), which is
+  explicitly cash-equivalent by design.
+
+### 5.86 Discount Floor (new, v0.64 — PROPOSED, not yet built; see also
+§5.78 FR-78.6, which this section elaborates)
+
+- FR-86.1: the effective price after a billing-cycle discount (§5.78
+  FR-78.2) plus at most one additional promotion must never fall below
+  50% of list price (D23, LOCKED-DEFAULT, reconfirm D40.7). Earn Your
+  Plan credits (§5.83) are exempt — they are earned, not discounted.
+  Admin-editable Settings Registry value, not a hardcoded constant.
+- FR-86.2: guards specifically against stacked discounts eroding
+  margin (Risk Register item below) — enforced at the point a discount
+  or promotion code would be applied, not just documented as a policy.
+
+### 5.87 Pricing Page & Shopify Savings Calculator (new, v0.64 —
+PROPOSED, not yet built; D14/D31, plus badge/portal UI from D32-D34)
+
+- FR-87.1: **Pricing page spec** (D31): the billing-cycle toggle (§5.78
+  FR-78.2); a tax note reflecting §5.79's tax-exclusive pricing; "Free
+  forever" as the primary CTA; a local-currency *estimate* display only
+  — never a real alternate price list (§5.78 FR-78.1 stays USD-only);
+  the Shopify savings calculator (FR-87.2); Launch Assurance (§5.81) and
+  Founding Member (§5.82) badges shown where relevant.
+- FR-87.2: **Shopify comparison via calculator, never a static claim**
+  (D14): the seller enters their monthly sales + gateway type; the page
+  computes an estimated saving, rather than asserting one. Guardrails:
+  every competitor number carries an "as of <date>" tag plus a source
+  link; a footnote discloses tax/card-fee exclusions; the third-party-
+  gateway surcharge only appears in the "other gateway" scenario, never
+  the Shopify-Payments scenario; "Shopify" is used by name only
+  (nominative use, no logo); reviewed quarterly for staleness. Reference
+  figures captured 2026-10-08, re-verify before publishing: Shopify
+  Starter $5; Basic $39 ($29 annual); Grow $105 ($79); Advanced $399
+  ($299); third-party surcharge 2%/1%/0.6% by tier; all exclude VAT. At
+  $10,000/mo sales, a non-Shopify-Payments Basic seller pays roughly
+  $239/mo (plan + surcharge) vs. UZEYN RUN's flat $49 (D37, record
+  only) — the saving applies only to a seller not already on Shopify
+  Payments.
+- FR-87.3: **Partner portal pages** (D33): an application page, a
+  partner dashboard (§5.84 FR-84.7), a public directory profile,
+  certificates, and an Earn Your Plan progress page.
+- FR-87.4: **Badges** (D34): a Founding badge on a seller's profile and
+  store (§5.82); a Partner badge on a store (§5.84).
+
+### 5.88 Cancel Flow & Retention Rules (new, v0.64 — PROPOSED, not yet
+built; D11/D32 — the UI/UX half of §5.78 FR-78.5's mechanics)
+
+- FR-88.1: the cancel flow offers, in order: "keep my store on Free"
+  (reuses the existing starter_free downgrade path, §5.73), a pause
+  option, and a one-question exit survey. This is distinct from and
+  must not be conflated with §5.92's separate, still-OPEN lapsed-paid-
+  seller retention question (D41) — this FR is about a seller who
+  actively chooses to cancel; D41 is about one who stops paying without
+  choosing anything.
+- FR-88.2: a Launch Assurance banner/state (§5.81) needs real UI, not
+  just the backend evaluation job — shown on the dashboard once relief
+  is applied, and during the eligibility window beforehand if the
+  founder wants a visible countdown (not specified further by this
+  amendment; a developer-level UI-copy decision).
+- FR-88.3: renewal reminder 7-14 days pre-renewal (email); billing
+  cycle switchable at renewal, not mid-cycle.
+
+### 5.89 Store-Domain Separation & Free-Tier Abuse Controls (new, v0.64
+— PROPOSED, partially already true in practice; D25-D27)
+
+- FR-89.1: **Storefronts must not share a registrable domain or cookie
+  scope with the dashboard/admin** (D25, LOCKED) — a separate apex for
+  stores, added to the Public Suffix List; host-only cookies throughout.
+  **Gap report (this amendment's own research):** the *outcome* this FR
+  wants already holds today, though not from an explicit domain-
+  separation architecture — it is an emergent property of existing
+  implementation choices. The seller dashboard uses `localStorage`
+  (bearer tokens, no cookie at all); the one buyer-facing cookie
+  (`buyer_session`) is already host-only (no `domain:` attribute); the
+  admin-gate cookie is likewise host-only. Dashboard, every storefront,
+  and the Support Center already sit on separate origins with no shared
+  cookie scope between them, even though all three share one apex
+  (`uzeyn.com`) today. This FR's actual requirement going forward: never
+  introduce a shared `domain: ".uzeyn.com"` cookie attribute in future
+  auth work (e.g. if the dashboard migrates off `localStorage` to
+  cookies) — a regression test or review-checklist item, not new build
+  work today.
+- FR-89.2: **Free-tier abuse controls** (D26, LOCKED): a report-abuse
+  link on every storefront; a takedown process with a defined SLA; a
+  brand-impersonation blocklist; signup rate limits (extends existing
+  `RateLimitService` usage); AUP/ToS liability-limit language; phishing/
+  spam monitoring.
+- FR-89.3: **"Verified store" badge** (D27, LOCKED) replaces CNIC-based
+  trust signaling (removed globally 2026-10-03, decision #2): a store is
+  "Verified" once its domain is verified, its email is verified, a
+  payment gateway is connected, and it has real orders — all four, not
+  any one alone.
+
+### 5.90 Internal Funnel Analytics (new, v0.64 — PROPOSED, not yet
+built; D35, pre-launch)
+
+- FR-90.1: instrument the funnel `signup → email_verified →
+  store_created → product_added → published → first_order →
+  upgrade_viewed → upgrade_clicked → paid` as discrete, queryable
+  events.
+- FR-90.2: weekly KPIs computed from FR-90.1's events: activation rate
+  (% publishing within 24h of signup); time-to-first-order; free-to-paid
+  conversion at 30 and 90 days; 30-day paid retention; Paddle payment-
+  failure rate by country; support tickets per 100 sellers.
+- FR-90.3: internal/admin-facing only. Seller-facing funnel analytics
+  and Vellum (§5.91) stay post-launch, unaffected by this section.
+
+### 5.91 Roadmap — Not Scheduled (new, v0.64 — record only, no FRs;
+items explicitly deferred by this amendment, not forgotten)
+
+The following are referenced elsewhere in this amendment as future work
+but are **not scheduled** by it — no timeline, no founder commitment,
+listed here so they aren't lost between documents: the UZEYN Partners
+education portal (§5.84 FR-84.1 item 7 — its own checkout/tax/
+marketplace obligations need separate analysis before scheduling);
+Vellum (the RISE+/FLY AI assistant referenced in §5.78's feature
+distribution, D13, "when ready" — no build timeline exists); seller-
+facing funnel analytics (§5.90 FR-90.3); D-Studio v2; the Next.js 14→15
+upgrade; a platform-wide SSO cookie spanning dashboard/storefront/
+Support Center (would need to be designed compatibly with §5.89's
+domain-separation requirement, not in tension with it).
+
+### 5.92 Removed Programs (new, v0.64 — record only; D15/D22, supersedes
+conflicting text in §5.75 and this log's own 2026-10-03 entry #11
+without deleting it)
+
+- The general flat-referral program and the Ambassador percentage/
+  flat-commission program are both removed (D15, LOCKED) — **not**
+  simply repriced to $1/$499 as the 2026-10-03 entry's decision #11 and
+  same-day resolution #4 had proposed; those proposals are themselves
+  superseded here, and the entry stays in `docs/founder-decisions-log.md`
+  as the historical record. **Gap report**: the $1/$499 figures being
+  retired here were never the *live* numbers in shipped code — the
+  actual current `growth-programs.seed.ts` values are Rs 345/renewal
+  (Student Referral, max 2 renewals) and Rs 499/renewed month
+  (Ambassador, max 3 months; its dormant 8%-of-revenue key has been
+  unused since Module 79). §5.75's own "Growth Challenge"/$1-referral
+  spec was itself never built in code. This section's actual
+  implementation requirement, once Phase B starts: retire the live Rs
+  345/Rs 499 mechanisms, not a $1/$499 mechanism that never shipped.
+- The PKR "Commerce Students" pricing plan stays dormant, not deleted
+  (D22, LOCKED) — and was never actually a pricing `Plan` row to begin
+  with (confirmed: no such row exists in `plans.seed.ts` today). "Commerce
+  Students Support" is the live *referral program's* display name
+  (sharing a similar name, a potential source of confusion flagged
+  here, not resolved). A genuinely new Students pricing plan is TBD,
+  founder-owned, with guardrails on file for its eventual redesign: no
+  separate SKU (a verified Paddle discount code on GO instead),
+  .edu-email-or-manually-reviewed-ID verification with yearly
+  re-verification, same feature set as GO, a 12-month term renewable
+  once.
+- First-month-free stays removed (2026-10-03 decision #8), unaffected
+  by this amendment.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -8093,6 +8512,17 @@ legal commitment.
 | 31 | **Paddle as a single, external, foreign dependency for 100% of UZEYN's own subscription revenue (new, v0.62, §5.72)** — an account suspension, policy change, fee increase, or service outage on Paddle's side could stop UZEYN from collecting any subscription revenue at all, with no fallback billing path live by construction (Platform Merchant Connection is kept running in parallel per FR-72.1/72.7, but only until Paddle is proven, not as a permanent dual-path). | Phase-B's own proof gate (FR-72.7) keeps the old path alive and untouched until Paddle is independently verified end-to-end; beyond that, this is accepted platform-vendor-concentration risk inherent to choosing a merchant-of-record model at all — the alternative (direct card processing, VAT/GST registration in every launch country) is explicitly the complexity Paddle exists to avoid. No further mitigation is specified here; flagged for founder awareness of the tradeoff being made. |
 | 32 | **Admin-aggregate revenue reporting (GMV/MRR) becomes misleading once multi-currency stores exist (new, v0.62, §5.70/FR-70.5)** — summing order/revenue amounts across stores in different currencies into one labeled number is financially meaningless without FX conversion, which this platform has deliberately chosen not to build. | **Resolved (founder, 2026-10-03):** per-currency breakdown, never a blended/fake-converted total — see FR-70.5. |
 | 33 | **Growth Challenge's claimed-reward billing wiring is new, untested financial logic (new, v0.62, §5.75/FR-75.7)** — a bug in the new seller-scoped free-cycle-credit resolver inside `getPlanFeePaymentPreview()`/`requestPlanFeePayment()` could zero out a cycle's charge incorrectly (either granting an unearned free month, or failing to honor an earned one), directly affecting real subscription revenue. | Build this behind the same append-only, audit-logged discipline every other billing mutation in this codebase already uses (every grant/claim audit-logged, same `AuditLogService` coverage pattern); test the zero-amount-due path explicitly in e2e coverage before this ships, the same release-gating discipline FR-6.x's existing billing logic already requires. |
+| 34 | Paddle account approval is on the launch critical path | Start the approval process now, in parallel with everything else; Plan B is Polar (§5.79 FR-79.2) |
+| 35 | Pakistani buyer cards may fail recurring USD charges | A local PKR payment route for UZEYN's own plans is an open question (D40.6) - Paddle-only until decided |
+| 36 | Six seller-gateway adapters is a large integration surface for a solo team | Phased rollout, not all six at once (D5/§5.80 FR-80.4) |
+| 37 | Free subdomain stores are a plausible phishing/spam magnet, and a cookie-scope slip would widen the blast radius | Free-tier abuse controls + verified domain separation (§5.89) |
+| 38 | The UZEYN Partners referral bonus is a money-moving feature | Fraud/clawback/KYC/payout controls, admin step-up MFA on release (§5.84 FR-84.5/84.6) |
+| 39 | Pakistan's draft S.R.O. 2440(I)/2025 touches referral/MLM-adjacent marketing, plus open withholding-tax questions | SECP-safe single-level design (D21/§5.84 FR-84.2); CA question logged (D38) |
+| 40 | Stacked discounts could erode margin | Discount floor, 50% of list, admin-editable (D23/§5.86) |
+| 41 | Comparative-advertising accuracy - competitor numbers go stale | Dated/sourced figures, quarterly review, calculator over static claim (D14/§5.87 FR-87.2) |
+| 42 | Prepaid-cycle chargebacks and deferred-revenue accounting | Recognize monthly as delivered; CA question logged on treatment (D38) |
+| 43 | Paddle's own chargeback ratio; referral fraud via stolen cards is the likeliest vector | 30-day wait before a referral counts (§5.83 FR-83.2/§5.85), clawback on chargeback |
+| 44 | Founder bandwidth - too many simultaneous programs for one person | Program hygiene rule: one owner/metric/sunset date per program (D24/§5.84) |
 
 ---
 
@@ -8194,6 +8624,39 @@ legal commitment.
     rearchitect a billing path that's about to be superseded — but that
     is this entry's own suggestion, not a founder decision, and
     implementation should not treat it as one.
+17. **Go-to-market geography (D3).** Pakistan/South-Asia-first vs.
+    truly global-at-once. Advisor recommends phased; founder undecided.
+    Default: D1's "global, all countries" governs until resolved.
+18. **Launch Assurance threshold currency/amount (D18/D40.1).** Default
+    PKR 25,000 ≈ $90, per-currency table, not yet finally confirmed.
+19. **Partner bonus basis/duration (D20/D40.2).** Default: 8.88% of
+    cleared net revenue, for the first 12 months. Recurring-beyond-12-
+    months vs. capped-at-12 not yet confirmed.
+20. **Partner payout method/currency/minimum (D20/D40.3).** Default:
+    manual, PKR, ≈Rs 5,000-equivalent minimum.
+21. **Partner free-plan-access mechanics (D20/D40.4).** Default: per
+    §5.84 FR-84.4's stated GO/RUN thresholds.
+22. **Earn Your Plan windows/rewards (D19/D40.5).** Default: per §5.83
+    FR-83.3's proposed rungs.
+23. **Local PKR payment route for UZEYN's own plans (D40.6).** Advisor
+    recommends yes (Pakistani cards often fail recurring USD charges);
+    founder undecided. Paddle-only until resolved.
+24. **Discount floor reconfirmation (D23/D40.7).** The 50%-of-list
+    default needs a separate founder reconfirmation.
+25. **Gateway rollout order reconfirmation (D5/D40.8).** Stripe/
+    Simpaisa/Razorpay-first needs a separate founder reconfirmation.
+26. **Paddle tax display by buyer location vs. always-exclusive
+    (D7/D40.10).** A lawyer question - EU consumer rules specifically
+    may require location-based inclusive display despite §5.79's
+    general exclusive rule.
+27. **Lapsed-paid-seller retention policy (D41).** Today's behavior
+    (pause → 3 warnings over 14 days → permanent hard-delete) is
+    unchanged. An advisor-recommended alternative (downgrade to
+    starter_free, archive rather than delete, idempotent restore on
+    payment - full description in `docs/founder-decisions-log.md`'s
+    2026-10-08 entry, D41) is recorded as the likely future default but
+    is explicitly **not approved** and **not implemented** by this
+    amendment.
 
 ---
 

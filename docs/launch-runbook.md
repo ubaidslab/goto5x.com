@@ -562,3 +562,50 @@ v1 launch.
 - [ ] Gmail "send as" configured and verified for each address.
 - [ ] SPF/DKIM/DMARC records confirmed correct for the domain (Cloudflare
       Email Routing's own setup guide covers the required records).
+
+## 11. Paddle Merchant-of-Record Setup
+
+Founder-owned critical path (`docs/pricing-and-programs.md` §4, D8) —
+this is the single biggest launch-blocking dependency outside the
+codebase itself. Start this now, in parallel with everything else;
+nothing about Phase B's actual Paddle integration code can be tested
+against a real account until this is done.
+
+- [ ] **Register the domain** UZEYN will launch under (if not already
+      done) — Paddle's domain-approval step below needs a real,
+      resolvable domain, not `localhost`.
+- [ ] **Stand up a live marketing site** at that domain with real ToS,
+      Privacy Policy, pricing page, and refund policy — free static
+      hosting is fine for this step; it does not need to be the full
+      Next.js app yet. Paddle's approval reviewers check these pages.
+- [ ] **Submit for Paddle domain approval.** No business verification
+      is required for an individual account; expect this to take some
+      review time — don't assume same-day approval.
+- [ ] **Complete Paddle ID verification** once domain approval clears.
+- [ ] **Confirm Paddle test mode works** end-to-end (a test subscription,
+      test webhook delivery) before any production catalog price is
+      created — the tax-exclusive `tax_mode` setting (§4 above,
+      `docs/pricing-and-programs.md`) must be configured correctly
+      *before* the first real `Price` object is created, not fixed
+      after the fact.
+- [ ] **Payout setup**: wire or Payoneer, monthly, ~$100 minimum
+      (unconfirmed — verify against Paddle's current documentation, not
+      this runbook, before relying on the figure).
+- [ ] **If Paddle approval stalls past a reasonable window**, fall back
+      to **Plan B: Polar** (lists Pakistan as a payout country via
+      Stripe Connect Express) — re-evaluate the integration work
+      against Polar's own API shape rather than assuming it's a drop-in
+      swap for Paddle's.
+
+**CA questions to resolve before (or in parallel with) this setup**
+(D38, `docs/founder-decisions-log.md`'s 2026-10-08 entry) — founder-
+owned, not something this runbook or a developer can answer:
+- [ ] Company-registration timing relative to opening the Paddle
+      account — does incorporating *after* the account exists force a
+      re-verification?
+- [ ] The applicable Pakistani tax regime for software/IT export
+      income.
+- [ ] Withholding tax and record-keeping obligations on UZEYN Partners
+      bonus payments (`docs/pricing-and-programs.md` §6.5).
+- [ ] Deferred-revenue treatment of prepaid (3/6/12-month) billing
+      cycles for accounting purposes.

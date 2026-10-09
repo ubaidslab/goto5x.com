@@ -8,6 +8,54 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## Pricing, Billing, Programs, Partners & Gateways — Documentation Amendment (2026-10-08)
+
+Docs-only — no application code, schema, seed, or config changes.
+Turns a founder/advisor pricing-and-programs discussion into 41 recorded
+decisions (`docs/founder-decisions-log.md`), a new canonical pricing/
+programs reference (`docs/pricing-and-programs.md`), 15 new SRS
+sections (§5.78-5.92) plus Risk Register and Open Questions additions,
+sequencing in `docs/build-plan.md`, a UI backlog addition in
+`docs/ui-feature-inventory.md`, four new planned-control risk items in
+`docs/security-audit-report.md`, and draft terms for two new referral
+programs (replacing two discontinued ones) in
+`docs/legal/growth-partner-programs-terms.md`.
+
+### Changed
+- `docs/SRS.md` — new §5.78-5.92 (Plans/billing cycles, Tax Mode & MoR,
+  Seller Gateway Allowlist, Launch Assurance, Founding Members, Earn
+  Your Plan, UZEYN Partners, Referral Attribution Engine, Discount
+  Floor, Pricing Page & Shopify Calculator, Cancel Flow & Retention,
+  Store-Domain Separation & Abuse Controls, Internal Funnel Analytics,
+  Roadmap-Not-Scheduled, Removed Programs); Risk Register items #34-44;
+  Open Questions items #17-27; top-of-doc amendment log bumped. Older
+  tax-inclusive-pricing text (§5.72 FR-72.2, §11.1) and the prior
+  Growth Challenge/`$1`-referral spec (§5.75) are superseded, not
+  deleted.
+- `docs/founder-decisions-log.md` — new 2026-10-08 entry, D1-D41, each
+  with a status (LOCKED/LOCKED-DEFAULT/OPEN) and its reasoning.
+- `docs/build-plan.md` — new work-items section, Phase A/B/C sequencing
+  plus post-launch items, each tagged launch-blocker or post-launch.
+- `docs/ui-feature-inventory.md` — new backlog section for pricing-page,
+  cancel-flow, partner-portal, and badge UI implied by this amendment.
+- `docs/security-audit-report.md` — new §7, four planned-control risk
+  items (store-domain separation, free-tier abuse, Partner KYC data,
+  Partner payout release) — explicitly marked planned, not fixed.
+- `docs/legal/growth-partner-programs-terms.md` — header now says
+  "DRAFT — requires lawyer review"; the Certified Ambassador and
+  Student Referral sections are marked superseded (kept for the
+  historical record, not deleted); new draft terms added for Earn Your
+  Plan and UZEYN Partners.
+- `docs/launch-runbook.md` — new §11, the Paddle merchant-of-record
+  critical path, Plan B (Polar), and the CA questions this amendment
+  surfaced.
+
+### Not changed in this amendment
+No `apps/api` or `apps/web` source, no Prisma schema/migration, no seed
+file, no config. Every number here is a specification for Phase B
+implementation work, not yet built — see each new SRS section's own
+"PROPOSED, not yet built" status line.
+
 ## Backups reality check (Risk 5/13 discrepancy)
 
 `docs/SRS.md`'s Risk Register and §6 NFR table had claimed since early
