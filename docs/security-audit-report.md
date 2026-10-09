@@ -688,7 +688,7 @@ that builds it — none of this is fixed yet.**
 | Security headers and transport (CSP without unsafe-inline, HSTS, no secrets in client bundles) | P0 | M2 | |
 | Abuse limits (rate limits, Turnstile, disposable-email blocklist) | P0 | M2 | Builds on this report's existing §6 item 13 (rate limiting, already COVERED broadly) |
 | Admin plane (step-up MFA on destructive/money actions, typed confirmation) | P0 | M2 | Builds on existing admin-terminal `useConfirm()` gating already shipped |
-| Supply chain and CI (pinned Actions by SHA, secret scanning, non-root images) | P0 | M1 | Builds on this report's existing §6 item 10 (env/secrets hygiene — no CI secret-scanning step today, confirmed gap) |
+| Supply chain and CI (pinned Actions by commit SHA, non-root images) | P0 | M1 | **Corrected, 2026-10-09** (see the dedicated subsection below) — this row originally also named "secret scanning" as missing, citing this report's own §6 item 10; that citation was stale. The real remaining gap is narrower: Actions are referenced by tag, not pinned commit SHA. |
 | Observability and incident response (redacted structured logs, per-gateway kill switch, runbooks) | P0 | M2 | |
 | **Independent paid security review** — tenant isolation, payments, webhooks, domain separation, key custody | P0, before launch | M4 | D58; gated explicitly before any real seller gateway key is accepted, not before |
 | Privacy basics (PII export/delete runbook) | P1 | by launch +30 days | |
@@ -755,6 +755,61 @@ both `PrismaAdminService` and `TenantPrismaService`).
   background-sweep pattern above is a de facto fourth, undocumented
   legitimate use — worth updating the comment to match actual,
   verified-safe usage rather than leaving a stale threat model.
+
+### Two corrections to this report's own prior claims, found while re-verifying for the MVP prompt (2026-10-09)
+
+Both were caught by re-checking live code/CI before relying on them in
+new sections above and in `docs/SRS.md`'s new Risk Register items —
+neither is a new vulnerability, both are the report itself having
+drifted from what the codebase actually does.
+
+1. **CI already has a secret-scanning step; §6 item 10 is stale.**
+   §6 item 10 (written 2026-10-03) correctly reported "no CI
+   secret-scanning step" at the time — but commit `8af7206` (2026-10-04,
+   the very next day, "Phase A: fix all 8 items from the Global Launch
+   security checklist") added one: `.github/workflows/ci.yml`'s
+   `dependency-audit` job runs gitleaks v8.21.2 as a required, blocking
+   step (`./gitleaks detect --no-git --source . --redact -v`), confirmed
+   still present and green on every run checked this session, including
+   this M0 commit's own CI run. §6 item 10's table row is left as-is
+   above (an accurate record of the 2026-10-03 snapshot), but this
+   session's new S12 row and `docs/SRS.md` Risk #48 originally repeated
+   the stale claim without re-checking — now corrected in both places.
+   The real, still-open gap is narrower than either originally stated:
+   GitHub Actions are referenced by tag (`@v4`), not pinned commit SHA,
+   and gitleaks' current invocation scans the CI working tree at run
+   time (`--no-git`), not full git history, on every run — full-history
+   coverage exists only as the one-time manual pass §3 #16/§6 item 16
+   already recorded. Pinning by SHA is the one piece of S12 still to
+   build in M1.
+2. **Credential encryption is 4 duplicated implementations plus 1 real
+   shared one, not "one canonical implementation reused 5 times."** §6
+   item 9 states AES-256-GCM is "one canonical implementation
+   (`drive-token-crypto.util.ts`) reused, not duplicated, across 5
+   independently-keyed domains." Reading all five files directly: that's
+   true for exactly one of them —
+   `trust-safety/identity-crypto.util.ts` genuinely imports and
+   re-exports `drive-token-crypto.util.ts`'s functions (`export const
+   encryptIdentityValue = encryptDriveToken`), and its own comment says
+   so accurately ("Reused verbatim... not a duplicate"). The other
+   three — `payment-gateway/payment-gateway-credential-crypto.util.ts`,
+   `order-verification/smtp-credential-crypto.util.ts`, and
+   `admin-email/admin-email-credential-crypto.util.ts` — are each their
+   own file with their own function names, byte-for-byte identical
+   `aes-256-gcm`/12-byte-IV/`iv:authTag:ciphertext` logic hand-copied
+   rather than imported. To their credit, none of their own code
+   comments overclaims this — each says "identical shape to" a sibling
+   file, never "reuses" or "imports." Functionally this is safe today
+   (all four are correct and mutually consistent), but it's a real
+   maintainability/consistency risk the audit table's "reused, not
+   duplicated" framing hid: a future correctness fix to the shared
+   AES-256-GCM shape (e.g. adding associated data, changing IV length)
+   has to be manually propagated to four files, and nothing in the
+   codebase or CI would catch a propagation that missed one. Directly
+   relevant to D57 (gateway-secret custody) since
+   `payment-gateway-credential-crypto.util.ts` is one of the four — see
+   `docs/SRS.md` Risk #51. §6 item 9's table row is also left as-is
+   above; this is the correction.
 
 ---
 
