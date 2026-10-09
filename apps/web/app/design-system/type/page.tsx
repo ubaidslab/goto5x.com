@@ -1,4 +1,4 @@
-import { Instrument_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { GeistSans } from "geist/font/sans";
 import { Reveal } from "@/components/motion/Reveal";
 
@@ -13,8 +13,8 @@ import { Reveal } from "@/components/motion/Reveal";
  * — closer to "friendly startup" than the ink-on-paper direction this system
  * committed to. This page is the record of that decision, not a live toggle.
  */
-const instrumentSans = Instrument_Sans({
-  subsets: ["latin"],
+const instrumentSans = localFont({
+  src: "../../fonts/instrument-sans-latin-variable.woff2",
   variable: "--font-instrument-sans",
   display: "swap",
 });

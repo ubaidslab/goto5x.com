@@ -4615,10 +4615,28 @@ the checklist.
   unaffected code-wise (D63); `docs/mvp-scope.md` is the authoritative
   "what's out" list.
 
-### CI speed (D59, separate small push, sequenced after M0's docs push)
-Shard e2e across parallel runners; path-filter docs-only commits to
-skip the full suite. Time-boxed to one working day; revert and report
-if it destabilizes CI. Applies only to commits touching nothing outside
-`docs/`/`CHANGELOG.md` — every code commit still needs all 5 jobs
-green, independently confirmed, unchanged from the discipline this
-entire project has used since its first commit.
+### CI speed (D59/D89) — landed 2026-10-09
+Shipped as its own small, sequenced-first push ahead of M1's own 1A
+(D90), per the founder's direct reply to the M0 report. Two pieces:
+
+1. **Self-hosted fonts** (D89, prompted by the M0 report's `web-build`
+   flake): `next/font/google` → `next/font/local` across all 4 files
+   that used it, vendoring the exact files Google was already serving
+   (`apps/web/app/fonts/`). Removes `apps/web`'s only build-time
+   network dependency — the actual cause of the flake, not just a
+   retry around it.
+2. **D59 itself**: a `changes` job in `.github/workflows/ci.yml` skips
+   typecheck/unit-tests/e2e-tests/dependency-audit/web-build (reported
+   "skipped," which satisfies a required check without running it)
+   when a push touches nothing outside `docs/`/`CHANGELOG.md` — any
+   uncertainty defaults to running everything, same safety as before
+   for every code commit. `e2e-tests` shards its 105 spec files 4 ways
+   across 4 parallel runners; `e2e-tests-summary` fans the 4 shard
+   checks back into one stable name for branch protection to require.
+
+Verified locally before push: the web build compiles cleanly on the
+new font setup (exit 0), `tsc --noEmit` is clean, the 4 shards
+partition all 105 spec files with zero overlap and zero gaps. Actual
+CI timing (docs-only-skip and sharded-e2e wall-clock) reported once
+independently confirmed via the next CI run — see the checkpoint
+report, not asserted here ahead of the evidence.

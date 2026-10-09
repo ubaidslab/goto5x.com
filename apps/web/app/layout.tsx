@@ -1,4 +1,4 @@
-import { Alegreya_SC, Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { GeistSans } from "geist/font/sans";
 import { Toaster } from "@/components/ui/Toaster";
 import "./globals.css";
@@ -16,15 +16,19 @@ import "./globals.css";
  * typographic identity, a per-seller storefront choice unrelated to this
  * platform-chrome brand pass.
  */
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: "./fonts/inter-latin-variable.woff2",
   variable: "--font-inter",
   display: "swap",
 });
 
-const alegreyaSC = Alegreya_SC({
-  subsets: ["latin"],
-  weight: ["400", "500", "700", "800"],
+const alegreyaSC = localFont({
+  src: [
+    { path: "./fonts/alegreya-sc-latin-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/alegreya-sc-latin-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/alegreya-sc-latin-700.woff2", weight: "700", style: "normal" },
+    { path: "./fonts/alegreya-sc-latin-800.woff2", weight: "800", style: "normal" },
+  ],
   variable: "--font-alegreya-sc",
   display: "swap",
 });

@@ -8,6 +8,43 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## CI hardening — self-hosted fonts + e2e sharding/path-filtering (2026-10-09, D89/D59)
+
+**Added**
+- `apps/web/app/fonts/`: 8 vendored WOFF2 files (Inter and Instrument
+  Sans as single variable-range files; Alegreya SC as 4 static weights;
+  Playfair Display and Space Grotesk as their existing variable files,
+  each referenced twice to preserve the two discrete weights already in
+  use) — the exact latin-subset files Google Fonts was already serving
+  to this app, fetched once and committed rather than fetched by every
+  CI run.
+- `.github/workflows/ci.yml`: a `changes` job that skips typecheck,
+  unit-tests, e2e-tests, dependency-audit, and web-build entirely
+  (reported "skipped," not absent, so a required check still passes)
+  when a push touches nothing outside `docs/`/`CHANGELOG.md` — any
+  uncertainty defaults to running everything. `e2e-tests` now shards
+  its 105 spec files 4 ways (Jest's `--shard`) across 4 parallel
+  runners, each with its own fresh Postgres/Redis; `e2e-tests-summary`
+  fans the 4 shard results back into one stable required-check name.
+
+**Changed**
+- `app/layout.tsx`, `app/design-system/type/page.tsx`,
+  `app/storefront/templates/editorial.tsx`,
+  `app/storefront/templates/studio.tsx`: `next/font/google` →
+  `next/font/local`, pointed at the vendored files above. Same CSS
+  variable names, same weights, same `display: "swap"` — a mechanism
+  swap, not a typography change. Removes the only build-time network
+  dependency in `apps/web`'s build, which is what caused a `web-build`
+  flake (`next/font`'s Google loader throwing on a transient network
+  hiccup) during the M0 checkpoint report.
+
+**Not changed in this entry**
+- No visual/typographic change on any page — every font, weight, and
+  CSS variable name is identical to before.
+- Branch protection's required-check configuration (GitHub Settings ->
+  Branches) is a separate, repo-admin action this entry doesn't and
+  can't perform — see the new comment at the top of `ci.yml`.
+
 ## MVP Execution Prompt — M0 Docs (2026-10-09)
 
 Docs-only. The founder's MVP Execution Prompt (D63–D81) supersedes the

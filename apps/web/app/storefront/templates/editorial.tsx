@@ -1,4 +1,4 @@
-import { Playfair_Display } from "next/font/google";
+import localFont from "next/font/local";
 import { AnimatedElement } from "../../../components/motion/AnimatedElement";
 import { PublicProduct, PublicStore } from "../../../lib/storefront-api";
 import { FaqItem, ResolvedThemeSettings } from "../../../lib/theme-presets";
@@ -17,7 +17,13 @@ import { DStudioSectionProps, TemplateSectionSet } from "./types";
  * so resolves to 0). `elementAnimations` wraps the heading/image/button in
  * AnimatedElement so a seller's chosen GSAP preset actually runs.
  */
-const playfair = Playfair_Display({ subsets: ["latin"], weight: ["500", "700"], variable: "--font-editorial-display" });
+const playfair = localFont({
+  src: [
+    { path: "../../fonts/playfair-display-latin-variable.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/playfair-display-latin-variable.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-editorial-display",
+});
 
 function EditorialHero({ store, theme, variant = 0, elementAnimations }: { store: PublicStore; theme: ResolvedThemeSettings } & DStudioSectionProps) {
   const heading = (

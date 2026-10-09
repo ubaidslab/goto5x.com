@@ -1,4 +1,4 @@
-import { Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import { AnimatedElement } from "../../../components/motion/AnimatedElement";
 import { PublicProduct, PublicStore } from "../../../lib/storefront-api";
 import { FaqItem, ResolvedThemeSettings } from "../../../lib/theme-presets";
@@ -11,7 +11,13 @@ import { DStudioSectionProps, TemplateSectionSet } from "./types";
  * template. D-Studio v1 variant/animation support: variant 0 is always
  * this template's pre-existing rendering.
  */
-const grotesk = Space_Grotesk({ subsets: ["latin"], weight: ["500", "700"], variable: "--font-studio-display" });
+const grotesk = localFont({
+  src: [
+    { path: "../../fonts/space-grotesk-latin-variable.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/space-grotesk-latin-variable.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-studio-display",
+});
 
 function StudioHero({ store, theme, variant = 0, elementAnimations }: { store: PublicStore; theme: ResolvedThemeSettings } & DStudioSectionProps) {
   const heading = (

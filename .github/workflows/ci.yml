@@ -3,11 +3,21 @@ name: CI
 # Module 21 (SRS §14.12) - "the full automated cross-tenant test suite
 # passes as a release gate" and "a dependency-vulnerability scan runs in
 # CI and blocks a deliberately-introduced known-vulnerable dependency".
-# Mark typecheck/unit-tests/e2e-tests/dependency-audit as required status
-# checks in the repo's branch protection settings (GitHub UI: Settings ->
-# Branches -> Branch protection rules) - this workflow makes the checks
-# exist and run; requiring them on the default branch is a one-time,
-# separate repo-admin action (see docs/launch-runbook.md).
+# Mark typecheck/unit-tests/dependency-audit/web-build and every
+# "e2e-tests (N)" shard (or e2e-tests-summary - see D59 below) as required
+# status checks in the repo's branch protection settings (GitHub UI:
+# Settings -> Branches -> Branch protection rules) - this workflow makes
+# the checks exist and run; requiring them on the default branch is a
+# one-time, separate repo-admin action (see docs/launch-runbook.md).
+#
+# D59 (docs/founder-decisions-log.md): a commit touching nothing outside
+# docs/ and CHANGELOG.md skips the 5 real jobs entirely (they report
+# "skipped", which satisfies a required check without running it) - a
+# docs-only diff cannot break a test, so paying the ~50-60 minute e2e
+# wait on one is pure latency with no safety benefit. Any uncertainty
+# (can't determine the diff, a non-push event, a force-push/rebase whose
+# base commit isn't reachable) defaults to running everything - this
+# optimization only ever skips work, never skips safety.
 
 on:
   push:
@@ -19,7 +29,42 @@ env:
   PNPM_VERSION: "10"
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - name: Detect whether this push touches anything beyond docs/CHANGELOG.md (D59)
+        id: filter
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "Not a push event (${{ github.event_name }}) - running everything."
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+            echo "No usable before-SHA in this checkout (new branch, or outside fetch-depth) - running everything."
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE_SHA" HEAD)
+          echo "Changed files ($BEFORE_SHA..${{ github.sha }}):"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qvE '^(docs/|CHANGELOG\.md$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only push - skipping the 5 real jobs." >&2
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   typecheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +86,8 @@ jobs:
         run: pnpm --filter @uzeyn/web exec tsc --noEmit
 
   unit-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,10 +104,22 @@ jobs:
         run: pnpm test:api
 
   e2e-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Real Postgres + Redis, matching README's "Running tests" e2e
     # instructions exactly - this is the release gate for the cross-tenant/
-    # RLS suite, not a mocked substitute.
+    # RLS suite, not a mocked substitute. D59: 105 spec files sharded 4 ways
+    # (Jest's own --shard=N/M) across 4 parallel runners, each with its own
+    # fresh Postgres/Redis - cuts wall-clock from one ~50-60 minute
+    # --maxWorkers=1 run to roughly a quarter of that, same total work,
+    # same within-shard sequential-safety property the single-process run
+    # relied on. See the e2e-tests-summary job below for the single stable
+    # check name this fans back into.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: postgres:16
@@ -161,18 +220,39 @@ jobs:
           PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY=p6bqHrEqJhlod/7+aS0aCDwGrcSGeGx6s5a+EBTH+jg=
           EOF
 
-      - name: E2E tests (real Postgres + Redis - the cross-tenant/RLS release gate)
-        # 38 spec files rebuild the full Nest DI graph in a single
-        # --runInBand process; V8's default old-space ceiling on this
-        # runner (~2GB) was observed to OOM-crash mid-suite (FATAL ERROR:
-        # JavaScript heap out of memory) once the suite actually got far
-        # enough to run for real - raised explicitly rather than relying
-        # on the runner's auto-detected default.
+      - name: "E2E tests, shard ${{ matrix.shard }}/4 (real Postgres + Redis - the cross-tenant/RLS release gate)"
+        # Same single-worker-per-process safety the old unsharded run used
+        # (--maxWorkers=1, no --runInBand needed alongside it) - just 4 of
+        # these processes now, each on its own runner/DB, instead of 1.
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm test:api:e2e
+        run: pnpm --filter @uzeyn/api test:e2e -- --shard=${{ matrix.shard }}/4
+
+  # D59: sharding e2e-tests gives each shard its own check name
+  # ("e2e-tests (1)" .. "e2e-tests (4)"), which would otherwise mean
+  # branch protection has to name all 4 individually and re-name them
+  # every time the shard count changes. This job fans them back into one
+  # stable name - require THIS in branch protection, not the per-shard
+  # ones. Passes if every shard succeeded, or if e2e-tests didn't run at
+  # all (a docs-only push, correctly skipped by the `changes` gate above);
+  # fails only on a real shard failure or cancellation.
+  e2e-tests-summary:
+    needs: [changes, e2e-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check e2e shard results
+        run: |
+          result="${{ needs.e2e-tests.result }}"
+          echo "e2e-tests matrix result: $result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            exit 0
+          fi
+          exit 1
 
   dependency-audit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -208,6 +288,8 @@ jobs:
           ./gitleaks detect --no-git --source . --redact -v
 
   web-build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # apps/web has no automated test suite (see README's Module 4/5
     # disclosures) - a production build is the closest automated proxy:
