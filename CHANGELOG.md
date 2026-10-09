@@ -8,6 +8,51 @@ Versions here track the SRS/build-plan version number (not npm semver) —
 each entry is either a specification amendment (docs only) or a shipped
 module (code + tests). Maintained on every future change.
 
+## MVP Execution Prompt — M0 Docs (2026-10-09)
+
+Docs-only. The founder's MVP Execution Prompt (D63–D81) supersedes the
+MVP-relevant parts of the 2026-10-08 pricing/programs amendment: a
+single store per customer for the MVP window (multi-store archived),
+Free + GO/RUN/RISE live at launch with FLY dormant, the loading-mark
+removability gate moving from FLY to RISE, marketing copy narrowed to
+match shipped code rather than the longer-term feature-distribution
+target, a reordered gateway build sequence (Stripe → Simpaisa →
+Airwallex → Razorpay, EBANX/Skypay Global to Phase 2), billing behind
+a feature flag, and security promoted to a first-class, evidence-based
+workstream for the MVP itself.
+
+### Added
+- `docs/mvp-scope.md` — what ships, what's dormant, what's explicitly
+  out of the MVP build.
+- `docs/plan-matrix-mvp.md` — per-gate Free/GO/RUN/RISE matrix,
+  "exists in code" vs. "shown on marketing," so a promise-vs-product
+  gap can't recur silently.
+- `docs/auth-session-design.md` — a full, cited investigation of the
+  current seller/admin/buyer auth and session architecture, plus the
+  target design for the MVP's security hardening.
+- `docs/SRS.md` §5.93 — the MVP scope overrides as FRs, each pointing
+  back to the fuller docs above rather than duplicating them.
+
+### Changed
+- `docs/founder-decisions-log.md` — new 2026-10-09 entry, D63–D81.
+- `docs/build-plan.md` — new M0–M4 milestone section, superseding the
+  2026-10-08 Phase A/B/C sequencing for the MVP build window (that
+  section stays as the historical record, not deleted).
+- `docs/security-audit-report.md` — new §8, the MVP security
+  workstream's P0/P1 control list mapped to milestones — explicitly
+  planned, not fixed.
+- `docs/ui-feature-inventory.md` — notes the planned multi-store UI
+  archival (D74), not yet executed.
+- `docs/SRS.md` — Risk Register additions for the genuinely new risks
+  this prompt surfaces (seller-dashboard token storage, Custom CSS as
+  a new injection surface, pre-launch CI supply-chain hardening, the
+  independent-review launch gate); Open Questions update marking D41
+  partially resolved.
+
+### Not changed in this entry
+No application code, schema, seed, or config. M1 is the first code
+milestone — see `docs/build-plan.md`.
+
 ## Pricing, Billing, Programs, Partners & Gateways — Documentation Amendment (2026-10-08)
 
 Docs-only — no application code, schema, seed, or config changes.

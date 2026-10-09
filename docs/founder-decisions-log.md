@@ -840,3 +840,282 @@ commit / live-verify / independently-CI-confirm discipline as every
 prior item in this project. No OPEN item above (D3, D23 reconfirmation,
 every D40 sub-item, D41) gets implemented until it is explicitly
 resolved.
+
+---
+
+## 2026-10-09 — MVP Execution Prompt (D63–D81)
+
+Source: the founder, via his co-founder/advisor — the **build** prompt,
+superseding the MVP-relevant parts of the 2026-10-08 entry (D1–D41)
+wherever they conflict; everything else in that entry stays. Full
+spec: `docs/mvp-scope.md` (what ships/is dormant/is out) and
+`docs/plan-matrix-mvp.md` (D78's per-gate matrix). Status legend as
+the prior entry: **LOCKED** = the founder stated it directly.
+**LOCKED-DEFAULT** = the founder delegated the call to his co-founder
+("jesa behtar lagy wesa karo" — "however you think is better, do it").
+
+### D55. Scope freeze
+**Status:** LOCKED-DEFAULT.
+**Decision:** a new request must pass: "does it move activation or
+revenue in the first 90 days, or does it protect money and data?" —
+otherwise it doesn't ship in the MVP window.
+**Reasoning:** not recorded beyond the test itself.
+
+### D57/D58. Gateway-secret custody and an independent security review
+**Status:** LOCKED-DEFAULT.
+**Decision:** envelope encryption with the master key held outside the
+app host/image (S4 below), and a paid independent security review
+focused on tenant isolation/payments/webhooks/domain-separation/key
+custody **before real seller gateway keys are ever accepted** (S14).
+**Reasoning:** real seller payment credentials are the single highest-
+value target on the platform; a founder-run review alone isn't
+sufficient assurance for that specific risk.
+
+### D59. CI speed for docs-only commits
+**Status:** LOCKED-DEFAULT.
+**Decision:** shard e2e tests across parallel runners (target ≤15 min)
+and path-filter docs-only commits so they skip the full suite. This
+**amends** the standing "all 5 jobs on every push, no exceptions" rule
+that has governed every commit in this project to date — but **only
+for commits that touch nothing outside `docs/`/`CHANGELOG.md`**; a
+code commit still needs all 5 jobs green, unchanged. Time-boxed to one
+working day; revert and report if it destabilizes CI.
+**Reasoning:** the standing full-suite-every-push discipline was
+calibrated for a solo-founder pace where CI turnaround wasn't the
+bottleneck; at MVP-build pace (frequent small pushes) a 45-60 minute
+e2e wait on a PURE docs change is pure latency with no corresponding
+safety benefit, since a docs-only diff cannot break a test.
+**Sequencing note (my own call, not yet executed):** this is
+infrastructure (`.github/workflows/ci.yml`), not a doc — it will ship
+as its own small, CODE-touching push, sequenced after this M0 docs
+push's own CI confirms green (not bundled into this commit, and not
+run concurrently with it, per the standing "one CI-triggering push at
+a time" rule, which D59 does not relax).
+
+### D63. Programs are post-MVP, documented only
+**Status:** LOCKED.
+**Decision:** Earn Your Plan, UZEYN Partners (including the 8.88% bonus
+and payout controls — recorded as design records, not built), Students,
+the referral/attribution engine, the education portal, Vellum, seller-
+facing funnel analytics, paid templates (Template Marketplace), and the
+D-Studio Pack (already retired 2026-10-03) are all out of the MVP build.
+Specs for all of these stay exactly as written in the 2026-10-08 entry
+and `docs/SRS.md` §5.83–5.85/§5.91 — nothing there is deleted or
+un-specified, it simply doesn't get built in this window.
+**Reasoning:** scope freeze (D55) — none of these move activation or
+revenue in the first 90 days, and several (Partners, Earn Your Plan)
+were already explicitly post-launch in the prior entry.
+
+### D66. Minimal billing; lapse never auto-deletes — partially resolves D41
+**Status:** LOCKED-DEFAULT.
+**Decision:** a lapsed paying seller downgrades to Free; a store is
+**never** auto-deleted for non-payment. This is the **minimum** version
+of D41's still-open retention question — it locks in the single most
+important piece (no hard-delete of a lapsed paying seller) without
+settling the rest of D41's fuller mechanics (archiving product rows
+beyond the Free cap, 301-redirecting a custom domain, the exact
+warning-email ladder, the 90-day never-verified-signup auto-delete
+rule). **D41 stays OPEN for everything beyond this minimum** — record
+it as "partially resolved" in the open-questions list, not closed.
+**Reasoning:** "never destroy a paying customer's data for a billing
+lapse" is the one piece of D41 not actually in dispute — the founder
+delegated the rest of the mechanics rather than blocking the MVP on
+settling every detail now.
+
+### D69. Next.js 14→15 timeline
+**Status:** LOCKED-DEFAULT.
+**Decision:** upgrade within ~30 days after launch; stay on the latest
+14.x patch until then; keep the scoped `pnpm audit` exception (Risk
+Register #29, `docs/SRS.md`) documented and intact until the upgrade
+lands.
+**Reasoning:** not recorded beyond the timeline itself — confirms Risk
+Register #29's existing "not rushed into the middle of an urgent pass"
+reasoning still applies, now with a concrete deadline.
+
+### D70. Milestone estimates owed to the founder
+**Status:** LOCKED (process requirement, not a product decision).
+**Decision:** every milestone checkpoint report includes a done/
+remaining/risk estimate per item, plus what depends on the founder
+(credentials, Simpaisa contact, hosting choice, etc.).
+**Reasoning:** the founder is funding and time-boxing this build and
+needs visibility to plan around it, not just a final "it's done."
+
+### D71. Founder-facing guides ship in the repo
+**Status:** LOCKED.
+**Decision:** `docs/founder-local-run.md` (exists, needs Windows-
+specific verification), `docs/founder-test-guide.md`,
+`docs/founder-security-test-guide.md`, `docs/launch-readiness-
+checklist.md`, and `docs/security/` runbooks (key rotation, gateway
+kill switch, session revocation, restore) all ship as real, verified
+documents — not aspirational placeholders. The founder approves launch
+readiness by following these himself, without reading code.
+**Reasoning:** the founder is non-technical enough to need this
+(Windows PC, i5 6th-gen, 16GB RAM, limited disk — explicitly not a
+developer's own dev-box profile) and the whole MVP's acceptance
+criterion is that he can test and approve it unassisted.
+
+### D73r. Seller gateways at launch — reordered, two demoted to Phase 2
+**Status:** LOCKED (founder, 2026-10-09 13:43) — **supersedes D5's
+rollout order**.
+**Decision:** build order is Stripe → Simpaisa → Airwallex → Razorpay
+(Airwallex now ahead of Razorpay, reflecting real sandbox availability
+— Airwallex and Razorpay both offer self-serve test credentials with
+no KYC, Simpaisa has no public self-serve sandbox found as of this
+writing). EBANX and Skypay Global move to **Phase 2** — kept in the
+docs and the allowlist's `planned` state, not selectable, not built in
+this window.
+**Reasoning:** sandbox availability, not a market-priority change —
+D4's full six-gateway allowlist (Stripe, Razorpay, Simpaisa, Airwallex,
+Skypay Global, EBANX) is unchanged; this only reorders the BUILD
+sequence and demotes two from "follow on demand" to an explicit
+Phase 2 label.
+**Additional rule (new, not in D4/D5):** a gateway is built ≠ live — it
+only enters the registry's `enabled` state once its own
+`docs/gateway-verification/<name>.md` evidence file exists, confirmed
+by the founder's own decision, never assumed from "the code compiles."
+
+### D74. One customer = one store; multi-store archived
+**Status:** LOCKED — **supersedes the "3/5/10 stores by tier" piece of
+D12's cumulative ladder and D13's feature distribution**, for the MVP
+window only.
+**Decision:** every plan (including the eventually-reactivated FLY) gets
+`stores = 1` at launch. Existing multi-store code — the UI store
+switcher, every multi-store screen, the tiered `stores.max_per_seller`
+values — is archived (git tag `archive/multi-store-2026-10-09` plus a
+branch), not deleted, and the **1-store limit is enforced server-side**
+(the API refuses to create a second store), not just hidden in the UI.
+**Reasoning:** scope freeze (D55) — multi-store management is real
+complexity (switcher UI, per-store billing/staff/analytics surfaces)
+that doesn't move activation or revenue for a brand-new seller's first
+90 days, who by definition starts with exactly one store regardless of
+what their plan would eventually allow.
+**Accepted tradeoff:** D12's "every tier is a strict superset" framing
+technically no longer holds on the stores dimension alone during the
+MVP window (every tier is capped at 1, not tiered 1/3/5/10) — this is
+a deliberate, temporary, documented exception, not a quiet contradiction
+of D12. Multi-store returns once FLY (or a growth-stage upgrade path)
+is reactivated post-MVP.
+
+### D75d. MVP plan ladder — Free + GO/RUN/RISE live, FLY dormant
+**Status:** LOCKED-DEFAULT.
+**Decision:** at launch, sellers can be on Free or pay for GO
+($24) / RUN ($49) / RISE ($119) — USD, tax-exclusive, cycles exactly
+per D10's table (3mo −7%, 6mo −12%+15 days, 12mo −25%). **FLY's plan row
+is kept in the database, `isActive = false`: inactive, not purchasable,
+not shown anywhere** — a true "dormant," not a deletion. D9's full
+GO/RUN/RISE/FLY price list stays the canonical reference for when FLY
+reactivates; nothing about FLY's eventual $249 price point changes.
+**Reasoning:** scope freeze again — FLY's distinguishing features (10
+stores, 5 staff, the removable loading-mark) are either archived for
+MVP (D74's single-store rule) or reassigned to RISE (D76d), so a
+FLY tier with nothing distinctively FLY about it yet isn't worth
+exposing to a first customer.
+
+### D76d. Loader-mark removability moves from FLY to RISE
+**Status:** LOCKED-DEFAULT — **supersedes §5.74 FR-74.3's `planGroup
+=== "individual" && tierOrder === 3` (FLY) gate for the MVP window.**
+**Decision:** RISE becomes the top *active* brand-control tier at
+launch, so the loading-screen "Managed by UZEYN" mark becomes removable
+on RISE instead of FLY. Invoice branding and buyer-facing cart/checkout
+branding (FR-74.4/FR-74.5) stay permanently non-removable on every
+tier, unchanged. Already-shipped Team Growth/Scale behavior (§5.74
+FR-74.3's own "never touches Team-tier branding" guarantee) is also
+unchanged.
+**Reasoning:** since FLY is dormant (D75d) with no seller actually on
+it, a removability grant that only FLY sellers could use would be
+dead code in practice for the entire MVP window.
+**Implementation note (M1 work, not yet done as of this entry):**
+`BrandingService.getLoadingScreenBrandingVisible()`'s current check
+(`planGroup === "individual" && tierOrder === 3`) needs to become
+`tierOrder === 2` (RISE) — a real, small code change, sequenced into
+M1 alongside the plan reseed (3.1), not part of this docs-only M0
+push. The existing e2e coverage (`branding.e2e-spec.ts`'s Team Growth/
+Scale divergence test added 2026-10-08) will need its individual-tier
+assertions updated to match.
+
+### D77. M0–M4 milestones with founder checkpoints
+**Status:** LOCKED-DEFAULT.
+**Decision:** work proceeds in order through M0 (docs) → M1 (core +
+security P0) → M2 (trust + security gate) → M3 (gateway wave) → M4
+(acceptance package), each ending in a founder checkpoint report. Don't
+wait for a reply between milestones unless a stop condition (D6 above)
+applies. Launch rule: launch once M1, M2, and the P0 security items
+are done and at least the sandbox-verified gateways are live; remaining
+gateways follow as config/registry changes, not a re-launch.
+**Reasoning:** lets the founder test and give feedback early (M1)
+rather than waiting for the full six-gateway build before seeing
+anything real.
+
+### D78. Marketing copy follows shipped code, not the advisor's proposal
+**Status:** LOCKED-DEFAULT — **narrows D13's feature-distribution
+table for MVP marketing purposes specifically** (D13's table stays the
+long-term target spec in `docs/pricing-and-programs.md`/SRS §5.78
+FR-78.4; it is not deleted or itself superseded).
+**Decision:** the MVP's plan-comparison marketing copy describes only
+gates that exist in the codebase TODAY, confirmed by the 2026-10-08
+amendment's own gap report — not D13's advisor-proposed target state.
+Concretely dropped from marketing (not built, not promised): the
+500-product cap on GO (ships copy for the real 100-product cap unless
+raising the number is trivial and gets pulled into an MVP milestone),
+"all D-Studio sections" on GO (ships copy for the real 8-of-22 access),
+a basic-vs-funnel analytics split (doesn't exist — one analytics set
+for everyone, described as such), device-approval restriction, generic
+seller-facing API/webhooks, and tiered support SLAs (none of these
+exist in code). `docs/plan-matrix-mvp.md` is the authoritative per-gate
+record — one row per gate, Free/GO/RUN/RISE columns, "exists in code"
+and "shown on marketing" each Y/N, so a gap between promise and product
+can never recur silently.
+**Reasoning:** a marketing claim for a feature that doesn't exist is
+both a trust risk and a support-ticket generator on day one — "build
+what we describe" is cheaper to maintain than "describe what we'll
+eventually build."
+
+### D79. Security is a first-class workstream, evidence-based
+**Status:** LOCKED.
+**Decision:** handle every part of security to the deepest practical
+level for an MVP and defend against a highly skilled attacker, not
+just casual abuse. The full P0/P1 control list (S1–S15,
+`docs/SRS.md` §12 risk items to follow and `docs/security/abuse-
+cases.md`) is binding. A disagreement with a listed control must come
+with evidence (a cited reason it doesn't apply, or a cheaper control
+that covers the same risk) — silently dropping a control is not
+permitted.
+**Reasoning:** this platform will hold real seller payment credentials
+and real buyer PII from day one; "MVP" describes feature scope, not an
+excuse to ship with a lighter security bar than a mature product would
+carry.
+
+### D80. Founding Members and Launch Assurance run manually at launch
+**Status:** LOCKED — **removes both from Phase B's pre-launch code
+queue** (§5.81/§5.82 in `docs/SRS.md` stay the full future-automation
+spec, now explicitly re-tagged post-MVP in `docs/build-plan.md`).
+**Decision:** at launch, both run as manual admin actions — a flag set
+by hand, a Paddle discount code created by hand — not the automated
+eligibility-detection/relief-application mechanisms §5.81/§5.82
+originally specified.
+**Reasoning:** scope freeze — the automation is real engineering work
+(an effort-gate evaluator, an auto-applied relief mechanism, a
+dedicated UI) that a human can substitute for cheaply at launch's
+likely small initial seller count.
+
+### D81. Billing behind a feature flag; Free-only mode is the fallback
+**Status:** LOCKED-DEFAULT.
+**Decision:** all Paddle billing code ships behind `billing.enabled`
+(a Settings Registry boolean, default state TBD at each environment's
+setup). The platform must run correctly with billing OFF (every seller
+effectively on Free, a private-beta-style mode) and separately with
+Paddle sandbox ON. If Paddle's account approval (`docs/launch-
+runbook.md` §11) is slow, launch can proceed Free-only and flip billing
+on later without a second deploy.
+**Reasoning:** decouples "the founder's Paddle account is approved" —
+a founder-owned, external, unpredictable-timeline dependency — from
+"the MVP is otherwise ready to launch."
+
+**Instruction accompanying these resolutions:** M0 (this docs push) is
+the only work item before the first investigation reply (see the
+2026-10-09 checkpoint report in this session's own record). M1 starts
+immediately after M0's CI is independently confirmed green, same
+incremental-commit/live-verify/independently-CI-confirmed discipline as
+every prior item in this project — amended per D59 for docs-only
+commits once that work lands, unchanged for every code commit before
+and after.

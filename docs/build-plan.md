@@ -4530,3 +4530,95 @@ address, a backup storage account, and the CA questions logged in
 
 *Update this document as each module is approved and built — it is the running
 build-phase index, the same discipline as `docs/SRS.md` itself.*
+
+---
+
+## MVP Execution — M0–M4 Milestones (2026-10-09, supersedes the Phase A/B/C sequencing above for the MVP build window)
+
+Source: the founder's MVP Execution Prompt (D63–D81,
+`docs/founder-decisions-log.md`). The Phase A/B/C/post-launch list
+directly above this section stays as the historical record of the
+2026-10-08 sequencing — **this section is what actually governs build
+order from here**, not a deletion of that one. Full scope:
+`docs/mvp-scope.md`. Full plan matrix: `docs/plan-matrix-mvp.md`. Full
+auth/RLS/gateway investigation backing M1's security items: this
+session's 2026-10-09 checkpoint report.
+
+Each milestone ends with a founder checkpoint (commits + independently
+API-confirmed CI evidence for every job, new SRS sections/risks, a test
+script for what's new, open questions, next steps) — work continues to
+the next milestone without waiting for a reply unless a stop condition
+applies (a founder-level business decision, or non-flake red CI).
+
+### M0 — Docs and clarity
+Record D63–D81; `docs/mvp-scope.md`; `docs/plan-matrix-mvp.md`;
+`docs/auth-session-design.md`; the first investigation reply. One
+docs-only commit, CI-confirmed, before M1 starts.
+
+### M1 — Core that can be tested
+1. Single-store enforcement (server-side) + Free/GO/RUN/RISE reseed +
+   FLY deactivated + `programs.enabled=false` gating on the live
+   referral/reward code (D74/D75d, §3.1/§3.3 of the MVP prompt).
+2. §5.74 FR-74.3's loading-mark gate: FLY (`tierOrder===3`) →
+   RISE (`tierOrder===2`) (D76d).
+3. Registry-driven gateway allowlist (replaces the hardcoded
+   `PaymentGatewayProvider` enum + DTO `@IsEnum` pattern) + an
+   adapter contract-test harness + a per-gateway kill switch (D4,
+   narrowed build order per D73r).
+4. Stripe adapter; COD/advance/manual-mark-as-paid verified end to
+   end (Pakistan's real day-one path).
+5. Paddle sandbox billing, minimal, behind `billing.enabled` (D81) —
+   catalog as data, server-created checkout transactions, signature-
+   verified idempotent webhooks, entitlement sync, portal link, lapse
+   → Free (D66).
+6. Auth/session hardening per `docs/auth-session-design.md`'s target
+   state, and every P0 security item tagged M1 below.
+7. `docs/founder-local-run.md` re-verified from a clean Windows-
+   profile checkout (Docker Desktop + WSL2, memory cap, disk budget,
+   cleanup command, PowerShell/cross-platform scripts only).
+
+### M2 — Trust features and security gate
+1. §5.76 Post-Payment Buyer Acknowledgment (next item in the existing
+   Phase A backlog — unaffected by the MVP reprioritization, just
+   resequenced here).
+2. Store-domain separation (D25) as a real build task (separate apex,
+   Public Suffix List submission, host-only cookies, subdomain-
+   takeover protection) — not just the "already true by accident"
+   regression-test item the 2026-10-08 report found.
+3. Free-tier abuse controls (D26), Cloudflare Turnstile on signup/
+   login/reset/abuse-report.
+4. Every P0 security item tagged M2 below.
+5. `docs/founder-test-guide.md` and `docs/founder-security-test-
+   guide.md`, verified.
+
+### M3 — Gateway wave
+Simpaisa, Airwallex, Razorpay, in that order (D73r), each landing with
+its own contract-test evidence and `docs/gateway-verification/
+<name>.md` before its registry `enabled` flag flips on. EBANX and
+Skypay Global stay Phase 2 — built later, not in this window.
+
+### M4 — Acceptance package
+`docs/launch-readiness-checklist.md`; seed/demo data; a health-check
+script; the independent security review (D57/D58, before real seller
+gateway keys are accepted); the deployment runbook (host-agnostic,
+Docker Compose based — the founder picks hosting after approving the
+build, not before). Founder runs the full guide set locally and signs
+the checklist.
+
+### Explicitly re-tagged out of the pre-MVP code queue
+- **Founding Members, Launch Assurance** — run manually at launch
+  (admin flag, hand-created Paddle discount), not built as automated
+  mechanisms in this window (D80). §5.81/§5.82 stay the full future-
+  automation spec for whenever that work is picked up post-MVP.
+- **Earn Your Plan, UZEYN Partners, Students redesign, education
+  portal, Vellum, seller funnel analytics, paid templates** — post-MVP,
+  unaffected code-wise (D63); `docs/mvp-scope.md` is the authoritative
+  "what's out" list.
+
+### CI speed (D59, separate small push, sequenced after M0's docs push)
+Shard e2e across parallel runners; path-filter docs-only commits to
+skip the full suite. Time-boxed to one working day; revert and report
+if it destabilizes CI. Applies only to commits touching nothing outside
+`docs/`/`CHANGELOG.md` — every code commit still needs all 5 jobs
+green, independently confirmed, unchanged from the discipline this
+entire project has used since its first commit.

@@ -663,6 +663,101 @@ parallel list. See §12 for the full #34-44 set.
 
 ---
 
+## 8. MVP Execution Prompt — Security Workstream (2026-10-09, D79)
+
+The founder's MVP Execution Prompt makes security a first-class,
+evidence-based workstream for the MVP itself (not deferred hardening)
+— defend against a skilled, motivated attacker, not just casual abuse.
+Full control list (S1–S15) and the abuse-case catalog live in the
+prompt itself and will be transcribed into `docs/security/abuse-
+cases.md` as M1/M2 land the corresponding tests (not yet created —
+tracked here so its absence isn't mistaken for a decision not to build
+it). **Every item below is a planned control, tagged to the milestone
+that builds it — none of this is fixed yet.**
+
+| Control | Tier | Milestone | What it covers |
+|---|---|---|---|
+| Tenant isolation (RLS forced, no bypass from a seller-facing route) | P0 | M1 | See `docs/auth-session-design.md`'s sibling RLS investigation for the current-state baseline this builds on |
+| Object-level authorization (IDOR/BOLA) on every route | P0 | M1 | Generated allow/deny test per route |
+| Auth and sessions | P0 | M1 | See `docs/auth-session-design.md` for the full current-state investigation and target design |
+| Gateway-secret custody (envelope encryption, master key outside the app host/image) | P0 | M1 | D57 |
+| Payment integrity (server-computed amounts, idempotency keys, atomic state transitions, webhook verification) | P0 | M1–M3 | The abuse-case catalog's payment-tampering cases |
+| Input/output safety (sanitization, SSRF guard, upload validation, CSV-injection neutralization) | P0 | M2 | The abuse-case catalog's injection cases |
+| Store-domain separation (real build, not the "already true by accident" state this report's §7 previously recorded) | P0 | M2 | Supersedes this report's own 2026-10-08 §7 item 1 framing — see `docs/SRS.md` §5.93 FR-93's cross-reference |
+| Custom CSS cannot exfiltrate or script (RISE's Custom CSS feature) | P0 | M2 | Genuinely new risk this prompt surfaces — no prior audit pass covered seller-authored CSS as an attack surface |
+| Security headers and transport (CSP without unsafe-inline, HSTS, no secrets in client bundles) | P0 | M2 | |
+| Abuse limits (rate limits, Turnstile, disposable-email blocklist) | P0 | M2 | Builds on this report's existing §6 item 13 (rate limiting, already COVERED broadly) |
+| Admin plane (step-up MFA on destructive/money actions, typed confirmation) | P0 | M2 | Builds on existing admin-terminal `useConfirm()` gating already shipped |
+| Supply chain and CI (pinned Actions by SHA, secret scanning, non-root images) | P0 | M1 | Builds on this report's existing §6 item 10 (env/secrets hygiene — no CI secret-scanning step today, confirmed gap) |
+| Observability and incident response (redacted structured logs, per-gateway kill switch, runbooks) | P0 | M2 | |
+| **Independent paid security review** — tenant isolation, payments, webhooks, domain separation, key custody | P0, before launch | M4 | D58; gated explicitly before any real seller gateway key is accepted, not before |
+| Privacy basics (PII export/delete runbook) | P1 | by launch +30 days | |
+
+**Relationship to the existing Risk Register:** see `docs/SRS.md` §12
+items #45+ (added alongside this section) for the specific new risks
+this workstream responds to, distinct from #34–44's pricing/programs-
+era risks.
+
+### Tenant isolation (RLS) — independently re-verified, 2026-10-09
+
+Re-checked from scratch against the live codebase (not re-stated from
+this report's own §6 item 7) ahead of the MVP build, since real seller
+payment credentials are about to flow through this platform for the
+first time. **No confirmed cross-tenant data leak found**, after a
+full-file read of 30+ of the highest-risk services (wallet/billing,
+staff accounts, buyer accounts, checkout, every IDOR-shaped method
+taking a client-suppliable resource id, and every file that imports
+both `PrismaAdminService` and `TenantPrismaService`).
+
+- All 53 RLS-protected tables have `FORCE ROW LEVEL SECURITY` paired
+  with `ENABLE`, zero exceptions, each using an identical,
+  independently-parsed fail-closed policy guard. One precision over
+  this report's earlier §6 item 7 framing: `app_runtime` is not the
+  table *owner* (the migration superuser is), so under Postgres's own
+  semantics `FORCE` isn't actually the control protecting
+  `app_runtime`'s isolation — plain `ENABLE` plus `app_runtime` being a
+  non-superuser, non-`BYPASSRLS` role already does that job. `FORCE` is
+  present everywhere regardless (good hygiene), just not the
+  operative mechanism under this ownership model.
+- `app_runtime` has no `BYPASSRLS`/`SUPERUSER`/`CREATEDB`/`CREATEROLE`
+  and owns no tables; `UPDATE`/`DELETE` are revoked at the grant level
+  on **5** append-only tables (`admin_audit_logs`, `user_security_events`,
+  `platform_events`, `stock_adjustments`, `milestone_events`) — 3 more
+  than this report's §6 item 7 originally cited.
+- `TenantPrismaService.run()`'s one deliberate string-concatenation
+  site is UUID-regex-gated and unit-tested against 13 adversarial
+  inputs (SQL injection, homoglyphs, embedded quotes); confirmed the
+  *only* such site in the codebase — all 15 other raw-SQL call sites
+  use real bind parameters.
+- **New finding, not previously documented:** ~20 of the 27 background-
+  job queues (every named scheduler checked: cart abandonment,
+  missing-tracking alerts, dormant-store sweep, renewal reminders,
+  daily sales summary, and more) operate via the `app_admin` bypass
+  client across *all* tenants in one pass, never per-seller through
+  `TenantPrismaService`. Every one re-scopes correctly by each row's
+  own `storeId`/`sellerId` inside its loop — no leak found — but this
+  means **RLS provides zero protection for the background-job surface
+  by construction; correctness there is entirely app-level, not
+  DB-level**, a materially different trust model from the request-
+  serving path. Worth the founder knowing explicitly rather than
+  assuming RLS "also" covers it.
+- **Two concrete hardening refinements identified for M1** (neither is
+  a confirmed vulnerability today): (1) `WalletService` and
+  `SubscriptionInvoiceService` use `PrismaAdminService` for 100% of
+  their seller-facing queries, including on two tables that *are*
+  RLS-protected (`wallet_balances`, `ledger_entries`) — safe today
+  because neither ever takes a second client-suppliable id, but it
+  means a future code change that weakens a `where: { sellerId }`
+  filter would not be caught by RLS the way almost everywhere else in
+  the codebase would catch it. Routing these through `TenantPrismaService`
+  would restore that defense-in-depth. (2) `PrismaAdminService`'s own
+  doc comment states "three legitimate uses, and no others" but the
+  background-sweep pattern above is a de facto fourth, undocumented
+  legitimate use — worth updating the comment to match actual,
+  verified-safe usage rather than leaving a stale threat model.
+
+---
+
 *This document was compiled from a full audit of the session transcript
 covering the original 5-phase pass, cross-verified line-by-line against
 the live codebase rather than taken on faith from commit messages alone.

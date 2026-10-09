@@ -1,6 +1,22 @@
 # uzeyn.com — Software Requirements Specification (SRS)
 
-**Version:** 0.64 (Pricing, Billing, Programs, Partners & Gateways
+**Version:** 0.65 (MVP Execution Prompt amendment, 2026-10-09 — **docs
+only for this entry's own changes**; M1 onward is real code, tracked in
+`docs/build-plan.md`'s M0-M4 section, not this amendment. Records
+D63-D81 (`docs/founder-decisions-log.md`) and adds §5.93: a single
+store per customer for the MVP window (supersedes D12/D13's tiered
+store counts), Free+GO/RUN/RISE live with FLY dormant, the loading-mark
+removability gate moving from FLY to RISE (supersedes §5.74 FR-74.3 for
+this window), marketing copy narrowed to match shipped code
+(`docs/plan-matrix-mvp.md`), a reordered gateway build sequence, billing
+behind a feature flag, and security promoted to a first-class MVP
+workstream. Adds Risk Register items #45-50 and partially resolves
+Open Question #27 (D41). New `docs/mvp-scope.md`,
+`docs/plan-matrix-mvp.md`, and `docs/auth-session-design.md` — the last
+a full, cited investigation of the current auth/session/RLS
+architecture ahead of M1's hardening work.)
+
+Prior amendment — 0.64 (Pricing, Billing, Programs, Partners & Gateways
 amendment, 2026-10-08 — **docs only, nothing in this amendment is built
 yet**. Turns a founder/advisor pricing-and-programs discussion into 41
 recorded decisions (`docs/founder-decisions-log.md`) and a new
@@ -8220,6 +8236,63 @@ without deleting it)
 - First-month-free stays removed (2026-10-03 decision #8), unaffected
   by this amendment.
 
+### 5.93 MVP Scope Overrides (new, v0.65 — founder's MVP Execution
+Prompt, 2026-10-09, D63–D81 in `docs/founder-decisions-log.md`;
+narrows §5.78/§5.74/§5.81/§5.82 and D12/D13 for the MVP build window
+only — none of the narrowed sections are deleted, all stay the
+long-term target spec)
+
+Full scope: `docs/mvp-scope.md`. Full milestone plan:
+`docs/build-plan.md`'s 2026-10-09 section. Full per-gate marketing
+matrix: `docs/plan-matrix-mvp.md`. This section is intentionally short
+— it is the contract, not the explanation; read the three docs above
+for the reasoning.
+
+- FR-93.1: **One store per customer for the MVP window** (D74) —
+  every plan, including FLY once reactivated, is capped at
+  `stores = 1`, server-enforced. Supersedes D12/D13's tiered 1/3/5/10
+  store counts for this window only; multi-store code is archived
+  (`archive/multi-store-2026-10-09`), not deleted.
+- FR-93.2: **FLY is dormant at launch** (D75d) — `isActive = false`,
+  not purchasable, not shown. GO/RUN/RISE are the live paid ladder;
+  Free is unchanged. D9's full four-tier price list stays canonical
+  for FLY's eventual reactivation.
+- FR-93.3: **§5.74 FR-74.3's loading-mark removability moves from FLY
+  to RISE** for the MVP window (D76d) — `tierOrder === 3` becomes
+  `tierOrder === 2` in `BrandingService.getLoadingScreenBrandingVisible()`.
+  Not yet implemented as of this amendment; sequenced into M1.
+  FR-74.4/FR-74.5 (permanent invoice/cart/checkout branding) and the
+  Team-tier exclusion are unaffected.
+- FR-93.4: **Marketing copy follows shipped code, not D13's target
+  table** (D78) — see `docs/plan-matrix-mvp.md` for the authoritative
+  per-gate record.
+- FR-93.5: **The live PKR referral/reward code is gated off**
+  (`programs.enabled = false`, service-layer enforced, not just
+  hidden in the UI) for the MVP window — §5.75/§5.83/§5.84/§5.85 stay
+  the full spec for when programs resume post-MVP (D63).
+- FR-93.6: **§5.81/§5.82 (Launch Assurance, Founding Members) run as
+  manual admin actions at launch**, not the automated mechanisms those
+  sections specify (D80) — the automation is deferred, not redesigned.
+- FR-93.7: **D41's lapsed-seller retention question is partially
+  resolved**: a lapsed paying seller downgrades to Free, never
+  auto-deletes (D66). Every other part of D41's fuller mechanics
+  (archiving excess products, 301-redirecting a custom domain, the
+  warning-email cadence) stays OPEN — see §13 Open Questions.
+- FR-93.8: **Gateway build order narrows** (D73r): Stripe → Simpaisa
+  → Airwallex → Razorpay; EBANX/Skypay Global move to an explicit
+  Phase 2 label. D4's six-gateway allowlist itself is unchanged. A
+  gateway only reaches the registry's `enabled` state once its own
+  `docs/gateway-verification/<name>.md` evidence exists.
+- FR-93.9: **Billing ships behind `billing.enabled`** (D81) — the
+  platform must run correctly with it off (Free-only) and with Paddle
+  sandbox on.
+- FR-93.10: **Security is first-class for the MVP, not deferred
+  hardening** (D79) — the full P0/P1 control list from the 2026-10-09
+  prompt is binding; see `docs/security-audit-report.md` §8 for the
+  per-milestone mapping and the Risk Register additions below. The
+  abuse-case catalog itself (`docs/security/abuse-cases.md`) is not
+  yet written — tracked for M1/M2, alongside the controls it tests.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -8523,6 +8596,12 @@ legal commitment.
 | 42 | Prepaid-cycle chargebacks and deferred-revenue accounting | Recognize monthly as delivered; CA question logged on treatment (D38) |
 | 43 | Paddle's own chargeback ratio; referral fraud via stolen cards is the likeliest vector | 30-day wait before a referral counts (§5.83 FR-83.2/§5.85), clawback on chargeback |
 | 44 | Founder bandwidth - too many simultaneous programs for one person | Program hygiene rule: one owner/metric/sunset date per program (D24/§5.84) |
+| 45 | The seller dashboard and admin terminal store their refresh tokens in plaintext `localStorage` (confirmed, `apps/web/lib/dashboard-api.ts`/`admin-api.ts`) with no reuse detection on the server side (`SessionService.validateRefreshToken()` cannot distinguish a replayed, already-rotated-out token from a fabricated one) - a stored-XSS gap anywhere in either app would be a full session-theft vector, undetectable as theft even if the legitimate user's own next refresh collides with the attacker's | Target design in `docs/auth-session-design.md` Part 2: move the refresh token to an HttpOnly cookie, add reuse detection (tombstone + `destroyAllSessionsForUser()` + a `SecurityEventService` entry on a tombstone hit), strict CSP (M1, S3) |
+| 46 | RISE's Custom CSS feature is seller-authored content rendered on the storefront - a new injection/exfiltration surface (`@import`, external `url()`, attribute-selector exfiltration, `expression()`) no prior security-audit pass has evaluated | Property allow-list + pattern rejection, scoped to the storefront only (M2, S8) |
+| 47 | Real seller payment-gateway credentials (Stripe, Simpaisa, Airwallex, Razorpay) will flow through this platform for the first time via the MVP gateway build - elevates the consequence of any undiscovered tenant-isolation, webhook-verification, or key-custody gap from theoretical to real financial exposure | Independent paid security review gated explicitly before any real (non-sandbox) seller gateway key is accepted (D57/D58, M4) |
+| 48 | CI has no supply-chain hardening today (GitHub Actions referenced by tag not pinned SHA, no secret-scanning step - confirmed gap, `docs/security-audit-report.md` §6 item 10) - becomes materially higher-consequence once real payment credentials and customer PII flow through code this pipeline builds and deploys | Pin Actions by commit SHA, add gitleaks (or equivalent) as a required CI job, minimum `permissions` on every workflow (M1, S12) |
+| 49 | Real SMTP email transport is unimplemented in code, not merely unconfigured - `EmailService.send()` throws for any `EMAIL_PROVIDER` other than the dev-default console logger (`apps/api/src/notifications/email.service.ts:20-34`), so password-reset and email-verification mail will fail outright in a real deployment even once the founder supplies real SMTP credentials, until the transport itself is built | Build a real SMTP (or provider-API) transport in M1 alongside the auth hardening, ahead of needing it for founder-guide verification; `docs/founder-local-run.md` continues to use Mailpit for local dev only, per the founder's own plan (MVP prompt §7) |
+| 50 | The four existing seller gateway adapters (Raast/Easypaisa/JazzCash/bank) are fully live and ungated on every plan today, contrary to the 2026-10-08 entry's D4 assumption that they were already dormant - a seller can connect and activate any of the four right now with zero credential pre-validation, against adapters that have never made a real HTTP call to a live provider in any test and that implement only a single poll-style verify method (no charge, no refund, no webhook) | Registry-driven allowlist + kill switch (M1, D4) - genuinely gate these off, not assume they already are; no live reactivation without a separate founder decision and real sandbox verification evidence |
 
 ---
 
@@ -8649,14 +8728,17 @@ legal commitment.
     (D7/D40.10).** A lawyer question - EU consumer rules specifically
     may require location-based inclusive display despite §5.79's
     general exclusive rule.
-27. **Lapsed-paid-seller retention policy (D41).** Today's behavior
-    (pause → 3 warnings over 14 days → permanent hard-delete) is
-    unchanged. An advisor-recommended alternative (downgrade to
-    starter_free, archive rather than delete, idempotent restore on
-    payment - full description in `docs/founder-decisions-log.md`'s
-    2026-10-08 entry, D41) is recorded as the likely future default but
-    is explicitly **not approved** and **not implemented** by this
-    amendment.
+27. **Lapsed-paid-seller retention policy (D41) — PARTIALLY RESOLVED
+    (founder, 2026-10-09, D66):** a lapsed paying seller downgrades to
+    Free and the store is never auto-deleted — that minimum piece is
+    now locked. Still open: the fuller advisor-recommended mechanics
+    (archiving product rows beyond the Free cap, 301-redirecting a
+    custom domain, the exact warning-email cadence, the 90-day never-
+    verified-signup auto-delete rule) — full description in
+    `docs/founder-decisions-log.md`'s 2026-10-08 entry (D41) and
+    2026-10-09 entry (D66). Today's actual pre-M1 behavior (pause → 3
+    warnings over 14 days → permanent hard-delete) stays in place until
+    M1 implements D66's minimum.
 
 ---
 

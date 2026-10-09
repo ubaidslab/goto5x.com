@@ -947,3 +947,18 @@ plan" pattern (already shipped broadly across the dashboard) to also
 "hide features not in your region" for Pakistan-specific features
 (supplier network, local gateways) once a global seller base exists —
 no region-aware hiding exists in the UI today.
+
+---
+
+# Part 8 — Planned Archival: Multi-Store UI (2026-10-09, not yet executed)
+
+Per the MVP Execution Prompt's D74 (single store per customer for the
+MVP build window — `docs/founder-decisions-log.md`), the store switcher
+and every multi-store-specific screen are slated for archival (tagged
+`archive/multi-store-2026-10-09`, not deleted) once M1's plan-reseed
+work lands. **Not yet done as of this entry** — the UI described
+elsewhere in this inventory (store switcher, per-store nav, the
+3/5/10-store tier limits) still reflects what's actually in the app
+today. This note exists so the eventual removal doesn't read as an
+undocumented regression when it happens — see `docs/build-plan.md`'s
+M1 section for the actual code-change tracking.
