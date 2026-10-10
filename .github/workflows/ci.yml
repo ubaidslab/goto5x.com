@@ -17,12 +17,57 @@ name: CI
 # wait on one is pure latency with no safety benefit. Any uncertainty
 # (can't determine the diff, a non-push event, a force-push/rebase whose
 # base commit isn't reachable) defaults to running everything - this
-# optimization only ever skips work, never skips safety.
+# optimization only ever skips work, never skips safety. See
+# scripts/verify-ci-docs-only-skip-exclusions.sh (A2) for the proof that
+# every path category the founder named - .github/**, lockfile,
+# package.json, prisma, Dockerfiles, scripts, .env.example, config files
+# - is covered: the filter is an allowlist of known-safe paths (docs/,
+# CHANGELOG.md), not a denylist of known-dangerous ones, so anything not
+# provably docs-only runs everything by construction.
+#
+# D93/A3 (2026-10-10): sharding (D59) cuts wall-clock, not total billable
+# compute - run #206 (the first clean 4-way-sharded run) measured 69
+# billable runner-minutes against 17m48s wall-clock, slightly MORE total
+# compute than the old single-process e2e job, because each shard now
+# pays its own "Initialize containers"/"Install Playwright" fixed cost.
+# Two changes answer that: (1) the `full_run` scope below sends a
+# feature-branch push through typecheck+unit-tests only - the full suite
+# (e2e, dependency-audit, web-build) now runs only for a PR to main, a
+# push to main, or the nightly schedule; (2) a Playwright browser-binary
+# cache in e2e-tests, targeting exactly the redundant per-shard cost
+# sharding introduced. `concurrency` below cancels a still-running old
+# run on the same ref the moment a new push supersedes it.
+#
+# D94/A5 (2026-10-10): every Action is pinned to a full commit SHA, not a
+# mutable tag - pnpm/action-setup@v4 was observed to move
+# (b906affcce14559ad1aafd4ab0e942779e9f58b1 ->
+# f40ffcd9367d9f12939873eb1018b921a783ffaa) during this project's own
+# history, confirmed directly from two real CI job logs days apart, so
+# this isn't a theoretical risk. .github/dependabot.yml keeps these pins
+# current with weekly PRs instead of letting them silently rot.
+# `permissions: contents: read` at the top level is deliberately NOT
+# widened per-job: nothing in this workflow pushes, comments, or writes
+# packages, and no job references `secrets.*` at all today, so a
+# compromised Action or a fork PR has nothing here to exfiltrate. No
+# `pull_request_target` is used anywhere in this workflow.
 
 on:
-  push:
-    branches: [main]
+  push: {}
   pull_request:
+    branches: [main]
+  schedule:
+    # 02:17 UTC - off the top-of-hour/half-hour minute GitHub's own
+    # scheduler queue is busiest at. Full suite, same as a PR/merge to
+    # main; see the `changes` job's full_run scope step.
+    - cron: "17 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: "20"
@@ -33,10 +78,32 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      full_run: ${{ steps.scope.outputs.full_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 50
+
+      - name: Verify the A2 docs-only-skip exclusion list before trusting it this run
+        run: ./scripts/verify-ci-docs-only-skip-exclusions.sh
+
+      - name: Determine trigger scope - A3 (full suite vs feature-branch-only)
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Schedule/manual dispatch - full suite."
+            echo "full_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "main" ]; then
+            echo "PR targeting main - full suite."
+            echo "full_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Push to main (a merge, per D92 - no direct pushes) - full suite."
+            echo "full_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Feature-branch push - typecheck/unit-tests only, per D93 (A3)."
+            echo "full_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Detect whether this push touches anything beyond docs/CHANGELOG.md (D59)
         id: filter
         env:
@@ -67,11 +134,11 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -90,11 +157,11 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -105,7 +172,7 @@ jobs:
 
   e2e-tests:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'
     runs-on: ubuntu-latest
     # Real Postgres + Redis, matching README's "Running tests" e2e
     # instructions exactly - this is the release gate for the cross-tenant/
@@ -115,7 +182,9 @@ jobs:
     # --maxWorkers=1 run to roughly a quarter of that, same total work,
     # same within-shard sequential-safety property the single-process run
     # relied on. See the e2e-tests-summary job below for the single stable
-    # check name this fans back into.
+    # check name this fans back into. A3: runs only when `full_run` is
+    # true (PR/push to main, schedule, manual dispatch) - never on a plain
+    # feature-branch push.
     strategy:
       fail-fast: false
       matrix:
@@ -141,11 +210,11 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -153,15 +222,30 @@ jobs:
       - name: Generate Prisma client (test files import PrismaClient directly)
         run: pnpm --filter @uzeyn/api prisma:generate
 
-      # InvoicePdfService (Module 15/24) renders PDFs via a real headless
-      # Chromium (Playwright), not a mock - matches this project's stated
-      # "genuine infrastructure over mocks" preference (see
-      # test/e2e/s3-test-server.ts's own comment for the same principle
-      # applied to object storage below). Installed with --with-deps so the
-      # system libraries headless Chromium needs (fonts, mesa, etc.) are
-      # present on the bare runner too.
-      - name: Install Playwright Chromium + system dependencies (PDF generation)
+      - name: Resolve installed Playwright version (cache key)
+        id: playwright-version
+        run: echo "version=$(node -e "console.log(require('./apps/api/node_modules/playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
+
+      # A3: each of the 4 shards used to redownload the same Chromium
+      # build independently - exactly the redundant per-shard cost that
+      # made run #206 measure MORE total billable minutes than the old
+      # single-process job despite a 3x faster wall-clock. Keyed on the
+      # installed playwright package version, same pattern Playwright's
+      # own CI docs recommend.
+      - name: Cache Playwright browser binaries
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright Chromium + system dependencies (PDF generation, cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm --filter @uzeyn/api exec playwright install --with-deps chromium
+
+      - name: Install Playwright's OS-level dependencies only (browser binary already cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @uzeyn/api exec playwright install-deps chromium
 
       - name: Bootstrap app_runtime/app_admin roles (once per fresh database)
         env:
@@ -234,8 +318,8 @@ jobs:
   # every time the shard count changes. This job fans them back into one
   # stable name - require THIS in branch protection, not the per-shard
   # ones. Passes if every shard succeeded, or if e2e-tests didn't run at
-  # all (a docs-only push, correctly skipped by the `changes` gate above);
-  # fails only on a real shard failure or cancellation.
+  # all (a docs-only push or a feature-branch push, both correctly
+  # skipped above); fails only on a real shard failure or cancellation.
   e2e-tests-summary:
     needs: [changes, e2e-tests]
     if: always()
@@ -252,14 +336,14 @@ jobs:
 
   dependency-audit:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -282,14 +366,15 @@ jobs:
         # the open-source gitleaks CLI directly (no third-party Action/
         # license needed) against the current checkout's file content
         # (--no-git), so it catches a secret present in the final tree
-        # this push produces, on every push.
+        # this push produces, on every push. Pinned by release version in
+        # the URL itself (v8.21.2), not a floating tag.
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar -xz gitleaks
           ./gitleaks detect --no-git --source . --redact -v
 
   web-build:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'
     runs-on: ubuntu-latest
     # apps/web has no automated test suite (see README's Module 4/5
     # disclosures) - a production build is the closest automated proxy:
@@ -297,11 +382,11 @@ jobs:
     # generation, same as the manual `next build` smoke test README
     # already documents for local verification.
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
