@@ -26,7 +26,7 @@ interface Plan {
   campaignActive: boolean;
   seatPrice: string | null;
   currency: string;
-  billingInterval: "monthly" | "yearly" | "none" | "six_month";
+  billingInterval: "monthly" | "yearly" | "none" | "six_month" | "quarterly";
   isActive: boolean;
   mostPopular?: boolean;
   activePrice?: number;
@@ -55,7 +55,7 @@ export default function AdminPlansPage() {
   const [firstCyclePrice, setFirstCyclePrice] = useState("");
   const [campaignPrice, setCampaignPrice] = useState("");
   const [seatPrice, setSeatPrice] = useState("");
-  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly" | "none" | "six_month">("monthly");
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly" | "none" | "six_month" | "quarterly">("monthly");
   const [grantSellerId, setGrantSellerId] = useState("");
   const [grantPlanId, setGrantPlanId] = useState("");
   const [promoCode, setPromoCode] = useState("");
@@ -329,6 +329,7 @@ export default function AdminPlansPage() {
               <Select value={billingInterval} onChange={(e) => setBillingInterval(e.target.value as typeof billingInterval)}>
                 <option value="none">none (no recurring charge)</option>
                 <option value="monthly">monthly</option>
+                <option value="quarterly">quarterly (3-month)</option>
                 <option value="six_month">six-month</option>
                 <option value="yearly">yearly</option>
               </Select>

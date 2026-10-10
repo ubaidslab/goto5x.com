@@ -248,20 +248,48 @@ export async function seedPlansSettings(prisma: PrismaClient) {
 
   // Module 61 (SRS §5.7, FR-7.20) - the founder's fixed-multiplier
   // billing-cycle model, replacing FR-7.6's admin-configurable-percent
-  // yearly-discount framing. Both fixed multipliers off the active
-  // monthly price - never a separately stored per-cycle price.
+  // yearly-discount framing. Fixed multipliers off the active monthly
+  // price - never a separately stored per-cycle price.
+  //
+  // B2 (founder decision, 2026-10-10, D10) - LOCKED exact figures,
+  // corrected from this module's own original placeholders (six_month
+  // was 5.5, yearly was 10 - neither matches D10's real discount
+  // formulas): quarterly = 3 x 0.93 = 2.79 (-7%), six_month = 6 x 0.88 =
+  // 5.28 (-12%, PLUS 15 bonus days of service - a schedule change
+  // addInterval() handles, never a price adjustment), yearly = 12 x 0.75
+  // = 9 (-25%). `update:` includes `defaultValue` for all three (unlike
+  // this upsert's own prior convention of only ever refreshing
+  // `requiresConfirmation`) specifically so re-running this seed against
+  // an already-seeded database actually corrects the old wrong defaults
+  // - "idempotent, safe to run twice" has to mean the SECOND run fixes a
+  // stale value, not just that it doesn't error.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "billing.quarterly_price_multiplier" },
+    create: {
+      key: "billing.quarterly_price_multiplier",
+      valueType: "number",
+      allowedScopes: ["global"],
+      defaultValue: 2.79,
+      validation: { min: 0 },
+      description: "A 3-month subscription cycle bills this many times the active monthly price, for 3 months of service - D10's locked -7% (B2, 2026-10-10).",
+      requiresConfirmation: true,
+    },
+    update: { defaultValue: 2.79, requiresConfirmation: true },
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "billing.six_month_price_multiplier" },
     create: {
       key: "billing.six_month_price_multiplier",
       valueType: "number",
       allowedScopes: ["global"],
-      defaultValue: 5.5,
+      defaultValue: 5.28,
       validation: { min: 0 },
-      description: "A six-month subscription cycle bills this many times the active monthly price, for 6 months of service (FR-7.20).",
+      description:
+        "A six-month subscription cycle bills this many times the active monthly price, for 6 months of service PLUS 15 bonus days (FR-7.20) - D10's locked -12% (B2, 2026-10-10 - corrected from the original 5.5 placeholder).",
       requiresConfirmation: true,
     },
-    update: { requiresConfirmation: true },
+    update: { defaultValue: 5.28, requiresConfirmation: true },
   });
 
   await prisma.settingsDefinition.upsert({
@@ -270,12 +298,12 @@ export async function seedPlansSettings(prisma: PrismaClient) {
       key: "billing.yearly_price_multiplier",
       valueType: "number",
       allowedScopes: ["global"],
-      defaultValue: 10,
+      defaultValue: 9,
       validation: { min: 0 },
-      description: "A yearly subscription cycle bills this many times the active monthly price, for 12 months of service (FR-7.20).",
+      description: "A yearly subscription cycle bills this many times the active monthly price, for 12 months of service (FR-7.20) - D10's locked -25% (B2, 2026-10-10 - corrected from the original 10 placeholder).",
       requiresConfirmation: true,
     },
-    update: { requiresConfirmation: true },
+    update: { defaultValue: 9, requiresConfirmation: true },
   });
 
   // Module 74 (v0.39, SRS §5.6j FR-7.22) - replaces the retired per-plan
@@ -363,8 +391,8 @@ export async function seedPlansSettings(prisma: PrismaClient) {
  * tiers (mechanism only; prices/names/limits below are placeholder founder
  * data, editable from the plan editor with no deploy). Idempotent via the
  * (plan_group, tier_order) unique constraint - `update:` block only refreshes
- * price/regularPrice/yearlyDiscountPercent so an existing plan's own
- * founder-edited name/sortOrder is never clobbered by re-seeding.
+ * price/regularPrice/currency/isActive/yearlyDiscountPercent so an existing
+ * plan's own founder-edited name/sortOrder is never clobbered by re-seeding.
  *
  * Module 74 (v0.39, SRS §5.6j FR-7.22) - four PERMANENT tiers, renamed and
  * repriced under the subscription-only model: GO/RUN/RISE/FLY (formerly
@@ -376,15 +404,30 @@ export async function seedPlansSettings(prisma: PrismaClient) {
  * (`billing.first_cycle_discount_percent`, WalletService.
  * getPlanFeePaymentPreview()) rather than a per-tier stored value, so this
  * column is left unset (null) here - same "kept in schema, not deleted,
- * simply unread" treatment as the already-dormant `yearlyDiscountPercent`.
+ * simply unread" treatment as the already-dormant `yearlyDiscountPercent`
+ * (whose old 16.67%-off value belonged to the superseded PKR pricing below
+ * and is dropped, not carried forward, for the same reason - see
+ * plan-pricing.util.ts's own docblock on why it's unread).
+ *
+ * B2 (founder decision, 2026-10-10, D9/D10/D75d) - the LOCKED monthly list
+ * prices in USD, replacing the placeholder PKR figures this seed shipped
+ * with originally: GO $24, RUN $49, RISE $119, FLY $249. `regularPrice`
+ * (the old struck-through PKR "was" price) is dropped along with it - D9's
+ * reasoning is "launch high, sell through the cycle discounts (D10)," not
+ * a separate sale-price mechanism. FLY's own row is seeded with its real,
+ * correct price and `isActive: false` - D75d: "kept in the database...
+ * inactive, not purchasable, not shown anywhere... nothing about FLY's
+ * eventual $249 price point changes" - never omitted from this array,
+ * since that would be a soft delete of founder-authored data, not a
+ * dormant flag.
  */
 export async function seedPlansData(prisma: PrismaClient) {
   const individualTiers = [
     {
       name: "GO",
       tierOrder: 0,
-      price: 6499,
-      regularPrice: 7999,
+      price: 24,
+      currency: "USD",
       billingInterval: "monthly" as const,
       commissionPercent: 0,
       productLimit: 100,
@@ -392,8 +435,8 @@ export async function seedPlansData(prisma: PrismaClient) {
     {
       name: "RUN",
       tierOrder: 1,
-      price: 14999,
-      regularPrice: 18999,
+      price: 49,
+      currency: "USD",
       billingInterval: "monthly" as const,
       commissionPercent: 0,
       productLimit: 100,
@@ -401,8 +444,8 @@ export async function seedPlansData(prisma: PrismaClient) {
     {
       name: "RISE",
       tierOrder: 2,
-      price: 43999,
-      regularPrice: 49999,
+      price: 119,
+      currency: "USD",
       billingInterval: "monthly" as const,
       commissionPercent: 0,
       productLimit: 500,
@@ -410,16 +453,17 @@ export async function seedPlansData(prisma: PrismaClient) {
     {
       name: "FLY",
       tierOrder: 3,
-      price: 73999,
-      regularPrice: 79999,
+      price: 249,
+      currency: "USD",
       billingInterval: "monthly" as const,
       commissionPercent: 0,
       productLimit: 100_000,
+      isActive: false,
     },
   ];
   for (const tier of individualTiers) {
     const { commissionPercent, productLimit, ...planFields } = tier;
-    const plan = await upsertPlan(prisma, { planGroup: "individual", yearlyDiscountPercent: 16.67, ...planFields });
+    const plan = await upsertPlan(prisma, { planGroup: "individual", ...planFields });
     await setPlanScopedSetting(prisma, "billing.commission_rate_percent", plan.id, commissionPercent);
     await setPlanScopedSetting(prisma, "catalog.product_limit", plan.id, productLimit);
 
@@ -535,8 +579,10 @@ async function upsertPlan(
     firstCyclePrice?: number;
     campaignPrice?: number;
     seatPrice?: number;
+    currency?: string;
     billingInterval: "monthly" | "yearly" | "none";
     yearlyDiscountPercent?: number;
+    isActive?: boolean;
   },
 ) {
   const shared = {
@@ -545,8 +591,18 @@ async function upsertPlan(
     firstCyclePrice: data.firstCyclePrice ?? null,
     campaignPrice: data.campaignPrice ?? null,
     seatPrice: data.seatPrice ?? null,
+    // Every pre-B2 caller relied on the schema's own "PKR" column default
+    // and never passed this - explicit here now (still "PKR" for them)
+    // so B2's individual-tier USD reseed below has somewhere to pass
+    // "USD" without changing team/supplier's existing PKR pricing.
+    currency: data.currency ?? "PKR",
     billingInterval: data.billingInterval,
     yearlyDiscountPercent: data.yearlyDiscountPercent ?? null,
+    // D75d (2026-10-10) - FLY stays in the database, dormant
+    // (isActive=false), while GO/RUN/RISE/every pre-existing plan keeps
+    // the schema's own "true" default, explicit now for the same
+    // idempotent-correction reason as currency above.
+    isActive: data.isActive ?? true,
   };
   return prisma.plan.upsert({
     where: { uniq_plan_group_tier_order: { planGroup: data.planGroup, tierOrder: data.tierOrder } },

@@ -54,8 +54,8 @@ export class CreatePlanDto {
   @IsString()
   currency?: string;
 
-  @IsIn(["monthly", "yearly", "none", "six_month"])
-  billingInterval!: "monthly" | "yearly" | "none" | "six_month";
+  @IsIn(["monthly", "yearly", "none", "six_month", "quarterly"])
+  billingInterval!: "monthly" | "yearly" | "none" | "six_month" | "quarterly";
 
   @IsOptional()
   @IsNumber()

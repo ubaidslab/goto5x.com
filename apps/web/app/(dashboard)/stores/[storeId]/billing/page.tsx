@@ -23,12 +23,13 @@ interface Plan {
   price: string;
   seatPrice: string | null;
   currency: string;
-  billingInterval: "monthly" | "yearly" | "none" | "six_month";
+  billingInterval: "monthly" | "yearly" | "none" | "six_month" | "quarterly";
   isActive: boolean;
   // FR-7.20 (Module 61) - derived, not stored: the price for each cycle at
   // this plan's current active price. Null for a non-monthly-billed plan
   // group (team/supplier) - no cycle choice applies to those.
   activePrice: number;
+  quarterlyPrice: number | null;
   sixMonthPrice: number | null;
   yearlyPrice: number | null;
 }
@@ -40,13 +41,14 @@ interface Subscription {
   currentPeriodEnd: string | null;
   // FR-7.20 (Module 61) - which cycle this subscription is actually on;
   // the billing-cycle selector below defaults to this, not always monthly.
-  billingInterval: "monthly" | "six_month" | "yearly";
+  billingInterval: "monthly" | "quarterly" | "six_month" | "yearly";
   plan: Plan;
   pendingPlan: Plan | null;
 }
 
-type Cycle = "monthly" | "six_month" | "yearly";
-const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", six_month: "6 months", yearly: "Yearly" };
+// B2 (founder decision, 2026-10-10, D10) - order is 1/3/6/12 months.
+type Cycle = "monthly" | "quarterly" | "six_month" | "yearly";
+const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", quarterly: "3 months", six_month: "6 months", yearly: "Yearly" };
 
 interface Team {
   id: string;
@@ -153,6 +155,7 @@ export default function BillingPage({ params }: { params: { storeId: string } })
   }, [subscription, cycleInitialized]);
 
   function priceForCycle(plan: Plan, forCycle: Cycle): number {
+    if (forCycle === "quarterly") return plan.quarterlyPrice ?? plan.activePrice;
     if (forCycle === "six_month") return plan.sixMonthPrice ?? plan.activePrice;
     if (forCycle === "yearly") return plan.yearlyPrice ?? plan.activePrice;
     return plan.activePrice;
@@ -400,11 +403,11 @@ export default function BillingPage({ params }: { params: { storeId: string } })
           <DashCard>
             <DashCardHeader title="Available plans" description="What each tier gets you - upgrading or downgrading takes effect at your next billing cycle." />
             <div>
-              {/* FR-7.20 (Module 61/103) - the same three cycles the public
+              {/* FR-7.20 (Module 61/103) - the same cycles the public
                   pricing page's own toggle offers a signing-up seller,
                   extended here to an existing seller switching plans. */}
               <div className="mb-4 inline-flex rounded-full border border-border bg-canvas p-1">
-                {(["monthly", "six_month", "yearly"] as Cycle[]).map((c) => (
+                {(["monthly", "quarterly", "six_month", "yearly"] as Cycle[]).map((c) => (
                   <button
                     key={c}
                     type="button"

@@ -46,8 +46,8 @@ export class UpdatePlanDto {
   currency?: string;
 
   @IsOptional()
-  @IsIn(["monthly", "yearly", "none", "six_month"])
-  billingInterval?: "monthly" | "yearly" | "none" | "six_month";
+  @IsIn(["monthly", "yearly", "none", "six_month", "quarterly"])
+  billingInterval?: "monthly" | "yearly" | "none" | "six_month" | "quarterly";
 
   @IsOptional()
   @IsNumber()

@@ -70,9 +70,27 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     it("the public /plans endpoint renders every group/tier entirely from plan-editor data", async () => {
       const res = await request(app.getHttpServer()).get("/plans");
       expect(res.status).toBe(200);
-      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["GO", "RUN", "RISE", "FLY"]);
+      // D75d (B2, 2026-10-10) - FLY is dormant (isActive=false) for the MVP
+      // window: "kept in the database... not shown anywhere" - the public
+      // endpoint's default (includeInactive=false) excludes it.
+      expect(res.body.individual.map((p: { name: string }) => p.name)).toEqual(["GO", "RUN", "RISE"]);
       expect(res.body.team).toHaveLength(3);
       expect(res.body.supplier.map((p: { name: string }) => p.name)).toEqual(["Supplier Free", "Supplier Premium"]);
+    });
+
+    it("FLY stays in the database, dormant - never returned by the public listing, but still visible to an admin who asks for inactive tiers too (D75d)", async () => {
+      const publicList = await request(app.getHttpServer()).get("/plans");
+      expect(publicList.body.individual.some((p: { name: string }) => p.name === "FLY")).toBe(false);
+
+      const token = await adminToken("fly-dormant-admin@example.com");
+      const adminList = await request(app.getHttpServer())
+        .get("/admin/plans?includeInactive=true")
+        .set("Authorization", `Bearer ${token}`);
+      const fly = adminList.body.individual.find((p: { name: string }) => p.name === "FLY");
+      expect(fly).toBeDefined();
+      expect(fly.isActive).toBe(false);
+      expect(fly.currency).toBe("USD");
+      expect(Number(fly.price)).toBe(249); // D9 - FLY's own price never changes just because it's dormant
     });
 
     it("an admin can create a new tier, reorder it, and retire it - all without a deploy (FR-8.2)", async () => {
@@ -234,10 +252,11 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
     });
   });
 
-  describe("Six-month/yearly billing, fixed multipliers (Module 61, FR-7.20 - replaces FR-7.6's admin-configurable-percent framing)", () => {
-    it("computes the six-month and yearly prices off the founder's fixed multipliers, off the ACTIVE (campaign-aware) monthly price, never the retired yearlyDiscountPercent", async () => {
+  describe("Quarterly/six-month/yearly billing, fixed multipliers (Module 61/B2, FR-7.20 - replaces FR-7.6's admin-configurable-percent framing)", () => {
+    it("computes the quarterly, six-month and yearly prices off the founder's fixed multipliers, off the ACTIVE (campaign-aware) monthly price, never the retired yearlyDiscountPercent", async () => {
       const token = await adminToken("cycle-pricing-admin@example.com");
       const settings = app.get(SettingsService);
+      const quarterlyMultiplier = await settings.resolve<number>("billing.quarterly_price_multiplier");
       const sixMonthMultiplier = await settings.resolve<number>("billing.six_month_price_multiplier");
       const yearlyMultiplier = await settings.resolve<number>("billing.yearly_price_multiplier");
 
@@ -253,6 +272,7 @@ describe("Plans, Pricing & Billing (e2e) - SRS §5.7/§14.7", () => {
       const list = await request(app.getHttpServer()).get("/plans");
       const found = list.body.individual.find((p: { id: string }) => p.id === plan.body.id);
       expect(found.activePrice).toBe(1000); // no campaign active - falls back to price
+      expect(found.quarterlyPrice).toBe(1000 * quarterlyMultiplier);
       expect(found.sixMonthPrice).toBe(1000 * sixMonthMultiplier);
       expect(found.yearlyPrice).toBe(1000 * yearlyMultiplier);
     });

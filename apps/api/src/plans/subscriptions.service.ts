@@ -3,6 +3,7 @@ import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { MultiStoreDowngradeService } from "./multi-store-downgrade.service";
+import { addMonthsClamped } from "./plan-pricing.util";
 import type { SettingsContext } from "../settings-registry/settings.types";
 
 export interface DowngradeLoss {
@@ -36,15 +37,25 @@ const DOWNGRADE_FEATURE_GATES: { key: string; label: string }[] = [
  * A billing-cycle-length step for FR-7.5's next-cycle math. Exported -
  * Module 20's PlanFeeDebitService reuses this for the exact same cadence
  * math rather than duplicating it. Module 61 (FR-7.20) added `six_month`
- * (advances 6 calendar months, covering the cycle a 5.5x-multiplier
- * payment buys) alongside the original monthly/yearly steps.
+ * alongside the original monthly/yearly steps; B2 (founder decision,
+ * 2026-10-10, D10) added `quarterly` and the six_month cycle's 15 bonus
+ * days of service - our own database's `currentPeriodEnd` is the sole
+ * source of truth for when a cycle (bonus days included) actually ends,
+ * never a payment provider's own billing date (see docs/
+ * founder-decisions-log.md's D10 entry). Calendar-month steps clamp to
+ * the target month's real last day (addMonthsClamped()) rather than
+ * JS Date's native rollover, so e.g. Jan 31 + 1 month lands on Feb 28,
+ * never Mar 3.
  */
-export function addInterval(from: Date, interval: "monthly" | "six_month" | "yearly"): Date {
-  const next = new Date(from);
-  if (interval === "yearly") next.setUTCFullYear(next.getUTCFullYear() + 1);
-  else if (interval === "six_month") next.setUTCMonth(next.getUTCMonth() + 6);
-  else next.setUTCMonth(next.getUTCMonth() + 1);
-  return next;
+export function addInterval(from: Date, interval: "monthly" | "quarterly" | "six_month" | "yearly"): Date {
+  if (interval === "yearly") return addMonthsClamped(from, 12);
+  if (interval === "six_month") {
+    const next = addMonthsClamped(from, 6);
+    next.setUTCDate(next.getUTCDate() + 15);
+    return next;
+  }
+  if (interval === "quarterly") return addMonthsClamped(from, 3);
+  return addMonthsClamped(from, 1);
 }
 
 /**
@@ -250,7 +261,7 @@ export class SubscriptionsService {
   async requestPlanChange(
     sellerId: string,
     newPlanId: string,
-    billingInterval?: "monthly" | "six_month" | "yearly",
+    billingInterval?: "monthly" | "quarterly" | "six_month" | "yearly",
     keepStoreIds?: string[],
     confirmed?: boolean,
   ) {

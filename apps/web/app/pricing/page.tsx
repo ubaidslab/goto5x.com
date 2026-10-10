@@ -19,17 +19,19 @@ interface Plan {
   campaignPrice: string | null;
   campaignActive: boolean;
   activePrice: number;
+  quarterlyPrice: number | null;
   sixMonthPrice: number | null;
   yearlyPrice: number | null;
   seatPrice: string | null;
   currency: string;
-  billingInterval: "monthly" | "yearly" | "none" | "six_month";
+  billingInterval: "monthly" | "yearly" | "none" | "six_month" | "quarterly";
   mostPopular?: boolean;
 }
 
 interface PricingCopy {
   benefits: string[];
   shopifyComparison: string;
+  quarterlyMultiplier: number;
   sixMonthMultiplier: number;
   yearlyMultiplier: number;
   /** New (v0.41, founder request) - "pause new subscriptions" mode. */
@@ -37,7 +39,8 @@ interface PricingCopy {
   newSubscriptionsPausedMessage: string;
 }
 
-type Cycle = "monthly" | "six_month" | "yearly";
+// B2 (founder decision, 2026-10-10, D10) - order is 1/3/6/12 months.
+type Cycle = "monthly" | "quarterly" | "six_month" | "yearly";
 
 const FAQS = [
   {
@@ -63,7 +66,7 @@ const FAQS = [
   },
 ];
 
-const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", six_month: "6 months", yearly: "Yearly" };
+const CYCLE_LABELS: Record<Cycle, string> = { monthly: "Monthly", quarterly: "3 months", six_month: "6 months", yearly: "Yearly" };
 
 /**
  * Module 80 (SRS §5.6j, FR-7.24) - "every existing feature... grouped into
@@ -166,6 +169,7 @@ export default function PricingPage() {
   }, [apiBase]);
 
   function cyclePriceFor(plan: Plan): number {
+    if (cycle === "quarterly") return plan.quarterlyPrice ?? plan.activePrice;
     if (cycle === "six_month") return plan.sixMonthPrice ?? plan.activePrice;
     if (cycle === "yearly") return plan.yearlyPrice ?? plan.activePrice;
     return plan.activePrice;
@@ -184,14 +188,19 @@ export default function PricingPage() {
 
   function savingsLabel(plan: Plan): string | undefined {
     if (cycle === "monthly" || !copy) return undefined;
-    const multiplier = cycle === "six_month" ? copy.sixMonthMultiplier : copy.yearlyMultiplier;
-    const months = cycle === "six_month" ? 6 : 12;
+    const multiplier = cycle === "quarterly" ? copy.quarterlyMultiplier : cycle === "six_month" ? copy.sixMonthMultiplier : copy.yearlyMultiplier;
+    const commitmentMonths = cycle === "quarterly" ? 3 : cycle === "six_month" ? 6 : 12;
+    // B2 (2026-10-10, D10) - the EFFECTIVE monthly rate divides by 6.5 for
+    // six_month (6 calendar months + 15 bonus days), never a plain 6 - the
+    // bonus days lower the true per-month cost, the comparison text above
+    // still talks about the 6 calendar months being committed to.
+    const monthsOfService = cycle === "six_month" ? 6.5 : commitmentMonths;
     const cyclePrice = cyclePriceFor(plan);
-    const payingMonthlyTotal = plan.activePrice * months;
+    const payingMonthlyTotal = plan.activePrice * commitmentMonths;
     const saved = payingMonthlyTotal - cyclePrice;
     if (saved <= 0) return undefined;
-    const effectiveMonthly = Math.round(cyclePrice / months);
-    return `${plan.currency} ${effectiveMonthly.toLocaleString()}/mo effective - save ${plan.currency} ${saved.toLocaleString()} vs. paying monthly ${months} times (${multiplier}x total)`;
+    const effectiveMonthly = Math.round(cyclePrice / monthsOfService);
+    return `${plan.currency} ${effectiveMonthly.toLocaleString()}/mo effective - save ${plan.currency} ${saved.toLocaleString()} vs. paying monthly ${commitmentMonths} times (${multiplier}x total)`;
   }
 
   return (
@@ -229,7 +238,7 @@ export default function PricingPage() {
           )}
 
           <Reveal delay={0.1} className="mt-10 inline-flex rounded-full border border-border bg-surface p-1">
-            {(["monthly", "six_month", "yearly"] as Cycle[]).map((c) => (
+            {(["monthly", "quarterly", "six_month", "yearly"] as Cycle[]).map((c) => (
               <button
                 key={c}
                 type="button"

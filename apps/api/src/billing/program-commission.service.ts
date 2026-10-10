@@ -162,8 +162,17 @@ export class ProgramCommissionService {
   }
 }
 
+// B2 (2026-10-10) - whole-number months only, deliberately NOT the 6.5
+// "months of service" figure plan-pricing.util.ts's monthsOfService()
+// uses for price-per-month/MRR purposes. This counts commission-eligible
+// MONTHS toward the Ambassador program's whole-month cap
+// (growth.ambassador_max_commission_months) - the 15 bonus days a
+// six_month renewal buys were never a commission-bearing month under
+// that program, so applying the 6.5 figure here would silently change
+// how much commission gets paid out, which nothing in B2 asked for.
 function monthsForBillingInterval(interval: string): number {
   if (interval === "yearly") return 12;
   if (interval === "six_month") return 6;
+  if (interval === "quarterly") return 3;
   return 1; // monthly
 }
