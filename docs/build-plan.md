@@ -4828,3 +4828,31 @@ branch-delete capability available to this session, confirmed via
 `git push --delete` and a tool search), so `throwaway/ci-a1-proof`
 remains on GitHub as a harmless, clearly-named, never-to-be-merged
 leftover.
+
+### Dependabot fired within minutes of PR #2 - 4 open PRs, none merged yet
+`.github/dependabot.yml` (part of PR #2) started working immediately:
+PRs [#4](https://github.com/ubaidslab/goto5x.com/pull/4),
+[#5](https://github.com/ubaidslab/goto5x.com/pull/5),
+[#6](https://github.com/ubaidslab/goto5x.com/pull/6),
+[#7](https://github.com/ubaidslab/goto5x.com/pull/7) appeared around
+08:36-08:37, ~15 minutes after merge. Left all four open, not merged -
+this needs a founder look, not a rubber stamp:
+
+- **#4/#5/#7** (`actions/checkout` 4→7, `actions/setup-node` 4→7,
+  `actions/cache` 4→6) are **major-version** bumps, not patch bumps -
+  Dependabot tracks the latest release by default, not just the pinned
+  major line. `actions/checkout`'s own changelog for this span lists a
+  breaking change (`allow-unsafe-pr-checkout` defaults). Real review
+  before merging any of these, not auto-merge.
+- **#6** (`pnpm/action-setup`) is the interesting one: Dependabot wants
+  to move the pin from `f40ffcd9...` (what's live on `main` right now)
+  *back* to `b906aff...` - the exact SHA this doc already flagged as
+  superseded earlier today. Re-checked live just now with a fresh
+  `git ls-remote --tags https://github.com/pnpm/action-setup v4`:
+  it resolves to `f40ffcd9...`, the same value already pinned, not
+  `b906aff...`. So Dependabot's scan (run ~08:36) saw a different
+  answer than a direct query gives right now (~08:40) - the tag is
+  volatile enough that two tools minutes apart disagree, which is
+  precisely the failure mode SHA-pinning (D94/A5) exists to prevent.
+  **Not merging #6** - it would move the pin to a value just confirmed
+  stale, not forward to anything newer.
