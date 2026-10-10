@@ -253,46 +253,40 @@ describe("Seller Payment Gateway Connect (e2e) - SRS §5.6h, §14.65", () => {
   });
 
   describe("FR-6.38: buyer-facing verify -> the same markAsPaid() core, never a second confirmation path", () => {
-    it("a verified gateway payment auto-confirms the order through markAsPaid(), posting the same commission/timeline side effects", async () => {
-      const { token, storeId, hostname } = await signupLoginAndCreateStore("gw-verify-ok@example.com", "gw-verify-ok-store");
+    /**
+     * D95/B3 (2026-10-10) - replaces the two tests this block had before
+     * B3 ("a verified gateway payment auto-confirms..." / "a not-yet-
+     * verified gateway payment never confirms..."). Both drove a real
+     * `verified: true`/`verified: false` outcome through fakeRaast - that
+     * is no longer reachable for ANY of the four providers: isGatewayLive()
+     * now refuses the call before chargeViaGateway() ever reaches the
+     * adapter, so "verified" vs "not yet verified" can't be distinguished
+     * at this layer anymore. The markAsPaid()/ledger/commission wiring
+     * this used to exercise via a gateway trigger is still covered via
+     * the manual mark-as-paid trigger below ("manual mark-as-paid still
+     * works unchanged"); once a provider is promoted to "live" (D86 -
+     * evidence in docs/gateway-verification/<name>.md), restore a real
+     * verified-success test here against that provider.
+     */
+    it("a 'verifying'-status provider refuses the charge before it ever reaches the adapter, and the order stays pending", async () => {
+      const { token, storeId, hostname } = await signupLoginAndCreateStore("gw-verify-gated@example.com", "gw-verify-gated-store");
       await request(app.getHttpServer())
         .post(`/stores/${storeId}/payment-gateway`)
         .set("Authorization", `Bearer ${token}`)
         .send({ provider: "raast", apiKey: "k" });
       const order = await placeOrder(hostname, token, storeId);
-      fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: true, providerReference: "RAAST-REF-1" });
 
       const verify = await request(app.getHttpServer())
         .post(`/storefront/gateway-payment/${order.statusLookupToken}/verify`)
         .send({ provider: "raast", reference: "buyer-provided-ref" });
-      expect(verify.status).toBe(201);
-      expect(verify.body.status).toBe("confirmed");
-
-      const persisted = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(persisted.status).toBe("confirmed");
-      const ledgerEntries = await superuser.ledgerEntry.findMany({ where: { orderId: order.id } });
-      expect(ledgerEntries.some((e) => e.type === "commission_accrued")).toBe(true);
-    });
-
-    it("a not-yet-verified gateway payment never confirms the order - no second confirmation path around markAsPaid()", async () => {
-      const { token, storeId, hostname } = await signupLoginAndCreateStore("gw-verify-fail@example.com", "gw-verify-fail-store");
-      await request(app.getHttpServer())
-        .post(`/stores/${storeId}/payment-gateway`)
-        .set("Authorization", `Bearer ${token}`)
-        .send({ provider: "raast", apiKey: "k" });
-      const order = await placeOrder(hostname, token, storeId);
-      fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: false });
-
-      const verify = await request(app.getHttpServer())
-        .post(`/storefront/gateway-payment/${order.statusLookupToken}/verify`)
-        .send({ provider: "raast" });
-      expect(verify.status).toBe(400);
+      expect(verify.status).toBe(404);
+      expect(fakeRaast.verifyPayment).not.toHaveBeenCalled();
 
       const persisted = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
       expect(persisted.status).toBe("pending");
     });
 
-    it("the buyer-facing checkout-options endpoint lists only active connections, Raast first", async () => {
+    it("D95/B3 (2026-10-10) - the buyer-facing checkout-options endpoint is empty while every gateway is 'verifying', active connections or not", async () => {
       const { token, storeId, hostname } = await signupLoginAndCreateStore("gw-options@example.com", "gw-options-store");
       await request(app.getHttpServer())
         .post(`/stores/${storeId}/payment-gateway`)
@@ -302,7 +296,7 @@ describe("Seller Payment Gateway Connect (e2e) - SRS §5.6h, §14.65", () => {
         .post(`/stores/${storeId}/payment-gateway`)
         .set("Authorization", `Bearer ${token}`)
         .send({ provider: "raast", apiKey: "k" });
-      // Connected but inactive - must not appear in the buyer-facing list.
+      // Connected but inactive - excluded on that basis alone, same as before B3.
       await request(app.getHttpServer())
         .post(`/stores/${storeId}/payment-gateway`)
         .set("Authorization", `Bearer ${token}`)
@@ -313,9 +307,15 @@ describe("Seller Payment Gateway Connect (e2e) - SRS §5.6h, §14.65", () => {
         .send({ isActive: false });
       const order = await placeOrder(hostname, token, storeId);
 
+      // Before B3, raast+bank (active) would have appeared here, Raast
+      // first, and jazzcash (inactive) would not. Now none do: raast and
+      // bank are connected+active but registry status "verifying" (D95) -
+      // Risk #50's whole point was that "active" alone used to be
+      // enough to reach a buyer, with no evidence the integration
+      // actually works.
       const options = await request(app.getHttpServer()).get(`/storefront/gateway-payment/${order.statusLookupToken}`);
       expect(options.status).toBe(200);
-      expect(options.body).toEqual(["raast", "bank"]);
+      expect(options.body).toEqual([]);
     });
 
     it("manual mark-as-paid still works unchanged for a seller with no gateway connected", async () => {

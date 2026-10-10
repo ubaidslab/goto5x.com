@@ -34,8 +34,65 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
+      // D95/B3 (2026-10-10) - a real Content-Security-Policy, but scoped
+      // to ONLY the three buyer-facing pages where a payment gateway's
+      // own client-side script could ever load (checkout, and the two
+      // pages that render the gateway-provider picker post-checkout:
+      // order-status/order-confirmation - see
+      // apps/web/app/storefront/order-status/{model-advance-panel,
+      // order-verification-panel}.tsx). This is NOT the full-site CSP the
+      // comment above this one deliberately defers (seller-configured
+      // image domains, seller-authored head tags, and third-party widget
+      // integrations are genuinely not safe to lock down without a real
+      // per-route audit) - these three routes are a narrow, fully
+      // first-party exception: today's four gateway adapters
+      // (raast/easypaisa/jazzcash/bank) are pure server-to-server HTTPS
+      // calls with zero client-side script, so CHECKOUT_CSP_EXTRA_SOURCES
+      // below is empty and this just locks down the real baseline. When a
+      // future "soon" provider (Stripe etc., M3/1C) ships a real
+      // client-side script, add its required sources here AND to its
+      // entry in apps/api/src/payment-gateway/gateway-registry.ts (kept
+      // as plain, independently-maintained data on each side - this repo
+      // has no shared package between apps/web and apps/api to import
+      // the registry from directly).
+      {
+        source: "/storefront/checkout",
+        headers: [{ key: "Content-Security-Policy", value: buildCheckoutCsp() }],
+      },
+      {
+        source: "/storefront/order-status/:token",
+        headers: [{ key: "Content-Security-Policy", value: buildCheckoutCsp() }],
+      },
+      {
+        source: "/storefront/order-confirmation/:token",
+        headers: [{ key: "Content-Security-Policy", value: buildCheckoutCsp() }],
+      },
     ];
   },
 };
+
+// Mirrors gateway-registry.ts's "soon" list conceptually, but only ever
+// needs entries once a provider actually ships a client-side script -
+// today that's none of them (see the comment above). Shape:
+// { scriptSrc: ["https://js.stripe.com"], connectSrc: ["https://api.stripe.com"], frameSrc: [...] }
+const CHECKOUT_CSP_EXTRA_SOURCES = [];
+
+function buildCheckoutCsp() {
+  const scriptSrc = ["'self'", "'unsafe-inline'", ...CHECKOUT_CSP_EXTRA_SOURCES.flatMap((s) => s.scriptSrc ?? [])];
+  const connectSrc = ["'self'", ...CHECKOUT_CSP_EXTRA_SOURCES.flatMap((s) => s.connectSrc ?? [])];
+  const frameSrc = ["'none'", ...CHECKOUT_CSP_EXTRA_SOURCES.flatMap((s) => s.frameSrc ?? [])];
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc.join(" ")}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "font-src 'self'",
+    `connect-src ${connectSrc.join(" ")}`,
+    `frame-src ${frameSrc.join(" ")}`,
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "base-uri 'self'",
+  ].join("; ");
+}
 
 module.exports = nextConfig;

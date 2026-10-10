@@ -13,6 +13,7 @@ import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
 import { decryptGatewayCredential, encryptGatewayCredential } from "./payment-gateway-credential-crypto.util";
 import { GatewayVerifyResult, SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
 import { GatewayHealthService } from "./gateway-health.service";
+import { isGatewayLive } from "./gateway-registry";
 
 /**
  * FR-6.36 - Raast is offered first (lowest priorityOrder), Easypaisa/
@@ -204,14 +205,27 @@ export class PaymentGatewayService {
     return this.verifyAndConfirm(order.storeId, order.id, provider, reference);
   }
 
-  /** Buyer-facing - the checkout provider list for a store, active connections only, Raast first. No credentials, no seller session. */
+  /**
+   * Buyer-facing - the checkout provider list for a store, active
+   * connections only, Raast first. No credentials, no seller session.
+   *
+   * D95/B3 (founder decision, 2026-10-10) - also filtered to registry
+   * status "live", on top of the existing isActive filter. Today this
+   * always returns [] for every store: all four adapters are
+   * "verifying" (Risk #50 - previously these were live and ungated the
+   * moment a seller connected one, with no evidence of a working
+   * integration behind them). Connecting/testing a "verifying" provider
+   * still works (see connect()/testConnection() below, neither checks
+   * isGatewayLive) - only the buyer-facing list and the real charge path
+   * (chargeViaGateway()) are gated, so evidence can still be gathered.
+   */
   async listActiveForCheckout(storeId: string) {
     const connections = await this.prismaAdmin.storePaymentGatewayConnection.findMany({
       where: { storeId, isActive: true },
       select: { provider: true, priorityOrder: true },
       orderBy: { priorityOrder: "asc" },
     });
-    return connections.map((c) => c.provider);
+    return connections.filter((c) => isGatewayLive(c.provider)).map((c) => c.provider);
   }
 
   /**
@@ -379,6 +393,14 @@ export class PaymentGatewayService {
     currency: string,
     reference: string | undefined,
   ): Promise<GatewayVerifyResult> {
+    // D95/B3 (2026-10-10) - the real gate: a "verifying"/"soon" provider
+    // never processes a real buyer charge, regardless of how the
+    // connection itself is configured. Same exception/message as the
+    // no-connection case deliberately - a buyer probing provider values
+    // can't tell "doesn't exist" apart from "not live yet".
+    if (!isGatewayLive(provider)) {
+      throw new NotFoundException("No active connection for this provider.");
+    }
     const connection = await this.prismaAdmin.storePaymentGatewayConnection.findUnique({
       where: { uniq_store_gateway_provider: { storeId, provider } },
     });
