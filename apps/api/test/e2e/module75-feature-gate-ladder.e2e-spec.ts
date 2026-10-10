@@ -65,28 +65,35 @@ describe("Feature-Gate Ladder (e2e) - SRS §5.6j, §14.67, FR-7.23", () => {
     return plan;
   }
 
-  describe("Store limits (GO 1/RUN 3/RISE 5/FLY 10)", () => {
-    it("a RUN seller may own up to 3 stores, blocked on the 4th", async () => {
+  // SRS §5.93/FR-93.1 (D74, 2026-10-09) superseded this ladder's own
+  // GO1/RUN3/RISE5/FLY10 store counts with a flat cap of 1 for every
+  // individual tier, for the MVP window - the ladder's numbers stay
+  // canonical in §5.6j for whenever multi-store is reactivated (the code
+  // is archived, not deleted), but no plan currently seeds an override
+  // above the global default of 1 (stores.seed.ts). These two tests
+  // replace what used to assert the pre-FR-93.1 ladder directly.
+  describe("Store limits (FR-93.1: every individual tier capped at 1 for the MVP window)", () => {
+    it("a RUN seller is still capped at 1 store, not the old ladder's 3", async () => {
       const { token, sellerId } = await signupLoginAndCreateStore("gate-run-stores@example.com", "gate-run-stores-store");
       await upgradeToTier(sellerId, 1); // RUN
 
-      for (const slug of ["gate-run-two", "gate-run-three"]) {
-        const res = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Store", slug });
-        expect(res.status).toBe(201);
-      }
-      const fourth = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Store", slug: "gate-run-four" });
-      expect(fourth.status).toBe(400);
-      expect(fourth.body.message.message).toMatch(/store limit \(3\) has been reached/i);
+      const second = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Store", slug: "gate-run-two" });
+      expect(second.status).toBe(400);
+      expect(second.body.message.message).toMatch(/store limit \(1\) has been reached/i);
     });
 
-    it("a FLY seller's real seeded limit is 10, not the old 5", async () => {
-      const { sellerId } = await signupLoginAndCreateStore("gate-fly-stores@example.com", "gate-fly-stores-store");
+    it("a FLY seller is also capped at 1 - FR-93.1 names FLY explicitly ('including FLY once reactivated')", async () => {
+      const { token, sellerId } = await signupLoginAndCreateStore("gate-fly-stores@example.com", "gate-fly-stores-store");
       await upgradeToTier(sellerId, 3); // FLY
       const flyPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 3 } });
-      const value = await superuser.settingsValue.findFirstOrThrow({
+      const override = await superuser.settingsValue.findFirst({
         where: { definitionKey: "stores.max_per_seller", scopeType: "plan", scopeId: flyPlan.id },
       });
-      expect(value.value).toBe(10);
+      expect(override).toBeNull(); // no plan-scoped override - the global default of 1 applies
+
+      const second = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Store", slug: "gate-fly-two" });
+      expect(second.status).toBe(400);
+      expect(second.body.message.message).toMatch(/store limit \(1\) has been reached/i);
     });
   });
 

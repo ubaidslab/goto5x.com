@@ -687,6 +687,11 @@ model Store {
   buyerChatThreads          BuyerChatThread[]
 
   @@index([sellerId], name: "idx_stores_seller_id")
+  // B1: a partial unique index, `stores_one_active_per_seller` ON
+  // (seller_id) WHERE status = 'active', also exists on this table -
+  // schema.prisma's DSL has no partial-index support, so it lives only in
+  // 20261010090000_single_active_store_per_seller/migration.sql. Don't
+  // `prisma db pull`/introspect away what looks like an "extra" index.
   @@map("stores")
 }
 

@@ -1,7 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { SubscriptionsService } from "../../src/plans/subscriptions.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -9,11 +8,22 @@ const ADMIN_PASSWORD = "admin-correct-horse-battery";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * SRS §5.6k (v0.41), FR-6.43 (Module 66) - the multi-store downgrade rule:
- * GO(1)/RUN(3)/RISE(5)/FLY(10) store limits (stores.seed.ts), a
- * confirmation step when a downgrade puts the seller over the new limit,
- * oldest-store-stays-active as the unchosen default, a 30-day reclaim
- * window on upgrade, and never a forced deletion.
+ * SRS §5.6k (v0.41), FR-6.43 (Module 66) - the multi-store downgrade rule.
+ *
+ * SRS §5.93/FR-93.1 (D74, 2026-10-09) flattened every individual plan to
+ * stores.max_per_seller = 1 for the MVP window, superseding this module's
+ * own GO1/RUN3/RISE5/FLY10 ladder, and B1's stores_one_active_per_seller
+ * partial unique index makes "a seller with 2+ simultaneously active
+ * stores" a hard database impossibility for any code path now - including
+ * a test seeding that precondition directly. The three tests this used to
+ * run for determineChoiceRequirement()/applyDowngrade() (which all needed
+ * to start from 2+ pre-existing active stores, reachable only via an
+ * upgrade that no longer grants extra slots) moved to
+ * multi-store-downgrade.service.spec.ts, a unit suite against a fake
+ * Prisma client the index can't constrain. What's left here -
+ * reclaimOnUpgrade()'s 30-day window - still has a real, reachable e2e
+ * precondition: orders_paused stores, seeded directly (never transitioning
+ * through "active"), don't touch the new index at all.
  */
 describe("Multi-store downgrade rule (e2e) - SRS §5.6k/§14.66 (Module 66, FR-6.43)", () => {
   let app: INestApplication;
@@ -68,12 +78,6 @@ describe("Multi-store downgrade rule (e2e) - SRS §5.6k/§14.66 (Module 66, FR-6
     return verify.body.accessToken as string;
   }
 
-  async function createStore(token: string, slug: string) {
-    const res = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Store", slug });
-    expect(res.status).toBe(201);
-    return res.body.id as string;
-  }
-
   async function grantPlan(adminToken: string, sellerId: string, tierOrder: number) {
     const plan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder } });
     const res = await request(app.getHttpServer())
@@ -84,143 +88,48 @@ describe("Multi-store downgrade rule (e2e) - SRS §5.6k/§14.66 (Module 66, FR-6
     return plan;
   }
 
-  it("FR-6.43: requesting a downgrade over the new limit returns a store-choice requirement instead of applying anything", async () => {
-    const adminToken = await createAndLoginAdmin("downgrade-admin1@example.com");
-    const seller = await signup("downgrade-choice@example.com");
-    const store1 = await createStore(seller.token, "downgrade-choice-1");
-    await grantPlan(adminToken, seller.sellerId, 1); // RUN (max 3)
-    await createStore(seller.token, "downgrade-choice-2");
-    await createStore(seller.token, "downgrade-choice-3");
-
-    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-    const change = await request(app.getHttpServer())
-      .post("/sellers/me/subscription/change")
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ planId: goPlan.id });
-
-    expect(change.status).toBe(201);
-    expect(change.body.requiresStoreChoice).toBe(true);
-    expect(change.body.maxStores).toBe(1);
-    expect(change.body.activeStores).toHaveLength(3);
-    expect(change.body.activeStores[0].id).toBe(store1); // oldest first
-
-    // Nothing was staged - a re-fetch shows no pendingPlanId yet.
-    const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
-    expect(subscription.pendingPlanId).toBeNull();
-  });
-
-  it("FR-6.43: a chosen store stays active, unchosen stores get overLimitPausedAt at the moment the downgrade actually applies (cycle end), never immediately", async () => {
-    const adminToken = await createAndLoginAdmin("downgrade-admin2@example.com");
-    const seller = await signup("downgrade-chosen@example.com");
-    await createStore(seller.token, "downgrade-chosen-1");
-    await grantPlan(adminToken, seller.sellerId, 1); // RUN (max 3)
-    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd
-    // null, "never billed"); grantPlan() (the admin-grant endpoint) only
-    // ever changes planId, never currentPeriodEnd, so without this the
-    // seller would still have no active cycle here - and requestPlanChange()
-    // treats "no cycle yet" as "nothing to defer, apply immediately,"
-    // which is exactly what this test is proving does NOT happen for a
-    // real paying subscriber already mid-cycle.
-    await superuser.subscription.update({
-      where: { sellerId: seller.sellerId },
-      data: { currentPeriodEnd: new Date(Date.now() + 30 * DAY_MS) },
+  // B1/FR-93.1: every individual tier's max is 1 now, so the one way
+  // reclaimOnUpgrade() still has anything to do is a seller who currently
+  // has ZERO active stores (the grandfather case: all were paused by the
+  // migration's data-fix or a later downgrade) getting a plan applied -
+  // seeded directly via superuser, never through the live create() API,
+  // since these rows go straight to orders_paused without ever passing
+  // through "active" and therefore never touch stores_one_active_per_seller.
+  async function createPausedStore(sellerId: string, slug: string, createdAt: Date, overLimitPausedAt: Date) {
+    const store = await superuser.store.create({
+      data: { sellerId, name: "Store", slug, status: "orders_paused", createdAt, overLimitPausedAt },
     });
-    const keepStoreId = await createStore(seller.token, "downgrade-chosen-2");
-    const otherStoreId = await createStore(seller.token, "downgrade-chosen-3");
+    return store.id;
+  }
 
-    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
-    const change = await request(app.getHttpServer())
-      .post("/sellers/me/subscription/change")
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ planId: goPlan.id, keepStoreIds: [keepStoreId] });
-    expect(change.status).toBe(201);
-    expect(change.body.pendingPlanId).toBe(goPlan.id);
-
-    // Deferred - nothing paused yet, still within the current cycle.
-    const beforeCycleEnd = await superuser.store.findUniqueOrThrow({ where: { id: otherStoreId } });
-    expect(beforeCycleEnd.status).toBe("active");
-
-    // Back-date the cycle end and run the real scheduled sweep.
-    await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { currentPeriodEnd: new Date(Date.now() - 1000) } });
-    const subscriptions = app.get(SubscriptionsService);
-    const result = await subscriptions.applyDueCycleChanges(new Date());
-    expect(result.applied).toBe(1);
-
-    const kept = await superuser.store.findUniqueOrThrow({ where: { id: keepStoreId } });
-    expect(kept.status).toBe("active");
-    expect(kept.overLimitPausedAt).toBeNull();
-
-    const paused = await superuser.store.findUniqueOrThrow({ where: { id: otherStoreId } });
-    expect(paused.status).toBe("orders_paused");
-    expect(paused.overLimitPausedAt).not.toBeNull();
-
-    const afterSubscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
-    expect(afterSubscription.planId).toBe(goPlan.id);
-    expect(afterSubscription.pendingKeepStoreIds).toEqual([]);
-  });
-
-  it("FR-6.43: with no seller choice, the oldest store stays active by default and every newer store is paused", async () => {
-    const adminToken = await createAndLoginAdmin("downgrade-admin3@example.com");
-    const seller = await signup("downgrade-default@example.com");
-    const oldest = await createStore(seller.token, "downgrade-default-1");
-    await grantPlan(adminToken, seller.sellerId, 1); // RUN (max 3)
-    const newer1 = await createStore(seller.token, "downgrade-default-2");
-    const newer2 = await createStore(seller.token, "downgrade-default-3");
-
-    // Admin-granted downgrade - bypasses the seller confirmation step entirely (FR-7.8), applies immediately.
-    await grantPlan(adminToken, seller.sellerId, 0); // GO (max 1)
-
-    const oldestRow = await superuser.store.findUniqueOrThrow({ where: { id: oldest } });
-    expect(oldestRow.status).toBe("active");
-    const newer1Row = await superuser.store.findUniqueOrThrow({ where: { id: newer1 } });
-    expect(newer1Row.status).toBe("orders_paused");
-    expect(newer1Row.overLimitPausedAt).not.toBeNull();
-    const newer2Row = await superuser.store.findUniqueOrThrow({ where: { id: newer2 } });
-    expect(newer2Row.status).toBe("orders_paused");
-  });
-
-  it("FR-6.43: an upgrade within 30 days reclaims over-limit-paused stores up to the new limit, oldest-paused first, and never deletes anything", async () => {
+  it("FR-6.43: a plan grant reclaims the oldest-paused store first, up to the one free slot, and never deletes anything", async () => {
     const adminToken = await createAndLoginAdmin("downgrade-admin4@example.com");
     const seller = await signup("downgrade-reclaim@example.com");
-    const kept = await createStore(seller.token, "downgrade-reclaim-1");
-    await grantPlan(adminToken, seller.sellerId, 1); // RUN (max 3)
-    const paused1 = await createStore(seller.token, "downgrade-reclaim-2");
-    const paused2 = await createStore(seller.token, "downgrade-reclaim-3");
-    await grantPlan(adminToken, seller.sellerId, 0); // GO (max 1) - pauses paused1/paused2
+    const newerPaused = await createPausedStore(seller.sellerId, "downgrade-reclaim-newer", new Date(Date.now() - 2 * DAY_MS), new Date());
+    const olderPaused = await createPausedStore(seller.sellerId, "downgrade-reclaim-older", new Date(Date.now() - 5 * DAY_MS), new Date());
 
-    for (const id of [paused1, paused2]) {
-      const row = await superuser.store.findUniqueOrThrow({ where: { id } });
-      expect(row.status).toBe("orders_paused");
-    }
+    // Any individual-tier grant resolves max=1 under FR-93.1; this seller
+    // has 0 active stores, so exactly 1 free slot opens.
+    await grantPlan(adminToken, seller.sellerId, 1); // RUN
 
-    // Upgrade back to RUN (max 3) within the 30-day window.
-    await grantPlan(adminToken, seller.sellerId, 1);
+    const reclaimed = await superuser.store.findUniqueOrThrow({ where: { id: olderPaused } });
+    expect(reclaimed.status).toBe("active"); // oldest-paused-first, matching applyDowngrade()'s own convention
+    expect(reclaimed.overLimitPausedAt).toBeNull();
 
-    for (const id of [kept, paused1, paused2]) {
-      const row = await superuser.store.findUniqueOrThrow({ where: { id } });
-      expect(row.status).toBe("active");
-      expect(row.overLimitPausedAt).toBeNull();
-    }
+    const stillPaused = await superuser.store.findUniqueOrThrow({ where: { id: newerPaused } });
+    expect(stillPaused.status).toBe("orders_paused"); // the one free slot already went to the older row
+    expect(stillPaused.overLimitPausedAt).not.toBeNull(); // never deleted, no data lost
   });
 
-  it("FR-6.43: after the 30-day reclaim window elapses, an upgrade does NOT auto-restore the store - it stays paused, never deleted", async () => {
+  it("FR-6.43: after the 30-day reclaim window elapses, a plan grant does NOT auto-restore the store - it stays paused, never deleted", async () => {
     const adminToken = await createAndLoginAdmin("downgrade-admin5@example.com");
     const seller = await signup("downgrade-expired-window@example.com");
-    const kept = await createStore(seller.token, "downgrade-expired-1");
-    await grantPlan(adminToken, seller.sellerId, 1); // RUN (max 3)
-    const pausedStoreId = await createStore(seller.token, "downgrade-expired-2");
-    await grantPlan(adminToken, seller.sellerId, 0); // GO (max 1) - pauses pausedStoreId
+    const pausedStoreId = await createPausedStore(seller.sellerId, "downgrade-expired-2", new Date(Date.now() - 40 * DAY_MS), new Date(Date.now() - 31 * DAY_MS));
 
-    // Back-date overLimitPausedAt past the 30-day window.
-    await superuser.store.update({ where: { id: pausedStoreId }, data: { overLimitPausedAt: new Date(Date.now() - 31 * DAY_MS) } });
-
-    await grantPlan(adminToken, seller.sellerId, 1); // upgrade back to RUN, well after the window
+    await grantPlan(adminToken, seller.sellerId, 1); // well after the window
 
     const row = await superuser.store.findUniqueOrThrow({ where: { id: pausedStoreId } });
     expect(row.status).toBe("orders_paused"); // never auto-reclaimed
     expect(row.overLimitPausedAt).not.toBeNull(); // never deleted, no data lost
-
-    const keptRow = await superuser.store.findUniqueOrThrow({ where: { id: kept } });
-    expect(keptRow.status).toBe("active");
   });
 });

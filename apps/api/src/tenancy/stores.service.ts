@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { EventsService } from "../events/events.service";
@@ -49,11 +50,27 @@ export class StoresService {
     private readonly settings: SettingsService,
   ) {}
 
-  /** SRS §5.56/FR-56.1 - plan-tier store-count gate, same check-then-act shape as StaffAccountsService.create()'s staff.max_accounts gate. Per-seller count (a store has no owner other than the seller creating it), never per-store. */
+  /**
+   * SRS §5.56/FR-56.1 - plan-tier store-count gate, same check-then-act
+   * shape as StaffAccountsService.create()'s staff.max_accounts gate.
+   * Per-seller count (a store has no owner other than the seller creating
+   * it), never per-store. B1: counts only `active` stores - a seller with
+   * archived/paused history (e.g. MultiStoreDowngradeService-paused extras)
+   * is never blocked from creating a new one just because old rows exist,
+   * matching the DB constraint below and MultiStoreDowngradeService's own
+   * `status: "active"` filtering. This pre-check is still a TOCTOU race
+   * between two concurrent create() calls for the same seller - both can
+   * pass it before either commits - so it exists only for the clean error
+   * message in the common case; the real enforcement is the
+   * `stores_one_active_per_seller` partial unique index, whose violation
+   * the catch block below turns into this same message.
+   */
   async create(sellerId: string, dto: CreateStoreDto) {
     const planContext = await this.subscriptions.getPlanContext(sellerId);
     const maxStores = await this.settings.resolve<number>("stores.max_per_seller", planContext);
-    const existingCount = await this.tenantPrisma.run(sellerId, (tx) => tx.store.count({ where: { sellerId } }));
+    const existingCount = await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.store.count({ where: { sellerId, status: "active" } }),
+    );
     if (existingCount >= maxStores) {
       throw new BadRequestException(`Your plan's store limit (${maxStores}) has been reached.`);
     }
@@ -84,9 +101,22 @@ export class StoresService {
       if (existingSlug) {
         throw new ConflictException(`Slug "${dto.slug}" is already taken.`);
       }
-      const created = await tx.store.create({
-        data: { sellerId, name: dto.name, slug: dto.slug, ...(dto.currency ? { currency: dto.currency } : {}) },
-      });
+      let created;
+      try {
+        created = await tx.store.create({
+          data: { sellerId, name: dto.name, slug: dto.slug, ...(dto.currency ? { currency: dto.currency } : {}) },
+        });
+      } catch (err) {
+        // Two concurrent create() calls for the same seller can both pass
+        // the existingCount pre-check above before either commits -
+        // stores_one_active_per_seller (the DB-level partial unique index)
+        // is what actually stops the second one, surfaced here as Prisma's
+        // unique-violation code rather than a raw 500.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          throw new BadRequestException(`Your plan's store limit (${maxStores}) has been reached.`);
+        }
+        throw err;
+      }
       // SRS FR-1.2/§14.1 (Module 4) - every store gets a theme the moment it
       // exists, so the customizer/storefront never have to handle "no theme
       // assigned yet" as a state. `themes` has no RLS (global catalog), so
