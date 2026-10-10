@@ -226,7 +226,7 @@ jobs:
         # these processes now, each on its own runner/DB, instead of 1.
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm --filter @uzeyn/api test:e2e -- --shard=${{ matrix.shard }}/4
+        run: pnpm --filter @uzeyn/api test:e2e --shard=${{ matrix.shard }}/4
 
   # D59: sharding e2e-tests gives each shard its own check name
   # ("e2e-tests (1)" .. "e2e-tests (4)"), which would otherwise mean
