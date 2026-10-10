@@ -85,21 +85,35 @@ export async function seedStoresSettings(prisma: PrismaClient) {
     update: {},
   });
 
-  // Module 75 (SRS §5.6j/FR-7.23) - the founder-approved feature-gate
-  // ladder: GO 1/RUN 3/RISE 5/FLY 10. GO keeps the global default of 1 (no
-  // override needed); RUN, previously also on the global default, now gets
-  // its own explicit override. Team group is untouched by this ladder
-  // (individual-tier-only per FR-7.23), keeping its own pre-existing
-  // mapping by tierOrder position.
-  const maxStoresByTierAndGroup: Record<"individual" | "team", Record<number, number>> = {
-    individual: { 1: 3, 2: 5, 3: 10 },
+  // SRS §5.93/FR-93.1 (D74, 2026-10-09) - "one store per customer for the
+  // MVP window... every plan... is capped at stores = 1" - supersedes
+  // Module 75/FR-7.23's GO 1/RUN 3/RISE 5/FLY 10 individual-tier ladder for
+  // this window only (the ladder's own numbers stay canonical in SRS §5.6j
+  // for whenever multi-store is reactivated; FR-93.1 is explicit that the
+  // code is archived, not deleted). No individual-group override is seeded
+  // anymore - the global default of 1 already applies to every individual
+  // tier once the RUN/RISE/FLY overrides below are removed. Team group is
+  // explicitly out of scope for D74 (mvp-scope.md never mentions it, and
+  // every team/sponsorship e2e test already uses one store per sponsored
+  // seller, never 2+ stores under one seller) - its own ladder is
+  // untouched.
+  const maxStoresByTierAndGroup: Record<"team", Record<number, number>> = {
     team: { 1: 2, 2: 5 },
   };
   const paidPlans = await prisma.plan.findMany({
     where: { planGroup: { in: ["individual", "team"] }, tierOrder: { gt: 0 } },
   });
   for (const plan of paidPlans) {
-    const value = maxStoresByTierAndGroup[plan.planGroup as "individual" | "team"]?.[plan.tierOrder];
+    if (plan.planGroup === "individual") {
+      // Idempotent revert of a pre-FR-93.1 seed run's 3/5/10 override, if
+      // one exists - deleteMany on a non-existent row is a safe no-op, so
+      // this is correct whether or not an older override was ever written.
+      await prisma.settingsValue.deleteMany({
+        where: { definitionKey: "stores.max_per_seller", scopeType: "plan", scopeId: plan.id },
+      });
+      continue;
+    }
+    const value = maxStoresByTierAndGroup.team[plan.tierOrder];
     if (value == null) continue;
     await prisma.settingsValue.upsert({
       where: { uniq_settings_scope: { definitionKey: "stores.max_per_seller", scopeType: "plan", scopeId: plan.id } },

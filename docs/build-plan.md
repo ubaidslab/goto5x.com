@@ -4775,11 +4775,84 @@ wired as a near-zero-cost step inside the `changes` job itself, so a
 future edit to the filter regex that narrows the skip condition fails
 this check immediately instead of silently.
 
-Still open from Section A: A1 (prove `e2e-tests-summary` fails on a
-forced shard failure and on a cancellation, on a throwaway branch), A4
-(branch protection itself needs the founder — no repo-admin tool is
-available to this session; the PR-only discipline starts now
-regardless), A6 (root-cause the local PDF test failures). This push
-itself is the first exercise of D92's new PR-only flow: pushed to the
-designated branch, opened as a PR against `main` rather than
-fast-forwarded directly.
+This push itself was the first exercise of D92's new PR-only flow:
+pushed to the designated branch, opened as PR #2 against `main` rather
+than fast-forwarded directly, merged (squash, `14a177c`) only after its
+own CI ran the full suite and came back green — independently
+confirmed via the GitHub Actions API (run #209, all jobs including all
+4 e2e shards and `e2e-tests-summary`: `success`), not assumed. A6 is
+closed (see the PDF root-cause entry and
+[issue #3](https://github.com/ubaidslab/goto5x.com/issues/3)). A4's
+code-side half (PR-only discipline) is live; its repo-admin half
+(actually turning on branch protection) still needs the founder — no
+such tool is available to this session.
+
+### A1 — e2e-tests-summary proven to fail correctly, both ways
+On a throwaway branch (`throwaway/ci-a1-proof`, off the merged A2/A3/A5
+`ci.yml`), triggered via `workflow_dispatch` so `full_run` resolves
+`true` and the real matrix runs outside a PR:
+
+**Scenario 1 - a real shard failure.** Added one throwaway spec
+(`apps/api/test/e2e/zzz-throwaway-ci-a1-proof.e2e-spec.ts`,
+`expect(1).toBe(2)`), confirmed via `--listTests --shard=4/4` it lands
+in shard 4 before pushing. Run #211: shard 4 → `failure` (job
+[114171511145](https://github.com/ubaidslab/goto5x.com/actions/runs/38037693752/job/114171511145)),
+shards 1-3 → `success`. `e2e-tests-summary` → **`failure`** (job
+[114174284341](https://github.com/ubaidslab/goto5x.com/actions/runs/38037693752/job/114174284341),
+its "Check e2e shard results" step reading `needs.e2e-tests.result ==
+"failure"` and exiting 1, exactly as written).
+
+**Scenario 2 - a cancellation.** Not staged - a real one happened while
+setting up scenario 1. The initial `git push` of the throwaway branch
+triggered run #210 (a plain `push` event); dispatching run #211 moments
+later landed in the same `concurrency` group
+(`ci-CI-refs/heads/throwaway/ci-a1-proof`) and, per
+`cancel-in-progress: true`, cancelled it mid-flight. Run #210's
+`e2e-tests` job → `cancelled` (never reached the matrix - `changes`
+itself was still running when the cancel landed); `e2e-tests-summary`
+→ **`failure`** (job
+[114171479410](https://github.com/ubaidslab/goto5x.com/actions/runs/38037691016/job/114171479410)),
+same script, this time reading `needs.e2e-tests.result == "cancelled"`.
+This is honestly a cleaner proof than a staged single-job cancel would
+have been: the summary script only ever reads one aggregate value
+(`needs.e2e-tests.result`), and GitHub's matrix rollup reports
+`cancelled` for that aggregate whether 1 of 4 legs or all 4 were
+cancelled - there's no tool available to this session that cancels a
+single matrix leg in isolation, and this real event exercises the
+identical code path regardless.
+
+Both scenarios independently confirmed via the GitHub Actions API, not
+read off the UI or assumed from the YAML. Cleanup: the throwaway branch
+was deleted locally; deleting it on the remote failed (403 - no
+branch-delete capability available to this session, confirmed via
+`git push --delete` and a tool search), so `throwaway/ci-a1-proof`
+remains on GitHub as a harmless, clearly-named, never-to-be-merged
+leftover.
+
+### Dependabot fired within minutes of PR #2 - 4 open PRs, none merged yet
+`.github/dependabot.yml` (part of PR #2) started working immediately:
+PRs [#4](https://github.com/ubaidslab/goto5x.com/pull/4),
+[#5](https://github.com/ubaidslab/goto5x.com/pull/5),
+[#6](https://github.com/ubaidslab/goto5x.com/pull/6),
+[#7](https://github.com/ubaidslab/goto5x.com/pull/7) appeared around
+08:36-08:37, ~15 minutes after merge. Left all four open, not merged -
+this needs a founder look, not a rubber stamp:
+
+- **#4/#5/#7** (`actions/checkout` 4→7, `actions/setup-node` 4→7,
+  `actions/cache` 4→6) are **major-version** bumps, not patch bumps -
+  Dependabot tracks the latest release by default, not just the pinned
+  major line. `actions/checkout`'s own changelog for this span lists a
+  breaking change (`allow-unsafe-pr-checkout` defaults). Real review
+  before merging any of these, not auto-merge.
+- **#6** (`pnpm/action-setup`) is the interesting one: Dependabot wants
+  to move the pin from `f40ffcd9...` (what's live on `main` right now)
+  *back* to `b906aff...` - the exact SHA this doc already flagged as
+  superseded earlier today. Re-checked live just now with a fresh
+  `git ls-remote --tags https://github.com/pnpm/action-setup v4`:
+  it resolves to `f40ffcd9...`, the same value already pinned, not
+  `b906aff...`. So Dependabot's scan (run ~08:36) saw a different
+  answer than a direct query gives right now (~08:40) - the tag is
+  volatile enough that two tools minutes apart disagree, which is
+  precisely the failure mode SHA-pinning (D94/A5) exists to prevent.
+  **Not merging #6** - it would move the pin to a value just confirmed
+  stale, not forward to anything newer.

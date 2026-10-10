@@ -148,7 +148,7 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     await superuser.subscription.update({ where: { sellerId }, data: { planId: higherPlan.id } });
   }
 
-  it("a GO seller (limit 1) is blocked from creating a second store with a clear message, and the block lifts immediately on upgrade to a higher tier", async () => {
+  it("a GO seller (limit 1) is blocked from creating a second store with a clear message; upgrading to a higher tier does NOT lift the block under FR-93.1", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-limit@example.com");
 
     const first = await request(app.getHttpServer())
@@ -164,26 +164,31 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     expect(second.status).toBe(400);
     expect(second.body.message.message).toMatch(/store limit \(1\) has been reached/i);
 
+    // SRS §5.93/FR-93.1 (D74) - pre-FR-93.1, upgrading past GO lifted this
+    // block immediately (Module 75's RUN3/RISE5/FLY10 ladder). That ladder
+    // is now superseded for the MVP window: every individual tier resolves
+    // max=1, and stores_one_active_per_seller enforces it at the database
+    // level regardless of Settings Registry scope precedence - proven here
+    // by setting the highest-precedence scope (seller) to 2 explicitly and
+    // showing it still can't buy a second active store.
     await upgradeToMultiStoreTier(sellerId);
-    // Module 75 (§5.6j/FR-7.23) raised RISE's real store limit to 5 - this
-    // test's actual point is the upgrade MECHANISM (the block lifting
-    // immediately), not RISE's specific business number, so a
-    // seller-scoped override (highest precedence) keeps the limit small
-    // and the test's third-store assertion below meaningful.
     await app.get(SettingsService).setValue("stores.max_per_seller", "seller", sellerId, 2, ADMIN_ID);
 
     const afterUpgrade = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Store Two", slug: "multistore-two" });
-    expect(afterUpgrade.status).toBe(201);
+    // The pre-check itself is fooled by the override (it reads maxStores=2
+    // from Settings and lets the request through) - the DB constraint is
+    // what actually blocks it, so the error message's number reflects what
+    // the app believed the limit was, not what the database enforced.
+    // That's the whole point: the override changed the app's belief, not
+    // the real outcome.
+    expect(afterUpgrade.status).toBe(400);
+    expect(afterUpgrade.body.message.message).toMatch(/store limit \(2\) has been reached/i);
 
-    const third = await request(app.getHttpServer())
-      .post("/stores")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Store Three", slug: "multistore-three" });
-    expect(third.status).toBe(400);
-    expect(third.body.message.message).toMatch(/store limit \(2\) has been reached/i);
+    const activeCount = await superuser.store.count({ where: { sellerId, status: "active" } });
+    expect(activeCount).toBe(1); // server-enforced, not just app-layer advisory
   });
 
   it("SRS §5.73 founder resolution (2026-10-04) - a reserved slug (platform-own subdomain or a payment-brand name) is rejected regardless of plan tier, a non-reserved slug is unaffected", async () => {
@@ -209,20 +214,26 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     expect(ok.status).toBe(201);
   });
 
-  it("a seller who owns two stores cannot see or mutate one store's data from the other store's dashboard context (explicit cross-store assertion, not just relying on the RLS guarantee)", async () => {
+  // SRS §5.93/FR-93.1 (D74) - a seller can no longer create a second ACTIVE
+  // store via the live API at all (stores_one_active_per_seller), so this
+  // test's second store is seeded directly, paused, exactly like a
+  // grandfathered pre-cutover extra - the cross-store isolation check under
+  // test (storeId === store.sellerId scoping inside each service) doesn't
+  // care about a store's active/paused status, only that the seller owns
+  // it, so this precondition is equally valid for exercising it.
+  it("a seller whose dashboard shows two of their own stores cannot see or mutate one store's data from the other store's dashboard context (explicit cross-store assertion, not just relying on the RLS guarantee)", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-isolation@example.com");
-    await upgradeToMultiStoreTier(sellerId);
 
     const createFirst = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Isolation Store One", slug: "isolation-one" });
-    const createSecond = await request(app.getHttpServer())
-      .post("/stores")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Isolation Store Two", slug: "isolation-two" });
+    expect(createFirst.status).toBe(201);
+    const secondStore = await superuser.store.create({
+      data: { sellerId, name: "Isolation Store Two", slug: "isolation-two", status: "orders_paused", overLimitPausedAt: new Date() },
+    });
     const storeOneId = createFirst.body.id;
-    const storeTwoId = createSecond.body.id;
+    const storeTwoId = secondStore.id;
 
     const productInStoreOne = await request(app.getHttpServer())
       .post(`/stores/${storeOneId}/products`)
@@ -257,12 +268,20 @@ describe("Multi-Store Per Seller (e2e) - SRS §5.56/FR-56.1/FR-56.2 (Module 49)"
     expect(unchanged.title).toBe("Store One Only Product");
   });
 
-  it("the store switcher lists exactly the seller's own stores via GET /stores", async () => {
+  // SRS §5.93/FR-93.1 (D74) - under the MVP window's flat 1-store cap, GET
+  // /stores returning "exactly the seller's own stores" is now exercised
+  // via the grandfather case (an already-paused extra, never an active
+  // second store) rather than two live creates - module66-multistore-
+  // downgrade.e2e-spec.ts and multi-store-downgrade.service.spec.ts cover
+  // the archival mechanism that produces that paused row; this test's own
+  // job is narrower now: the endpoint still returns every one of the
+  // seller's stores (not just active ones), scoped correctly to that seller.
+  it("GET /stores lists every one of the seller's own stores, active and paused alike, scoped to that seller only", async () => {
     const { token, sellerId } = await signupAndLogin("multistore-switcher@example.com");
-    await upgradeToMultiStoreTier(sellerId);
-
     await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Switcher One", slug: "switcher-one" });
-    await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${token}`).send({ name: "Switcher Two", slug: "switcher-two" });
+    await superuser.store.create({
+      data: { sellerId, name: "Switcher Two (paused)", slug: "switcher-two", status: "orders_paused", overLimitPausedAt: new Date() },
+    });
 
     const list = await request(app.getHttpServer()).get("/stores").set("Authorization", `Bearer ${token}`);
     expect(list.status).toBe(200);

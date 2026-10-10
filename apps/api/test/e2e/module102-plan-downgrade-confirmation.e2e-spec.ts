@@ -12,6 +12,16 @@ const STAFF_PASSWORD = "staff-horse-battery-9";
  * downgrade applies: an informational, overridable feature-loss warning
  * (never a silent downgrade), composed alongside (not replacing) Module
  * 66/FR-6.43's pre-existing, mandatory store-choice gate.
+ *
+ * FR-93.1/B1 (2026-10-10, 20261010090000_single_active_store_per_seller)
+ * made "a seller with 2+ active stores" a hard database impossibility, so
+ * the one test below that used to prove the two gates COMPOSE (feature-loss
+ * confirmation first, store choice second) - by actually upgrading a seller
+ * to FLY's old max of 10 stores and creating a second one - lost its
+ * precondition, the same way 3 of module66-multistore-downgrade.e2e-spec.ts's
+ * own tests did. That composition is now covered at the unit level instead,
+ * in subscriptions.service.spec.ts, which mocks determineChoiceRequirement()'s
+ * result directly rather than deriving it from real store rows.
  */
 describe("Plan-downgrade confirmation (e2e) - SRS §5.6/§14.70 (Module 102, FR-6.69)", () => {
   let app: INestApplication;
@@ -197,49 +207,8 @@ describe("Plan-downgrade confirmation (e2e) - SRS §5.6/§14.70 (Module 102, FR-
     );
   });
 
-  it("composes with FR-6.43's store-choice gate: feature-loss confirmation first, store choice second, both required in order", async () => {
-    const adminToken = await createAndLoginAdmin("downconf-admin5@example.com");
-    const seller = await signup("downconf-compose@example.com");
-    const store1 = await createStore(seller.token, "downconf-compose-1");
-    await grantPlan(adminToken, seller.sellerId, 3); // FLY (max stores 10)
-    // SRS §5.73 - signup now defaults to starter_free (currentPeriodEnd
-    // null); grantPlan() never sets one, so without this the final change
-    // below would apply immediately rather than defer, and pendingPlanId
-    // would never be set.
-    await superuser.subscription.update({
-      where: { sellerId: seller.sellerId },
-      data: { currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
-    });
-    await createStore(seller.token, "downconf-compose-2");
-
-    const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } }); // GO (max stores 1)
-
-    // Step 1: unconfirmed - the feature-loss warning fires first, before the
-    // store-choice gate is even evaluated.
-    const first = await request(app.getHttpServer())
-      .post("/sellers/me/subscription/change")
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ planId: goPlan.id });
-    expect(first.body.requiresDowngradeConfirmation).toBe(true);
-    expect(first.body.requiresStoreChoice).toBeUndefined();
-
-    // Step 2: confirmed, but still no store choice - Module 66's mandatory
-    // gate fires next.
-    const second = await request(app.getHttpServer())
-      .post("/sellers/me/subscription/change")
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ planId: goPlan.id, confirmed: true });
-    expect(second.body.requiresDowngradeConfirmation).toBeUndefined();
-    expect(second.body.requiresStoreChoice).toBe(true);
-    expect(second.body.maxStores).toBe(1);
-    expect(second.body.activeStores).toHaveLength(2);
-
-    // Step 3: both satisfied - the change finally stages.
-    const third = await request(app.getHttpServer())
-      .post("/sellers/me/subscription/change")
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ planId: goPlan.id, confirmed: true, keepStoreIds: [store1] });
-    expect(third.status).toBe(201);
-    expect(third.body.pendingPlanId).toBe(goPlan.id);
-  });
+  // The FR-6.69/FR-6.43 composition test that used to live here (grant FLY's
+  // old max-10 override, create a 2nd store, downgrade to GO, prove
+  // feature-loss-confirmation fires before store-choice) moved to
+  // subscriptions.service.spec.ts - see the docblock above.
 });

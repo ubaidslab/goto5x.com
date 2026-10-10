@@ -206,20 +206,31 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       expect(res.status).toBe(400);
     });
 
-    it("a clearly matching declared title saves without a flag; a clearly mismatched one queues for review without blocking the dashboard", async () => {
-      // businessName defaults to `Business for ${email}` in this file's
-      // signup() helper, which never matches a hand-picked title - so this
-      // test signs up directly to control businessName precisely.
+    // businessName defaults to `Business for ${email}` in this file's
+    // signup() helper, which never matches a hand-picked title - so this
+    // test signs up directly to control businessName precisely.
+    async function signupWithBusinessName(email: string, businessName: string) {
       await request(app.getHttpServer()).post("/auth/signup").send({
         agreementAccepted: true,
-        email: "name-match@example.com",
+        email,
         password: "correct-horse-battery",
-        businessName: "Zainab Textiles",
+        businessName,
       });
-      const login = await request(app.getHttpServer())
-        .post("/auth/login")
-        .send({ email: "name-match@example.com", password: "correct-horse-battery" });
-      const matchToken = login.body.accessToken as string;
+      const login = await request(app.getHttpServer()).post("/auth/login").send({ email, password: "correct-horse-battery" });
+      return login.body.accessToken as string;
+    }
+
+    it("a clearly matching declared title saves without a flag; a clearly mismatched one queues for review without blocking the dashboard", async () => {
+      // Matching and mismatching used to run on ONE seller's two stores
+      // (upgraded to a higher tier to legitimately get a 2nd store slot
+      // under the old per-tier ladder) - FR-93.1/B1
+      // (stores_one_active_per_seller) made "a seller with 2 active
+      // stores" a hard database impossibility, so this is now two sellers
+      // sharing the same declared legal name instead.
+      // PaymentInstrumentIdentityService.prepareUpdate() only ever reads
+      // the store's OWN existing row plus the seller's own legal name,
+      // never a sibling store, so this covers the exact same code path.
+      const matchToken = await signupWithBusinessName("name-match@example.com", "Zainab Textiles");
       const matchStoreId = await createStore(matchToken, "name-match-store");
 
       const matching = await request(app.getHttpServer())
@@ -229,25 +240,11 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       expect(matching.status).toBe(200);
       expect(matching.body.nameConsistencyStatus).toBe("approved");
 
-      // v0.33 (FR-7.3/FR-23.5) - the per-identity free-store limit was
-      // removed along with the Free Plan itself (no more free stores to
-      // limit); this test creates a second store for the same (CNIC-less)
-      // seller purely to exercise name-consistency across two stores.
-      // v0.34/Module 49 (FR-56.1) reintroduced a *plan-tier* store-count
-      // limit (a different mechanism, not the old per-identity one) - the
-      // two entry tiers are capped at 1 store, so this seller needs an
-      // upgrade to a higher tier before a second store is legitimately
-      // allowed. Looked up by tierOrder, never by name (this tier has
-      // already been renamed twice).
-      const matchUser = await superuser.user.findUniqueOrThrow({ where: { email: "name-match@example.com" } });
-      const matchSeller = await superuser.seller.findUniqueOrThrow({ where: { userId: matchUser.id } });
-      const higherPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 2 } });
-      await superuser.subscription.update({ where: { sellerId: matchSeller.id }, data: { planId: higherPlan.id } });
-
-      const mismatchStoreId = await createStore(matchToken, "name-mismatch-store");
+      const mismatchToken = await signupWithBusinessName("name-mismatch@example.com", "Zainab Textiles");
+      const mismatchStoreId = await createStore(mismatchToken, "name-mismatch-store");
       const mismatching = await request(app.getHttpServer())
         .patch(`/stores/${mismatchStoreId}/payment-instructions`)
-        .set("Authorization", `Bearer ${matchToken}`)
+        .set("Authorization", `Bearer ${mismatchToken}`)
         .send({ jazzcashNumber: "03002222222", jazzcashAccountTitle: "Totally Different Name", nameDeclaredSelfOwned: true });
       expect(mismatching.status).toBe(200);
       expect(mismatching.body.nameConsistencyStatus).toBe("pending");
@@ -255,7 +252,7 @@ describe("Trust & Safety System (e2e) - SRS §5.29/§5.30, §14.29/§14.30", () 
       // Not blocked from continuing to use the dashboard otherwise.
       const stillWorks = await request(app.getHttpServer())
         .get(`/stores/${mismatchStoreId}/payment-instructions`)
-        .set("Authorization", `Bearer ${matchToken}`);
+        .set("Authorization", `Bearer ${mismatchToken}`);
       expect(stillWorks.status).toBe(200);
     });
 

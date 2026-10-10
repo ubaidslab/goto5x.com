@@ -258,4 +258,81 @@ describe("P1.5 - genuine concurrency/rate-limit burst-testing", () => {
       expect(totalReserved._sum.recipientCount).toBe(2); // never both - the quota was never actually exceeded
     });
   });
+
+  describe("B1 - single active store per seller", () => {
+    async function signupAndLogin(email: string) {
+      await request(app.getHttpServer())
+        .post("/auth/signup")
+        .send({ agreementAccepted: true, email, password: PASSWORD, businessName: `Business for ${email}` });
+      const login = await request(app.getHttpServer()).post("/auth/login").send({ email, password: PASSWORD });
+      return login.body.accessToken as string;
+    }
+
+    it("two genuinely concurrent store-create requests for the same seller - only one succeeds, only one active store exists afterward", async () => {
+      const token = await signupAndLogin("burst-store-create@example.com");
+
+      // The actual race: same already-authenticated seller, two real,
+      // simultaneous HTTP requests (not one after the other) - both would
+      // read existingCount=0 < maxStores before either commits if nothing
+      // but the application-layer pre-check stood between them.
+      const [storeA, storeB] = await Promise.all([
+        request(app.getHttpServer())
+          .post("/stores")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ name: "Store A", slug: "burst-store-create-a" }),
+        request(app.getHttpServer())
+          .post("/stores")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ name: "Store B", slug: "burst-store-create-b" }),
+      ]);
+
+      const statuses = [storeA.status, storeB.status].sort();
+      // Without stores_one_active_per_seller (the DB-level partial unique
+      // index), both would independently read "0 existing stores" and both
+      // succeed. With it, the second to commit hits the constraint and
+      // StoresService.create()'s catch block turns that into the same
+      // clean 400 the pre-check already gives in the non-racing case.
+      expect(statuses).toEqual([201, 400]);
+
+      const winner = storeA.status === 201 ? storeA : storeB;
+      const loser = storeA.status === 201 ? storeB : storeA;
+      expect(loser.body.message.message).toBe("Your plan's store limit (1) has been reached.");
+
+      const sellerId = (await superuser.store.findUniqueOrThrow({ where: { id: winner.body.id } })).sellerId;
+      const activeStores = await superuser.store.findMany({ where: { sellerId, status: "active" } });
+      expect(activeStores).toHaveLength(1);
+      expect(activeStores[0]!.id).toBe(winner.body.id);
+      // The loser's slug was never actually claimed - confirms the failure
+      // happened at store.create() itself (the unique-index race), not
+      // some earlier validation step that would leave no trace either way.
+      const totalStoresForSeller = await superuser.store.count({ where: { sellerId } });
+      expect(totalStoresForSeller).toBe(1);
+    });
+
+    it("a seller with only paused/archived history (no active stores) is not blocked from creating a new one", async () => {
+      const token = await signupAndLogin("history-no-active@example.com");
+      const created = await request(app.getHttpServer())
+        .post("/stores")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "First store", slug: "history-no-active-first" });
+      expect(created.status).toBe(201);
+
+      // Simulates exactly what MultiStoreDowngradeService.applyDowngrade()
+      // does to an over-the-limit store - pausing it, never deleting it.
+      await superuser.store.update({
+        where: { id: created.body.id },
+        data: { status: "orders_paused", overLimitPausedAt: new Date() },
+      });
+
+      // This seller now has zero ACTIVE stores (one paused) - both the
+      // existingCount pre-check and the DB constraint are scoped to
+      // `active` only, so this must succeed, not be wrongly blocked by
+      // counting the paused row.
+      const second = await request(app.getHttpServer())
+        .post("/stores")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "Second store", slug: "history-no-active-second" });
+      expect(second.status).toBe(201);
+    });
+  });
 });
