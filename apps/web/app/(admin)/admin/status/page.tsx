@@ -32,6 +32,13 @@ interface BackupStatus {
   errorMessage?: string | null;
 }
 
+interface PaymentMethodRegistryEntry {
+  key: string;
+  label: string;
+  kind: "payment_model" | "gateway";
+  status: "live" | "soon" | "verifying";
+}
+
 interface SystemStatus {
   db: boolean;
   redis: boolean;
@@ -40,7 +47,20 @@ interface SystemStatus {
   email: { provider: string; deliveryFailures: string };
   backups: BackupStatus;
   paymentGatewayHealth: ProviderHealthRollup[];
+  paymentMethodRegistry: PaymentMethodRegistryEntry[];
 }
+
+const registryStatusTone: Record<PaymentMethodRegistryEntry["status"], "success" | "warning" | "info"> = {
+  live: "success",
+  verifying: "warning",
+  soon: "info",
+};
+
+const registryStatusLabel: Record<PaymentMethodRegistryEntry["status"], string> = {
+  live: "Live",
+  verifying: "Verifying",
+  soon: "Soon",
+};
 
 const backupStatusLabel: Record<BackupStatus["status"], string> = {
   success: "OK",
@@ -143,6 +163,26 @@ export default function AdminSystemStatusPage() {
           </Reveal>
         </DashCard>
       </div>
+
+      <Reveal className="mt-4">
+        <DashCard>
+          <DashCardHeader
+            title="Payment method registry"
+            description="D95 - every buyer-facing payment path's real status. 'Verifying' never reaches a buyer's checkout, no matter how a seller has it configured - re-enabled only individually, with evidence in docs/gateway-verification/<name>.md."
+          />
+          <Reveal className="divide-y divide-border" stagger={0.04}>
+            {status.paymentMethodRegistry.map((entry) => (
+              <div key={entry.key} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <span className="text-ink">
+                  {entry.label}
+                  <span className="ml-2 text-xs text-ink-faint">{entry.kind === "payment_model" ? "payment model" : "gateway"}</span>
+                </span>
+                <Badge tone={registryStatusTone[entry.status]}>{registryStatusLabel[entry.status]}</Badge>
+              </div>
+            ))}
+          </Reveal>
+        </DashCard>
+      </Reveal>
 
       <Reveal className="mt-4">
         <DashCard>

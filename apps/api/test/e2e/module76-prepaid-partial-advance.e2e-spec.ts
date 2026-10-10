@@ -163,63 +163,60 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
         .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
       expect(checkout.status).toBe(400);
     });
+
+    it("D95/B3 (2026-10-10) - still blocks checkout even once a gateway is connected, while every gateway is 'verifying'", async () => {
+      // Before B3, connecting any gateway (active, regardless of real
+      // integration evidence) was enough to satisfy assertChannelReady() -
+      // exactly Risk #50, for this channel too. It now also requires
+      // isGatewayLive(), so this stays blocked until a provider is
+      // promoted to "live" (D86) - this channel (unlike the "advance"
+      // payment model) wasn't named in D86's day-one path and has no
+      // Manual Transfer fallback (B3b is scoped to "advance" only).
+      const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-verifying-gw@example.com", "ppa-verifying-gw-store");
+      await upgradeToTier(sellerId, 1);
+      await setChannel(token, storeId, "prepaid_partial_advance");
+      await connectGateway(token, storeId);
+
+      const { productId, variantId } = await createSelfProduct(token, storeId, 1000);
+      const cart = await request(app.getHttpServer())
+        .post("/storefront/cart")
+        .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId, variantId, quantity: 1 }] });
+      const checkout = await request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+      expect(checkout.status).toBe(400);
+    });
   });
 
   describe("The verified-partial-payment flow", () => {
-    it("charges exactly the configured percent (not the full total), auto-confirms the order, and marks the verification row verified", async () => {
-      const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-verify-ok@example.com", "ppa-verify-ok-store");
+    /**
+     * D95/B3 (2026-10-10) - replaces the two tests this block had before
+     * B3 ("charges exactly the configured percent..." / "a not-yet-
+     * verified partial advance never confirms..."). Both required
+     * placeOrder() to succeed under the prepaid_partial_advance channel
+     * with a connected gateway first - no longer reachable at all now
+     * that assertChannelReady() also requires isGatewayLive() (see the
+     * "Checkout readiness" describe block above). The percentage/
+     * confirm/verification-row/ledger wiring this used to prove is
+     * dormant, not deleted - still real code, unreachable until a
+     * provider is promoted to "live" (D86). This channel has no Manual
+     * Transfer fallback (B3b is scoped to the "advance" payment model
+     * only, not this plan-gated verification channel).
+     */
+    it("has no reachable path today - checkout itself refuses before any pending partial-advance order can exist", async () => {
+      const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-verify-gated@example.com", "ppa-verify-gated-store");
       await upgradeToTier(sellerId, 1); // RUN
       await setChannel(token, storeId, "prepaid_partial_advance");
       await connectGateway(token, storeId);
 
-      const order = await placeOrder(hostname, token, storeId, 1000);
-
-      const options = await request(app.getHttpServer()).get(`/storefront/gateway-payment/${order.statusLookupToken}/partial-advance`);
-      expect(options.status).toBe(200);
-      expect(options.body.amount).toBe(50); // 5% default of 1000
-      expect(options.body.providers).toEqual(["raast"]);
-
-      fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: true, providerReference: "RAAST-REF-1" });
-      const verify = await request(app.getHttpServer())
-        .post(`/storefront/gateway-payment/${order.statusLookupToken}/partial-advance/verify`)
-        .send({ provider: "raast", reference: "buyer-provided-ref" });
-      expect(verify.status).toBe(201);
-      expect(verify.body.status).toBe("confirmed");
-
-      // The gateway was charged the 5% advance, never the full order total.
-      expect(fakeRaast.verifyPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 50, orderId: order.id }));
-
-      const persistedOrder = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(persistedOrder.status).toBe("confirmed");
-
-      const verification = await superuser.orderVerification.findUniqueOrThrow({ where: { orderId: order.id } });
-      expect(verification.channel).toBe("prepaid_partial_advance");
-      expect(verification.status).toBe("verified");
-
-      const ledgerEntries = await superuser.ledgerEntry.findMany({ where: { orderId: order.id } });
-      expect(ledgerEntries.some((e) => e.type === "commission_accrued")).toBe(true);
-
-      const timeline = await superuser.orderTimelineEvent.findMany({ where: { orderId: order.id, eventType: "verification_confirmed" } });
-      expect(timeline).toHaveLength(1);
-    });
-
-    it("a not-yet-verified partial advance never confirms the order", async () => {
-      const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-verify-fail@example.com", "ppa-verify-fail-store");
-      await upgradeToTier(sellerId, 1);
-      await setChannel(token, storeId, "prepaid_partial_advance");
-      await connectGateway(token, storeId);
-      const order = await placeOrder(hostname, token, storeId, 1000);
-
-      fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: false });
-      const verify = await request(app.getHttpServer())
-        .post(`/storefront/gateway-payment/${order.statusLookupToken}/partial-advance/verify`)
-        .send({ provider: "raast" });
-      expect(verify.status).toBe(400);
-
-      const persistedOrder = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(persistedOrder.status).toBe("pending");
-      const verification = await superuser.orderVerification.findUniqueOrThrow({ where: { orderId: order.id } });
-      expect(verification.status).toBe("pending");
+      const { productId, variantId } = await createSelfProduct(token, storeId, 1000);
+      const cart = await request(app.getHttpServer())
+        .post("/storefront/cart")
+        .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId, variantId, quantity: 1 }] });
+      const checkout = await request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+      expect(checkout.status).toBe(400);
     });
 
     it("rejects the partial-advance verify endpoint for an order using a different verification channel", async () => {

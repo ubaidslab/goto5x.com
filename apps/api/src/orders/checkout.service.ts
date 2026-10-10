@@ -10,6 +10,7 @@ import { InventoryService } from "../inventory/inventory.service";
 import { InvoicePdfService } from "../invoices/invoice-pdf.service";
 import { EmailService } from "../notifications/email.service";
 import { OrderVerificationService } from "../order-verification/order-verification.service";
+import { isGatewayLive } from "../payment-gateway/gateway-registry";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { DiscountCodesService } from "../store-settings/discount-codes.service";
@@ -595,10 +596,20 @@ export class CheckoutService {
   }
 
   /** Module 95 (SRS §5.6l/FR-6.64) - whether this store has any active, real (credentialed) gateway connection - Prepaid/Advance readiness. */
+  /**
+   * D95/B3 (2026-10-10) - "active" alone is no longer enough: a
+   * verifying/soon-status provider can be connected+active (so the
+   * seller can get set up / an admin can gather evidence) but can never
+   * actually charge a buyer (PaymentGatewayService.chargeViaGateway()'s
+   * own isGatewayLive() gate). Checking only isActive here would let
+   * checkout succeed into an order that can then never be paid - this
+   * keeps the readiness gate and the real charge gate in agreement.
+   */
   private async hasActiveGatewayConnection(storeId: string): Promise<boolean> {
-    const count = await this.prismaAdmin.storePaymentGatewayConnection.count({
+    const connections = await this.prismaAdmin.storePaymentGatewayConnection.findMany({
       where: { storeId, isActive: true },
+      select: { provider: true },
     });
-    return count > 0;
+    return connections.some((c) => isGatewayLive(c.provider));
   }
 }

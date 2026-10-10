@@ -19,6 +19,7 @@ import { STORE_HEALTH_SWEEP_QUEUE_NAME } from "../store-health/store-health-swee
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 import { VERIFICATION_RE_REVIEW_SWEEP_QUEUE_NAME } from "../verification/verification-re-review-sweep.queue";
 import { GatewayHealthService } from "../payment-gateway/gateway-health.service";
+import { PAYMENT_METHOD_REGISTRY } from "../payment-gateway/gateway-registry";
 import { DATABASE_BACKUP_QUEUE_NAME } from "../backups/database-backup.queue";
 import { PLAN_CYCLE_QUEUE_NAME } from "../plans/plan-cycle.queue";
 import { SUPPORT_TICKET_SLA_QUEUE_NAME } from "../support-tickets/support-ticket-sla.queue";
@@ -150,6 +151,10 @@ export class AdminSystemStatusService implements OnModuleInit, OnModuleDestroy {
       // Module 67 (SRS §5.6k, FR-6.44) - per-provider rollup aggregated
       // across every seller's connection to that provider.
       paymentGatewayHealth: gatewayHealthRollup,
+      // D95/B3 (2026-10-10) - every payment model/gateway's tri-state
+      // status in one place, so an admin can see at a glance what's
+      // actually live for buyers vs. still verifying vs. not built yet.
+      paymentMethodRegistry: PAYMENT_METHOD_REGISTRY,
     };
   }
 

@@ -5,7 +5,6 @@ import request from "supertest";
 import { AppModule } from "../../src/app.module";
 import { EmailService } from "../../src/notifications/email.service";
 import { GatewayHealthService } from "../../src/payment-gateway/gateway-health.service";
-import { PaymentGatewayService } from "../../src/payment-gateway/payment-gateway.service";
 import { BankTransferGatewayAdapter } from "../../src/payment-gateway/adapters/bank-transfer-gateway.adapter";
 import { EasypaisaGatewayAdapter } from "../../src/payment-gateway/adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "../../src/payment-gateway/adapters/jazzcash-gateway.adapter";
@@ -130,38 +129,25 @@ describe("Payment gateway health monitoring (e2e) - SRS §5.6k/§14.66 (Module 6
     expect(connection.lastCheckedAt).not.toBeNull();
   });
 
-  it("FR-6.44: a real checkout verification updates the connection's counters immediately, not just on the sweep", async () => {
+  /**
+   * D95/B3 (2026-10-10) - before B3, this drove a real buyer-facing
+   * verifyAndConfirm() call all the way through chargeViaGateway() to
+   * prove recordResult() fires immediately, not just on the sweep. That
+   * path is no longer reachable for raast (or any of the four
+   * providers): isGatewayLive() now refuses the charge before
+   * chargeViaGateway() ever calls the adapter or recordResult() - see
+   * module62's "a 'verifying'-status provider refuses the charge..."
+   * test for that refusal itself. recordResult()'s own immediate-update
+   * behavior (as opposed to the 6-hourly sweep) is still real production
+   * code with exactly one other caller (the sweep, covered by the test
+   * above) - this calls it directly via DI, the same way
+   * chargeViaGateway() would once a provider is promoted to "live".
+   */
+  it("FR-6.44: recordResult() updates the connection's counters immediately, the same call chargeViaGateway() makes once a provider is live", async () => {
     const seller = await signup("gwhealth-checkout@example.com");
-    const { storeId, connectionId } = await createStoreWithGateway(seller.token, "gwhealth-checkout-store");
+    const { connectionId } = await createStoreWithGateway(seller.token, "gwhealth-checkout-store");
 
-    await superuser.seller.update({ where: { id: seller.sellerId }, data: { isTrusted: true, cnicHash: `hash-${seller.sellerId}` } });
-    await superuser.storePaymentInstructions.update({ where: { storeId }, data: { codEnabled: true } });
-    await superuser.store.update({ where: { id: storeId }, data: { publishedAt: new Date() } });
-    const category = await superuser.category.create({ data: { name: "GW Health", slug: `gwhealth-${Date.now()}` } });
-    const product = await request(app.getHttpServer())
-      .post(`/stores/${storeId}/products`)
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ title: "Product", categoryId: category.id, status: "active" });
-    await superuser.product.update({ where: { id: product.body.id }, data: { moderationStatus: "approved" } });
-    const variant = await request(app.getHttpServer())
-      .post(`/stores/${storeId}/products/${product.body.id}/variants`)
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({ sku: `SKU-${Date.now()}`, price: 500, stockQuantity: 5 });
-    const order = await request(app.getHttpServer())
-      .post(`/stores/${storeId}/orders`)
-      .set("Authorization", `Bearer ${seller.token}`)
-      .send({
-        buyerEmail: "buyer@example.com",
-        shippingAddress: { fullName: "Buyer", line1: "1 St", city: "Lahore", country: "PK", phone: "03001234567" },
-        items: [{ productId: product.body.id, variantId: variant.body.id, quantity: 1 }],
-      });
-
-    fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: true });
-    // Exercises the real buyer-facing entry point's core (verifyAndConfirm
-    // -> chargeViaGateway -> gatewayHealth.recordResult) directly, the same
-    // way BuyerPaymentGatewayController's own "verify" route would - no
-    // buyer session/statusLookupToken plumbing needed for this assertion.
-    await app.get(PaymentGatewayService).verifyAndConfirm(storeId, order.body.id, "raast");
+    await app.get(GatewayHealthService).recordResult(connectionId, true);
 
     const connection = await superuser.storePaymentGatewayConnection.findUniqueOrThrow({ where: { id: connectionId } });
     expect(connection.verifiedCount).toBe(1);
