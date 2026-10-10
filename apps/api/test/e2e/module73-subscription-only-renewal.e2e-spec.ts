@@ -5,7 +5,7 @@ import { SettingsService } from "../../src/settings-registry/settings.service";
 import { PlanFeeDebitService } from "../../src/billing/plan-fee-debit.service";
 import { WalletGraceLadderService } from "../../src/billing/wallet-grace-ladder.service";
 import { addInterval } from "../../src/plans/subscriptions.service";
-import { resolveActivePlanPrice } from "../../src/plans/plan-pricing.util";
+import { computeCyclePrice, resolveActivePlanPrice } from "../../src/plans/plan-pricing.util";
 import { round2 } from "../../src/orders/money.util";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
@@ -217,7 +217,12 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
       .get("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`);
     expect(preview.body.isRenewal).toBe(true);
-    expect(preview.body.amountDue).toBe(round2(testCampaignPrice * sixMonthMultiplier));
+    // B2 (2026-10-10) - computeCyclePrice() rounds a cycle total to the
+    // nearest WHOLE DOLLAR now (D10: "every figure rounded to the nearest
+    // whole dollar"), not round2()'s 2-decimal-place rounding this
+    // assertion used to duplicate inline - call the real function instead
+    // of re-deriving a formula that can (and did) drift from it.
+    expect(preview.body.amountDue).toBe(computeCyclePrice(testCampaignPrice, "six_month", { quarterly: 0, sixMonth: sixMonthMultiplier, yearly: 0 }));
   });
 
   it("referral commission accrues on both the first payment AND every renewal after it (FR-33.4, one call site now: AdminWalletController.verify())", async () => {
