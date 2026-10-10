@@ -375,10 +375,41 @@ Formulas: 3mo = 3×list×0.93; 6mo = 6×list×0.88; 12mo = 12×list×0.75 (=
 toggle order: Monthly · 3mo · 6mo ("Most popular", default selected) ·
 12mo ("Best value").
 **Reasoning:** not recorded beyond the mechanics themselves.
-**Implementation questions, not yet answered (no code yet):** whether
-Paddle supports custom 3/6-month billing intervals natively, and how
-the 6-month cycle's 15 bonus days get delivered (shifting the next
-billing date vs. a separate entitlement-extension record).
+**Implementation note (B2, 2026-10-10) - the 15-bonus-days question is
+now RESOLVED, Paddle-native support is still open:**
+- The 6-month cycle buys one continuous period - 6 calendar months PLUS
+  15 days of service, every purchase and every renewal alike. Never a
+  separate credit, coupon, or bonus-entitlement record.
+- Our own database is the sole source of truth for when that period
+  ends (`Subscription.currentPeriodEnd`) - access, plan limits, and
+  renewal reminders all read it directly; a payment provider's own
+  billing date is never consulted. `addInterval()`/`addMonthsClamped()`
+  (apps/api/src/plans/subscriptions.service.ts,
+  plan-pricing.util.ts) implement this: +6 calendar months (clamped to
+  the target month's real last day, not JS Date's native rollover),
+  then +15 days, in one step. Month-end and leap-year edge cases are
+  unit-tested (plan-pricing.util.spec.ts).
+- Cancelling: access continues to the existing period's end, bonus days
+  included - nothing is refunded for unused time. A refund within the
+  14-day window (D11) ends the whole period, bonus days included; the
+  bonus days are never paid out separately.
+- An upgrade/downgrade inside the same 6-month cycle keeps
+  `currentPeriodEnd` unchanged and prorates on the remaining days
+  (bonus days included in the proration base) - already how
+  `requestPlanChange()`'s deferred-change path works for every cycle,
+  not a new mechanism B2 added.
+- Switching to a DIFFERENT cycle takes effect only at the next renewal
+  (no mid-period cycle switch in MVP) - also the pre-existing behavior:
+  `billingInterval` is written immediately but `currentPeriodEnd` isn't
+  touched until the next `addInterval()` call, which then uses whatever
+  cycle is current at that point.
+- Still genuinely open, deferred to 1C (after founder go-ahead, no
+  Stripe/Paddle product or price objects created by B2): whether Paddle
+  and Stripe both support pushing a provider's own next-billing-date to
+  match our 6.5-month entitlement end on every six-month renewal. If
+  either provider doesn't, the founder's instruction is to drop the
+  bonus days for that provider rather than fake it - confirm this
+  before 1C starts billing real six-month cycles on that provider.
 
 ### D11. Retention rules
 **Status:** LOCKED.

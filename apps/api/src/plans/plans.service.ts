@@ -60,12 +60,13 @@ export class PlansService {
 
   /** Module 61 (FR-7.21) - the pricing page's headline benefit block and Shopify comparison, entirely Settings Registry strings, never hard-coded in the frontend. */
   async getPricingCopy() {
-    const [benefit1, benefit2, benefit3, shopifyComparison, sixMonthMultiplier, yearlyMultiplier, newSubscriptionsPaused, newSubscriptionsPausedMessage] =
+    const [benefit1, benefit2, benefit3, shopifyComparison, quarterlyMultiplier, sixMonthMultiplier, yearlyMultiplier, newSubscriptionsPaused, newSubscriptionsPausedMessage] =
       await Promise.all([
         this.settings.resolve<string>("marketing.pricing_benefit_1"),
         this.settings.resolve<string>("marketing.pricing_benefit_2"),
         this.settings.resolve<string>("marketing.pricing_benefit_3"),
         this.settings.resolve<string>("marketing.pricing_shopify_comparison"),
+        this.settings.resolve<number>("billing.quarterly_price_multiplier"),
         this.settings.resolve<number>("billing.six_month_price_multiplier"),
         this.settings.resolve<number>("billing.yearly_price_multiplier"),
         // New (v0.41, founder request) - "pause new subscriptions" mode's
@@ -78,6 +79,7 @@ export class PlansService {
     return {
       benefits: [benefit1, benefit2, benefit3],
       shopifyComparison,
+      quarterlyMultiplier,
       sixMonthMultiplier,
       yearlyMultiplier,
       newSubscriptionsPaused,
@@ -87,9 +89,10 @@ export class PlansService {
 
   /**
    * Module 61 (SRS §5.7, FR-7.20) - `activePrice` is the price actually
-   * charged/shown right now (campaign-aware); `sixMonthPrice`/`yearlyPrice`
-   * are that active price times the founder's fixed multipliers - all
-   * derived data, never a second stored price. Supersedes the old
+   * charged/shown right now (campaign-aware); `quarterlyPrice`/
+   * `sixMonthPrice`/`yearlyPrice` are that active price times the
+   * founder's fixed multipliers (B2, 2026-10-10, D10) - all derived data,
+   * never a second stored price. Supersedes the old
    * `yearlyDiscountPercent`-based computeYearlyPrice() for this purpose
    * (FR-7.6's admin-configurable-percent framing is retired here; the
    * column itself is left in the schema/plan-editor DTOs, unread by this
@@ -97,17 +100,20 @@ export class PlansService {
    */
   private async withCyclePrices<T extends { price: unknown; campaignPrice: unknown; campaignActive: boolean; billingInterval: string }>(
     plan: T,
-  ): Promise<T & { activePrice: number; sixMonthPrice: number | null; yearlyPrice: number | null }> {
+  ): Promise<T & { activePrice: number; quarterlyPrice: number | null; sixMonthPrice: number | null; yearlyPrice: number | null }> {
     const activePrice = resolveActivePlanPrice(plan);
-    if (plan.billingInterval !== "monthly") return { ...plan, activePrice, sixMonthPrice: null, yearlyPrice: null };
+    if (plan.billingInterval !== "monthly") return { ...plan, activePrice, quarterlyPrice: null, sixMonthPrice: null, yearlyPrice: null };
 
+    const quarterly = await this.settings.resolve<number>("billing.quarterly_price_multiplier");
     const sixMonth = await this.settings.resolve<number>("billing.six_month_price_multiplier");
     const yearly = await this.settings.resolve<number>("billing.yearly_price_multiplier");
+    const multipliers = { quarterly, sixMonth, yearly };
     return {
       ...plan,
       activePrice,
-      sixMonthPrice: computeCyclePrice(activePrice, "six_month", { sixMonth, yearly }),
-      yearlyPrice: computeCyclePrice(activePrice, "yearly", { sixMonth, yearly }),
+      quarterlyPrice: computeCyclePrice(activePrice, "quarterly", multipliers),
+      sixMonthPrice: computeCyclePrice(activePrice, "six_month", multipliers),
+      yearlyPrice: computeCyclePrice(activePrice, "yearly", multipliers),
     };
   }
 

@@ -45,9 +45,19 @@ enum PlanBillingInterval {
   monthly
   yearly
   none
-  // Module 61 (SRS §5.7, FR-7.20) - a subscription billed 5.5x the active
-  // monthly price per cycle, covering 6 months of service.
+  // Module 61 (SRS §5.7, FR-7.20) - a subscription billed billing.
+  // six_month_price_multiplier times the active monthly price per cycle,
+  // covering 6 calendar months PLUS 15 bonus days of service (D10/B2,
+  // 2026-10-10) - addInterval() adds both in one step; the 15 days are
+  // never a separate credit/entitlement record, see docs/
+  // founder-decisions-log.md's D10 entry.
   six_month
+  // B2 (founder decision, 2026-10-10) - the 3-month cycle D10's locked
+  // table always specified; added after six_month/yearly rather than
+  // alongside monthly to keep every existing value's enum position
+  // (and therefore its on-disk id) unchanged, per the founder's own
+  // explicit instruction.
+  quarterly
 }
 
 // Module 14 (SRS v0.19, FR-7.17) - a plan's addressable group. `individual`
@@ -1702,11 +1712,37 @@ model Plan {
   subscriptions        Subscription[] @relation("CurrentPlan")
   pendingSubscriptions Subscription[] @relation("PendingPlan")
   Team                 Team[]
+  providerPriceSlots   PlanCycleProviderPrice[]
 
   // Also doubles as PlansService/the seed's natural idempotency key - no
   // two tiers occupy the same position within a group.
   @@unique([planGroup, tierOrder], name: "uniq_plan_group_tier_order")
   @@map("plans")
+}
+
+// B2 (founder decision, 2026-10-10) - "a slot to map each plan + cycle to
+// a provider price ID later." Deliberately empty for now: 1C (Stripe
+// adapter + Paddle sandbox billing, after founder go-ahead) is where
+// these rows get created and populated, never this migration. A plan can
+// legitimately have a row per billingInterval it's ever offered on, each
+// mapping to a DIFFERENT provider Price object (Stripe/Paddle both model
+// "the same product, a different cycle" that way) - one row per
+// (planId, billingInterval) pair, never a single JSON blob on Plan
+// itself, so 1C can create/update exactly the row it needs without a
+// read-modify-write race on the whole Plan row.
+model PlanCycleProviderPrice {
+  id              String              @id @default(uuid()) @db.Uuid
+  planId          String              @map("plan_id") @db.Uuid
+  billingInterval PlanBillingInterval @map("billing_interval")
+  stripePriceId   String?             @map("stripe_price_id")
+  paddlePriceId   String?             @map("paddle_price_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@unique([planId, billingInterval], name: "uniq_plan_cycle_provider_price")
+  @@map("plan_cycle_provider_prices")
 }
 
 // Module 14 (FR-7.1/7.5) - a seller's real plan assignment. Every seller

@@ -5,9 +5,14 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { SettingsService } from "../settings-registry/settings.service";
 
+// B2 (founder decision, 2026-10-10, D10) - "price per month = total /
+// months of service," six_month counted as 6.5 (6 calendar months + 15
+// bonus days), never a plain 6 - this is the one place that normalization
+// matters economically (MRR), so it's wrong to round it down to 6.
 const MONTHS_BY_INTERVAL: Record<PlanBillingInterval, number> = {
   monthly: 1,
-  six_month: 6,
+  quarterly: 3,
+  six_month: 6.5,
   yearly: 12,
   none: 1,
 };
@@ -41,11 +46,12 @@ export class MrrAnalyticsService {
     const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth, 1));
     const quarterEnd = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth + 3, 1));
 
-    const [sixMonthMultiplier, yearlyMultiplier] = await Promise.all([
+    const [quarterlyMultiplier, sixMonthMultiplier, yearlyMultiplier] = await Promise.all([
+      this.settings.resolve<number>("billing.quarterly_price_multiplier"),
       this.settings.resolve<number>("billing.six_month_price_multiplier"),
       this.settings.resolve<number>("billing.yearly_price_multiplier"),
     ]);
-    const multipliers = { sixMonth: sixMonthMultiplier, yearly: yearlyMultiplier };
+    const multipliers = { quarterly: quarterlyMultiplier, sixMonth: sixMonthMultiplier, yearly: yearlyMultiplier };
 
     const paidSubscriptions = await this.prismaAdmin.subscription.findMany({
       where: { sellerId: { not: null }, plan: { planGroup: "individual", price: { gt: 0 } } },
@@ -105,7 +111,7 @@ export class MrrAnalyticsService {
     );
     const expectedRevenueThisMonth = renewingThisMonth.reduce((sum, s) => {
       const activeMonthly = resolveActivePlanPrice(s.plan);
-      return sum + computeCyclePrice(activeMonthly, s.billingInterval as "monthly" | "six_month" | "yearly", multipliers);
+      return sum + computeCyclePrice(activeMonthly, s.billingInterval as "monthly" | "quarterly" | "six_month" | "yearly", multipliers);
     }, 0);
 
     return {
@@ -128,10 +134,10 @@ export class MrrAnalyticsService {
   private monthlyNormalizedPrice(
     plan: Plan,
     billingInterval: PlanBillingInterval,
-    multipliers: { sixMonth: number; yearly: number },
+    multipliers: { quarterly: number; sixMonth: number; yearly: number },
   ): number {
     const activeMonthly = resolveActivePlanPrice(plan);
-    const cyclePrice = computeCyclePrice(activeMonthly, billingInterval as "monthly" | "six_month" | "yearly", multipliers);
+    const cyclePrice = computeCyclePrice(activeMonthly, billingInterval as "monthly" | "quarterly" | "six_month" | "yearly", multipliers);
     return cyclePrice / MONTHS_BY_INTERVAL[billingInterval];
   }
 }

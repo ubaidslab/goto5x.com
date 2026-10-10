@@ -298,9 +298,10 @@ export class WalletService {
   /** Same computation PlanFeeDebitService used to make for its now-retired auto-debit (Module 61, FR-7.20) - campaign-aware active price, times the subscription's own cycle multiplier. */
   private async cyclePriceFor(plan: Plan, billingInterval: PlanBillingInterval): Promise<number> {
     const activeMonthlyPrice = resolveActivePlanPrice(plan);
+    const quarterly = await this.settings.resolve<number>("billing.quarterly_price_multiplier");
     const sixMonth = await this.settings.resolve<number>("billing.six_month_price_multiplier");
     const yearly = await this.settings.resolve<number>("billing.yearly_price_multiplier");
-    return computeCyclePrice(activeMonthlyPrice, billingInterval as "monthly" | "six_month" | "yearly", { sixMonth, yearly });
+    return computeCyclePrice(activeMonthlyPrice, billingInterval as "monthly" | "quarterly" | "six_month" | "yearly", { quarterly, sixMonth, yearly });
   }
 
   /**
@@ -454,7 +455,7 @@ export class WalletService {
           where: { sellerId: request.ownerId },
           include: { plan: true },
         });
-        const interval = subscription.billingInterval as "monthly" | "six_month" | "yearly";
+        const interval = subscription.billingInterval as "monthly" | "quarterly" | "six_month" | "yearly";
         const nextPeriodEnd = isRenewal ? addInterval(subscription.currentPeriodEnd!, interval) : addInterval(new Date(), interval);
         await tx.subscription.update({
           where: { sellerId: request.ownerId },
