@@ -4636,7 +4636,41 @@ Shipped as its own small, sequenced-first push ahead of M1's own 1A
 
 Verified locally before push: the web build compiles cleanly on the
 new font setup (exit 0), `tsc --noEmit` is clean, the 4 shards
-partition all 105 spec files with zero overlap and zero gaps. Actual
-CI timing (docs-only-skip and sharded-e2e wall-clock) reported once
-independently confirmed via the next CI run — see the checkpoint
-report, not asserted here ahead of the evidence.
+partition all 105 spec files with zero overlap and zero gaps.
+
+**One real bug shipped and was caught/fixed same-day, both independently
+CI-confirmed:** the first sharded push (`01e0347`, run #205) had every
+shard fail in ~1 second — `pnpm --filter @uzeyn/api test:e2e --
+--shard=N/4`'s stray `--` was forwarded to jest literally, which (per
+yargs' own convention) then treated `--shard=N/4` as a positional
+testPathPattern instead of a flag, matching zero files. Fixed by
+dropping the `--` (`f0d698a`, run #206) — pnpm forwards an
+unrecognized flag straight through without it. Verified three ways
+before the fix shipped: `--listTests` for all 4 shards still showed
+the same 105-file, zero-overlap partition; a real local run of shard
+4/4 against local Postgres/Redis actually executed its 26-file subset;
+and the exact command string, read back from a live CI job log,
+matched what was tested locally.
+
+**Measured CI time, run #206 (the first fully-green sharded run),
+independently confirmed via the GitHub Actions API, every job
+checked individually:**
+- Total wall-clock, push to all-green: **17m48s** (06:20:44Z →
+  06:38:32Z) — down from the historical single-process e2e range of
+  50–61 minutes seen across runs #201–204. Roughly a 3x reduction.
+- The 4 e2e shards ran genuinely in parallel: 13m34s, 13m29s, 13m45s,
+  and 13m4s respectively (the 4th started ~3.5 minutes later than the
+  other three — its Playwright-install step took longer, runner
+  contention rather than a config difference; all 4 still finished
+  within the same ~3-minute window).
+- typecheck/unit-tests/dependency-audit/web-build: all under 1 minute
+  each, unchanged from before.
+- `changes` (the new docs-only-skip gate) added under 10 seconds to
+  this run, correctly detecting it as code-touching and running
+  everything (this commit touches `.github/workflows/ci.yml`).
+- The skip path itself (a push touching only `docs/`/`CHANGELOG.md`)
+  hasn't been exercised yet — D59's own `changes` job didn't exist in
+  the workflow until this same code push introduced it, so every
+  commit checked above necessarily ran the full job set. Confirming
+  the skip actually skips is M1's first genuinely docs-only follow-up
+  commit, not this one.
