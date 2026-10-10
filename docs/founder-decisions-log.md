@@ -1278,3 +1278,117 @@ reaching that minimum.
 **Reasoning:** not elaborated beyond the decision itself — a faster,
 narrower path to something real sellers can touch than waiting for all
 of M1–M4 to land.
+
+---
+
+## 2026-10-10 — Founder decisions on the D89/D59 report (D92–D97)
+
+Source: the founder, directly, replying to this session's D89/D59
+checkpoint report. Status legend as the prior entries: **LOCKED** =
+the founder stated it directly. All six below are LOCKED.
+
+### D92. Every change goes through a branch and a PR; no direct pushes to main
+**Status:** LOCKED — supersedes this project's standing practice (push
+to the feature branch, fast-forward `main` directly) **effective
+immediately**, for every change, CI/workflow changes especially.
+**Decision:** branch protection on `main`, required status checks
+(`e2e-tests-summary` plus every other real job), no direct pushes, no
+force pushes.
+**Reasoning:** not elaborated beyond the decision itself.
+**Implementation note:** no branch-protection/repo-settings write tool
+is available via the GitHub MCP server in this session (confirmed by
+search) — enabling the protection rule itself is a one-time repo-admin
+action only the founder can do (GitHub Settings → Branches). The PR
+discipline (branch + PR + CI-gated merge, no bare push) starts
+immediately regardless of whether that server-side enforcement is
+switched on yet.
+
+### D93. CI cost controls — triggers, concurrency, caching
+**Status:** LOCKED.
+**Decision:** full e2e only on PR-to-main, merge-to-main, and a
+nightly schedule; a feature-branch push gets lint + typecheck + unit
+tests only. `concurrency` with `cancel-in-progress` per branch, so a
+new push cancels the old run rather than paying for both. pnpm store
+and Playwright browsers cached across runs.
+**Reasoning:** sharding cut wall-clock time, not total compute, on a
+private repo with a limited monthly Actions-minutes quota — billable
+runner-minutes needed its own, separate fix.
+**Implementation note:** before wiring "lint" into the feature-branch
+job, ran both apps' existing `lint` scripts locally rather than
+assuming they pass. Neither does: `apps/api`'s `eslint "src/**/*.ts"`
+has zero `eslint.config.js` (ESLint 10 requires the flat-config format;
+nothing in this repo ever migrated to it) and apps/api declares no
+ESLint-related devDependency of its own beyond `typescript`, so there's
+no rule set to even point a config at without first choosing and adding
+one. `apps/web`'s `lint` (`next lint`) has never been initialized
+either — it drops into an interactive "how would you like to configure
+ESLint?" prompt, which would hang forever on a non-interactive CI
+runner. Standing up a real config for either is a separate, open-ended
+piece of work (choosing rule strictness, adding the devDependencies,
+then triaging however many pre-existing violations that surfaces across
+~100+ source files) that I'm not willing to do silently inside a CI-
+trigger-restructuring change. Shipped A3 with feature branches running
+typecheck + unit-tests only (the two that actually work today); lint
+is tracked as an open gap, not implemented, pending a decision on
+priority.
+
+### D94. Workflow security hardening is required, not optional, for `ci.yml`
+**Status:** LOCKED.
+**Decision:** top-level `permissions: contents: read`, widened per job
+only where a job genuinely needs more; every third-party Action pinned
+to a full commit SHA, with Dependabot tracking the `github-actions`
+ecosystem for version bumps; no `pull_request_target` anywhere;
+secrets never exposed to a fork or printed in a log.
+**Reasoning:** not elaborated beyond the decision itself — closes
+Risk #48/S12's remaining gap (Actions pinned by tag, not SHA) and adds
+the permissions/fork-secret controls that gap report didn't cover.
+
+### D95. Gateway registry status is tri-state (live/soon/verifying), not binary
+**Status:** LOCKED — refines D86's "default dormant, reactivate with
+evidence" framing into this explicit three-state model; does not
+reverse D86, makes it precise.
+**Decision:** every gateway/payment-model entry carries a `live` /
+`soon` / `verifying` status. **Live at launch:** COD, advance payment,
+manual-mark-as-paid (payment models, not gateways — matches D4/D73r's
+Pakistan day-one path). **Soon:** Stripe, Simpaisa, Airwallex,
+Razorpay, EBANX, Skypay Global. **Verifying:** Easypaisa, JazzCash,
+Raast, bank transfer — the four legacy adapters Risk #50 found live
+and ungated; "verifying" replaces the plainer "dormant" label D86 used,
+same underlying rule (nothing in this status goes live until it passes
+the contract-test suite). Per-tenant gateway credentials stay
+encrypted at rest (ties to D87's crypto-module merge), never sent to
+the client or written to a log. Each registry entry carries its own
+required CSP additions (e.g. Stripe.js needs `js.stripe.com`), applied
+only on checkout pages — storefront domains stay separate from the
+admin/app domain, and the rest of the app keeps strict CSP.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D96. Logo/wordmark stays untouched; the loader-mark tier-gate code change is unrelated and proceeds
+**Status:** LOCKED.
+**Decision:** the founder is separately deciding whether to adopt a
+new blackletter "uyz" monogram (seen on the landing page) as the
+platform's actual wordmark, and will send the SVG if so — **don't
+change the product logo yet**. This is unrelated to D76d's loader-mark
+*removability* change (`BrandingService`'s `tierOrder === 3` →
+`tierOrder === 2`), which is a tier-gate code change touching no
+visual asset, and proceeds as already planned.
+**Reasoning:** not elaborated beyond the decision itself — keeps a
+branding decision and a tier-gate code change from getting conflated.
+
+### D97. Checkpoint discipline after 1B; secrets-exposure escalation
+**Status:** LOCKED — overrides the standing "don't wait between
+milestones" instruction for this one boundary.
+**Decision:** continue through 1A and 1B without waiting. After 1B
+(auth hardening, email transport, security P0), **stop** and send a
+full report — what shipped, tests, a security checklist, open risks,
+CI runner-minutes for the milestone — before starting 1C. 1C (Stripe +
+Paddle sandbox) starts only after the founder's explicit go-ahead. No
+live (non-sandbox) payment keys in any environment until the
+independent security review (D58) is done. Secrets and test keys live
+only in a local, gitignored `.env` — never in the repo, CI logs,
+screenshots, or messages. If a secret ever lands in git history: stop,
+tell the founder, and rotate it — don't quietly continue.
+**Reasoning:** not elaborated beyond the decision itself — tightens
+D58's existing "before any real seller gateway key" gate with an
+explicit stop-and-report point the founder controls directly, rather
+than leaving 1C's start to this session's own judgment.

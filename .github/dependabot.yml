@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # D94/A5: ci.yml's Actions are pinned to full commit SHAs (see its
+  # header comment) specifically because floating tags move -
+  # pnpm/action-setup@v4 was observed to do exactly that during this
+  # project's own history. Pinning without a renewal mechanism just
+  # trades "silently moves" for "silently goes stale" - Dependabot opens
+  # a PR (reviewed and merged like any other change, per D92) whenever
+  # an Action's pinned SHA falls behind its tag.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

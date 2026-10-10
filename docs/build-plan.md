@@ -4674,3 +4674,112 @@ checked individually:**
   commit checked above necessarily ran the full job set. Confirming
   the skip actually skips is M1's first genuinely docs-only follow-up
   commit, not this one.
+
+**Skip path confirmed, run #207 (the very next commit — this file's own
+D89/D59 write-up, docs-only):** `changes` ran (6s) and correctly set
+`code=false`; `dependency-audit`, `typecheck`, `unit-tests`, `e2e-tests`
+(all 4 shard jobs), and `web-build` each show `conclusion: "skipped"` via
+the GitHub Actions API, not merely "didn't run" — the distinction that
+makes this compatible with branch protection requiring them. Only
+`changes` (1 billable minute) and `e2e-tests-summary` (1 billable
+minute, passes because a skipped `e2e-tests` counts as pass per its own
+`if [ "$result" = "success" ] || [ "$result" = "skipped" ]` check) ran
+at all. Total wall-clock: 13 seconds (06:47:52Z → 06:48:05Z).
+
+### CI cost/security hardening (D92–D97) — in progress, 2026-10-10
+The founder's direct reply to the D89/D59 report above (recorded as
+D92–D97) closed Section A of their follow-up before more M1 code lands
+on main. Real, measured numbers behind D93's trigger/cost redesign,
+gathered from this project's own CI history via the GitHub Actions API
+before writing a single line of the new `ci.yml` (not estimated):
+
+- **Run #206 (the full 4-way-sharded matrix, every job summed):** 69
+  real billable runner-minutes (`changes` 1, `web-build` 1,
+  `unit-tests` 1, `dependency-audit` 1, `typecheck` 1,
+  `e2e-tests-summary` 1, e2e shards 18+15+15+15) against 17m48s
+  wall-clock. This is the founder's A3 point #3 made concrete:
+  sharding cut wall-clock ~3x but, because each of the 4 shards now
+  pays its own "Initialize containers"/"Install Playwright" fixed
+  cost independently, total compute went slightly *up* from the old
+  single-process job's ~55-65 billable minutes, not down.
+- **Run #207 (docs-only, confirmed above):** 2 billable minutes.
+
+D93/A3 implemented in `.github/workflows/ci.yml`:
+- A `full_run` scope, computed once in the `changes` job: true for a
+  PR targeting `main`, a push to `main` (a merge, since D92 ends
+  direct pushes), the nightly schedule (`17 2 * * *` UTC — off the
+  top-of-hour queue spike), or a manual `workflow_dispatch`; false for
+  every other push (a feature branch). `e2e-tests`, `dependency-audit`,
+  and `web-build` now also gate on `full_run == 'true'`; `typecheck`
+  and `unit-tests` still gate only on `code == 'true'` (D59), so they
+  run on every code-touching push regardless of branch.
+- `concurrency: { group: ci-${{ github.workflow }}-${{ github.ref }},
+  cancel-in-progress: true }` — a new push to the same branch/PR
+  cancels whatever was still running for it.
+- A Playwright browser-binary cache (`actions/cache`, keyed on the
+  installed `playwright` package version) in `e2e-tests`, targeting
+  the exact redundant per-shard cost identified above. pnpm's own
+  store was already cached via `actions/setup-node`'s `cache: pnpm` —
+  confirmed from run #206's own job log ("Cache restored successfully"),
+  not assumed.
+- **Monthly estimate:** at this session's observed cadence (runs
+  #193→#207, 15 pushes over 6 days ≈ 2.5 pushes/day, a doc-heavy sprint
+  — code-work cadence through M1 may differ), and assuming roughly a
+  quarter of pushes land as docs-only (2 billable min) and the rest as
+  feature-branch code pushes (typecheck+unit-tests only, no e2e — well
+  under 5 billable min each, per run #206's per-job numbers above)
+  plus one real PR-to-main merge pair (a PR run + the resulting main
+  push, each a full 69-minute run) roughly every 2-3 code pushes, plus
+  the nightly schedule's own 69-minute run every night: **very roughly
+  5,000–6,500 billable minutes/month** at the current pace. This is a
+  rough order-of-magnitude planning number, not a guarantee — it moves
+  directly with how often PRs actually merge to main and should be
+  rechecked against the real account quota once that's known.
+- **Lint was NOT wired into the feature-branch job** despite being
+  named in the founder's instruction — see D93's implementation note
+  in `docs/founder-decisions-log.md`: both apps' `lint` scripts are
+  broken/unconfigured today (ESLint 10 flat-config migration needed for
+  `apps/api`; `apps/web`'s `next lint` has never been initialized and
+  would hang on CI's non-interactive prompt), discovered by actually
+  running them locally before wiring them in, not assumed to work.
+  Feature branches run typecheck + unit-tests only until that's fixed.
+
+D94/A5 implemented in the same `ci.yml` push: top-level
+`permissions: contents: read` (no job needs more — nothing here pushes,
+comments, or writes packages, and no job reads `secrets.*` at all);
+every Action (`actions/checkout`, `pnpm/action-setup`,
+`actions/setup-node`, the new `actions/cache`) pinned to a full commit
+SHA; a new `.github/dependabot.yml` tracking the `github-actions`
+ecosystem weekly so those pins don't go stale. The SHA-pinning
+justification isn't theoretical: `pnpm/action-setup@v4` resolved to
+`b906affcce14559ad1aafd4ab0e942779e9f58b1` in this project's own run
+#203 job log (2026-10-09) and to `f40ffcd9367d9f12939873eb1018b921a783ffaa`
+when re-resolved on 2026-10-10 — the same floating tag moved under us,
+mid-session, confirmed from two real job logs rather than inferred.
+`actions/checkout@v4` and `actions/setup-node@v4`'s SHAs, re-resolved
+the same way, matched their own earlier-logged values exactly — the
+mismatch is specific to `pnpm/action-setup`, not a flaw in the
+resolution method.
+
+A2 (the docs-only-skip exclusion list) was already satisfied by
+construction — `changes`' filter is an allowlist of known-safe paths
+(`docs/`, `CHANGELOG.md`), not a denylist of known-dangerous ones, so
+anything not provably docs-only (`.github/**`, `pnpm-lock.yaml`, any
+`package.json`, prisma schema/migrations, Dockerfiles, `scripts/`,
+`.env.example`, any other config file) runs everything by not matching
+the allowlist. New: `scripts/verify-ci-docs-only-skip-exclusions.sh`
+proves this against the founder's exact list (plus docs-only control
+cases) rather than leaving it as an assertion — run locally
+(`All A2 exclusion checks passed.`, confirmed before this push) and
+wired as a near-zero-cost step inside the `changes` job itself, so a
+future edit to the filter regex that narrows the skip condition fails
+this check immediately instead of silently.
+
+Still open from Section A: A1 (prove `e2e-tests-summary` fails on a
+forced shard failure and on a cancellation, on a throwaway branch), A4
+(branch protection itself needs the founder — no repo-admin tool is
+available to this session; the PR-only discipline starts now
+regardless), A6 (root-cause the local PDF test failures). This push
+itself is the first exercise of D92's new PR-only flow: pushed to the
+designated branch, opened as a PR against `main` rather than
+fast-forwarded directly.
