@@ -411,6 +411,35 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
     expect(listing.stockQuantity).toBe(0);
   });
 
+  it("founder item 3 (2026-10-11): cancelling a pending order restores its supplier-fulfilled stock too", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("cancel-restore-supplier@example.com", "cancel-restore-supplier-store");
+    const supplier = await createSupplierProduct(token, storeId, "cancel-restore-supplier-store", {
+      price: 500,
+      shippingCost: 0,
+      supportedCountries: ["PK"],
+      stockQuantity: 10,
+    });
+    const cart = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId: supplier.productId, variantId: supplier.variantId, quantity: 4 }] });
+    const checkout = await request(app.getHttpServer())
+      .post("/storefront/checkout")
+      .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+    const orderId = checkout.body.id as string;
+
+    const afterCheckout = await superuser.supplierListing.findUniqueOrThrow({ where: { id: supplier.supplierListingId } });
+    expect(afterCheckout.stockQuantity).toBe(6); // 10 - 4
+
+    const cancel = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/orders/${orderId}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "cancelled" });
+    expect(cancel.status).toBe(200);
+
+    const afterCancel = await superuser.supplierListing.findUniqueOrThrow({ where: { id: supplier.supplierListingId } });
+    expect(afterCancel.stockQuantity).toBe(10); // restored in full
+  });
+
   it("FR-39.5 (Module 46): oversell protection now also covers self-fulfilled items - two concurrent checkouts against the last unit only one succeeds, and the loser never decremented stock", async () => {
     const { token, storeId, hostname } = await signupLoginAndCreateStore("oversell-self-fulfilled@example.com", "oversell-self-store");
     const { productId, variantId } = await createSelfProduct(token, storeId, 500, 1);
@@ -623,6 +652,34 @@ describe("Orders, Cart & Checkout (e2e) - SRS §5.5/§5.15/§5.17, §14.5/§14.1
       .set("Authorization", `Bearer ${token}`)
       .send({ items: [{ orderItemId, quantity: 1 }] });
     expect(blockedEdit.status).toBe(400);
+  });
+
+  it("founder item 3 fix (2026-10-11): editing an item's quantity upward past available stock is rejected, not oversold", async () => {
+    const { token, storeId, hostname } = await signupLoginAndCreateStore("order-edit-oversell@example.com", "order-edit-oversell-store");
+    const { productId, variantId } = await createSelfProduct(token, storeId, 500, 3);
+    const cart = await request(app.getHttpServer())
+      .post("/storefront/cart")
+      .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId, variantId, quantity: 2 }] });
+    const checkout = await request(app.getHttpServer())
+      .post("/storefront/checkout")
+      .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+    const orderId = checkout.body.id as string; // stock is now 3 - 2 = 1
+
+    const detail = await request(app.getHttpServer())
+      .get(`/stores/${storeId}/orders/${orderId}`)
+      .set("Authorization", `Bearer ${token}`);
+    const orderItemId = detail.body.items[0].id as string;
+
+    const edit = await request(app.getHttpServer())
+      .patch(`/stores/${storeId}/orders/${orderId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ items: [{ orderItemId, quantity: 10 }] }); // needs 8 more units, only 1 left
+    expect(edit.status).toBe(409);
+
+    const unchangedVariant = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+    expect(unchangedVariant.stockQuantity).toBe(1); // rejected before any write
+    const unchangedItem = await superuser.orderItem.findUniqueOrThrow({ where: { id: orderItemId } });
+    expect(unchangedItem.quantity).toBe(2); // unchanged
   });
 
   it("FR-3.4/FR-5.2: uploading tracking bumps the item (and, once every item ships, the order) to `shipped`", async () => {

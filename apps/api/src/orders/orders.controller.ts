@@ -130,11 +130,12 @@ export class OrdersController {
   @RequireStaffScope("orders")
   changeStatus(
     @CurrentSellerId() sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
     @Param("storeId") storeId: string,
     @Param("orderId") orderId: string,
     @Body() dto: ChangeOrderStatusDto,
   ) {
-    return this.orders.changeStatus(sellerId, storeId, orderId, dto);
+    return this.orders.changeStatus(sellerId, storeId, orderId, user.sub, dto);
   }
 
   @Patch(":orderId/costs")

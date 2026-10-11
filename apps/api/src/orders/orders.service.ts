@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { OrderStatus, Prisma } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
 import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
@@ -336,15 +336,32 @@ export class OrdersService {
    * single-order building block - the frontend fans a bulk change out into
    * one call per selected order (same client-side fan-out precedent as
    * Module 51's bulk product actions), never a bare `updateMany`.
+   *
+   * Founder item 3 (2026-10-11) - this was the only writer of `cancelled`
+   * in the whole codebase, and it never restored the stock checkout had
+   * reserved. The plain `findUnique` + `update` pair below is now a
+   * guarded `updateMany` keyed on the exact status this request just read,
+   * the same `where`-guard idiom checkout.service.ts's own oversell
+   * protection uses (reserveSelfFulfilledStock()) - so two concurrent
+   * cancel calls on the same order can't both "win" and both restore
+   * stock. Only the call that actually flips the row proceeds to
+   * restoreStockForOrder().
    */
-  async changeStatus(sellerId: string, storeId: string, orderId: string, dto: ChangeOrderStatusDto) {
+  async changeStatus(sellerId: string, storeId: string, orderId: string, actorUserId: string, dto: ChangeOrderStatusDto) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order || order.storeId !== storeId) throw new NotFoundException("Order not found.");
       if (!isOrderStatusTransitionAllowed(order.status, dto.status)) {
         throw new BadRequestException(`An order with status "${order.status}" cannot be changed to "${dto.status}".`);
       }
-      const updated = await tx.order.update({ where: { id: orderId }, data: { status: dto.status } });
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: order.status },
+        data: { status: dto.status },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException("This order's status just changed - reload and try again.");
+      }
+      const updated = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
       await tx.orderTimelineEvent.create({
         data: {
           storeId,
@@ -354,8 +371,74 @@ export class OrdersService {
           afterValue: { status: dto.status },
         },
       });
+      if (dto.status === "cancelled") {
+        await this.restoreStockForOrder(tx, storeId, updated, actorUserId);
+      }
       return updated;
     });
+  }
+
+  /**
+   * Founder item 3 (2026-10-11) - the single shared place order-driven
+   * stock restoration happens, so every cancellation path restores exactly
+   * once and the same way. Today `changeStatus()` above is the only real
+   * caller (buyer-initiated cancel and B3b's auto-cancel don't exist yet -
+   * see docs/founder-decisions-log.md D98); both should call this same
+   * method once built, rather than re-implementing it.
+   *
+   * Mirrors checkout.service.ts's reserveSelfFulfilledStock()/
+   * reserveSupplierStock() in reverse: self-fulfilled items go back onto
+   * `ProductVariant.stockQuantity` (only if the variant's CURRENT
+   * `trackInventory` is true - the same flag checkout itself reads live at
+   * decrement time, not a value snapshotted onto the order), with a
+   * `StockAdjustment` row so a seller can see why their stock moved (the
+   * one thing cancellation couldn't otherwise explain - unlike checkout's
+   * own decrement, which the order itself already explains). Supplier-
+   * fulfilled items go back onto `SupplierListing.stockQuantity` via the
+   * same productId -> approved ListingReview lookup forwardSupplierItems()
+   * already uses, unconditionally (matching checkout's own unconditional
+   * decrement for them) - `SupplierListing` has no `StockAdjustment`-style
+   * audit table in this schema, so none is written for it, same as today.
+   * An increment needs no oversell-style WHERE guard (unlike checkout's
+   * decrement): there's no invariant to protect going up.
+   */
+  private async restoreStockForOrder(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    order: { id: string; orderNumber: number },
+    actorUserId: string,
+  ): Promise<void> {
+    const items = await tx.orderItem.findMany({ where: { orderId: order.id } });
+    for (const item of items) {
+      if (item.supplierId) {
+        const review = await this.prismaAdmin.listingReview.findFirst({
+          where: { productId: item.productId, status: "approved" },
+        });
+        if (review) {
+          await this.prismaAdmin.supplierListing.update({
+            where: { id: review.supplierListingId },
+            data: { stockQuantity: { increment: item.quantity } },
+          });
+        }
+        continue;
+      }
+      const variant = await tx.productVariant.findUnique({ where: { id: item.variantId } });
+      if (!variant || variant.trackInventory !== true) continue;
+      const updatedVariant = await tx.productVariant.update({
+        where: { id: item.variantId },
+        data: { stockQuantity: { increment: item.quantity } },
+      });
+      await tx.stockAdjustment.create({
+        data: {
+          storeId,
+          productVariantId: item.variantId,
+          adjustedByUserId: actorUserId,
+          quantityBefore: variant.stockQuantity,
+          quantityAfter: updatedVariant.stockQuantity,
+          reason: `Order #${order.orderNumber} cancelled`,
+        },
+      });
+    }
   }
 
   /** Module 31 (SRS §5.42/FR-42.1) - optional per-order courier/handling cost inputs for the P&L engine; either field left undefined is untouched, not reset to null. */
@@ -406,11 +489,26 @@ export class OrdersService {
 
           // Restores stock for a removed/reduced item, decrements it for an
           // added/increased one (clarified v0.6, FR-17.5) - never a ledger-
-          // only operation that leaves inventory out of sync.
-          await tx.productVariant.update({
-            where: { id: item.variantId },
-            data: { stockQuantity: { decrement: quantityDelta } },
-          });
+          // only operation that leaves inventory out of sync. Founder item
+          // 3 (2026-10-11) - an increase is a real oversell risk (the same
+          // class of bug checkout.service.ts's own stock decrement already
+          // guards against) and now uses the same guarded-`updateMany`
+          // idiom; a decrease only ever gives stock back, so it keeps the
+          // plain unguarded increment - nothing to protect against going up.
+          if (quantityDelta > 0) {
+            const claimed = await tx.productVariant.updateMany({
+              where: { id: item.variantId, stockQuantity: { gte: quantityDelta } },
+              data: { stockQuantity: { decrement: quantityDelta } },
+            });
+            if (claimed.count === 0) {
+              throw new ConflictException("Not enough stock available to increase this item's quantity.");
+            }
+          } else {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: { stockQuantity: { increment: -quantityDelta } },
+            });
+          }
 
           if (edit.quantity === 0) {
             await tx.orderItem.delete({ where: { id: item.id } });
