@@ -181,11 +181,16 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Founder item 2 (2026-10-11) - real Postgres, no Redis/Playwright
-    # needed (cheap: migrations + bootstrap-db.sql twice + two assertion
-    # queries). Proves bootstrap-db.sql is order-safe: migrations run
-    # FIRST here (establishing each append-only table's own REVOKE via its
-    # migration), then bootstrap-db.sql runs TWICE - the exact hazard that
-    # let app_runtime/app_admin regain UPDATE/DELETE on
+    # needed (cheap: bootstrap + migrations + bootstrap-db.sql twice more +
+    # two assertion queries). Proves bootstrap-db.sql is order-safe:
+    # bootstrap-db.sql runs once first (roles must exist before migrations
+    # even apply - the rls_and_audit_grants migration's own REVOKE
+    # statements reference app_runtime/app_admin and fail outright against
+    # a database that has never been bootstrapped, caught by this job's own
+    # first real CI run: "ERROR: role app_runtime does not exist"), then
+    # migrations run (each append-only table's own REVOKE now succeeds),
+    # then bootstrap-db.sql runs TWICE MORE - the exact hazard that let
+    # app_runtime/app_admin regain UPDATE/DELETE on
     # admin_audit_logs/platform_events after a bootstrap re-run (found in
     # a local dev sandbox, not production, but the same script runs in
     # both - see apps/api/scripts/bootstrap-db.sql's own comment).
@@ -213,12 +218,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @uzeyn/api prisma:generate
 
-      - name: Run migrations first (as superuser) - establishes each append-only table's own REVOKE before bootstrap ever runs
-        env:
-          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
-        run: pnpm --filter @uzeyn/api exec prisma migrate deploy
-
-      - name: Run bootstrap-db.sql (creates app_runtime/app_admin for the first time here)
+      - name: Run bootstrap-db.sql once first - roles must exist before any migration's own REVOKE can reference them
         env:
           PGPASSWORD: ci-superuser-password
         run: |
@@ -228,7 +228,22 @@ jobs:
             -v dbname=uzeyn \
             -f apps/api/scripts/bootstrap-db.sql
 
-      - name: Run bootstrap-db.sql a second time - the exact hazard this job exists to catch
+      - name: Run migrations (as superuser) - establishes each append-only table's own REVOKE
+        env:
+          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
+        run: pnpm --filter @uzeyn/api exec prisma migrate deploy
+
+      - name: Run bootstrap-db.sql again (post-migration) - the exact hazard this job exists to catch
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=uzeyn \
+            -f apps/api/scripts/bootstrap-db.sql
+
+      - name: Run bootstrap-db.sql a third time (second post-migration run) - proving this, not just one re-run, stays safe
         env:
           PGPASSWORD: ci-superuser-password
         run: |
