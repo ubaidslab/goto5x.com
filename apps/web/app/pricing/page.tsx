@@ -285,7 +285,7 @@ export default function PricingPage() {
           )}
           <Reveal delay={0.15} className="mt-16 text-center">
             <p className="text-body text-ink-muted">
-              Every UZEYN plan undercuts Shopify's equivalent tier - no forced app fees, no 2.9%+30¢
+              Every UZEYN plan undercuts Shopify&apos;s equivalent tier - no forced app fees, no 2.9%+30¢
               payment-processor markup, and 0% commission on every sale, on every tier.
             </p>
             {copy?.shopifyComparison && <p className="mt-2 text-sm text-ink-faint">{copy.shopifyComparison}</p>}

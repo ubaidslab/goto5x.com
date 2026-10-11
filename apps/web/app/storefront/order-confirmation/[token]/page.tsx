@@ -49,7 +49,7 @@ export default async function OrderConfirmationPage({ params }: { params: { toke
         >
           <h1 style={{ margin: "0 0 8px" }}>Thank you for your order!</h1>
           <p style={{ margin: 0 }}>
-            Your order is <strong>awaiting payment</strong> - it isn't confirmed yet.
+            Your order is <strong>awaiting payment</strong> - it isn&apos;t confirmed yet.
           </p>
         </AnimatedElement>
 

@@ -37,7 +37,7 @@ describe("validateEnv", () => {
   });
 
   it("throws when a required variable is missing entirely", () => {
-    const { DATABASE_URL, ...missingDbUrl } = validConfig;
+    const { DATABASE_URL: _DATABASE_URL, ...missingDbUrl } = validConfig;
     expect(() => validateEnv(missingDbUrl)).toThrow();
   });
 

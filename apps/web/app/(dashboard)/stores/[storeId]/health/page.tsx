@@ -63,7 +63,7 @@ export default function StoreHealthPage({ params }: { params: { storeId: string 
       <DashCard>
         <div>
           {current.score === null ? (
-            <p className="text-sm text-ink-muted">Your first score hasn't been computed yet - check back after the next scheduled run.</p>
+            <p className="text-sm text-ink-muted">Your first score hasn&apos;t been computed yet - check back after the next scheduled run.</p>
           ) : (
             <div className="flex items-center gap-4">
               <p className="text-4xl font-semibold text-ink">{current.score}</p>

@@ -703,7 +703,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
               <>
                 <p className="mb-3 text-sm text-ink-muted">No CNIC on file yet - required before checkout works.</p>
                 <ul className="mb-4 space-y-1 text-xs text-ink-muted">
-                  <li>- Required for fraud prevention and payout compliance - it's how we confirm a real, accountable person is behind the store before money moves.</li>
+                  <li>- Required for fraud prevention and payout compliance - it&apos;s how we confirm a real, accountable person is behind the store before money moves.</li>
                   <li>- Encrypted at rest. Nobody at UZEYN, including staff, can view the full number.</li>
                   <li>- Never shared with anyone - not other sellers, not buyers, not third parties.</li>
                   <li>- Only the last 4 digits are ever shown, anywhere, including to you after saving.</li>

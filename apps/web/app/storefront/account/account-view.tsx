@@ -158,7 +158,7 @@ export function AccountView({ theme, profile, addresses }: { theme: ResolvedThem
       {editingId !== null && (
         <form onSubmit={saveAddress} style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}>
           <label style={labelStyle}>
-            Label (optional, e.g. "Home")
+            Label (optional, e.g. &ldquo;Home&rdquo;)
             <input style={inputStyle} value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={60} />
           </label>
           <label style={labelStyle}>

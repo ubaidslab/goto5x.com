@@ -265,7 +265,7 @@ export function CheckoutForm({
             {submitting ? "Placing order..." : "Place order"}
           </button>
           <p style={{ fontSize: 12, color: "#6b7280" }}>
-            You'll pay the seller directly - once they confirm receipt, your order moves to confirmed.
+            You&apos;ll pay the seller directly - once they confirm receipt, your order moves to confirmed.
           </p>
         </form>
       )}

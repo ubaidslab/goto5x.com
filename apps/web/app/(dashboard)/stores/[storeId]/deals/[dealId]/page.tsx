@@ -137,7 +137,7 @@ export default function DealDetailPage({ params }: { params: { storeId: string; 
           <DashCardHeader title="Items" description={`${deal.items.length} item${deal.items.length === 1 ? "" : "s"} in this deal.`} />
           <div className="space-y-2">
             {deal.items.length === 0 ? (
-              <p className="text-sm text-ink-muted">This deal has no items - add some or it can't be purchased.</p>
+              <p className="text-sm text-ink-muted">This deal has no items - add some or it can&apos;t be purchased.</p>
             ) : (
               deal.items.map((item) => (
                 <div key={item.id} className="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">

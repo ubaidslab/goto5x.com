@@ -94,7 +94,7 @@ export class GatewayHealthService {
     for (const connection of connections) {
       const adapter = this.adapters.get(connection.provider);
       if (!adapter) continue;
-      let verified = false;
+      let verified: boolean;
       try {
         const result = await adapter.verifyPayment({
           connection: {

@@ -296,12 +296,10 @@ if (require.main === module) {
     .then(() => seedModule4Settings(prisma))
     .then(() => seedTemplatesBrandingSettings(prisma))
     .then(() => {
-      // eslint-disable-next-line no-console
       console.log("Themes + Module 4 settings seeded.");
       return prisma.$disconnect();
     })
     .catch(async (err) => {
-      // eslint-disable-next-line no-console
       console.error(err);
       await prisma.$disconnect();
       process.exit(1);

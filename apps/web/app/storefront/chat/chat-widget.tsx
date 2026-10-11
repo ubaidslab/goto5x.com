@@ -131,7 +131,7 @@ export function ChatWidget({ theme, enabled }: { theme: ResolvedThemeSettings; e
           </div>
           {sellerAway && (
             <div style={{ padding: "6px 14px", fontSize: 12, color: "#92400e", background: "#fef3c7" }}>
-              The seller is away right now - they'll reply as soon as they're back.
+              The seller is away right now - they&apos;ll reply as soon as they&apos;re back.
             </div>
           )}
           <form onSubmit={send} style={{ display: "flex", borderTop: "1px solid #e5e7eb" }}>

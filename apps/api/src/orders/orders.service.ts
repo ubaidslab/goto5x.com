@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { Order, OrderStatus, PaymentModel, Prisma } from "@prisma/client";
+import { OrderStatus, PaymentModel, Prisma } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
 import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
@@ -21,7 +21,7 @@ import { round2 } from "./money.util";
 import { isOrderStatusTransitionAllowed } from "./order-status-transitions.util";
 import { buyerFacingTrackingState, computeOrderTimeline } from "./order-timeline.util";
 import { computeOrderTotals } from "./order-totals.util";
-import { OrderBucket, orderBucketWhereClause } from "./orders-overview.service";
+import { orderBucketWhereClause } from "./orders-overview.service";
 
 const EDITABLE_STATUSES: OrderStatus[] = ["pending", "confirmed"];
 const DEFAULT_ORDER_PAGE_LIMIT = 20;

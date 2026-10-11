@@ -41,7 +41,6 @@ async function bootstrap() {
   // boot, including redeploys against a database that already has these
   // rows - it only ever creates what's missing.
   await seedDefaults(app.get(PrismaAdminService));
-  // eslint-disable-next-line no-console
   console.log("Settings Registry defaults, themes, and plans confirmed seeded.");
   // Security-hardening fix (app-level audit): `true` trusts EVERY hop in a
   // client-supplied X-Forwarded-For unconditionally, so proxy-addr walks
@@ -80,7 +79,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  // eslint-disable-next-line no-console
   console.log(`UZEYN API listening on port ${port}`);
 }
 

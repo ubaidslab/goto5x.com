@@ -34,12 +34,10 @@ if (require.main === module) {
   const prisma = new PrismaClient();
   seedManualTransferSettings(prisma)
     .then(() => {
-      // eslint-disable-next-line no-console
       console.log("Manual transfer settings seeded.");
       return prisma.$disconnect();
     })
     .catch(async (err) => {
-      // eslint-disable-next-line no-console
       console.error(err);
       await prisma.$disconnect();
       process.exit(1);

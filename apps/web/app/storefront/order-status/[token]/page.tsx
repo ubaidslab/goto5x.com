@@ -87,7 +87,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
       <SiteHeader navigation={navigation} theme={theme} store={store} />
       <main style={{ padding: 24, maxWidth: 720 }}>
         <h1>Order status</h1>
-        <p style={{ color: "#6b7280" }}>Check your order's payment status, items, and shipping progress any time using this link.</p>
+        <p style={{ color: "#6b7280" }}>Check your order&apos;s payment status, items, and shipping progress any time using this link.</p>
         <p style={{ fontWeight: 600, fontSize: 18 }}>{trackingStateLabel[order.trackingState]}</p>
         <p>{order.trackingMessage}</p>
         <p>Placed {new Date(order.placedAt).toLocaleString()}</p>
@@ -102,7 +102,7 @@ export default async function OrderStatusPage({ params }: { params: { token: str
                   <>
                     {" - "}
                     <a href={t.trackingUrl} target="_blank" rel="noreferrer">
-                      Track on courier's site
+                      Track on courier&apos;s site
                     </a>
                   </>
                 )}

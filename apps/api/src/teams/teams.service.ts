@@ -95,8 +95,16 @@ export class TeamsService {
     return member;
   }
 
-  /** FR-7.12 - binding consent: a team_members row cannot become 'active' without consentAccepted === true, enforced here, not just the UI. */
-  async acceptInvite(sellerId: string, teamMemberId: string, dto: AcceptTeamInviteDto) {
+  /**
+   * FR-7.12 - binding consent: a team_members row cannot become 'active'
+   * without consentAccepted === true, enforced by AcceptTeamInviteDto's own
+   * @IsBoolean()/@Equals(true) decorators against the global ValidationPipe
+   * (main.ts) at the controller's @Body() binding - never just the UI. The
+   * dto param itself is unused below (that validation already happened by
+   * the time this method runs) - kept so the route's own type signature
+   * stays the visible proof this method can only be reached with consent.
+   */
+  async acceptInvite(sellerId: string, teamMemberId: string, _dto: AcceptTeamInviteDto) {
     const invite = await this.prisma.teamMember.findUnique({ where: { id: teamMemberId } });
     if (!invite || invite.sellerId !== sellerId) throw new NotFoundException("Invite not found.");
     if (invite.status !== "pending_invite") throw new BadRequestException("This invite is no longer pending.");

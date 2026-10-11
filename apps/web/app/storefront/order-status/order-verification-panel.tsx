@@ -119,7 +119,7 @@ export function OrderVerificationPanel({
       return (
         <div style={{ padding: 16, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", marginBottom: 24 }}>
           <h2 style={{ marginTop: 0 }}>Order verification</h2>
-          <p style={{ margin: 0, color: "#991b1b" }}>This order's deposit payment could not be verified - please contact the seller.</p>
+          <p style={{ margin: 0, color: "#991b1b" }}>This order&apos;s deposit payment could not be verified - please contact the seller.</p>
         </div>
       );
     }

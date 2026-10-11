@@ -1636,3 +1636,104 @@ honestly documents that THIS gate is what fires first today, not
 FR-6.67's cross-setting rule - that rule is unchanged, real code, and
 still reachable via `forceChannel()` in its own sibling test.
 **Reasoning:** not elaborated beyond the decision itself.
+
+### D101. Founder item 6 - test/tooling hygiene
+**Status:** LOCKED.
+**Decision:**
+1. **ESLint, confirmed broken, now real.** Neither app had an
+   `eslint.config.*`/`.eslintrc.*` anywhere, nor `eslint` itself in
+   either app's own devDependencies - `apps/api/package.json`'s `lint`
+   script and `apps/web`'s `next lint` both existed but had nothing
+   backing them; running either failed outright. Fixed with two
+   deliberately different setups, because the two apps' own
+   dependencies pull in two different ESLint majors:
+   - `apps/api`: `eslint.config.mjs` (flat config), `eslint@^10`,
+     `typescript-eslint@^8`'s `recommended` (NOT `recommendedTypeChecked`
+     - full type-aware linting is slower in CI and would have surfaced a
+     larger first-pass count than this LOW item's scope; this project
+     also has no Prettier and this pass doesn't add one, so no
+     stylistic/formatting rules are in here either).
+   - `apps/web`: `.eslintrc.json` (`next/core-web-vitals`, the Next 14
+     scaffold default), `eslint@^8.57.0` - `eslint-config-next@14.2.18`
+     (matching the installed Next version exactly) only supports ESLint
+     7/8 as a peer, so apps/web deliberately stays on the older major;
+     apps/api and apps/web are separate pnpm workspace packages with
+     fully independent `node_modules`, so this isn't a conflict.
+   - New `lint` CI job (`.github/workflows/ci.yml`), same cheap "every
+     code-touching push" tier as `typecheck`/`unit-tests` - not gated
+     behind `full_run`.
+2. **First-pass violations, fixed, not just configured away.** 88
+   problems in apps/api (1 real error, the rest warnings), 21 real
+   errors in apps/web (all `react/no-unescaped-entities` - a raw `'`/`"`
+   character directly in JSX text), both counts small enough to fix
+   directly rather than suppress:
+   - `gateway-health.service.ts` - a genuine (harmless but real)
+     `no-useless-assignment` finding: `let verified = false` was always
+     overwritten by both the try and catch branches before ever being
+     read. Changed to `let verified: boolean` (no initializer) - TS's
+     own definite-assignment analysis confirms both branches still
+     assign it before the one place it's read.
+   - A handful of truly-unused imports/variables removed
+     (`orders.service.ts`'s `Order`/`OrderBucket`,
+     `subscriptions.service.ts` and `verification-application.service.ts`'s
+     `ForbiddenException`).
+   - Several destructuring-omit sites (deliberately stripping a
+     sensitive/internal field before returning an object -
+     `tokenHash`/`signingSecretEncrypted`/a test's `DATABASE_URL`)
+     renamed to their already-established `_`-prefixed-ignore convention
+     (`tenancy/stores.service.ts`'s pre-existing `_omit` was the
+     precedent) - the eslint config's `varsIgnorePattern`/
+     `destructuredArrayIgnorePattern` now actually honor that
+     convention, which it turns out the lint rule's default options
+     didn't, before this.
+   - `teams.service.ts`'s `acceptInvite(..., dto)` - looked real at
+     first (the method's own doc comment claims consent is "enforced
+     here"), traced all the way through: `AcceptTeamInviteDto`'s
+     `@IsBoolean()`/`@Equals(true)` decorators enforce it at the
+     controller's `@Body()` binding via the global ValidationPipe
+     (confirmed registered in `main.ts`), before this method ever runs -
+     real and working, just not literally inside this method's body.
+     Renamed to `_dto` and the comment corrected to say where
+     enforcement actually happens, so a future reader doesn't go
+     looking for a check that was never going to be here.
+   - 77 stale `// eslint-disable-next-line no-console` comments across
+     seed files, `main.ts`, and `worker.main.ts` - dead code from before
+     this config existed (this config never enables `no-console` at all;
+     seed/worker scripts legitimately log to stdout for operator
+     visibility) - removed.
+   - apps/web: every `'`/`"` escaped to `&apos;` or `&ldquo;`/`&rdquo;`,
+     matching whichever entity convention is already dominant at each
+     call site in this codebase (`&apos;` has 33 pre-existing uses, used
+     throughout; `&ldquo;`/`&rdquo;` for one genuine open/close quoted
+     word). `react-hooks/exhaustive-deps` (5) and
+     `@next/next/no-img-element` (3) warnings left as warnings,
+     deliberately not auto-"fixed" - both require real behavioral
+     verification (a blind effect-deps fix risks an infinite-render
+     loop; an `<img>`-to-`<Image>` swap needs width/height/domain-config
+     checking) that's a bigger, riskier change than "lint hygiene," and
+     Next's own default severity for both is already "warning," not
+     "error" - they don't fail the command.
+3. **DNS/TLS tests, mocked, not reliant on real network reachability.**
+   `node-dns-resolver.service.spec.ts`/`node-tls-prober.service.spec.ts`
+   were deliberately written against the live public internet
+   (`dns.google`, `www.github.com`, `www.google.com`) - reachable in
+   whatever sandbox first wrote them, NOT reachable from this one
+   (confirmed directly: this container can't resolve raw DNS or complete
+   a raw TLS handshake to any of them), which is exactly the flake this
+   item flagged. Rewritten to mock `dns.promises`/`https.request`
+   directly - what's actually under test is these two thin wrapper
+   services' own try/catch-into-`[]` and resolve-true/false-on-response/
+   error/timeout logic, not any real hostname's real DNS/TLS state.
+   Same test intent preserved (A record, CNAME, NXDOMAIN-shaped reject,
+   ENODATA-shaped reject, handshake success, connection error) plus one
+   new case (timeout) the real-network version couldn't exercise on
+   demand at all.
+4. **Tests removed/rewritten this report, with reason** (consolidating
+   this item's own ask, going forward every report should do the same):
+   see D100 for the 3 `module76` + 1 `module95` test rewrites (save-time
+   live-gateway gate making their old setup unreachable); this entry's
+   own point 3 above for the 2 DNS/TLS spec rewrites (real-network to
+   mocked, same intent, zero tests deleted outright).
+5. **CI polling light** - standing discipline this whole session, not a
+   one-time deliverable; unchanged by this item.
+**Reasoning:** not elaborated beyond the decision itself.

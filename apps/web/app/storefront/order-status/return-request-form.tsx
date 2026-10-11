@@ -74,7 +74,7 @@ export function ReturnRequestForm({
         Reason for return
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} required rows={3} />
       </label>
-      {result === "error" && <p style={{ color: "crimson" }}>Couldn't submit that request - please try again.</p>}
+      {result === "error" && <p style={{ color: "crimson" }}>Couldn&apos;t submit that request - please try again.</p>}
       <button type="submit" disabled={submitting}>
         {submitting ? "Submitting..." : "Request a return"}
       </button>

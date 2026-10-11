@@ -62,7 +62,7 @@ export default function SupportCenterTicketsPage({ params }: { params: { storeId
           <CardHeader title="All tickets" />
           <CardBody className="px-0 py-0">
             {tickets.length === 0 ? (
-              <p className="px-6 py-8 text-center text-sm text-ink-muted">No tickets yet. Raise one if a knowledge-base article doesn't answer your question.</p>
+              <p className="px-6 py-8 text-center text-sm text-ink-muted">No tickets yet. Raise one if a knowledge-base article doesn&apos;t answer your question.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {tickets.map((t) => (

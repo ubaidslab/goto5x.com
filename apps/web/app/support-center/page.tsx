@@ -91,7 +91,7 @@ export default function SupportCenterHomePage() {
           <CardHeader title="Submit a ticket" description="Didn't find your answer above? Raise a ticket for one of your stores." />
           <CardBody>
             {stores.length === 0 ? (
-              <p className="text-sm text-ink-muted">You don't have any stores yet.</p>
+              <p className="text-sm text-ink-muted">You don&apos;t have any stores yet.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {stores.map((s) => (

@@ -26,12 +26,10 @@ if (require.main === module) {
   const prisma = new PrismaClient();
   seedReturnsSettings(prisma)
     .then(() => {
-      // eslint-disable-next-line no-console
       console.log("Returns settings seeded.");
       return prisma.$disconnect();
     })
     .catch(async (err) => {
-      // eslint-disable-next-line no-console
       console.error(err);
       await prisma.$disconnect();
       process.exit(1);

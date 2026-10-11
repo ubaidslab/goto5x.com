@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { SettingsService } from "../settings-registry/settings.service";

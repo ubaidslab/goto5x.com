@@ -194,7 +194,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
             {period.incomplete && (
               <Alert tone="warning">
                 One or more orders in this period include a variant with no base cost entered - net profit is understated until you add
-                it on that product's variant.
+                it on that product&apos;s variant.
               </Alert>
             )}
 
@@ -212,7 +212,7 @@ export default function ProfitAndLossPage({ params }: { params: { storeId: strin
                   <p className={`mt-1 text-3xl font-semibold ${period.netProfit < 0 ? "text-danger" : "text-ink"}`}>
                     {period.currency} {period.netProfit.toLocaleString()}
                   </p>
-                  <p className="mt-1 text-xs text-ink-muted">What Shopify doesn't show you</p>
+                  <p className="mt-1 text-xs text-ink-muted">What Shopify doesn&apos;t show you</p>
                 </div>
               </DashCard>
             </Reveal>

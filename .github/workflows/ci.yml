@@ -158,6 +158,35 @@ jobs:
       - name: Typecheck apps/web
         run: pnpm --filter @uzeyn/web exec tsc --noEmit
 
+  # Founder item 6 (D99, 2026-10-11) - this repo's first lint CI job.
+  # `pnpm --filter @uzeyn/api lint`/`next lint` existed as scripts before
+  # this, but nothing backed them (no eslint.config.* anywhere, no eslint
+  # in either app's own devDependencies) - confirmed broken, not just
+  # unwired: running either locally failed outright. apps/api's
+  # eslint.config.mjs and apps/web's .eslintrc.json are new alongside this
+  # job. Same cheap tier as typecheck/unit-tests (every code-touching
+  # push, not gated behind full_run) - a lint pass takes seconds, same
+  # reasoning as D59's typecheck placement.
+  lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+      - name: Lint apps/api (ESLint - typescript-eslint recommended, not type-checked)
+        run: pnpm --filter @uzeyn/api lint
+      - name: Lint apps/web (next lint - next/core-web-vitals)
+        run: pnpm --filter @uzeyn/web lint
+
   unit-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'
