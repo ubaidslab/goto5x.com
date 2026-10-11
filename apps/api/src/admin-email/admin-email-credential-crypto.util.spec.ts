@@ -21,9 +21,12 @@ describe("admin-email-credential-crypto.util", () => {
     expect(() => decryptAdminEmailCredential(packed, randomBytes(32))).toThrow();
   });
 
+  // D87 - decryptAdminEmailCredential is now a re-export of
+  // decryptDriveToken (drive-token-crypto.util.ts); its error message
+  // names "Drive token" generically, same as identity-crypto.util.ts's
+  // own pre-existing re-export already does for CNIC/payment-instrument
+  // fingerprints - one shared message, not a per-domain string.
   it("rejects a malformed packed string", () => {
-    expect(() => decryptAdminEmailCredential("not-a-valid-packed-value", key)).toThrow(
-      /Malformed encrypted admin email credential/,
-    );
+    expect(() => decryptAdminEmailCredential("not-a-valid-packed-value", key)).toThrow(/Malformed encrypted Drive token/);
   });
 });

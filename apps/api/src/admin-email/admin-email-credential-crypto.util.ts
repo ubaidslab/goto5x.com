@@ -1,30 +1,13 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+// D87 (founder decision, 2026-10-10/11, P0/Risk #51) - reused verbatim,
+// same idiom as trust-safety/identity-crypto.util.ts - the exact AES-256-
+// GCM implementation already used for the Google Drive refresh token
+// (same algorithm/IV length/iv:authTag:ciphertext packing this file hand-
+// copied before this). One audited implementation, not a duplicate - a
+// future correctness fix to the shared shape now only needs to land here.
+// Still encrypted under this credential type's own
+// ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY, independent of every other
+// credential type in this codebase - only the code is shared, never the key.
+import { decryptDriveToken, encryptDriveToken } from "../media/drive-token-crypto.util";
 
-const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH_BYTES = 12;
-
-/**
- * AES-256-GCM at the application layer for a linked admin email account's
- * IMAP/SMTP passwords (SRS §5.53/FR-53.2) - identical shape to
- * order-verification/smtp-credential-crypto.util.ts, but under its own
- * ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY so the two secrets rotate
- * independently. Packed as `iv:authTag:ciphertext`, each base64.
- */
-export function encryptAdminEmailCredential(plaintext: string, key: Buffer): string {
-  const iv = randomBytes(IV_LENGTH_BYTES);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return [iv.toString("base64"), authTag.toString("base64"), ciphertext.toString("base64")].join(":");
-}
-
-export function decryptAdminEmailCredential(packed: string, key: Buffer): string {
-  const [ivB64, authTagB64, ciphertextB64] = packed.split(":");
-  if (!ivB64 || !authTagB64 || !ciphertextB64) {
-    throw new Error("Malformed encrypted admin email credential (expected iv:authTag:ciphertext).");
-  }
-  const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(authTagB64, "base64"));
-  const plaintext = Buffer.concat([decipher.update(Buffer.from(ciphertextB64, "base64")), decipher.final()]);
-  return plaintext.toString("utf8");
-}
+export const encryptAdminEmailCredential = encryptDriveToken;
+export const decryptAdminEmailCredential = decryptDriveToken;

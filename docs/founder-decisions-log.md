@@ -1795,3 +1795,32 @@ still reachable via `forceChannel()` in its own sibling test.
    flagged here as a known, diagnosed, rare flake for a future pass
    rather than silently ignored.
 **Reasoning:** not elaborated beyond the decision itself.
+
+### D103. D87 - the four duplicated credential-encryption implementations merged
+**Status:** LOCKED. First M1-1B item.
+**Decision:** `payment-gateway-credential-crypto.util.ts`,
+`smtp-credential-crypto.util.ts`, and
+`admin-email-credential-crypto.util.ts` each carried their own hand-
+copied AES-256-GCM implementation, byte-for-byte identical to
+`media/drive-token-crypto.util.ts`'s (same algorithm, IV length, and
+`iv:authTag:ciphertext` packing) - differing only in function names and
+the "malformed" error's credential-type wording. All three now
+re-export `drive-token-crypto.util.ts`'s `encryptDriveToken`/
+`decryptDriveToken` under their own existing names, exactly matching
+`trust-safety/identity-crypto.util.ts`'s own pre-existing two-line
+re-export pattern - the founder's own instruction named this as "already
+correct," so no new abstraction was introduced beyond copying it.
+Every call site keeps its exact existing import name and signature;
+each credential type still encrypts under its own independently-
+rotatable key (`PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY`/
+`SMTP_CREDENTIAL_ENCRYPTION_KEY`/`ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY`)
+- only the code is shared, never the key. One observable change: the
+"malformed packed value" error now always says "Drive token" instead of
+each credential's own name, same tradeoff identity-crypto.util.ts's own
+errors already accepted for CNIC/payment-instrument fingerprints - the
+three existing unit tests asserting the old per-domain wording are
+updated to match, not left to rot or deleted.
+**Reasoning:** not elaborated beyond the decision itself - "a future
+correctness fix to the shared AES-256-GCM shape should only need to
+land in one place" (D87's own wording), now true for all five
+credential/token types in this codebase, not just identity values.
