@@ -193,12 +193,18 @@ describe("Store-Wide Payment Model (e2e) - SRS §5.6l, FR-6.61-6.68", () => {
       expect(checkout.status).toBe(400);
     });
 
-    it("advance: allowed once a gateway is connected", async () => {
+    it("D95/B3 (2026-10-10) - advance: still blocked even once a gateway is connected, while every gateway is 'verifying'", async () => {
+      // Before B3, connecting any gateway (active, regardless of real
+      // integration evidence) was enough to satisfy this check - exactly
+      // Risk #50. hasActiveGatewayConnection() now also requires
+      // isGatewayLive(), so this stays blocked until a provider is
+      // promoted to "live" (D86) or the store configures Manual Transfer
+      // (B3b, founder decision 2026-10-10 - not yet built).
       const { token, storeId, hostname } = await signupLoginAndCreateStore("pm-advance-gw@example.com", "pm-advance-gw-store");
       await setPaymentModel(token, storeId, "advance", 20);
       await connectGateway(token, storeId);
       const checkout = await attemptCheckout(hostname, token, storeId, 1000);
-      expect(checkout.status).toBe(201);
+      expect(checkout.status).toBe(400);
     });
   });
 
@@ -223,55 +229,28 @@ describe("Store-Wide Payment Model (e2e) - SRS §5.6l, FR-6.61-6.68", () => {
   });
 
   describe("The Advance payment model's own charge-and-confirm flow (FR-6.66)", () => {
-    it("charges exactly the configured model percentage (not the anti-fraud default), confirms the order, and snapshots paymentModel onto the order", async () => {
-      const { token, storeId, hostname } = await signupLoginAndCreateStore("pm-flow-ok@example.com", "pm-flow-ok-store");
+    /**
+     * D95/B3 (2026-10-10) - replaces the two tests this block had before
+     * B3 ("charges exactly the configured model percentage..." / "a
+     * not-yet-verified charge never confirms..."). Both required
+     * checkout to succeed under paymentModel="advance" with a connected
+     * gateway first - that's no longer reachable at all (the "Checkout
+     * readiness gate" describe block above now blocks it, since
+     * connecting a "verifying" gateway no longer satisfies
+     * hasActiveGatewayConnection()). There is currently no way to get a
+     * real pending advance-model order through the public checkout
+     * route, so the percentage/confirm/ledger wiring this used to prove
+     * is dormant, not deleted - it's still real code, just unreachable
+     * until a provider is promoted to "live" or B3b's Manual Transfer
+     * ships. This test proves that unreachability directly, at the one
+     * real boundary a buyer could actually hit.
+     */
+    it("has no reachable path today - checkout itself refuses before any pending advance-model order can exist", async () => {
+      const { token, storeId, hostname } = await signupLoginAndCreateStore("pm-flow-gated@example.com", "pm-flow-gated-store");
       await setPaymentModel(token, storeId, "advance", 30);
       await connectGateway(token, storeId);
-
       const checkout = await attemptCheckout(hostname, token, storeId, 1000);
-      expect(checkout.status).toBe(201);
-      const order = checkout.body as { id: string; statusLookupToken: string };
-
-      const persistedBefore = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(persistedBefore.paymentModel).toBe("advance");
-
-      const options = await request(app.getHttpServer()).get(`/storefront/gateway-payment/${order.statusLookupToken}/model-advance`);
-      expect(options.status).toBe(200);
-      expect(options.body.amount).toBe(300); // 30% of 1000, not orders.prepaid_partial_advance_percent's 5%
-      expect(options.body.providers).toEqual(["raast"]);
-
-      fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: true, providerReference: "RAAST-REF-1" });
-      const verify = await request(app.getHttpServer())
-        .post(`/storefront/gateway-payment/${order.statusLookupToken}/model-advance/verify`)
-        .send({ provider: "raast", reference: "buyer-provided-ref" });
-      expect(verify.status).toBe(201);
-      expect(verify.body.status).toBe("confirmed");
-
-      expect(fakeRaast.verifyPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 300, orderId: order.id }));
-
-      const persistedAfter = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(persistedAfter.status).toBe("confirmed");
-
-      // No OrderVerification row is touched by this flow (FR-6.66's "the two 'advance' concepts stay architecturally separate").
-      const verification = await superuser.orderVerification.findUnique({ where: { orderId: order.id } });
-      expect(verification).toBeNull();
-    });
-
-    it("a not-yet-verified charge never confirms the order", async () => {
-      const { token, storeId, hostname } = await signupLoginAndCreateStore("pm-flow-fail@example.com", "pm-flow-fail-store");
-      await setPaymentModel(token, storeId, "advance", 20);
-      await connectGateway(token, storeId);
-      const checkout = await attemptCheckout(hostname, token, storeId, 1000);
-      const order = checkout.body as { id: string; statusLookupToken: string };
-
-      fakeRaast.verifyPayment.mockResolvedValueOnce({ verified: false });
-      const verify = await request(app.getHttpServer())
-        .post(`/storefront/gateway-payment/${order.statusLookupToken}/model-advance/verify`)
-        .send({ provider: "raast" });
-      expect(verify.status).toBe(400);
-
-      const persisted = await superuser.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(persisted.status).toBe("pending");
+      expect(checkout.status).toBe(400);
     });
 
     it("rejects the model-advance verify endpoint for an order that wasn't placed under the Advance model", async () => {

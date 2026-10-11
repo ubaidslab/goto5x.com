@@ -10,6 +10,7 @@ import { EmailOtpAdapter } from "./adapters/email-otp.adapter";
 import { PrepaidConfirmationAdapter } from "./adapters/prepaid-confirmation.adapter";
 import { PrepaidPartialAdvanceAdapter } from "./adapters/prepaid-partial-advance.adapter";
 import { WhatsAppOtpAdapter } from "./adapters/whatsapp-otp.adapter";
+import { isGatewayLive } from "../payment-gateway/gateway-registry";
 import { generateOtp, hashOtp } from "./otp.util";
 import { SellerVerificationEmailsService } from "./seller-verification-emails.service";
 import { VerificationChannelAdapter } from "./verification-channel-adapter.interface";
@@ -83,10 +84,22 @@ export class OrderVerificationService {
     // actually pay the advance, same failure mode as Email OTP's missing
     // sender above. A direct Prisma read rather than injecting
     // PaymentGatewayService - that would be circular (PaymentGatewayModule
-    // imports OrdersModule, which imports this module).
+    // imports OrdersModule, which imports this module). isGatewayLive()
+    // is a plain, dependency-free function (not a NestJS provider), so
+    // importing it here carries none of that circularity risk.
+    //
+    // D95/B3 (2026-10-10) - "active" alone is no longer enough, same
+    // reasoning as CheckoutService.hasActiveGatewayConnection(): a
+    // verifying/soon-status connection can be active but can never
+    // actually charge a buyer, which would otherwise let this channel's
+    // readiness check pass into an order whose verify step is doomed.
     if (channel === "prepaid_partial_advance") {
-      const activeGateways = await this.prismaAdmin.storePaymentGatewayConnection.count({ where: { storeId, isActive: true } });
-      if (activeGateways === 0) {
+      const connections = await this.prismaAdmin.storePaymentGatewayConnection.findMany({
+        where: { storeId, isActive: true },
+        select: { provider: true },
+      });
+      const hasLiveGateway = connections.some((c) => isGatewayLive(c.provider));
+      if (!hasLiveGateway) {
         throw new BadRequestException(
           "This store's prepaid partial-advance verification has no connected, active payment gateway - checkout isn't available.",
         );

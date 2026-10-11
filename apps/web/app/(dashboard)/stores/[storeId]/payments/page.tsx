@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/dashboard/ConfirmDialogProvider";
 import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { DashCard, DashCardHeader } from "@/components/dashboard/ui/DashCard";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -59,6 +60,14 @@ const GATEWAY_PROVIDER_LABELS: Record<PaymentGatewayProvider, string> = {
   jazzcash: "JazzCash",
   bank: "Bank transfer",
 };
+
+// D95/B3 (2026-10-10) - mirrors apps/api/src/payment-gateway/gateway-registry.ts's
+// GATEWAY_STATUS_BY_PROVIDER (the real source of truth). None of these four
+// reach a buyer's checkout yet, regardless of this connection's own isActive
+// toggle - connecting/testing still works, so a seller can get set up ahead
+// of time, but the buyer-facing list stays empty until each is promoted
+// individually with evidence.
+const VERIFYING_PROVIDERS: ReadonlySet<PaymentGatewayProvider> = new Set(["raast", "easypaisa", "jazzcash", "bank"]);
 
 // Placeholder guidance, not a provider-accurate integration guide - the
 // connect form itself is one generic field set for all four providers
@@ -311,7 +320,7 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
         <DashCard>
           <DashCardHeader
             title="Payment gateway"
-            description="Connect your own Raast, Easypaisa, JazzCash, or bank account so we can verify your buyer's payment was received and confirm the order automatically - your money never passes through UZEYN, and there's no commission either way. Raast is free and offered first at checkout. Sellers without a connection keep using the manual payment instructions below."
+            description="Connect your own Raast, Easypaisa, JazzCash, or bank account so we can verify your buyer's payment was received and confirm the order automatically - your money never passes through UZEYN, and there's no commission either way. Raast is free and offered first at checkout. All four are still being verified platform-wide right now, so buyers won't see them yet even once connected - sellers without a live gateway keep using the manual payment instructions below."
           />
           <div>
             {gatewayError && <Alert>{gatewayError}</Alert>}
@@ -320,7 +329,10 @@ export default function PaymentsPage({ params }: { params: { storeId: string } }
                 {gatewayConnections.map((c) => (
                   <div key={c.provider} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <div>
-                      <p className="text-sm font-medium text-ink">{GATEWAY_PROVIDER_LABELS[c.provider]}</p>
+                      <p className="flex items-center gap-2 text-sm font-medium text-ink">
+                        {GATEWAY_PROVIDER_LABELS[c.provider]}
+                        {VERIFYING_PROVIDERS.has(c.provider) && <Badge tone="warning">Verifying - not yet shown to buyers</Badge>}
+                      </p>
                       <p className="text-xs text-ink-muted">
                         {c.merchantId ? `Merchant ID: ${c.merchantId}` : "No merchant ID set"}
                         {gatewayTestResults[c.provider] !== undefined &&
