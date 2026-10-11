@@ -1487,3 +1487,68 @@ than leaving 1C's start to this session's own judgment.
    network reachability need mocking; every milestone report lists
    tests removed/rewritten with reason; CI polling stays light.
 **Reasoning:** not elaborated beyond the decision itself.
+
+### D99. B3b (Manual Transfer for "advance") confirmed scope; buyer-cancel stays out of this milestone
+**Status:** LOCKED. B3b built to the 8-point spec below; item 3 (D98)
+shipped together with it as instructed. Both merged into PR #12,
+CI-confirmed green.
+**Decision:**
+1. B3b reuses existing pieces rather than adding new state: the same
+   OR-pattern B3a already uses for "prepaid" (live gateway OR a
+   configured `StorePaymentInstructions` payout method) now also gates
+   "advance", and the seller's existing `markAsPaid()` is the
+   confirmation action - no new `OrderStatus`.
+2. An unpaid advance order uses the existing pending/unpaid state and
+   is blocked from fulfillment/shipping until the seller confirms (new
+   `assertShippableForPaymentModel()` guard on both tracking-upload
+   paths).
+3. The buyer submits a transaction reference + sender name (text only,
+   validated, length-limited, escaped) via a public token-gated
+   endpoint; shown to the seller next to Mark as paid.
+4. The seller's "Not received" action reuses the existing cancel path
+   plus item 3 (D98)'s stock-restore function - no separate rejection
+   mechanism.
+5. Unpaid advance orders auto-cancel after a seller-set window (default
+   48h) through that same cancel-plus-restore path, run by a new hourly
+   sweep worker.
+6. Order creation is rate-limited per buyer email/phone in addition to
+   the existing per-IP limit.
+7. Label is exactly "Paid (confirmed by seller)", never "verified"; who
+   confirmed and when is recorded in the existing `order.placed`
+   platform-event's metadata (`EventsService`'s actor-table convention -
+   `OrderTimelineEvent` itself has no actor column anywhere in this
+   schema).
+8. Seller dashboard shows the founder's exact warning copy ("Check the
+   money in your own account before shipping - a screenshot or
+   reference number is not proof.") next to the confirm action.
+9. Checkout only offers advance-via-manual-transfer when the seller has
+   filled in at least one payout method (account title + number);
+   otherwise blocked, same as any other unconfigured channel today.
+
+   Tests: happy path, seller rejects, auto-cancel with stock restored,
+   shipping-before-confirmation blocked, and an injection attempt in the
+   reference field - all passing (backend e2e; frontend hand-verified,
+   see the B3b report for one disclosed browser-click caveat that
+   doesn't implicate the proven server-side logic).
+
+10. **Buyer-initiated cancellation is explicitly out of this milestone.**
+    The founder's item-3 wording ("seller/buyer/auto-cancel") named the
+    eventual full set, not a requirement for B3b/item 3 itself. In
+    scope now: seller cancel, seller "Not received", and auto-cancel -
+    all three already funneled through item 3 (D98)'s one generic,
+    idempotent restore-stock-on-cancel function, specifically so a
+    future buyer-cancel can call it with no changes to that function.
+    Until then, a buyer who wants to cancel contacts the seller, who
+    cancels on their behalf.
+
+**Post-MVP backlog addition:** buyer-initiated order cancellation, with
+seller-defined rules and a time window (e.g., only before the seller
+has started fulfillment, or only within N minutes of placing the
+order) - not scoped or estimated yet. Tracked here and in
+`docs/build-plan.md`'s "Explicitly re-tagged out of the pre-MVP code
+queue" section; pick up post-MVP, reusing item 3 (D98)'s
+`restoreStockForOrder()` unchanged.
+**Reasoning:** keeps B3b's shipped surface area to exactly what was
+asked, while making the eventual buyer-cancel feature a pure addition
+(new trigger path calling an already-generic function) instead of a
+future refactor.

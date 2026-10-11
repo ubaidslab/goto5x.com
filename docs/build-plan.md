@@ -4614,6 +4614,13 @@ the checklist.
   portal, Vellum, seller funnel analytics, paid templates** — post-MVP,
   unaffected code-wise (D63); `docs/mvp-scope.md` is the authoritative
   "what's out" list.
+- **Buyer-initiated order cancellation** (D99) — seller-defined rules
+  and a time window, not scoped or estimated yet. B3b/founder-item-3's
+  `restoreStockForOrder()` was deliberately built as one generic,
+  idempotent function taking an order + cancellation reason precisely
+  so this lands as a pure addition (a new trigger path calling it)
+  rather than a refactor. Until built, a buyer who wants to cancel
+  contacts the seller, who cancels on their behalf.
 
 ### CI speed (D59/D89) — landed 2026-10-09
 Shipped as its own small, sequenced-first push ahead of M1's own 1A
