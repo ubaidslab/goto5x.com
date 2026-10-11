@@ -294,19 +294,86 @@ unmodified once granted.
       instead. Treat this step as the first real test of the Dockerfiles/
       compose topology and watch `docker compose logs -f` closely.
 - [ ] Confirm all 6 services report healthy: `docker compose ps`.
-- [ ] Run `bootstrap-db.sql` once, as documented at the top of
-      `apps/api/scripts/bootstrap-db.sql`, against the running `postgres`
-      container, using the real production passwords from step 3:
-      ```sh
-      docker compose exec -T postgres psql -U "$POSTGRES_SUPERUSER" \
-        -v runtime_password="$POSTGRES_RUNTIME_PASSWORD" \
-        -v admin_password="$POSTGRES_ADMIN_PASSWORD" \
-        -v dbname="$POSTGRES_DB" \
-        -f - < apps/api/scripts/bootstrap-db.sql
-      ```
-- [ ] Apply migrations: `docker compose exec api pnpm prisma:migrate`
-      (runs `prisma migrate deploy`, using the superuser connection wired
-      into the API's Dockerfile entrypoint per `docs/architecture.md`).
+- [ ] **The exact sequence, in order: bootstrap → migrate → (bootstrap, only if/when you ever need to re-run it later).** The
+      first two are mandatory, once, on a fresh database — order matters
+      and is no longer optional: `prisma migrate deploy` applies
+      migrations that themselves `REVOKE` privileges from `app_runtime`/
+      `app_admin` (e.g. `rls_and_audit_grants`), so those roles must
+      already exist, or migration fails outright with `role "app_runtime"
+      does not exist` (hit for real in this repo's own CI — founder item
+      2, 2026-10-11 — confirmed via `.github/workflows/ci.yml`'s
+      `db-role-grants` job, run
+      [#244](https://github.com/ubaidslab/goto5x.com/actions/runs/38122973723)).
+      The third, parenthetical step is **not** part of a normal first
+      deploy — it documents that bootstrap-db.sql is now safe to re-run
+      at any later point (password rotation, re-provisioning a role) without
+      undoing what migrations have already narrowed; see the "Role grant
+      idempotency" note below for why that's now guaranteed rather than
+      merely hoped.
+      1. **Bootstrap** — run `bootstrap-db.sql` once, as documented at the
+         top of `apps/api/scripts/bootstrap-db.sql`, against the running
+         `postgres` container, using the real production passwords from
+         step 3:
+         ```sh
+         docker compose exec -T postgres psql -U "$POSTGRES_SUPERUSER" \
+           -v runtime_password="$POSTGRES_RUNTIME_PASSWORD" \
+           -v admin_password="$POSTGRES_ADMIN_PASSWORD" \
+           -v dbname="$POSTGRES_DB" \
+           -f - < apps/api/scripts/bootstrap-db.sql
+         ```
+      2. **Migrate** — `docker compose exec api pnpm prisma:migrate`
+         (runs `prisma migrate deploy`, using the superuser connection
+         wired into the API's Dockerfile entrypoint per
+         `docs/architecture.md`).
+      3. **(Later, if ever needed) bootstrap again** — the exact same
+         command as step 1, no variation. Confirmed safe via two
+         independent checks, not assumed: (a) against a real,
+         already-migrated local database that had already drifted (see
+         the note below), re-running it self-corrected the drift and
+         stayed correct across two further re-runs; (b) a deliberate,
+         real-CI adversarial test on a throwaway branch (deleted after
+         capturing this) — re-widened `app_runtime`'s grant on
+         `admin_audit_logs` by hand right after the three bootstrap-db.sql
+         runs, and `db-role-grants` correctly went red: run
+         [#248](https://github.com/ubaidslab/goto5x.com/actions/runs/38127546913)
+         failed at exactly the assertion step, logging
+         `admin_audit_logs,app_runtime,DELETE|INSERT|SELECT|UPDATE` (the
+         widened row) and `MISMATCH - append-only table grants are not
+         exactly insert+select for both roles`, exit code 1 - the real
+         passing baseline (before the deliberate break) was run
+         [#246](https://github.com/ubaidslab/goto5x.com/actions/runs/38126075240).
+  - [ ] **Role grant idempotency (founder item 2, 2026-10-11).**
+        `bootstrap-db.sql`'s blanket `GRANT ... ON ALL TABLES` (needed so
+        a fresh deploy's existing tables get the right privileges, not
+        just ones created after this script runs) used to silently
+        re-widen five append-only tables — `admin_audit_logs`,
+        `user_security_events`, `platform_events`, `milestone_events`,
+        `stock_adjustments` — back to full DML if the script ever ran
+        again after migrations had already narrowed them to
+        insert+select via their own `REVOKE` statements. Fixed: the
+        script now re-applies that exact `REVOKE` to exactly those five
+        tables, unconditionally, every time it runs (guarded so it's a
+        no-op against a database where they don't exist yet). CI's
+        `db-role-grants` job asserts this on every push that touches
+        code: bootstrap → migrate → bootstrap → bootstrap, then checks
+        the final grants are exactly right.
+  - [ ] **Role passwords come only from environment variables, confirmed
+        directly, not assumed:** `bootstrap-db.sql` itself contains zero
+        hardcoded password literals — every reference is the psql
+        variable substitution `:'runtime_password'`/`:'admin_password'`,
+        populated from `$POSTGRES_RUNTIME_PASSWORD`/
+        `$POSTGRES_ADMIN_PASSWORD` by whoever invokes it (see the command
+        in step 1 above). `.env.example`'s own values for these
+        (`POSTGRES_SUPERUSER_PASSWORD`/`POSTGRES_RUNTIME_PASSWORD`/
+        `POSTGRES_ADMIN_PASSWORD`) are the placeholder
+        `change-me-local-only`, never a real credential. CI uses its own
+        throwaway, non-production `ci-superuser-password`/
+        `ci-runtime-password`/`ci-admin-password` literals, hardcoded
+        only in `.github/workflows/ci.yml` for an ephemeral container
+        that's destroyed at the end of the job — grepped the repo
+        (excluding `.env.example` and `ci.yml` themselves) for every one
+        of these placeholder/throwaway strings and found no other
+        occurrence.
 - [ ] Create the MinIO bucket named by `MINIO_BUCKET` once
       (`docker compose exec minio mc mb local/$MINIO_BUCKET`, or the MinIO
       console at the container's console port) — the app does not
