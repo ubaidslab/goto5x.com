@@ -7,9 +7,11 @@ import { RaastGatewayAdapter } from "../../src/payment-gateway/adapters/raast-ga
 import { EasypaisaGatewayAdapter } from "../../src/payment-gateway/adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "../../src/payment-gateway/adapters/jazzcash-gateway.adapter";
 import { BankTransferGatewayAdapter } from "../../src/payment-gateway/adapters/bank-transfer-gateway.adapter";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Module 95 (SRS §5.6l, FR-6.61-6.68) - the store-wide, mutually-exclusive
@@ -104,6 +106,20 @@ describe("Store-Wide Payment Model (e2e) - SRS §5.6l, FR-6.61-6.68", () => {
       .patch(`/stores/${storeId}/payment-model`)
       .set("Authorization", `Bearer ${token}`)
       .send({ paymentModel, advancePercent });
+  }
+
+  /**
+   * Founder item 5 (D99, 2026-10-11) - writes the channel directly via
+   * the Settings Registry, bypassing updateSettingsForStore()'s own
+   * save-time live-gateway gate on prepaid_partial_advance. Needed here
+   * for the SAME reason as module76's identical helper: the cross-setting
+   * rule this file's "Cross-setting rule" tests are actually about is a
+   * separate, independent check from the live-gateway one, and with no
+   * gateway ever "live" platform-wide today (D95/D86), going through the
+   * real save endpoint can no longer reach that second check's precondition.
+   */
+  async function forceChannel(storeId: string, channel: string) {
+    await app.get(SettingsService).setValue("orders.verification_channel", "store", storeId, channel, ADMIN_ID);
   }
 
   async function setChannel(token: string, storeId: string, channel: string) {
@@ -212,19 +228,39 @@ describe("Store-Wide Payment Model (e2e) - SRS §5.6l, FR-6.61-6.68", () => {
     it("rejects switching the payment model to Advance while that verification channel is already active", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreateStore("pm-cross-a@example.com", "pm-cross-a-store");
       await upgradeToTier(sellerId, 1);
-      await setChannel(token, storeId, "prepaid_partial_advance");
+      // forceChannel(), not setChannel() - this test is about the
+      // cross-setting rule below, a check independent of founder item 5's
+      // save-time live-gateway gate (D99, 2026-10-11). Going through the
+      // real save endpoint can no longer reach this precondition at all
+      // (no gateway is ever "live" platform-wide today, D95/D86), so this
+      // bypasses that other gate directly to isolate the one under test.
+      await forceChannel(storeId, "prepaid_partial_advance");
 
       const attempt = await setPaymentModel(token, storeId, "advance", 20);
       expect(attempt.status).toBe(400);
     });
 
-    it("rejects switching the verification channel to prepaid_partial_advance while the payment model is already Advance", async () => {
+    /**
+     * Rewritten for founder item 5 (D99, 2026-10-11) - this used to prove
+     * the cross-setting rule itself rejects this save. It no longer can:
+     * updateSettingsForStore() now checks the save-time live-gateway gate
+     * BEFORE the cross-setting check, and no gateway is ever "live"
+     * platform-wide today (D95/D86) - so this save is correctly rejected,
+     * but for item 5's reason, not FR-6.67's. The cross-setting rule
+     * itself is unchanged and still real code (see the sibling test
+     * above, which still reaches it via forceChannel()) - just, like
+     * module76's own "has no reachable path today" tests, not reachable
+     * through this exact real-endpoint-both-ways ordering until a
+     * gateway goes live.
+     */
+    it("a save attempt while the payment model is already Advance is rejected - today, by the live-gateway gate, which runs first", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreateStore("pm-cross-b@example.com", "pm-cross-b-store");
       await upgradeToTier(sellerId, 1);
       await setPaymentModel(token, storeId, "advance", 20);
 
       const attempt = await setChannel(token, storeId, "prepaid_partial_advance");
       expect(attempt.status).toBe(400);
+      expect(attempt.body.message.message).toBe("Needs a live payment gateway. Not available yet in your country.");
     });
   });
 

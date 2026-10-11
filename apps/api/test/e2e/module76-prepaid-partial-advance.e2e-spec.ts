@@ -7,9 +7,11 @@ import { RaastGatewayAdapter } from "../../src/payment-gateway/adapters/raast-ga
 import { EasypaisaGatewayAdapter } from "../../src/payment-gateway/adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "../../src/payment-gateway/adapters/jazzcash-gateway.adapter";
 import { BankTransferGatewayAdapter } from "../../src/payment-gateway/adapters/bank-transfer-gateway.adapter";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
+const ADMIN_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Module 76 (SRS §5.6j/FR-6.52) - Prepaid Partial-Advance, a new anti-fake-
@@ -110,6 +112,23 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
       .send({ channel });
   }
 
+  /**
+   * Founder item 5 (D99, 2026-10-11) - writes the channel directly,
+   * bypassing updateSettingsForStore()'s own save-time live-gateway gate.
+   * Needed because that gate now makes setChannel("prepaid_partial_advance")
+   * fail via the public endpoint whenever there's no live gateway - which,
+   * platform-wide today (D95/D86), is always. The "Checkout readiness"/
+   * "verified-partial-payment flow" tests below are about
+   * assertChannelReady()'s OWN (separate, pre-existing) gate, so they use
+   * this to get the store into the "channel is set, gateway question is
+   * what's under test" state directly, same as upgradeToTier() already
+   * bypasses the real plan-upgrade/billing flow for its own narrower setup
+   * purpose.
+   */
+  async function forceChannel(storeId: string, channel: string) {
+    await app.get(SettingsService).setValue("orders.verification_channel", "store", storeId, channel, ADMIN_ID);
+  }
+
   async function createSelfProduct(token: string, storeId: string, price: number) {
     const product = await request(app.getHttpServer())
       .post(`/stores/${storeId}/products`)
@@ -135,16 +154,78 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
   }
 
   describe("Plan gate (free from RUN upward)", () => {
-    it("a GO seller is blocked from configuring the channel; a RUN seller is not", async () => {
-      const { token, storeId, sellerId } = await signupLoginAndCreateStore("ppa-gate@example.com", "ppa-gate-store");
+    /**
+     * Rewritten for founder item 5 (D99, 2026-10-11) - this used to end by
+     * asserting a RUN seller's save succeeds (200) with NO gateway
+     * connected at all. That was the exact gap item 5 flagged: the save
+     * path only checked the plan gate, never live-gateway status (only
+     * checkout-time did, via assertChannelReady() - see the "Checkout
+     * readiness" describe block below). Now that the save path checks
+     * both, a RUN seller with no gateway is correctly blocked too - this
+     * test still proves the plan gate fires first/independently (a GO
+     * seller is blocked for the plan reason, not the gateway reason), then
+     * hands off to the dedicated "save-time live-gateway gate" block below
+     * for the new behavior itself.
+     */
+    it("a GO seller is blocked from configuring the channel (plan gate) regardless of gateway status", async () => {
+      const { token, storeId } = await signupLoginAndCreateStore("ppa-gate@example.com", "ppa-gate-store");
 
       const blocked = await setChannel(token, storeId, "prepaid_partial_advance");
       expect(blocked.status).toBe(403);
+      expect(blocked.body.message.message).toBe("Prepaid partial-advance verification is not included in your current plan.");
+    });
+  });
 
-      await upgradeToTier(sellerId, 1); // RUN
-      const allowed = await setChannel(token, storeId, "prepaid_partial_advance");
-      expect(allowed.status).toBe(200);
-      expect(allowed.body.channel).toBe("prepaid_partial_advance");
+  describe("Save-time live-gateway gate (founder item 5, D99, 2026-10-11)", () => {
+    /**
+     * The whole point of this item: a seller could previously SAVE this
+     * channel with zero gateway connected and only discover it never works
+     * once a real buyer hit checkout (the pre-existing "Checkout readiness"
+     * block below). Plan-gated and RUN+, but still blocked at save time -
+     * no gateway is "live" anywhere on this platform today (D95/D86, every
+     * PaymentGatewayProvider is "verifying"), so this is also the only
+     * reachable outcome for this channel right now; see that same
+     * constraint already documented on the "has no reachable path today"
+     * test further below.
+     */
+    it("blocks the save itself (not just checkout) when the store has no live gateway connection, with the founder's exact copy", async () => {
+      const { token, storeId, sellerId } = await signupLoginAndCreateStore("ppa-savegate-nogw@example.com", "ppa-savegate-nogw-store");
+      await upgradeToTier(sellerId, 1); // RUN - clears the plan gate, isolating this test to the gateway gate
+
+      const blocked = await setChannel(token, storeId, "prepaid_partial_advance");
+      expect(blocked.status).toBe(400);
+      expect(blocked.body.message.message).toBe("Needs a live payment gateway. Not available yet in your country.");
+
+      // The rejected save never wrote a store-scoped override - the store
+      // stays on its default channel, not silently half-saved.
+      const stored = await superuser.settingsValue.findFirst({
+        where: { definitionKey: "orders.verification_channel", scopeType: "store", scopeId: storeId },
+      });
+      expect(stored).toBeNull();
+    });
+
+    it("an active-but-not-live gateway connection (D95 - 'verifying', not 'live') still blocks the save, same as no connection at all", async () => {
+      const { token, storeId, sellerId } = await signupLoginAndCreateStore("ppa-savegate-verifying@example.com", "ppa-savegate-verifying-store");
+      await upgradeToTier(sellerId, 1);
+      await connectGateway(token, storeId);
+
+      const blocked = await setChannel(token, storeId, "prepaid_partial_advance");
+      expect(blocked.status).toBe(400);
+      expect(blocked.body.message.message).toBe("Needs a live payment gateway. Not available yet in your country.");
+    });
+
+    it("the settings-read endpoint reports the live-gateway flag so the dashboard can show this gate before the seller ever clicks Save", async () => {
+      const { token, storeId, sellerId } = await signupLoginAndCreateStore("ppa-savegate-read@example.com", "ppa-savegate-read-store");
+      await upgradeToTier(sellerId, 1);
+
+      const beforeConnect = await request(app.getHttpServer()).get(`/stores/${storeId}/verification-settings`).set("Authorization", `Bearer ${token}`);
+      expect(beforeConnect.body.prepaidPartialAdvanceHasLiveGateway).toBe(false);
+
+      await connectGateway(token, storeId);
+      const afterConnect = await request(app.getHttpServer()).get(`/stores/${storeId}/verification-settings`).set("Authorization", `Bearer ${token}`);
+      // Still false - raast is "verifying", not "live" (D95/D86) - an
+      // active connection alone was never meant to flip this flag.
+      expect(afterConnect.body.prepaidPartialAdvanceHasLiveGateway).toBe(false);
     });
   });
 
@@ -152,7 +233,7 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
     it("blocks checkout when the store has no active gateway connection", async () => {
       const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-no-gateway@example.com", "ppa-no-gateway-store");
       await upgradeToTier(sellerId, 1);
-      await setChannel(token, storeId, "prepaid_partial_advance");
+      await forceChannel(storeId, "prepaid_partial_advance");
 
       const { productId, variantId } = await createSelfProduct(token, storeId, 1000);
       const cart = await request(app.getHttpServer())
@@ -174,7 +255,7 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
       // Manual Transfer fallback (B3b is scoped to "advance" only).
       const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-verifying-gw@example.com", "ppa-verifying-gw-store");
       await upgradeToTier(sellerId, 1);
-      await setChannel(token, storeId, "prepaid_partial_advance");
+      await forceChannel(storeId, "prepaid_partial_advance");
       await connectGateway(token, storeId);
 
       const { productId, variantId } = await createSelfProduct(token, storeId, 1000);
@@ -206,7 +287,7 @@ describe("Prepaid Partial-Advance Verification (e2e) - SRS §5.6j, §14.67, FR-6
     it("has no reachable path today - checkout itself refuses before any pending partial-advance order can exist", async () => {
       const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("ppa-verify-gated@example.com", "ppa-verify-gated-store");
       await upgradeToTier(sellerId, 1); // RUN
-      await setChannel(token, storeId, "prepaid_partial_advance");
+      await forceChannel(storeId, "prepaid_partial_advance");
       await connectGateway(token, storeId);
 
       const { productId, variantId } = await createSelfProduct(token, storeId, 1000);

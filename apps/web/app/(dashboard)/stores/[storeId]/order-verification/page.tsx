@@ -27,6 +27,11 @@ interface VerificationSettings {
   prepaidPartialAdvanceEnabled: boolean;
   whatsappVerificationEnabled: boolean;
   prepaidPartialAdvancePercent: number;
+  // Founder item 5 (D99, 2026-10-11) - a SECOND, independent gate on this
+  // one channel: even on a plan that includes it, it needs a live payment
+  // gateway connection to ever actually work. Same "don't let the seller
+  // discover this only after clicking Save" treatment as the plan gate.
+  prepaidPartialAdvanceHasLiveGateway: boolean;
 }
 
 interface VerificationEmail {
@@ -160,13 +165,18 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
                   required
                 >
                   {(Object.keys(CHANNEL_LABEL) as Channel[]).map((channel) => {
-                    const locked =
-                      (channel === "whatsapp_otp" && !settings.whatsappVerificationEnabled) ||
-                      (channel === "prepaid_partial_advance" && !settings.prepaidPartialAdvanceEnabled);
+                    const suffix =
+                      channel === "whatsapp_otp" && !settings.whatsappVerificationEnabled
+                        ? " (requires RUN or above)"
+                        : channel === "prepaid_partial_advance" && !settings.prepaidPartialAdvanceEnabled
+                          ? " (requires RUN or above)"
+                          : channel === "prepaid_partial_advance" && !settings.prepaidPartialAdvanceHasLiveGateway
+                            ? " (needs a live payment gateway)"
+                            : "";
                     return (
                       <option key={channel} value={channel}>
                         {CHANNEL_LABEL[channel]}
-                        {locked ? " (requires RUN or above)" : ""}
+                        {suffix}
                       </option>
                     );
                   })}
@@ -180,6 +190,16 @@ export default function OrderVerificationPage({ params }: { params: { storeId: s
                   description={`A buyer pays ${settings.prepaidPartialAdvancePercent}% of the order total via your connected payment gateway before the order confirms - the rest stays cash/payment on delivery. One of our strongest defenses against fake COD orders.`}
                 />
               )}
+              {/* Founder item 5 (D99, 2026-10-11) - a separate gate from the
+                  plan-tier one above: even on a plan that includes this
+                  channel, it can't work with no live gateway connected. Not
+                  an UpgradeLockedCard - upgrading plan tier doesn't fix this,
+                  so that framing would be actively misleading here. */}
+              {selectedChannel === "prepaid_partial_advance" &&
+                settings.prepaidPartialAdvanceEnabled &&
+                !settings.prepaidPartialAdvanceHasLiveGateway && (
+                  <Alert tone="warning">Needs a live payment gateway. Not available yet in your country.</Alert>
+                )}
               {selectedChannel === "whatsapp_otp" && !settings.whatsappVerificationEnabled && (
                 <UpgradeLockedCard
                   requiredTier={planTierSubtitle("RUN") ? `RUN (${planTierSubtitle("RUN")})` : "RUN"}

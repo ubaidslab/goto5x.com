@@ -94,17 +94,29 @@ export class OrderVerificationService {
     // actually charge a buyer, which would otherwise let this channel's
     // readiness check pass into an order whose verify step is doomed.
     if (channel === "prepaid_partial_advance") {
-      const connections = await this.prismaAdmin.storePaymentGatewayConnection.findMany({
-        where: { storeId, isActive: true },
-        select: { provider: true },
-      });
-      const hasLiveGateway = connections.some((c) => isGatewayLive(c.provider));
+      const hasLiveGateway = await this.hasLiveGatewayConnection(storeId);
       if (!hasLiveGateway) {
         throw new BadRequestException(
           "This store's prepaid partial-advance verification has no connected, active payment gateway - checkout isn't available.",
         );
       }
     }
+  }
+
+  /**
+   * Founder item 5 (D99, 2026-10-11) - shared by assertChannelReady()
+   * (checkout-time) and updateSettingsForStore()/getSettingsForStore()
+   * (save-time/selection-time, so the Order Verification page can show
+   * this gate before the seller ever clicks Save, same "locked, not just
+   * a 403 on save" treatment the plan-tier gate already gets). One
+   * definition of "live" - D95/B3's isGatewayLive(), not merely isActive.
+   */
+  private async hasLiveGatewayConnection(storeId: string): Promise<boolean> {
+    const connections = await this.prismaAdmin.storePaymentGatewayConnection.findMany({
+      where: { storeId, isActive: true },
+      select: { provider: true },
+    });
+    return connections.some((c) => isGatewayLive(c.provider));
   }
 
   /**
@@ -516,24 +528,35 @@ export class OrderVerificationService {
   /**
    * FR-37.1/FR-37.6 - the seller's own store-level channel + message-
    * template choice (Settings Registry, `store` scope). Also reports
-   * whether this seller's PLAN includes the two gated channels (RUN+) and
-   * the configured partial-advance percentage - the Order Verification
-   * page's own "locked, not just a 403 on save" treatment reads these
-   * rather than letting a GO seller pick a gated channel blind and
-   * discover the rejection only after clicking Save.
+   * whether this seller's PLAN includes the two gated channels (RUN+),
+   * the configured partial-advance percentage, and (founder item 5,
+   * D99, 2026-10-11) whether a live gateway is connected at all - a
+   * SECOND, independent gate on prepaid_partial_advance specifically.
+   * The Order Verification page's own "locked, not just a 403 on save"
+   * treatment reads all of these rather than letting a seller pick a
+   * gated/unavailable channel blind and discover the rejection only
+   * after clicking Save.
    */
   async getSettingsForStore(sellerId: string, storeId: string) {
     await this.assertOwnsStore(sellerId, storeId);
     const planContext = await this.subscriptions.getPlanContext(sellerId);
-    const [channel, messageTemplate, prepaidPartialAdvanceEnabled, whatsappVerificationEnabled, prepaidPartialAdvancePercent] =
+    const [channel, messageTemplate, prepaidPartialAdvanceEnabled, whatsappVerificationEnabled, prepaidPartialAdvancePercent, prepaidPartialAdvanceHasLiveGateway] =
       await Promise.all([
         this.settings.resolve<string>("orders.verification_channel", { storeId }),
         this.settings.resolve<string>("orders.verification_message_template", { storeId }),
         this.settings.resolve<boolean>("orders.prepaid_partial_advance_enabled", planContext),
         this.settings.resolve<boolean>("orders.whatsapp_verification_enabled", planContext),
         this.settings.resolve<number>("orders.prepaid_partial_advance_percent", { storeId }),
+        this.hasLiveGatewayConnection(storeId),
       ]);
-    return { channel, messageTemplate, prepaidPartialAdvanceEnabled, whatsappVerificationEnabled, prepaidPartialAdvancePercent };
+    return {
+      channel,
+      messageTemplate,
+      prepaidPartialAdvanceEnabled,
+      whatsappVerificationEnabled,
+      prepaidPartialAdvancePercent,
+      prepaidPartialAdvanceHasLiveGateway,
+    };
   }
 
   async updateSettingsForStore(
@@ -549,6 +572,17 @@ export class OrderVerificationService {
       const enabled = await this.settings.resolve<boolean>("orders.prepaid_partial_advance_enabled", planContext);
       if (!enabled) {
         throw new ForbiddenException("Prepaid partial-advance verification is not included in your current plan.");
+      }
+      // Founder item 5 (D99, 2026-10-11) - gate the SAVE itself, not just
+      // checkout-readiness (assertChannelReady() below already blocked
+      // checkout, but a seller could save this channel today and only
+      // discover it never works once a real buyer tried to check out).
+      // Exact copy per the founder's own wording - this is a gateway-
+      // availability gap, not a plan-tier one, so it's deliberately not
+      // phrased like the ForbiddenException above.
+      const hasLiveGateway = await this.hasLiveGatewayConnection(storeId);
+      if (!hasLiveGateway) {
+        throw new BadRequestException("Needs a live payment gateway. Not available yet in your country.");
       }
       // Module 95 (SRS §5.6l/FR-6.67) - the one narrow cross-setting rule:
       // a store already collecting a gateway-charged Advance payment under

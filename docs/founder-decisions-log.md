@@ -1587,3 +1587,52 @@ queue" section; pick up post-MVP, reusing item 3 (D98)'s
 asked, while making the eventual buyer-cancel feature a pure addition
 (new trigger path calling an already-generic function) instead of a
 future refactor.
+
+### D100. Founder item 5 - prepaid_partial_advance gated at save time, not just checkout time
+**Status:** LOCKED.
+**Decision:** `OrderVerificationService.updateSettingsForStore()` (the
+seller's own channel-selection save, `PATCH /stores/:storeId/
+verification-settings`) now runs the same `isGatewayLive()` check
+`assertChannelReady()` already ran at checkout time - a seller could
+previously save this channel with zero gateway connected and only
+discover it never works once a real buyer hit checkout. Exact copy per
+the founder's instruction: "Needs a live payment gateway. Not available
+yet in your country." `getSettingsForStore()` also now reports a
+`prepaidPartialAdvanceHasLiveGateway` flag, read by the Order
+Verification settings page so this shows before the seller ever clicks
+Save - the same "locked, not just a 403 on save" treatment the
+existing RUN+ plan gate already gets on that page, but this is a
+SEPARATE gate (upgrading plan tier doesn't fix it, so it's shown as a
+plain warning, never the plan-upgrade card).
+
+**Tests added proving a seller can't save a blocking configuration**
+(`module76-prepaid-partial-advance.e2e-spec.ts`): the save is rejected
+with the exact copy, both with no gateway connected at all and with one
+connected-but-not-"live" (D95's "verifying" status); the rejected save
+writes no settings row at all (not a silent half-save); the read
+endpoint's new flag reflects both states correctly.
+
+**Existing tests rewritten, with reason (founder item 6's own
+discipline, applied here ahead of item 6 itself):** no gateway is
+"live" platform-wide today (D95/D86 - every `PaymentGatewayProvider`
+adapter is "verifying"), so this new gate makes the real save endpoint
+unable to ever actually reach `prepaid_partial_advance` for any store
+today, in any test. Three pre-existing tests used that save endpoint
+only as SETUP for a DIFFERENT, downstream check and so needed a direct-
+write test helper (`forceChannel()`, bypassing this new gate the same
+way `upgradeToTier()` already bypasses the real billing flow) to keep
+testing what they were actually about, unaffected by this change:
+- `module76`'s own "Checkout readiness"/"verified-partial-payment flow"
+  blocks (2 tests) - about `assertChannelReady()`'s pre-existing gate.
+- `module95`'s cross-setting-rule setup test ("rejects switching the
+  payment model to Advance while that channel is already active").
+One `module76` test's RUN-seller-succeeds assertion was simply wrong
+after this change (a RUN seller has no live gateway either, today) -
+corrected to the real, current behavior rather than forced to keep
+passing. One `module95` cross-setting test ("rejects switching the
+channel to prepaid_partial_advance while payment model is already
+Advance") is renamed and re-pointed: it still asserts 400, but now
+honestly documents that THIS gate is what fires first today, not
+FR-6.67's cross-setting rule - that rule is unchanged, real code, and
+still reachable via `forceChannel()` in its own sibling test.
+**Reasoning:** not elaborated beyond the decision itself.
