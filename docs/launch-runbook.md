@@ -11,6 +11,85 @@ calls, real third-party services).
 
 ---
 
+## 0. Repository branch protection (do this now, not at launch)
+
+Founder item 1 (2026-10-11) — this is a repo-settings concern, independent
+of VPS/launch timing, and should be done now rather than waiting for
+launch day. It is also a **repo-admin action no Claude Code session can
+perform via the GitHub API** — no branch-protection-write tool is exposed
+by the GitHub MCP server this project uses, confirmed by trying (only
+read access — `protected: true/false` — came back). The founder (or
+whoever has admin on `ubaidslab/goto5x.com`) does this once, by hand:
+
+**GitHub UI path:** repo → **Settings** → **Branches** → **Add branch
+protection rule** (or edit the existing one) → branch name pattern `main`.
+
+Turn on:
+- [ ] **Require a pull request before merging.** This is the one that
+      actually matters here — it's what makes "merge through GitHub, not
+      a direct push" a real, enforced rule instead of a convention a
+      session or a person could forget. At least 1 approval is reasonable
+      given this is currently a one-founder-one-agent repo; raise it once
+      there's a real second reviewer.
+- [ ] **Require status checks to pass before merging**, and require
+      branches to be up to date before merging. Check these exact job
+      names from `.github/workflows/ci.yml` (confirm the live list in the
+      branch-protection UI's own search box, which only offers checks
+      that have actually reported at least once — it won't show a name
+      correctly until a PR or push has run it):
+      - `typecheck`
+      - `unit-tests`
+      - `db-role-grants` (added 2026-10-11, founder item 2)
+      - `e2e-tests-summary` (the stable fan-in name for the 4 sharded
+        `e2e-tests (N)` jobs — require this one, not the per-shard names,
+        per D59's own reasoning in ci.yml)
+      - `dependency-audit`
+      - `web-build`
+      - `lint` (not wired into CI yet — founder item 6b; add it to this
+        list once it exists, don't enable the rule item for a check name
+        that doesn't report yet, or merging stalls forever waiting on a
+        check that never runs)
+- [ ] **Block force pushes.**
+- [ ] **Block branch deletions.**
+- [ ] **Include administrators** — the whole point is no exceptions,
+      including for whoever has admin on the repo.
+
+**How commits actually reached `main` before this was turned on**
+(the specific question the founder asked, answered directly rather than
+assumed): every commit on `main` so far got there through a real,
+legitimate PR merge via the GitHub web UI — confirmed directly, not
+inferred:
+- `mcp__github__pull_request_read` on PR #9 (and #8) shows
+  `"merged": true, "merged_by": "ubaidslab"`, with `merged_at` matching
+  the resulting commit's timestamp to the second.
+- That resulting commit's committer is GitHub's own `web-flow` identity
+  (`mcp__github__get_commit` on `1aa4a8d...`: `committer.login: "web-flow"`)
+  — the signature GitHub stamps exclusively on commits it creates itself
+  (a PR merge via the UI/API), never produced by a plain `git push`.
+- This session's own git identity (`git config user.name/user.email`) is
+  `Claude <noreply@anthropic.com>` — it does not match the author on
+  those commits (`Muhammad Ubaid Ali <contact.ubaidmalik@gmail.com>`),
+  ruling out "a Claude Code session pushed straight to main and it just
+  looks like a merge."
+- `mcp__github__list_pull_requests`' own summary view showed PR #9 as
+  `"merged": false, "state": "closed"` — that field is simply wrong/stale
+  on that endpoint; the direct per-PR read (`pull_request_read`) is the
+  one that's authoritative and shows `merged: true`.
+
+So the "closed, not merged" reading that raised this concern was a red
+herring from a stale API field, not evidence of a bypass — but the
+underlying worry was still correct and worth acting on: **`main` itself
+had `protected: false`** (`mcp__github__list_branches`, confirmed
+2026-10-11) — nothing was technically stopping a direct push or a
+force-push from succeeding, even though nothing actually took that path
+yet. The checklist above closes that gap. PR #10 (B3a) was the first one
+merged through `mcp__github__merge_pull_request` (squash) rather than any
+local push to `main`, once its checks were confirmed green — every PR
+from here on follows that same path, and once the settings above are on,
+nothing else is possible anyway.
+
+---
+
 ## 1. VPS provisioning
 
 - [ ] Provision a VPS (sized per `docs/tech-stack.md`'s recommendation).
