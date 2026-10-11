@@ -4,6 +4,7 @@ import { fetchStorefrontNavigation, fetchStorefrontOrderStatus, fetchStorefrontS
 import { resolveThemeSettings, ThemeSettings } from "../../../../lib/theme-presets";
 import { AnnouncementBar, SiteFooter, SiteHeader, WhatsappButton } from "../../chrome";
 import { ChatWidget } from "../../chat/chat-widget";
+import { ManualTransferPanel } from "../manual-transfer-panel";
 import { ModelAdvancePanel } from "../model-advance-panel";
 import { OrderVerificationPanel } from "../order-verification-panel";
 import { ReturnRequestForm } from "../return-request-form";
@@ -112,6 +113,14 @@ export default async function OrderStatusPage({ params }: { params: { token: str
 
         <OrderVerificationPanel token={params.token} verification={order.verification} />
         <ModelAdvancePanel token={params.token} paymentModel={order.paymentModel} orderStatus={order.status} />
+        <ManualTransferPanel
+          token={params.token}
+          paymentModel={order.paymentModel}
+          orderStatus={order.status}
+          initialReference={order.manualTransferReference}
+          initialSenderName={order.manualTransferSenderName}
+          initialSubmittedAt={order.manualTransferSubmittedAt}
+        />
 
         <h2>Order timeline</h2>
         <ol style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>

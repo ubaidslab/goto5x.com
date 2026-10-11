@@ -133,6 +133,12 @@ export class OrderStatusLookupService {
       // Module 95 (SRS §5.6l/FR-6.66) - so the buyer-facing UI knows to
       // mount the Advance payment step, independent of `verification`.
       paymentModel: order.paymentModel,
+      // B3b (founder decision, 2026-10-11) - so the buyer-facing Manual
+      // Transfer panel can show "already submitted" instead of the form
+      // once a reference exists, surviving a page refresh.
+      manualTransferReference: order.manualTransferReference,
+      manualTransferSenderName: order.manualTransferSenderName,
+      manualTransferSubmittedAt: order.manualTransferSubmittedAt,
       verification: order.verification ? { channel: order.verification.channel, status: order.verification.status } : null,
       paymentInstructions: paymentInstructions
         ? {

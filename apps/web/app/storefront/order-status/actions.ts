@@ -119,3 +119,27 @@ export async function chargeModelAdvance(token: string, provider: string): Promi
   }
   return { ok: true };
 }
+
+/**
+ * B3b (founder decision, 2026-10-11) - the Advance model's no-gateway
+ * Manual Transfer fallback: the buyer's self-reported reference + sender
+ * name, bridging OrdersService.submitManualTransferReference(). Never
+ * itself proof of payment - the seller still confirms via markAsPaid()
+ * (same Server Action reasoning as every other storefront mutation above:
+ * never a cross-origin browser fetch).
+ */
+export async function submitManualTransferReference(
+  token: string,
+  input: { reference: string; senderName: string },
+): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${process.env.API_BASE_URL}/storefront/order-status/${token}/manual-transfer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { message?: string });
+    return { ok: false, message: typeof body.message === "string" ? body.message : "Couldn't submit this right now - please try again." };
+  }
+  return { ok: true };
+}
