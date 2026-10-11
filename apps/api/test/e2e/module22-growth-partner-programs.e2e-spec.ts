@@ -264,6 +264,58 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
       expect(Number(commissionEntry.amount)).toBe(499);
     });
 
+    /**
+     * Founder item 4 (D99/D10, 2026-10-11) - the whole reason paidMonths()
+     * exists as its own shared function, separate from monthsOfService():
+     * a six_month renewal pays commission for exactly 6 whole months, never
+     * 6.5 - the 15 bonus days of service a six_month cycle buys are never
+     * commission-bearing under this program. The cap is raised well above
+     * 6 so this proves paidMonths("six_month") itself, not the separate
+     * (and separately-tested) pro-ration-against-the-cap behavior.
+     */
+    it("an Ambassador's six_month-cycle referral renewal pays commission for exactly 6 months, never 6.5", async () => {
+      const adminToken = await createAndLoginAdmin("growth-admin-6mo@example.com");
+      const settings = app.get(SettingsService);
+      await settings.setValue("growth.ambassador_max_commission_months", "global", null, 12, ADMIN_ID);
+
+      const ambassador = await signup("ambassador-6mo@example.com");
+      const ambassadorCode = await applyApproveAmbassador(ambassador.token, ambassador.sellerId, ADMIN_ID);
+      const referred = await signup("referred-6mo@example.com", ambassadorCode);
+
+      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      await superuser.subscription.update({
+        where: { sellerId: referred.sellerId },
+        data: { planId: starterPlan.id, pendingPlanId: null, billingInterval: "six_month" },
+      });
+
+      // First/initial payment never earns commission (Module 79) - only
+      // establishes hasEverPaidPlanFee() so the NEXT payment is a renewal.
+      const firstPayment = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${referred.token}`)
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${firstPayment.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      const renewal = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${referred.token}`)
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${renewal.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      const commissionEntry = await superuser.ledgerEntry.findFirstOrThrow({
+        where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
+      });
+      // growth.ambassador_flat_commission_per_month_pkr defaults to 499 - 6 whole months, never 6.5.
+      expect(Number(commissionEntry.amount)).toBe(499 * 6);
+
+      const attribution = await superuser.referralAttribution.findUniqueOrThrow({ where: { referredSellerId: referred.sellerId } });
+      expect(attribution.commissionMonthsPaid).toBe(6);
+    });
+
     it("a stale/unmatched referral code never blocks signup and creates no attribution", async () => {
       const { sellerId } = await signup("no-referral@example.com", "this-code-matches-nothing");
       const attribution = await superuser.referralAttribution.findUnique({ where: { referredSellerId: sellerId } });

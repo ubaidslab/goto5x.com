@@ -72,6 +72,29 @@ export function computeMonthlyEquivalentPrice(cycleTotal: number, interval: "mon
 }
 
 /**
+ * Founder item 4 (D99/D10, 2026-10-11) - the OTHER "months" figure,
+ * deliberately NOT monthsOfService() above. monthsOfService() answers
+ * "divide a cycle's total price by how many months, for a price-PER-
+ * MONTH figure" (MRR normalization, the pricing page's "effective
+ * monthly" label) - six_month is 6.5 there because the 15 bonus days
+ * really do lower the true per-month cost. paidMonths() answers a
+ * different question: "how many whole months of PAID service did this
+ * cycle buy," for anything that counts discrete commission/eligibility
+ * months (ProgramCommissionService's Ambassador payout, capped against
+ * growth.ambassador_max_commission_months - an Int column, and the 15
+ * bonus days were never a commission-bearing month under that program
+ * per the founder's own confirmation). six_month is a plain 6 here.
+ * Both are correct; they answer different questions. Two names, one
+ * place, so nobody collapses them into "the same number" again.
+ */
+export function paidMonths(interval: "monthly" | "quarterly" | "six_month" | "yearly"): number {
+  if (interval === "quarterly") return 3;
+  if (interval === "six_month") return 6;
+  if (interval === "yearly") return 12;
+  return 1;
+}
+
+/**
  * B2 (founder decision, 2026-10-10) - calendar-month arithmetic that
  * CLAMPS to the target month's real last day instead of JS Date's native
  * rollover (e.g. Jan 31 + 1 month would otherwise silently become Mar 3,

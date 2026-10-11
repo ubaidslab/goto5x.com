@@ -411,6 +411,41 @@ now RESOLVED, Paddle-native support is still open:**
   bonus days for that provider rather than fake it - confirm this
   before 1C starts billing real six-month cycles on that provider.
 
+**Two different "months" figures - both locked, deliberately not the
+same number (founder item 4/D99, 2026-10-11):** six_month's 15 bonus
+days answer two different questions differently, and both functions
+live together in `apps/api/src/plans/plan-pricing.util.ts` specifically
+so a future reader sees both at once instead of "fixing" one to match
+the other:
+- `monthsOfService()` - "divide a cycle's total price by how many
+  months, for a price-per-month figure." six_month = **6.5**. The bonus
+  days genuinely lower the true per-month cost, so dividing by a plain
+  6 would overstate it. Used by MRR normalization
+  (`MrrAnalyticsService`) and the pricing page's "effective monthly"
+  savings label (`apps/web/app/pricing/page.tsx` - a separate app, its
+  own hardcoded `6.5`, cross-referenced in a comment rather than shared
+  code, since this repo has no shared package between `apps/api` and
+  `apps/web` today).
+- `paidMonths()` - "how many whole months of paid service did this
+  cycle buy," for anything that counts discrete commission/eligibility
+  months. six_month = **6**, a plain whole number. The 15 bonus days
+  were never a commission-bearing month under the Ambassador program,
+  confirmed explicitly by the founder - applying 6.5 here would both
+  increase real Ambassador payouts nothing asked for and require a
+  schema migration (`ReferralAttribution.commissionMonthsPaid` is an
+  `Int` column). Used only by `ProgramCommissionService`'s Ambassador
+  accrual.
+
+Before this, `MrrAnalyticsService` carried its own second, independently-
+maintained copy of the 6.5 figure (same value, but a real duplication-
+drift risk - the actual bug item 4 was asking about) and
+`ProgramCommissionService` carried its own separate whole-6 function
+under a different name - both now call these two shared functions
+instead. Zero e2e coverage existed for any non-monthly MRR cycle, or for
+an Ambassador commission on anything but a monthly renewal, before this;
+both gaps are now covered (`mrr-analytics.e2e-spec.ts`,
+`module22-growth-partner-programs.e2e-spec.ts`).
+
 ### D11. Retention rules
 **Status:** LOCKED.
 **Decision:** 14-day money-back on every cycle (no refunds after,

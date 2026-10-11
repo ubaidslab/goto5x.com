@@ -1,5 +1,5 @@
 import { addInterval } from "./subscriptions.service";
-import { addMonthsClamped, computeCyclePrice, computeMonthlyEquivalentPrice, computeYearlyPrice, monthsOfService } from "./plan-pricing.util";
+import { addMonthsClamped, computeCyclePrice, computeMonthlyEquivalentPrice, computeYearlyPrice, monthsOfService, paidMonths } from "./plan-pricing.util";
 
 describe("computeYearlyPrice (FR-7.6)", () => {
   it("applies the configured discount off twelve months at the monthly rate", () => {
@@ -68,15 +68,34 @@ describe("monthsOfService()/computeMonthlyEquivalentPrice() - per-month figures 
   });
 
   it("GO's per-month figures, unrounded (rounding is a display concern, never computed here)", () => {
+    expect(computeMonthlyEquivalentPrice(24, "monthly")).toBe(24); // 24/1
     expect(computeMonthlyEquivalentPrice(67, "quarterly")).toBeCloseTo(22.3333, 4); // 67/3
     expect(computeMonthlyEquivalentPrice(127, "six_month")).toBeCloseTo(19.5385, 4); // 127/6.5
     expect(computeMonthlyEquivalentPrice(216, "yearly")).toBe(18); // 216/12
   });
 
   it("RISE's per-month figures", () => {
+    expect(computeMonthlyEquivalentPrice(119, "monthly")).toBe(119); // 119/1
     expect(computeMonthlyEquivalentPrice(332, "quarterly")).toBeCloseTo(110.6667, 4); // 332/3
     expect(computeMonthlyEquivalentPrice(628, "six_month")).toBeCloseTo(96.6154, 4); // 628/6.5
     expect(computeMonthlyEquivalentPrice(1071, "yearly")).toBe(89.25); // 1071/12
+  });
+});
+
+/**
+ * Founder item 4 (D99/D10, 2026-10-11) - paidMonths() is the OTHER
+ * "months" figure, deliberately not monthsOfService() above (see
+ * paidMonths()'s own doc comment in plan-pricing.util.ts for why both
+ * are correct, for different questions). ProgramCommissionService's
+ * Ambassador accrual is the one real caller - ambassador-commission.e2e
+ * / module22's own e2e tests prove it end-to-end against a real renewal.
+ */
+describe("paidMonths() - whole commission-eligible months (founder item 4, D99/D10)", () => {
+  it("every cycle, including six_month as a plain 6 (never 6.5 - bonus days aren't commission-bearing)", () => {
+    expect(paidMonths("monthly")).toBe(1);
+    expect(paidMonths("quarterly")).toBe(3);
+    expect(paidMonths("six_month")).toBe(6);
+    expect(paidMonths("yearly")).toBe(12);
   });
 });
 

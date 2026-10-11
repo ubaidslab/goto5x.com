@@ -2,20 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { Plan, PlanBillingInterval } from "@prisma/client";
 import { round2 } from "../orders/money.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
-import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing.util";
+import { computeCyclePrice, monthsOfService, resolveActivePlanPrice } from "../plans/plan-pricing.util";
 import { SettingsService } from "../settings-registry/settings.service";
-
-// B2 (founder decision, 2026-10-10, D10) - "price per month = total /
-// months of service," six_month counted as 6.5 (6 calendar months + 15
-// bonus days), never a plain 6 - this is the one place that normalization
-// matters economically (MRR), so it's wrong to round it down to 6.
-const MONTHS_BY_INTERVAL: Record<PlanBillingInterval, number> = {
-  monthly: 1,
-  quarterly: 3,
-  six_month: 6.5,
-  yearly: 12,
-  none: 1,
-};
 
 /**
  * SRS §5.6k (v0.41), FR-6.40 (Module 63) - MRR analytics, extending
@@ -136,9 +124,17 @@ export class MrrAnalyticsService {
     billingInterval: PlanBillingInterval,
     multipliers: { quarterly: number; sixMonth: number; yearly: number },
   ): number {
+    // billingInterval is cast the same way computeCyclePrice() already is
+    // just below - "none" (Free, price 0) can't reach here: compute()'s
+    // own query already restricts activeSubscriptions to price > 0 plans.
+    const interval = billingInterval as "monthly" | "quarterly" | "six_month" | "yearly";
     const activeMonthly = resolveActivePlanPrice(plan);
-    const cyclePrice = computeCyclePrice(activeMonthly, billingInterval as "monthly" | "quarterly" | "six_month" | "yearly", multipliers);
-    return cyclePrice / MONTHS_BY_INTERVAL[billingInterval];
+    const cyclePrice = computeCyclePrice(activeMonthly, interval, multipliers);
+    // Founder item 4 (D99/D10) - the shared monthsOfService() (6.5 for
+    // six_month), not a locally-duplicated copy. See plan-pricing.util.ts
+    // for why this is a different number from paidMonths(), the function
+    // commission accrual uses instead.
+    return cyclePrice / monthsOfService(interval);
   }
 }
 
