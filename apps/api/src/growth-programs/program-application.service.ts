@@ -29,6 +29,15 @@ export class ProgramApplicationService {
 
   /** FR-33.5 - Ambassador is the one program gated on already holding an eligible paid plan; Student Referral/Creator have no such gate (FR-33.6/33.7's text never mentions one). */
   async apply(sellerId: string, programType: ReferralProgramType): Promise<ProgramParticipant> {
+    // D63/B5 (founder decision, 2026-10-10/11) - Growth & Partner Programs
+    // are out of the MVP build. This is the one real enforcement point for
+    // programs.enabled (see growth-programs.seed.ts's own comment on why) -
+    // off by default, so no NEW application can ever create the
+    // ProgramParticipant row every other endpoint in this module depends on.
+    const programsEnabled = await this.settings.resolve<boolean>("programs.enabled");
+    if (!programsEnabled) {
+      throw new ForbiddenException("Growth & Partner Programs aren't available yet.");
+    }
     if (programType === "ambassador") {
       const context = await this.subscriptions.getPlanContext(sellerId);
       const eligible = await this.settings.resolve<boolean>("growth.ambassador_eligible", context);

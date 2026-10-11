@@ -23,12 +23,20 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
   let app: INestApplication;
   let superuser: PrismaClient;
 
+  // D63/B5 (founder decision, 2026-10-10/11) - programs.enabled defaults
+  // to false; this file is about Ambassador applications/commission, so
+  // it explicitly opts back in.
+  async function enablePrograms() {
+    await app.get(SettingsService).setValue("programs.enabled", "global", null, true, ADMIN_ID);
+  }
+
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
     app = await buildTestApp();
+    await enablePrograms();
   });
 
   afterAll(async () => {
@@ -40,6 +48,7 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
+    await enablePrograms();
   });
 
   async function signup(email: string, referralCode?: string) {

@@ -19,12 +19,22 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
   let app: INestApplication;
   let superuser: PrismaClient;
 
+  // D63/B5 (founder decision, 2026-10-10/11) - programs.enabled defaults
+  // to false (Growth & Partner Programs are out of the MVP build); this
+  // whole suite is specifically about that feature, so it explicitly
+  // opts back in, same as any other test exercising a plan-gated/admin-
+  // disabled-by-default capability.
+  async function enablePrograms() {
+    await app.get(SettingsService).setValue("programs.enabled", "global", null, true, ADMIN_ID);
+  }
+
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
     app = await buildTestApp();
+    await enablePrograms();
   });
 
   afterAll(async () => {
@@ -36,6 +46,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
+    await enablePrograms();
   });
 
   async function signup(email: string, referralCode?: string) {
@@ -85,6 +96,42 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
     });
     return approved.referralCode!;
   }
+
+  describe("Master switch (D63/B5, founder decision, 2026-10-10/11) - programs.enabled", () => {
+    it("blocks any program application (Ambassador, Student Referral, Creator alike) while off, with no self-serve way around it", async () => {
+      await app.get(SettingsService).setValue("programs.enabled", "global", null, false, ADMIN_ID);
+      const { token } = await signup("programs-disabled@example.com");
+
+      for (const programType of ["student_referral", "creator"]) {
+        const res = await request(app.getHttpServer())
+          .post("/sellers/me/growth-programs/applications")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ programType });
+        expect(res.status).toBe(403);
+      }
+
+      const participants = await superuser.programParticipant.findMany();
+      expect(participants).toHaveLength(0); // no ProgramParticipant row was ever created
+    });
+
+    it("re-enabling it unblocks new applications immediately, with no other code change needed", async () => {
+      await app.get(SettingsService).setValue("programs.enabled", "global", null, false, ADMIN_ID);
+      const { token } = await signup("programs-reenabled@example.com");
+
+      const blocked = await request(app.getHttpServer())
+        .post("/sellers/me/growth-programs/applications")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ programType: "creator" });
+      expect(blocked.status).toBe(403);
+
+      await app.get(SettingsService).setValue("programs.enabled", "global", null, true, ADMIN_ID);
+      const allowed = await request(app.getHttpServer())
+        .post("/sellers/me/growth-programs/applications")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ programType: "creator" });
+      expect(allowed.status).toBe(201);
+    });
+  });
 
   describe("Application shape (FR-33.2/33.5)", () => {
     it("rejects an Ambassador application without an eligible paid plan", async () => {

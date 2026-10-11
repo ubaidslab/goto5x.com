@@ -1,6 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -18,12 +19,20 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   let app: INestApplication;
   let superuser: PrismaClient;
 
+  // D63/B5 (founder decision, 2026-10-10/11) - programs.enabled defaults
+  // to false; this file's referral-code signup path needs an approved
+  // program participant, so it explicitly opts back in.
+  async function enablePrograms() {
+    await app.get(SettingsService).setValue("programs.enabled", "global", null, true, "00000000-0000-0000-0000-000000000000");
+  }
+
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
     app = await buildTestApp();
+    await enablePrograms();
   });
 
   afterAll(async () => {
@@ -35,6 +44,7 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
+    await enablePrograms();
   });
 
   async function signup(email: string, referralCode?: string) {

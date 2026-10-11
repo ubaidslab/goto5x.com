@@ -1737,3 +1737,61 @@ still reachable via `forceChannel()` in its own sibling test.
 5. **CI polling light** - standing discipline this whole session, not a
    one-time deliverable; unchanged by this item.
 **Reasoning:** not elaborated beyond the decision itself.
+
+### D102. B4 (loader-mark flip) and B5 (programs gating) - closing out M1-1A
+**Status:** LOCKED.
+**Decision:**
+1. **B4 - D76d's loader-mark flip, code + the write-path it depends on.**
+   `BrandingService.getLoadingScreenBrandingVisible()`'s tierOrder check
+   changed from `=== 3` (FLY) to `=== 2` (RISE), per D76d's own
+   implementation note exactly (not `>= 2` - the note names 2
+   specifically). Found while testing, not in the implementation note:
+   the shared `branding.powered_by_hidden` preference this gate reads
+   can only ever be WRITTEN when the OLD mechanism's own
+   `branding.powered_by_removable` is true (FLY + team tiers only) -
+   `setHiddenForStore()` had its own separate gate on the same shared
+   write. Flipping only the read side would have made D76d's grant
+   unreachable in practice (a RISE seller could never set `hidden=true`
+   to begin with). Fixed by extracting the new check into
+   `isLoadingScreenBrandingRemovable()` and having `setHiddenForStore()`
+   accept EITHER capability as sufficient to write - the OLD mark's own
+   visibility computation is untouched and stays FLY-only, confirmed by
+   test. `branding.e2e-spec.ts`'s existing FLY-tier assertions for the
+   new gate are updated to the new boundary (D76d's own note flagged
+   these would need it); a new RISE-tier test proves the real grant,
+   writes included, not just the read-side number.
+2. **B5 - Growth & Partner Programs, out of the MVP build (D63), gated
+   off by a new `programs.enabled` (global, default false).** One real
+   enforcement point: `ProgramApplicationService.apply()` - every other
+   endpoint in the module (content submission, withdrawal, every admin
+   review/payout action) requires an already-approved
+   `ProgramParticipant` row to do anything, which this gate makes
+   impossible to create while off. Admin endpoints are deliberately left
+   ungated - admins are trusted, and nothing reaches them if no seller
+   can ever apply. New tests prove both directions (blocked while off,
+   immediately unblocked once on, no other code change needed). Five
+   pre-existing e2e files that apply to a program as test SETUP
+   (module22 itself, finance-terminal, module72/78/79) now explicitly
+   enable it in their own beforeAll/afterEach, same as any other test
+   exercising a plan-gated/admin-disabled-by-default capability - not
+   rewrites of what they test, just keeping their existing setup
+   working against the new default.
+3. **A CI flake, diagnosed, not chased.** `e2e-tests (4)` failed once on
+   this item's own commit (10d6058) - `finance-terminal.e2e-spec.ts`'s
+   `createAndLoginAdmin()` generates a TOTP code
+   (`authenticator.generate()`) and immediately submits it over the
+   network with zero slack for the verify call landing a 30-second
+   window late; the helper also never checks the verify response's
+   status before trusting `accessToken`, so a late code silently returns
+   an unusable token instead of a clear failure. This exact
+   generate-then-immediately-verify pattern is shared by many e2e
+   helpers across this codebase, all otherwise green for this entire
+   session's dozens of prior CI runs - confirmed consistent with a rare,
+   one-off timing hiccup, not a regression from this item's own changes
+   (this test file wasn't touched by it), by re-running just the failed
+   job on the unchanged commit. Not fixed here - hardening every such
+   helper (a fresh-window wait before generating the code, or a status
+   check with one retry) is real, broader scope beyond this item;
+   flagged here as a known, diagnosed, rare flake for a future pass
+   rather than silently ignored.
+**Reasoning:** not elaborated beyond the decision itself.
