@@ -2345,6 +2345,17 @@ model Order {
   // mattering once the order leaves the "awaitingTracking" bucket (moves
   // to shipped/cancelled/etc.) - no reset needed, this is a one-time flag.
   missingTrackingAlertedAt DateTime?    @map("missing_tracking_alerted_at") @db.Timestamptz
+  // B3b (2026-10-11, founder decision) - the buyer's self-reported proof
+  // for the "advance" payment model's Manual Transfer fallback (no live
+  // gateway required). Deliberately NOT a new OrderStatus - the order
+  // stays `pending` until the seller reviews this against their own bank
+  // account and calls the pre-existing markAsPaid()/changeStatus(
+  // "cancelled") actions. Text only, validated/length-limited at the DTO
+  // layer (SubmitManualTransferReferenceDto) - never proof by itself, see
+  // the seller-facing warning copy in the dashboard UI.
+  manualTransferReference   String?   @map("manual_transfer_reference")
+  manualTransferSenderName  String?   @map("manual_transfer_sender_name")
+  manualTransferSubmittedAt DateTime? @map("manual_transfer_submitted_at") @db.Timestamptz
 
   store               Store                @relation(fields: [storeId], references: [id])
   customer            Customer?            @relation(fields: [customerId], references: [id])

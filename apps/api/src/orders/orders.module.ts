@@ -20,6 +20,9 @@ import { CartController } from "./cart.controller";
 import { CartService } from "./cart.service";
 import { CheckoutController } from "./checkout.controller";
 import { CheckoutService } from "./checkout.service";
+import { ManualTransferAutoCancelScheduler } from "./manual-transfer-auto-cancel.scheduler";
+import { ManualTransferAutoCancelService } from "./manual-transfer-auto-cancel.service";
+import { ManualTransferSubmissionController } from "./manual-transfer-submission.controller";
 import { MissingTrackingAlertScheduler } from "./missing-tracking-alert.scheduler";
 import { MissingTrackingAlertService } from "./missing-tracking-alert.service";
 import { OrderPricingService } from "./order-pricing.service";
@@ -51,7 +54,7 @@ import { OrdersService } from "./orders.service";
     InventoryModule,
     SellerNotificationsModule,
   ],
-  controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController],
+  controllers: [CartController, CheckoutController, OrderStatusLookupController, OrdersController, ManualTransferSubmissionController],
   providers: [
     CartService,
     CheckoutService,
@@ -63,7 +66,9 @@ import { OrdersService } from "./orders.service";
     RateLimitService,
     MissingTrackingAlertService,
     MissingTrackingAlertScheduler,
+    ManualTransferAutoCancelService,
+    ManualTransferAutoCancelScheduler,
   ],
-  exports: [CartService, CheckoutService, OrdersService, MissingTrackingAlertService],
+  exports: [CartService, CheckoutService, OrdersService, MissingTrackingAlertService, ManualTransferAutoCancelService],
 })
 export class OrdersModule {}

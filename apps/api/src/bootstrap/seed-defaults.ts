@@ -27,6 +27,7 @@ import { seedWhatsAppMessagingSettings } from "../whatsapp-messaging/whatsapp-me
 import { seedMessagingSettings } from "../messaging/messaging.seed";
 import { seedOrdersSettings } from "../orders/orders.seed";
 import { seedOrderVerificationSettings } from "../orders/order-verification.seed";
+import { seedManualTransferSettings } from "../orders/manual-transfer.seed";
 import { seedPaymentModelSettings } from "../store-settings/payment-model.seed";
 import { seedDeliveryTrackingSettings } from "../orders/delivery-tracking.seed";
 import { seedPlansData, seedPlansSettings } from "../plans/plans.seed";
@@ -76,6 +77,7 @@ export async function seedDefaults(prisma: PrismaClient): Promise<void> {
   await seedSupplierSettings(prisma);
   await seedOrdersSettings(prisma);
   await seedOrderVerificationSettings(prisma);
+  await seedManualTransferSettings(prisma);
   await seedPaymentModelSettings(prisma);
   await seedDeliveryTrackingSettings(prisma);
   await seedBillingSettings(prisma);

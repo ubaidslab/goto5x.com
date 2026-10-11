@@ -93,8 +93,13 @@ export class OrdersController {
   @UseGuards(ImpersonationWriteGuard)
   @BlockDuringImpersonation()
   @RequireStaffScope("orders")
-  markAsPaid(@CurrentSellerId() sellerId: string, @Param("storeId") storeId: string, @Param("orderId") orderId: string) {
-    return this.orders.markAsPaid(sellerId, storeId, orderId);
+  markAsPaid(
+    @CurrentSellerId() sellerId: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Param("storeId") storeId: string,
+    @Param("orderId") orderId: string,
+  ) {
+    return this.orders.markAsPaid(sellerId, storeId, orderId, user.sub);
   }
 
   @Post(":orderId/notes")

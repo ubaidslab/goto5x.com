@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { OrderStatus, Prisma } from "@prisma/client";
+import { Order, OrderStatus, PaymentModel, Prisma } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
 import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
+import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { CustomersService } from "../customers/customers.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
@@ -15,6 +16,7 @@ import { PrintifyAdapter } from "../suppliers/printify/printify.adapter";
 import { ChangeOrderStatusDto } from "./dto/change-order-status.dto";
 import { EditOrderDto } from "./dto/edit-order.dto";
 import { OrderListQueryDto } from "./dto/order-list-query.dto";
+import { SubmitManualTransferReferenceDto } from "./dto/submit-manual-transfer-reference.dto";
 import { round2 } from "./money.util";
 import { isOrderStatusTransitionAllowed } from "./order-status-transitions.util";
 import { buyerFacingTrackingState, computeOrderTimeline } from "./order-timeline.util";
@@ -58,6 +60,7 @@ export class OrdersService {
     private readonly orderVerification: OrderVerificationService,
     private readonly milestones: MilestonesService,
     private readonly settings: SettingsService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   /** SRS §5.38/FR-38.8-38.9 - a seller's editable buyer-facing tracking messages + the delivered-archival window. */
@@ -212,7 +215,7 @@ export class OrdersService {
    * correspondingly the sole place `order.placed` (SRS §3.11 - "means a
    * confirmed, paid order") is ever emitted.
    */
-  async markAsPaid(sellerId: string, storeId: string, orderId: string) {
+  async markAsPaid(sellerId: string, storeId: string, orderId: string, actorUserId?: string) {
     // Module 26 (SRS §5.37/FR-37.7) - extends (never duplicates) the
     // Financial Truth Invariant: an order whose store requires verification
     // cannot be confirmed until that verification's status is "verified",
@@ -278,7 +281,16 @@ export class OrdersService {
       storeId,
       entityType: "order",
       entityId: orderId,
-      metadata: { source: order.source },
+      // B3b (founder decision, 2026-10-11) - "audit log records who
+      // confirmed and when" for the Manual Transfer confirm action.
+      // `actorId` above stays `sellerId` unchanged (other consumers of
+      // this event may depend on that), so the specific staff member's
+      // User.id (there can be more than one per seller, per the staff-
+      // scope system) is added here instead - `createdAt` on this same
+      // row already covers "when." Undefined (no human in the loop, e.g.
+      // an automated gateway verification calling markAsPaid() directly)
+      // just omits the field, same as any other optional metadata key.
+      metadata: { source: order.source, confirmedByUserId: actorUserId },
     });
 
     await this.notifyBuyer({ storeName, domains, storeSlug }, order, "confirmed");
@@ -441,6 +453,41 @@ export class OrdersService {
     }
   }
 
+  /**
+   * B3b (founder decision, 2026-10-11) - public, unauthenticated (same
+   * statusLookupToken precedent as ReturnsService.submitRequest()); the
+   * buyer's self-reported proof for an "advance" order using Manual
+   * Transfer. Stored as-is, shown to the seller next to Mark as paid -
+   * never itself proof of payment (see the seller-dashboard warning copy).
+   * Does not touch `status` - the order stays `pending` until the seller
+   * reviews this against their own bank account and calls the pre-existing
+   * markAsPaid() (confirm) or changeStatus("cancelled") (reject) actions.
+   */
+  async submitManualTransferReference(token: string, dto: SubmitManualTransferReferenceDto, ip: string) {
+    const submissionLimit = await this.settings.resolve<number>("orders.manual_transfer_submission_rate_limit_per_hour");
+    await this.rateLimit.enforcePerHour(`manual-transfer-submit-token:${token}`, submissionLimit);
+    await this.rateLimit.enforcePerHour(`manual-transfer-submit-ip:${ip}`, submissionLimit);
+
+    const order = await this.prismaAdmin.order.findUnique({ where: { statusLookupToken: token } });
+    if (!order) throw new NotFoundException("Order not found.");
+    if (order.paymentModel !== "advance") {
+      throw new BadRequestException("This order isn't using the Advance payment model.");
+    }
+    if (order.status !== "pending") {
+      throw new BadRequestException("This order's payment has already been settled.");
+    }
+
+    return this.prismaAdmin.order.update({
+      where: { id: order.id },
+      data: {
+        manualTransferReference: dto.reference,
+        manualTransferSenderName: dto.senderName,
+        manualTransferSubmittedAt: new Date(),
+      },
+      select: { id: true, manualTransferReference: true, manualTransferSenderName: true, manualTransferSubmittedAt: true },
+    });
+  }
+
   /** Module 31 (SRS §5.42/FR-42.1) - optional per-order courier/handling cost inputs for the P&L engine; either field left undefined is untouched, not reset to null. */
   async updateCosts(sellerId: string, storeId: string, orderId: string, dto: { courierCost?: number; handlingCost?: number }) {
     return this.tenantPrisma.run(sellerId, async (tx) => {
@@ -579,6 +626,8 @@ export class OrdersService {
       if (!item || item.storeId !== storeId || item.orderId !== orderId) {
         throw new NotFoundException("Order item not found.");
       }
+      const orderRow = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
+      this.assertShippableForPaymentModel(orderRow);
       await this.writeTrackingForItem(tx, storeId, orderId, orderItemId, uploadedBy, input);
       return this.bumpOrderToShippedIfReady(tx, storeId, orderId);
     });
@@ -609,6 +658,7 @@ export class OrdersService {
     const { order, storeName, domains, storeSlug } = await this.tenantPrisma.run(sellerId, async (tx) => {
       const orderRow = await tx.order.findUnique({ where: { id: orderId } });
       if (!orderRow || orderRow.storeId !== storeId) throw new NotFoundException("Order not found.");
+      this.assertShippableForPaymentModel(orderRow);
 
       const items = await tx.orderItem.findMany({
         where: { orderId, fulfillmentStatus: { notIn: ["shipped", "delivered", "completed"] } },
@@ -627,6 +677,22 @@ export class OrdersService {
       await this.notifyBuyer({ storeName, domains, storeSlug }, order, "shipped");
     }
     return order;
+  }
+
+  /**
+   * B3b (founder decision, 2026-10-11) - a prepaid/advance order's whole
+   * point is "payment collected before shipping"; shipping it while still
+   * `pending` (unconfirmed) would let a buyer receive the item without
+   * ever having paid. COD has no such invariant - it ships before payment
+   * by design, so it's deliberately excluded. Checked here (both
+   * uploadTracking() and uploadTrackingForOrder()), not at markAsPaid()'s
+   * own gate - that one only prevents re-confirming, it was never the
+   * place a *shipping* action was guarded.
+   */
+  private assertShippableForPaymentModel(order: { paymentModel: PaymentModel; status: OrderStatus }): void {
+    if ((order.paymentModel === "advance" || order.paymentModel === "prepaid") && order.status === "pending") {
+      throw new BadRequestException("This order's payment hasn't been confirmed yet - mark it as paid before shipping.");
+    }
   }
 
   /** Writes one `TrackingUpdate` row and flips the item to `shipped` - the shared core both uploadTracking() and uploadTrackingForOrder() build on. */

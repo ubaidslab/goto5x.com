@@ -14,7 +14,7 @@ import { isGatewayLive } from "../payment-gateway/gateway-registry";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { DiscountCodesService } from "../store-settings/discount-codes.service";
-import { hasAnyPaymentMethod } from "../store-settings/payment-instructions.service";
+import { hasAnyPaymentMethod, hasConfiguredManualTransferInstrument } from "../store-settings/payment-instructions.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { SupplierListingsService } from "../suppliers/supplier-listings.service";
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
@@ -86,11 +86,18 @@ export class CheckoutService {
     // highest-severity gap found in the rate-limit re-audit.
     const checkoutLimit = await this.settings.resolve<number>("orders.checkout_rate_limit_per_hour");
     await this.rateLimit.enforcePerHour(`checkout-ip:${ip}`, checkoutLimit);
+    // Founder item 3/B3b (2026-10-11) - "rate-limit order creation per
+    // buyer/IP/phone," the same dual/triple-key idiom auth.service.ts
+    // already uses for login (one key per identifying attribute, IP alone
+    // is bypassable via rotation). Phone is on the request itself; email
+    // isn't known until the cart below resolves it.
+    await this.rateLimit.enforcePerHour(`checkout-phone:${dto.shippingAddress.phone}`, checkoutLimit);
 
     const store = await this.storefront.loadActiveStoreOrThrow(dto.hostname);
     const cart = await this.prismaAdmin.cart.findUnique({ where: { sessionToken: dto.sessionToken } });
     if (!cart || cart.storeId !== store.id) throw new NotFoundException("Cart not found.");
     if (cart.status !== "active") throw new BadRequestException("This cart is no longer active.");
+    await this.rateLimit.enforcePerHour(`checkout-email:${cart.buyerEmail}`, checkoutLimit);
 
     const items = cart.items as { productId: string; variantId: string; quantity: number }[];
     if (items.length === 0) throw new BadRequestException("This cart is empty.");
@@ -317,8 +324,17 @@ export class CheckoutService {
           );
         }
       } else if (store.paymentModel === "advance") {
-        if (!(await this.hasActiveGatewayConnection(params.storeId))) {
-          throw new BadRequestException("Advance requires a connected payment gateway.");
+        // B3b (founder decision, 2026-10-11) - "advance" now also accepts
+        // a seller's own configured bank/JazzCash/Easypaisa payout details
+        // (Manual Transfer: buyer transfers manually, seller confirms via
+        // the pre-existing markAsPaid()) as an alternative to a live
+        // gateway connection - no gateway is live today (B3a/D86), so this
+        // is currently the ONLY way an advance-model order can be placed.
+        const hasManualTransferInstrument = hasConfiguredManualTransferInstrument(paymentInstructions);
+        if (!(await this.hasActiveGatewayConnection(params.storeId)) && !hasManualTransferInstrument) {
+          throw new BadRequestException(
+            "Advance requires a connected payment gateway, or a payout method with an account title and number (for Manual Transfer).",
+          );
         }
       }
 

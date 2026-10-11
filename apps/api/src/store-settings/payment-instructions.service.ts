@@ -77,6 +77,8 @@ export interface PaymentInstructionsLike {
   bankName: string | null;
   jazzcashNumber: string | null;
   easypaisaNumber: string | null;
+  jazzcashAccountTitle?: string | null;
+  easypaisaAccountTitle?: string | null;
   codEnabled: boolean;
 }
 
@@ -84,6 +86,22 @@ export interface PaymentInstructionsLike {
 export function hasAnyPaymentMethod(instructions: PaymentInstructionsLike): boolean {
   return Boolean(
     instructions.bankAccountNumber || instructions.jazzcashNumber || instructions.easypaisaNumber || instructions.codEnabled,
+  );
+}
+
+/**
+ * B3b (founder decision, 2026-10-11) - checkout's "advance" Manual
+ * Transfer fallback deliberately needs more than hasAnyPaymentMethod()'s
+ * bar above (a bare number is enough for `prepaid`'s existing instrument
+ * check): "the seller has actually filled in at least one payout method
+ * (account title + number)" - a title+number *pair*, so a buyer sending
+ * money is told whose account it should be, not just a bare number.
+ */
+export function hasConfiguredManualTransferInstrument(instructions: PaymentInstructionsLike): boolean {
+  return Boolean(
+    (instructions.bankAccountTitle && instructions.bankAccountNumber) ||
+      (instructions.jazzcashAccountTitle && instructions.jazzcashNumber) ||
+      (instructions.easypaisaAccountTitle && instructions.easypaisaNumber),
   );
 }
 
