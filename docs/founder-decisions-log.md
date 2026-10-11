@@ -1423,3 +1423,67 @@ tell the founder, and rotate it — don't quietly continue.
 D58's existing "before any real seller gateway key" gate with an
 explicit stop-and-report point the founder controls directly, rather
 than leaving 1C's start to this session's own judgment.
+
+### D98. Post-B3a punch list (6 items) before B3b/1B; explicit order of work
+**Status:** LOCKED. Order: finish B3a (done, PR #10 merged) → items 1+2
+→ item 3 together with B3b → items 4-6 → 1B. Checkpoint (D97) unchanged.
+**Decision:**
+1. **Main branch protection (HIGH).** `main` had `protected: false` -
+   confirmed via `mcp__github__list_branches`. Every commit that reached
+   it so far did so through a real PR merge via the GitHub UI (confirmed
+   via `pull_request_read`'s `merged: true`/`merged_by`/`merged_at` and
+   the resulting commit's `web-flow` committer identity - this session's
+   own git identity doesn't match those commits' authorship, ruling out
+   a direct push from a Claude Code session) - the "closed, not merged"
+   reading that raised the concern was a stale field on the PR-list
+   endpoint, not evidence of a bypass. Going forward: PR-merge-through-
+   GitHub only, no direct pushes/local fast-forwards/admin bypass - PR
+   #10 (B3a) was the first merged via `merge_pull_request` rather than
+   any local push. Exact settings to enable (repo-admin action, no API
+   access to do it from here) documented in `docs/launch-runbook.md`'s
+   new "0. Repository branch protection" section.
+2. **Database role grants (HIGH, security).** `bootstrap-db.sql` re-run
+   after migrations silently re-widened five append-only tables'
+   grants back to full DML (found locally: `admin_audit_logs`/
+   `platform_events`/`user_security_events` drifted this way; the fix
+   also covers `milestone_events`/`stock_adjustments`, found already
+   drifted on the same local DB while verifying this). Fixed: the
+   script's blanket grant is now followed by an unconditional,
+   existence-guarded REVOKE on exactly those five tables, so it's
+   order-safe regardless of when/how often it runs relative to
+   migrations - verified directly (re-ran it against an
+   already-migrated, already-drifted local DB; both drifted tables
+   self-corrected, ran it twice more with no change, and a deliberately
+   re-widened grant was caught and then corrected by the next run).
+   New CI job `db-role-grants`: migrate → bootstrap → bootstrap again →
+   asserts the exact grant set, proven to fail against the bug first
+   (deliberately re-widened a grant locally, confirmed the same
+   assertion logic catches it, then restored it).
+3. **Stock restore-on-cancel + oversell (HIGH, money).** Confirmed: no
+   reserved/on-hand split exists (`ProductVariant.stockQuantity` is the
+   only counter), the decrement at order creation
+   (`CheckoutService.reserveSelfFulfilledStock()`) IS already atomic
+   (conditional `updateMany` with a `gte` guard), but the matching
+   release function is private and only ever called as same-request
+   rollback - cancelling a pending order today never gives stock back,
+   for every payment type, not just the new Manual Transfer path. To be
+   built together with B3b: a shared restore-stock-on-cancel path
+   (seller/buyer/auto-cancel all call the same function), plus a
+   concurrent-order test proving the decrement side.
+4. **Money math consistency (MEDIUM).** B2's 6.5-months-of-service rule
+   and program-commission.service.ts's deliberate whole-6 exception (a
+   different concept - discrete eligibility cap, not per-month price,
+   per B2's own documented reasoning) are in tension with this item's
+   literal wording ("must use the same figure everywhere") - flagged
+   back to the founder rather than silently changed, since it's real
+   Ambassador payout math. Not yet resolved.
+5. **prepaid_partial_advance UX gate (MEDIUM).** Not yet built - gate
+   channel *selection* (not just checkout-readiness) on live-gateway
+   status, with the founder's exact copy.
+6. **Test/tooling hygiene (LOW).** Not yet done - lint has never been
+   wired into CI at all (confirmed: no `lint` job exists in `ci.yml`
+   today, and no eslint config file exists anywhere in the repo, which
+   is why it won't even run locally); DNS/TLS tests that depend on real
+   network reachability need mocking; every milestone report lists
+   tests removed/rewritten with reason; CI polling stays light.
+**Reasoning:** not elaborated beyond the decision itself.

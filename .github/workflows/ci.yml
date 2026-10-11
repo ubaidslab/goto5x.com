@@ -3,12 +3,18 @@ name: CI
 # Module 21 (SRS §14.12) - "the full automated cross-tenant test suite
 # passes as a release gate" and "a dependency-vulnerability scan runs in
 # CI and blocks a deliberately-introduced known-vulnerable dependency".
-# Mark typecheck/unit-tests/dependency-audit/web-build and every
-# "e2e-tests (N)" shard (or e2e-tests-summary - see D59 below) as required
-# status checks in the repo's branch protection settings (GitHub UI:
-# Settings -> Branches -> Branch protection rules) - this workflow makes
-# the checks exist and run; requiring them on the default branch is a
-# one-time, separate repo-admin action (see docs/launch-runbook.md).
+# Mark typecheck/unit-tests/db-role-grants/dependency-audit/web-build and
+# every "e2e-tests (N)" shard (or e2e-tests-summary - see D59 below) as
+# required status checks in the repo's branch protection settings (GitHub
+# UI: Settings -> Branches -> Branch protection rules), alongside "require
+# a pull request before merging" (the actual bypass-prevention control -
+# founder item 1, 2026-10-11) - this workflow makes the checks exist and
+# run; requiring them on the default branch is a one-time, separate
+# repo-admin action no API token available to a Claude Code session can
+# perform (tried; only read access to branch-protection state exists) -
+# see docs/launch-runbook.md's new "0. Repository branch protection"
+# section for the full, current checklist including `main`'s confirmed
+# `protected: false` state as of that date.
 #
 # D59 (docs/founder-decisions-log.md): a commit touching nothing outside
 # docs/ and CHANGELOG.md skips the 5 real jobs entirely (they report
@@ -169,6 +175,133 @@ jobs:
       - run: pnpm --filter @uzeyn/api prisma:generate
       - name: Unit tests (no external services required)
         run: pnpm test:api
+
+  db-role-grants:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # Founder item 2 (2026-10-11) - real Postgres, no Redis/Playwright
+    # needed (cheap: bootstrap + migrations + bootstrap-db.sql twice more +
+    # two assertion queries). Proves bootstrap-db.sql is order-safe:
+    # bootstrap-db.sql runs once first (roles must exist before migrations
+    # even apply - the rls_and_audit_grants migration's own REVOKE
+    # statements reference app_runtime/app_admin and fail outright against
+    # a database that has never been bootstrapped, caught by this job's own
+    # first real CI run: "ERROR: role app_runtime does not exist"), then
+    # migrations run (each append-only table's own REVOKE now succeeds),
+    # then bootstrap-db.sql runs TWICE MORE - the exact hazard that let
+    # app_runtime/app_admin regain UPDATE/DELETE on
+    # admin_audit_logs/platform_events after a bootstrap re-run (found in
+    # a local dev sandbox, not production, but the same script runs in
+    # both - see apps/api/scripts/bootstrap-db.sql's own comment).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-superuser-password
+          POSTGRES_DB: uzeyn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+
+      - name: Run bootstrap-db.sql once first - roles must exist before any migration's own REVOKE can reference them
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=uzeyn \
+            -f apps/api/scripts/bootstrap-db.sql
+
+      - name: Run migrations (as superuser) - establishes each append-only table's own REVOKE
+        env:
+          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
+        run: pnpm --filter @uzeyn/api exec prisma migrate deploy
+
+      - name: Run bootstrap-db.sql again (post-migration) - the exact hazard this job exists to catch
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=uzeyn \
+            -f apps/api/scripts/bootstrap-db.sql
+
+      - name: Run bootstrap-db.sql a third time (second post-migration run) - proving this, not just one re-run, stays safe
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=uzeyn \
+            -f apps/api/scripts/bootstrap-db.sql
+
+      - name: Assert every append-only table is still insert+select only for both roles
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          actual=$(psql -h localhost -U postgres -d uzeyn -t -A -F',' -c "
+            SELECT table_name, grantee, string_agg(privilege_type, '|' ORDER BY privilege_type)
+            FROM information_schema.role_table_grants
+            WHERE table_schema = 'public'
+              AND grantee IN ('app_runtime', 'app_admin')
+              AND table_name IN ('admin_audit_logs', 'user_security_events', 'platform_events', 'milestone_events', 'stock_adjustments')
+            GROUP BY table_name, grantee
+            ORDER BY table_name, grantee;
+          ")
+          echo "$actual"
+          expected='admin_audit_logs,app_admin,INSERT|SELECT
+          admin_audit_logs,app_runtime,INSERT|SELECT
+          milestone_events,app_admin,INSERT|SELECT
+          milestone_events,app_runtime,INSERT|SELECT
+          platform_events,app_admin,INSERT|SELECT
+          platform_events,app_runtime,INSERT|SELECT
+          stock_adjustments,app_admin,INSERT|SELECT
+          stock_adjustments,app_runtime,INSERT|SELECT
+          user_security_events,app_admin,INSERT|SELECT
+          user_security_events,app_runtime,INSERT|SELECT'
+          expected_trimmed=$(echo "$expected" | sed 's/^[[:space:]]*//')
+          if [ "$actual" != "$expected_trimmed" ]; then
+            echo "MISMATCH - append-only table grants are not exactly insert+select for both roles after a second bootstrap-db.sql run"
+            echo "--- expected ---"
+            echo "$expected_trimmed"
+            echo "--- actual ---"
+            echo "$actual"
+            exit 1
+          fi
+          echo "OK - every append-only table stayed insert+select only for both roles, even after bootstrap-db.sql ran twice post-migration"
+
+      - name: Assert an ordinary table (orders) still has full DML - the fix must not over-narrow
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          actual=$(psql -h localhost -U postgres -d uzeyn -t -A -c "
+            SELECT string_agg(privilege_type, '|' ORDER BY privilege_type)
+            FROM information_schema.role_table_grants
+            WHERE table_schema = 'public' AND table_name = 'orders' AND grantee = 'app_runtime';
+          ")
+          echo "orders/app_runtime privileges: $actual"
+          if [ "$actual" != "DELETE|INSERT|SELECT|UPDATE" ]; then
+            echo "orders should still have full DML for app_runtime - got: $actual"
+            exit 1
+          fi
 
   e2e-tests:
     needs: changes

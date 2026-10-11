@@ -54,13 +54,34 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime, app_admin;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_runtime, app_admin;
 
--- IMPORTANT: if you re-run this script after tables that must stay
--- insert-only (admin_audit_logs, user_security_events) already exist, the
--- blanket grant above re-adds UPDATE/DELETE to them too - immediately re-run
--- the REVOKE statements from the rls_and_audit_grants migration afterward
--- (see prisma/migrations/*_rls_and_audit_grants/migration.sql) to restore
--- immutability. Normal `prisma migrate deploy`/`migrate dev` workflows never
--- hit this - only the destructive `migrate reset` does.
+-- Founder item 2 (2026-10-11) - this script must be order-safe: running it
+-- AFTER migrations (not just the fresh-database case it was originally
+-- written for) must never re-widen a table a migration deliberately
+-- narrowed. The blanket grant two statements above is correct for every
+-- OTHER table, but these five append-only tables must stay insert+select
+-- only no matter how many times this script runs or in what order relative
+-- to migrations - re-running it used to silently undo their REVOKEs (a real
+-- drift caught locally: app_runtime ended up with full write access on
+-- admin_audit_logs/platform_events after this script re-ran post-migration).
+-- This used to be a comment telling a human to remember a manual fix -
+-- replaced with an automatic one, since the whole point is not depending on
+-- someone remembering.
+--
+-- Guarded by \gexec (same idiom as the role-creation blocks above): on a
+-- genuinely fresh database none of these tables exist yet (this script is
+-- meant to run BEFORE the first migration there too), and a bare REVOKE on
+-- a nonexistent table would error - the WHERE clause below just matches
+-- zero rows in that case, so \gexec executes nothing.
+--
+-- Adding a new append-only table: add its REVOKE in its own migration (same
+-- as the five below did) AND add its name to this list - this list has no
+-- way to discover new append-only tables on its own. apps/api/test/e2e's
+-- db-role-grants CI job asserts exactly these five; extend that list too.
+SELECT format('REVOKE UPDATE, DELETE ON %I FROM app_runtime, app_admin', tablename)
+FROM pg_catalog.pg_tables
+WHERE schemaname = 'public'
+  AND tablename IN ('admin_audit_logs', 'user_security_events', 'platform_events', 'milestone_events', 'stock_adjustments')
+\gexec
 
 -- Module 21's load/soak simulation teardown tool (apps/api/scripts/simulate/
 -- teardown.ts) needs to temporarily suspend FK/trigger enforcement

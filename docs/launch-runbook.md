@@ -11,6 +11,85 @@ calls, real third-party services).
 
 ---
 
+## 0. Repository branch protection (do this now, not at launch)
+
+Founder item 1 (2026-10-11) — this is a repo-settings concern, independent
+of VPS/launch timing, and should be done now rather than waiting for
+launch day. It is also a **repo-admin action no Claude Code session can
+perform via the GitHub API** — no branch-protection-write tool is exposed
+by the GitHub MCP server this project uses, confirmed by trying (only
+read access — `protected: true/false` — came back). The founder (or
+whoever has admin on `ubaidslab/goto5x.com`) does this once, by hand:
+
+**GitHub UI path:** repo → **Settings** → **Branches** → **Add branch
+protection rule** (or edit the existing one) → branch name pattern `main`.
+
+Turn on:
+- [ ] **Require a pull request before merging.** This is the one that
+      actually matters here — it's what makes "merge through GitHub, not
+      a direct push" a real, enforced rule instead of a convention a
+      session or a person could forget. At least 1 approval is reasonable
+      given this is currently a one-founder-one-agent repo; raise it once
+      there's a real second reviewer.
+- [ ] **Require status checks to pass before merging**, and require
+      branches to be up to date before merging. Check these exact job
+      names from `.github/workflows/ci.yml` (confirm the live list in the
+      branch-protection UI's own search box, which only offers checks
+      that have actually reported at least once — it won't show a name
+      correctly until a PR or push has run it):
+      - `typecheck`
+      - `unit-tests`
+      - `db-role-grants` (added 2026-10-11, founder item 2)
+      - `e2e-tests-summary` (the stable fan-in name for the 4 sharded
+        `e2e-tests (N)` jobs — require this one, not the per-shard names,
+        per D59's own reasoning in ci.yml)
+      - `dependency-audit`
+      - `web-build`
+      - `lint` (not wired into CI yet — founder item 6b; add it to this
+        list once it exists, don't enable the rule item for a check name
+        that doesn't report yet, or merging stalls forever waiting on a
+        check that never runs)
+- [ ] **Block force pushes.**
+- [ ] **Block branch deletions.**
+- [ ] **Include administrators** — the whole point is no exceptions,
+      including for whoever has admin on the repo.
+
+**How commits actually reached `main` before this was turned on**
+(the specific question the founder asked, answered directly rather than
+assumed): every commit on `main` so far got there through a real,
+legitimate PR merge via the GitHub web UI — confirmed directly, not
+inferred:
+- `mcp__github__pull_request_read` on PR #9 (and #8) shows
+  `"merged": true, "merged_by": "ubaidslab"`, with `merged_at` matching
+  the resulting commit's timestamp to the second.
+- That resulting commit's committer is GitHub's own `web-flow` identity
+  (`mcp__github__get_commit` on `1aa4a8d...`: `committer.login: "web-flow"`)
+  — the signature GitHub stamps exclusively on commits it creates itself
+  (a PR merge via the UI/API), never produced by a plain `git push`.
+- This session's own git identity (`git config user.name/user.email`) is
+  `Claude <noreply@anthropic.com>` — it does not match the author on
+  those commits (`Muhammad Ubaid Ali <contact.ubaidmalik@gmail.com>`),
+  ruling out "a Claude Code session pushed straight to main and it just
+  looks like a merge."
+- `mcp__github__list_pull_requests`' own summary view showed PR #9 as
+  `"merged": false, "state": "closed"` — that field is simply wrong/stale
+  on that endpoint; the direct per-PR read (`pull_request_read`) is the
+  one that's authoritative and shows `merged: true`.
+
+So the "closed, not merged" reading that raised this concern was a red
+herring from a stale API field, not evidence of a bypass — but the
+underlying worry was still correct and worth acting on: **`main` itself
+had `protected: false`** (`mcp__github__list_branches`, confirmed
+2026-10-11) — nothing was technically stopping a direct push or a
+force-push from succeeding, even though nothing actually took that path
+yet. The checklist above closes that gap. PR #10 (B3a) was the first one
+merged through `mcp__github__merge_pull_request` (squash) rather than any
+local push to `main`, once its checks were confirmed green — every PR
+from here on follows that same path, and once the settings above are on,
+nothing else is possible anyway.
+
+---
+
 ## 1. VPS provisioning
 
 - [ ] Provision a VPS (sized per `docs/tech-stack.md`'s recommendation).
@@ -215,19 +294,86 @@ unmodified once granted.
       instead. Treat this step as the first real test of the Dockerfiles/
       compose topology and watch `docker compose logs -f` closely.
 - [ ] Confirm all 6 services report healthy: `docker compose ps`.
-- [ ] Run `bootstrap-db.sql` once, as documented at the top of
-      `apps/api/scripts/bootstrap-db.sql`, against the running `postgres`
-      container, using the real production passwords from step 3:
-      ```sh
-      docker compose exec -T postgres psql -U "$POSTGRES_SUPERUSER" \
-        -v runtime_password="$POSTGRES_RUNTIME_PASSWORD" \
-        -v admin_password="$POSTGRES_ADMIN_PASSWORD" \
-        -v dbname="$POSTGRES_DB" \
-        -f - < apps/api/scripts/bootstrap-db.sql
-      ```
-- [ ] Apply migrations: `docker compose exec api pnpm prisma:migrate`
-      (runs `prisma migrate deploy`, using the superuser connection wired
-      into the API's Dockerfile entrypoint per `docs/architecture.md`).
+- [ ] **The exact sequence, in order: bootstrap → migrate → (bootstrap, only if/when you ever need to re-run it later).** The
+      first two are mandatory, once, on a fresh database — order matters
+      and is no longer optional: `prisma migrate deploy` applies
+      migrations that themselves `REVOKE` privileges from `app_runtime`/
+      `app_admin` (e.g. `rls_and_audit_grants`), so those roles must
+      already exist, or migration fails outright with `role "app_runtime"
+      does not exist` (hit for real in this repo's own CI — founder item
+      2, 2026-10-11 — confirmed via `.github/workflows/ci.yml`'s
+      `db-role-grants` job, run
+      [#244](https://github.com/ubaidslab/goto5x.com/actions/runs/38122973723)).
+      The third, parenthetical step is **not** part of a normal first
+      deploy — it documents that bootstrap-db.sql is now safe to re-run
+      at any later point (password rotation, re-provisioning a role) without
+      undoing what migrations have already narrowed; see the "Role grant
+      idempotency" note below for why that's now guaranteed rather than
+      merely hoped.
+      1. **Bootstrap** — run `bootstrap-db.sql` once, as documented at the
+         top of `apps/api/scripts/bootstrap-db.sql`, against the running
+         `postgres` container, using the real production passwords from
+         step 3:
+         ```sh
+         docker compose exec -T postgres psql -U "$POSTGRES_SUPERUSER" \
+           -v runtime_password="$POSTGRES_RUNTIME_PASSWORD" \
+           -v admin_password="$POSTGRES_ADMIN_PASSWORD" \
+           -v dbname="$POSTGRES_DB" \
+           -f - < apps/api/scripts/bootstrap-db.sql
+         ```
+      2. **Migrate** — `docker compose exec api pnpm prisma:migrate`
+         (runs `prisma migrate deploy`, using the superuser connection
+         wired into the API's Dockerfile entrypoint per
+         `docs/architecture.md`).
+      3. **(Later, if ever needed) bootstrap again** — the exact same
+         command as step 1, no variation. Confirmed safe via two
+         independent checks, not assumed: (a) against a real,
+         already-migrated local database that had already drifted (see
+         the note below), re-running it self-corrected the drift and
+         stayed correct across two further re-runs; (b) a deliberate,
+         real-CI adversarial test on a throwaway branch (deleted after
+         capturing this) — re-widened `app_runtime`'s grant on
+         `admin_audit_logs` by hand right after the three bootstrap-db.sql
+         runs, and `db-role-grants` correctly went red: run
+         [#248](https://github.com/ubaidslab/goto5x.com/actions/runs/38127546913)
+         failed at exactly the assertion step, logging
+         `admin_audit_logs,app_runtime,DELETE|INSERT|SELECT|UPDATE` (the
+         widened row) and `MISMATCH - append-only table grants are not
+         exactly insert+select for both roles`, exit code 1 - the real
+         passing baseline (before the deliberate break) was run
+         [#246](https://github.com/ubaidslab/goto5x.com/actions/runs/38126075240).
+  - [ ] **Role grant idempotency (founder item 2, 2026-10-11).**
+        `bootstrap-db.sql`'s blanket `GRANT ... ON ALL TABLES` (needed so
+        a fresh deploy's existing tables get the right privileges, not
+        just ones created after this script runs) used to silently
+        re-widen five append-only tables — `admin_audit_logs`,
+        `user_security_events`, `platform_events`, `milestone_events`,
+        `stock_adjustments` — back to full DML if the script ever ran
+        again after migrations had already narrowed them to
+        insert+select via their own `REVOKE` statements. Fixed: the
+        script now re-applies that exact `REVOKE` to exactly those five
+        tables, unconditionally, every time it runs (guarded so it's a
+        no-op against a database where they don't exist yet). CI's
+        `db-role-grants` job asserts this on every push that touches
+        code: bootstrap → migrate → bootstrap → bootstrap, then checks
+        the final grants are exactly right.
+  - [ ] **Role passwords come only from environment variables, confirmed
+        directly, not assumed:** `bootstrap-db.sql` itself contains zero
+        hardcoded password literals — every reference is the psql
+        variable substitution `:'runtime_password'`/`:'admin_password'`,
+        populated from `$POSTGRES_RUNTIME_PASSWORD`/
+        `$POSTGRES_ADMIN_PASSWORD` by whoever invokes it (see the command
+        in step 1 above). `.env.example`'s own values for these
+        (`POSTGRES_SUPERUSER_PASSWORD`/`POSTGRES_RUNTIME_PASSWORD`/
+        `POSTGRES_ADMIN_PASSWORD`) are the placeholder
+        `change-me-local-only`, never a real credential. CI uses its own
+        throwaway, non-production `ci-superuser-password`/
+        `ci-runtime-password`/`ci-admin-password` literals, hardcoded
+        only in `.github/workflows/ci.yml` for an ephemeral container
+        that's destroyed at the end of the job — grepped the repo
+        (excluding `.env.example` and `ci.yml` themselves) for every one
+        of these placeholder/throwaway strings and found no other
+        occurrence.
 - [ ] Create the MinIO bucket named by `MINIO_BUCKET` once
       (`docker compose exec minio mc mb local/$MINIO_BUCKET`, or the MinIO
       console at the container's console port) — the app does not
