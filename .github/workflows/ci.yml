@@ -253,6 +253,12 @@ jobs:
             -v dbname=uzeyn \
             -f apps/api/scripts/bootstrap-db.sql
 
+      - name: THROWAWAY - deliberately re-widen a grant to prove the assertion below actually fails
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn -c "GRANT UPDATE, DELETE ON admin_audit_logs TO app_runtime;"
+
       - name: Assert every append-only table is still insert+select only for both roles
         env:
           PGPASSWORD: ci-superuser-password
