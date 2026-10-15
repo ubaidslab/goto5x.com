@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -19,12 +19,6 @@ export default function SupportCenterNewTicketPage({ params }: { params: { store
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!window.localStorage.getItem("accessToken")) {
-      router.replace("/login");
-    }
-  }, [router]);
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -33,6 +27,14 @@ export default function SupportCenterNewTicketPage({ params }: { params: { store
       const ticket = await api.post<{ id: string }>(`/stores/${params.storeId}/support-tickets`, { subject, body });
       router.push(`/stores/${params.storeId}/tickets/${ticket.id}`);
     } catch (err) {
+      // D82 - the access token lives in dashboard-api.ts's in-memory store
+      // now, never localStorage, so there's no page-load check for "not
+      // logged in" any more - this form has no GET-on-mount to piggyback
+      // one on, so a real 401 is only discoverable at submit time.
+      if (err instanceof ApiError && err.status === 401) {
+        router.replace("/login");
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Couldn't submit that ticket.");
     } finally {
       setSubmitting(false);

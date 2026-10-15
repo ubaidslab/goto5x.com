@@ -1,7 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, cookieHeaderFrom, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 describe("Password reset (e2e) - SRS FR-25.1-25.4 / §14.0 checklist items", () => {
   let app: INestApplication;
@@ -51,11 +51,11 @@ describe("Password reset (e2e) - SRS FR-25.1-25.4 / §14.0 checklist items", () 
       .send({ token, newPassword: "brand-new-password-1" });
     expect(complete.status).toBe(200);
 
-    // Old session is dead.
-    const refreshOld = await request(app.getHttpServer()).post("/auth/refresh").send({
-      sessionId: login.body.sessionId,
-      refreshToken: login.body.refreshToken,
-    });
+    // Old session is dead. D82 - the refresh token travels as a cookie now.
+    const refreshOld = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", cookieHeaderFrom(login.headers["set-cookie"]))
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refreshOld.status).toBe(401);
 
     // Old password no longer works; new one does.

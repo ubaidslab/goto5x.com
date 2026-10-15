@@ -8,15 +8,20 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
+import { api } from "@/lib/dashboard-api";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { redirectAfterAuth } from "@/lib/post-auth-redirect";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-function storeTokens(body: { accessToken: string; sessionId: string; refreshToken: string }) {
-  localStorage.setItem("accessToken", body.accessToken);
-  localStorage.setItem("sessionId", body.sessionId);
-  localStorage.setItem("refreshToken", body.refreshToken);
+// D82 - the refresh token is no longer in this response body at all (it
+// arrives as a Set-Cookie the browser stores on its own, honored only
+// because every fetch below passes credentials: "include"); the access
+// token goes into dashboard-api.ts's in-memory store instead of
+// localStorage, and sessionId is kept there too for the self-service
+// session list (settings page) to read back via api.getCurrentSessionId().
+function storeTokens(body: { accessToken: string; sessionId: string }) {
+  api.setSession(body.accessToken, body.sessionId);
 }
 
 export default function LoginPage() {
@@ -41,6 +46,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
@@ -76,6 +82,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${apiBase}/auth/mfa/verify`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preAuthToken, code }),
       });

@@ -1,6 +1,7 @@
 import { ValidationPipe, INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { LedgerEntryType, PrismaClient } from "@prisma/client";
+import cookieParser from "cookie-parser";
 import Redis from "ioredis";
 import { AppModule } from "../../src/app.module";
 import { signedContribution } from "../../src/billing/wallet.service";
@@ -16,6 +17,11 @@ export async function buildTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication({ rawBody: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  // D82 - mirrors main.ts's own app.use(cookieParser()); this harness builds
+  // the Nest app directly via Test.createTestingModule(), never through
+  // bootstrap(), so anything bootstrap() wires in has to be duplicated here
+  // too (same reason ValidationPipe above is duplicated, not shared).
+  app.use(cookieParser());
   await app.init();
   return app;
 }
@@ -131,4 +137,18 @@ export async function seedLedgerEntry(
  */
 export function pkrAmount(breakdown: { currency: string; amount: number }[]): number {
   return breakdown.find((row) => row.currency === "PKR")?.amount ?? 0;
+}
+
+/**
+ * D82 - the seller/admin refresh token now travels as a Set-Cookie
+ * response header (__Host-refresh_token), never in the response body.
+ * `Set-Cookie` carries the full attribute string (Max-Age=/Path=/
+ * Expires=/HttpOnly/Secure/SameSite=); a real `Cookie` REQUEST header
+ * only ever sends the bare name=value, so the attributes are stripped
+ * here the same way a browser's own cookie jar would - pass the result
+ * straight to `.set("Cookie", ...)` on the next request.
+ */
+export function cookieHeaderFrom(setCookie: string | string[] | undefined): string {
+  const first = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+  return (first ?? "").split(";")[0];
 }

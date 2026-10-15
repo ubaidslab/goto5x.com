@@ -132,7 +132,8 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [verifyingMfa, setVerifyingMfa] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [supportAccessHistory, setSupportAccessHistory] = useState<SupportAccessEntry[] | null>(null);
-  const currentSessionId = typeof window !== "undefined" ? localStorage.getItem("sessionId") : null;
+  // D82 - sessionId lives in dashboard-api.ts's in-memory store now, never localStorage.
+  const currentSessionId = api.getCurrentSessionId();
 
   function loadSessions() {
     api

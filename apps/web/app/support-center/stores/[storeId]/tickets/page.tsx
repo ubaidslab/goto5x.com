@@ -25,18 +25,20 @@ export default function SupportCenterTicketsPage({ params }: { params: { storeId
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!window.localStorage.getItem("accessToken")) {
-      router.replace("/login");
-    }
-  }, [router]);
-
+  // D82 - the access token lives in dashboard-api.ts's in-memory store now,
+  // never localStorage; api.get() below handles "not logged in" on its own.
   useEffect(() => {
     api
       .get<SupportTicket[]>(`/stores/${params.storeId}/support-tickets`)
       .then(setTickets)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load your tickets."));
-  }, [params.storeId]);
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        setError(err instanceof ApiError ? err.message : "Couldn't load your tickets.");
+      });
+  }, [params.storeId, router]);
 
   return (
     <div>

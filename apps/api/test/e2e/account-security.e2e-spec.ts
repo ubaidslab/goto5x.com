@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { authenticator } from "otplib";
 import request from "supertest";
 import { SettingsService } from "../../src/settings-registry/settings.service";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, cookieHeaderFrom, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
 
@@ -174,14 +174,17 @@ describe("Seller Account Security: 2FA + Devices (e2e) - SRS §5.25, §14.24", (
         .set("Authorization", `Bearer ${firefox.body.accessToken}`);
       expect(revoke.status).toBe(200);
 
+      // D82 - the refresh token travels as a cookie now, never in the body.
       const refreshRevoked = await request(app.getHttpServer())
         .post("/auth/refresh")
-        .send({ sessionId: chrome.body.sessionId, refreshToken: chrome.body.refreshToken });
+        .set("Cookie", cookieHeaderFrom(chrome.headers["set-cookie"]))
+        .set("X-Requested-With", "XMLHttpRequest");
       expect(refreshRevoked.status).toBe(401);
 
       const refreshStillActive = await request(app.getHttpServer())
         .post("/auth/refresh")
-        .send({ sessionId: firefox.body.sessionId, refreshToken: firefox.body.refreshToken });
+        .set("Cookie", cookieHeaderFrom(firefox.headers["set-cookie"]))
+        .set("X-Requested-With", "XMLHttpRequest");
       expect(refreshStillActive.status).toBe(200);
     });
 
@@ -221,9 +224,11 @@ describe("Seller Account Security: 2FA + Devices (e2e) - SRS §5.25, §14.24", (
       expect(third.body.message.message).toMatch(/device limit/i);
 
       // The two existing sessions are unaffected - not silently evicted.
+      // D82 - the refresh token travels as a cookie now, never in the body.
       const stillWorks = await request(app.getHttpServer())
         .post("/auth/refresh")
-        .send({ sessionId: first.body.sessionId, refreshToken: first.body.refreshToken });
+        .set("Cookie", cookieHeaderFrom(first.headers["set-cookie"]))
+        .set("X-Requested-With", "XMLHttpRequest");
       expect(stillWorks.status).toBe(200);
     });
 

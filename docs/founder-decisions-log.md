@@ -2074,6 +2074,94 @@ reasoning), and it caught one on its very first real run; worth
 recording plainly as a found-and-fixed bug rather than folding it
 silently into D105's history.
 
+### D108. D82 part 2 - the seller dashboard's refresh token moves to a cookie; nothing seller-facing left in localStorage
+**Status:** LOCKED. Fifth M1-1B item - the second slice of D82. Admin
+terminal (stricter lifetimes + step-up MFA) is a separate, still-to-come
+slice; buyer/storefront is untouched by design (already compliant, see
+below) and staff-session-revocability is still outstanding.
+**Decision:** `POST /auth/login`, `/auth/mfa/verify`, `/auth/refresh`
+now set/read a `__Host-refresh_token` cookie
+(`auth/refresh-cookie.util.ts`) instead of returning/accepting the
+refresh token in the JSON body at all; `sessionId` stays in the body
+(not a secret on its own, needed for the self-service session list).
+`SameSite=Lax`, not the `None` the design doc's own Option A text
+proposed - confirmed via `docker-compose.yml`'s Traefik host rules that
+every real topology (local dev AND production) has the dashboard/API
+on same-site subdomains (`app.*`/`api.*`), so `None`'s cross-site
+exposure was never actually needed; `Lax` + the `__Host-` prefix (no
+`Domain`, `Secure`, `Path=/`) is strictly tighter and still works.
+`RefreshCookieCsrfGuard` (new, shared - admin will reuse it) guards
+`/auth/refresh` and `/auth/logout`: requires `X-Requested-With:
+XMLHttpRequest` always, then checks `Sec-Fetch-Site` (browser-set, not
+spoofable, true regardless of CORS config) when present, falling back
+to an `Origin`-against-`CORS_ALLOWED_ORIGINS` check only when
+`Sec-Fetch-Site` is absent - a plain allowlist-only check would have
+incorrectly rejected every real production request, since production
+runs same-origin with no CORS allowlist configured at all but modern
+browsers still send `Origin` on state-changing requests.
+**Frontend (`dashboard-api.ts` and everything that depended on its old
+localStorage contract):** the access token now lives in one in-memory
+module variable, never localStorage - a fresh page load starts with no
+token, which is fine: the first request 401s with no Authorization
+header, the existing retry-after-refresh logic calls the now-cookie-
+authenticated `/auth/refresh`, and succeeds exactly as before. Fixed,
+not just the obvious `login/page.tsx` and `dashboard-api.ts`: a full-
+repo grep for the old localStorage keys surfaced 13 more files actually
+depending on the old contract - `support-center/login/page.tsx` (same
+`/auth/login` backend, separate origin, separate in-memory instance -
+isolation preserved the same way separate-origin localStorage already
+provided it); five `support-center/*` pages whose synchronous
+`localStorage.getItem("accessToken")` check would now ALWAYS fire even
+for a genuinely logged-in seller - removed, since each page's own
+`api.get()` 401-handling already covers it correctly (added a 401-
+specific redirect to the two pages that only had a generic error
+message before, to avoid a real regression); `impersonate/page.tsx` and
+`SupportModeBanner.tsx` (impersonation deliberately shares the
+dashboard's own token-storage mechanism so "every existing screen Just
+Works" - now shares the in-memory store via a new `setSession()`
+export instead; the destination navigation changed from
+`window.location.replace()` to a client-side `router.push()`, since a
+hard navigation would have discarded the in-memory token before the
+destination page could use it); `settings/page.tsx`'s session-list
+"which one is this" comparison (now `api.getCurrentSessionId()`).
+**Deliberately NOT changed:** `impersonationSessionId` stays in
+localStorage - it's a reference id, not a bearer credential (nothing
+can authenticate as anything with just this value), so it's outside
+the actual security concern "nothing may remain in localStorage" is
+about, and `SupportModeBanner` (a separately-mounted component) still
+needs a way to read it. Buyer/storefront's own `buyer_session` cookie
+pattern is untouched - it was already doing everything D82 asks for on
+the seller/admin surface (httpOnly cookie, same-origin via Server
+Actions, no token in client JS at all) before this item existed.
+**A real gap found while testing, not assumed:** the e2e test harness
+(`test/e2e/setup.ts`) builds the Nest app directly via
+`Test.createTestingModule()`, never through `bootstrap()` - so
+`main.ts`'s new `app.use(cookieParser())` was invisible to every e2e
+test until added there too. Without this fix, every cookie-based test
+would have failed on "missing cookie" regardless of whether the real
+mechanism worked - confirmed by deliberately reproducing the failure
+(a debug spec, since deleted) before fixing it, not just asserting
+green after the fact. Also found: supertest's own `Set-Cookie` response
+value includes the full attribute string (`Max-Age=`/`Path=`/`Secure`/
+etc.) - a real `Cookie` request header only ever carries bare
+`name=value`, so a new shared `cookieHeaderFrom()` test helper
+(`setup.ts`) strips the attributes the same way a browser's own cookie
+jar would, used everywhere a test needs to replay a captured cookie.
+**Verified:** every e2e spec that exercises `/auth/refresh`/`/auth/
+logout` for the seller surface (`auth`, `account-security`, `password-
+reset`, `module81-buyer-accounts`, `admin-auth`/`admin-auth-refresh`,
+`input-validation-sweep`) passes with `CORS_ALLOWED_ORIGINS` forced
+empty to match real CI's actual condition (confirmed this sandbox's
+own gitignored `.env` sets a dev-shaped value CI never has, which
+initially masked the real behavior under test). Full unit suite
+(50/321), `apps/web` typecheck, lint (zero new warnings - one pre-
+existing-pattern warning introduced by my own edit was found and fixed
+in the same pass), and a full production build all pass clean.
+**Reasoning:** not elaborated beyond D82's own text - this is the
+headline risk D82 exists to close (the refresh token's plaintext
+localStorage exposure), landed as its own slice after reuse detection
+(D106) for the same risk-isolation reason that slice was split out.
+
 ### D109. Two CI breaks surfaced immediately after D107 and D105 landed - a `pnpm/action-setup` conflict D107's own fix caused, and a second, independent pre-existing Dockerfile bug D105's verify step caught
 **Status:** LOCKED - both are mechanical CI fixes, not new product
 decisions; filed here (not folded silently into D105/D107's own

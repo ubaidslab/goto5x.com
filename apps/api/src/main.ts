@@ -1,8 +1,10 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { seedDefaults } from "./bootstrap/seed-defaults";
+import { getAllowedOrigins } from "./common/cors-origins.util";
 import { PrismaAdminService } from "./prisma/prisma-admin.service";
 
 async function bootstrap() {
@@ -29,6 +31,11 @@ async function bootstrap() {
   // `forbidNonWhitelisted: true` turns that same case into a real 400,
   // which is the actual input-validation posture FR-... intends.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+
+  // D82 - the seller/admin refresh-token cookie needs server-side parsing;
+  // this is the one piece of cookie-based auth the API has (buyer_session
+  // is parsed entirely inside Next.js Server Actions, never sent here).
+  app.use(cookieParser());
 
   // Founder walkthrough finding (pre-Milestone-A): this previously only ran
   // via `test/e2e/setup.ts` (under the name `seedSettings`) or a manually-run
@@ -69,10 +76,7 @@ async function bootstrap() {
   // Production stays same-origin behind Traefik and needs no CORS at all.
   // Local dev (web on :3000, API on a different port) and future mobile apps
   // need an explicit, configurable allowlist - never a blanket wildcard.
-  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = getAllowedOrigins();
   if (allowedOrigins.length > 0) {
     app.enableCors({ origin: allowedOrigins, credentials: true });
   }

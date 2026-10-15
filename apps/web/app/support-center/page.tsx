@@ -33,12 +33,11 @@ export default function SupportCenterHomePage() {
   const [articles, setArticles] = useState<ContentPageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!window.localStorage.getItem("accessToken")) {
-      router.replace("/login");
-    }
-  }, [router]);
-
+  // D82 - the access token lives in dashboard-api.ts's in-memory store now,
+  // never localStorage, so there's nothing to check synchronously here on a
+  // fresh page load - api.get() below 401s, silently refreshes via the
+  // auth cookie if a session genuinely exists, and its own .catch() handles
+  // a real "not logged in" the same way it always did.
   useEffect(() => {
     api
       .get<StoreSummary[]>("/stores")
