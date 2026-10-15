@@ -4,6 +4,7 @@
   "engines": {
     "node": ">=20"
   },
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev:api": "pnpm --filter @uzeyn/api start:dev",
     "dev:web": "pnpm --filter @uzeyn/web dev",

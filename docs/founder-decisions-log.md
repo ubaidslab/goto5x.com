@@ -2036,3 +2036,40 @@ risk, purely-additive slice first (no client-visible transport change
 at all) and independently proves it, rather than bundling it into the
 much larger, higher-risk cookie-migration slice where a mistake would
 be harder to isolate.
+
+### D107. D105's own docker-build job caught a real, pre-existing Dockerfile bug on its first run
+**Status:** LOCKED - closes D105's own "verification note" (this
+sandbox has no Docker daemon; the real build was only ever going to be
+proven by CI itself) with the actual result.
+**Decision:** the first-ever `docker-build` CI run failed - not on the
+new `USER node`/`--chown` lines, but one step earlier, in the `base`
+stage's `pnpm install`, which has been latent and unexercised in CI
+since before this session. Root cause confirmed by reproducing it
+directly (an isolated copy of just the Dockerfile's `base`-stage input
+files, outside any Docker daemon): root `package.json` has no
+`packageManager` field, so `corepack enable` inside the Dockerfile
+resolves pnpm to whatever corepack's own default is - pnpm 12.11.2 on
+this run - a full major ahead of the pnpm 10.33.0 this repo is actually
+built, tested, and pinned against everywhere else
+(`ci.yml`'s `pnpm/action-setup` + `docs/security-audit-report.md`'s own
+confirmed-version citation). pnpm 12 rejects this lockfile two
+different ways pnpm 10 doesn't: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` on
+the frozen-lockfile attempt, then `ERR_PNPM_IGNORED_BUILDS` (a hard
+error in 12.x; a mere warning in 10.x) on the install fallback.
+**Fix:** added `"packageManager": "pnpm@10.33.0"` to root
+`package.json` - the standard, corepack-native way to pin this, read
+by `corepack enable` wherever it runs (Docker, and any future local/CI
+path that relies on it) without touching the three Dockerfiles
+themselves at all. **Directly verified, not just reasoned about:**
+reproduced the exact failure in an isolated copy with the field absent
+("Update available! 10.33.0 → 12.11.2", `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`),
+then reproduced the fix with the field present (`corepack pnpm
+--version` → exactly `10.33.0`; `pnpm install --frozen-lockfile` →
+"Lockfile is up to date... Done in 5.4s using pnpm v10.33.0", the
+ignored-build-scripts line now a non-blocking warning) - before
+trusting it enough to push again.
+**Reasoning:** not elaborated beyond the finding itself - this is
+exactly the kind of gap `docker-build` exists to catch (D105's own
+reasoning), and it caught one on its very first real run; worth
+recording plainly as a found-and-fixed bug rather than folding it
+silently into D105's history.
