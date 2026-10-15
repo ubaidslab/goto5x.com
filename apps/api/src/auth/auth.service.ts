@@ -331,16 +331,26 @@ export class AuthService {
   }
 
   async refresh(sessionId: string, refreshToken: string): Promise<TokenPair> {
-    const userId = await this.sessions.validateRefreshToken(sessionId, refreshToken);
-    if (!userId) {
+    const validation = await this.sessions.validateRefreshToken(sessionId, refreshToken);
+    if (validation.status === "reused") {
+      // D82 reuse detection - this exact token was already rotated out once;
+      // being presented again means it was copied before rotation consumed
+      // it. Revoke every session for this user, not just this one, and log
+      // it as a security event rather than a plain auth failure.
+      await this.sessions.destroyAllSessionsForUser(validation.userId);
+      await this.securityEvents.record(validation.userId, "refresh_token_reuse_detected");
       throw new UnauthorizedException("Invalid or expired refresh token.");
     }
+    if (validation.status === "invalid") {
+      throw new UnauthorizedException("Invalid or expired refresh token.");
+    }
+    const userId = validation.userId;
     // Carries the same device identity forward across rotation - this is
     // the SAME session continuing, not a new device (SRS FR-25.7).
     const deviceInfo = await this.sessions.getDeviceInfo(sessionId);
     await this.sessions.touchSession(sessionId);
-    // Destroy the old session and issue a new one (refresh-token rotation).
-    await this.sessions.destroySession(sessionId);
+    // Destroy the old session (tombstoned, for the reuse check above) and issue a new one (refresh-token rotation).
+    await this.sessions.rotateOutSession(sessionId);
 
     const [seller, supplier] = await Promise.all([
       this.prisma.seller.findUnique({ where: { userId } }),

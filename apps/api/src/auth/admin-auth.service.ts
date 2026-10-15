@@ -9,6 +9,7 @@ import { AuditLogService } from "../admin/audit-log.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { AdminLoginDto } from "./dto/admin-login.dto";
+import { SecurityEventService } from "./security-event.service";
 import { SessionService } from "./session.service";
 
 const PRE_AUTH_TTL_MINUTES = 5;
@@ -36,6 +37,7 @@ export class AdminAuthService {
     private readonly auditLog: AuditLogService,
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
+    private readonly securityEvents: SecurityEventService,
   ) {}
 
   async login(dto: AdminLoginDto, ip: string): Promise<{ preAuthToken: string; mfaEnrolled: boolean }> {
@@ -158,10 +160,19 @@ export class AdminAuthService {
    * immediately rather than persisting in a stale refreshed token.
    */
   async refresh(sessionId: string, refreshToken: string): Promise<{ accessToken: string; sessionId: string; refreshToken: string }> {
-    const userId = await this.sessions.validateRefreshToken(sessionId, refreshToken);
-    if (!userId) {
+    const validation = await this.sessions.validateRefreshToken(sessionId, refreshToken);
+    if (validation.status === "reused") {
+      // D82 reuse detection - see AuthService.refresh()'s identical comment.
+      // Doubly worth acting on here: an admin session is the highest-value
+      // target in this codebase.
+      await this.sessions.destroyAllSessionsForUser(validation.userId);
+      await this.securityEvents.record(validation.userId, "refresh_token_reuse_detected");
       throw new UnauthorizedException("Invalid or expired refresh token.");
     }
+    if (validation.status === "invalid") {
+      throw new UnauthorizedException("Invalid or expired refresh token.");
+    }
+    const userId = validation.userId;
 
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { adminUser: true } });
     if (!user?.adminUser) {
@@ -169,8 +180,8 @@ export class AdminAuthService {
     }
 
     await this.sessions.touchSession(sessionId);
-    // Destroy the old session and issue a new one (refresh-token rotation).
-    await this.sessions.destroySession(sessionId);
+    // Destroy the old session (tombstoned, for the reuse check above) and issue a new one (refresh-token rotation).
+    await this.sessions.rotateOutSession(sessionId);
 
     const { sessionId: newSessionId, refreshToken: newRefreshToken } = await this.sessions.createSession(user.id);
     const accessToken = this.jwt.sign(

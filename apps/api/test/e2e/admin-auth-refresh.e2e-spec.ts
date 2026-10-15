@@ -88,4 +88,32 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
       .send({ sessionId: tokens.sessionId, refreshToken: "not-the-real-token" });
     expect(res.status).toBe(401);
   });
+
+  it("replaying an already-rotated-out admin refresh token revokes every session for that admin and logs a security event (D82 reuse detection)", async () => {
+    const tokens = await createAndLoginAdmin("refresh-admin4@example.com");
+    const user = await superuser.user.findUniqueOrThrow({ where: { email: "refresh-admin4@example.com" } });
+
+    const refresh1 = await request(app.getHttpServer())
+      .post("/admin/auth/refresh")
+      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+    expect(refresh1.status).toBe(200);
+
+    // Replaying the original (now-rotated-out) pair - reuse, not just "invalid".
+    const replay = await request(app.getHttpServer())
+      .post("/admin/auth/refresh")
+      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+    expect(replay.status).toBe(401);
+
+    // refresh1's own pair, genuinely valid a moment ago, is now also dead -
+    // the whole account's sessions were revoked, not just the replayed one.
+    const afterReuse = await request(app.getHttpServer())
+      .post("/admin/auth/refresh")
+      .send({ sessionId: refresh1.body.sessionId, refreshToken: refresh1.body.refreshToken });
+    expect(afterReuse.status).toBe(401);
+
+    const events = await superuser.userSecurityEvent.findMany({
+      where: { userId: user.id, eventType: "refresh_token_reuse_detected" },
+    });
+    expect(events).toHaveLength(1);
+  });
 });

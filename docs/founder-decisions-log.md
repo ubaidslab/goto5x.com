@@ -1980,3 +1980,59 @@ explicitly rather than glossed over.
 closes the second of the two S12 controls (SHA-pinning already done),
 and adds the one piece of ongoing verification (`docker-build` in CI)
 that would have caught this gap immediately had it existed earlier.
+
+### D106. D82 part 1 - refresh-token reuse detection (seller, admin, buyer)
+**Status:** LOCKED. Fourth M1-1B item - the first slice of D82; the
+cookie-based transport/CSRF/CSP/stricter-admin-lifetimes/step-up-MFA
+pieces are separate, larger, still-to-come slices of the same decision.
+**Decision:** Dispatched a full current-state investigation first
+(confirmed directly against live code, not re-stated from
+`docs/auth-session-design.md`'s own citations) - `SessionService`
+already has real rotation and real server-side revocation; what it
+never had was reuse detection. `validateRefreshToken()` now returns a
+`"valid" | "reused" | "invalid"` result instead of a bare userId-or-
+null: a miss checks a new short-TTL (24h) tombstone left by the new
+`rotateOutSession()` (called from refresh-token rotation specifically,
+not from ordinary logout/revoke, which has no "this was valid a moment
+ago" story to detect) - recording exactly which (userId,
+refreshTokenHash) pair just got rotated out, so a later replay of that
+exact pair is told apart from a token that never existed. All three
+`refresh()` methods (seller `AuthService`, `AdminAuthService`,
+`BuyerAuthService` - all three share the one `SessionService`) react to
+a `"reused"` result by calling the already-existing but previously
+never-invoked `destroyAllSessionsForUser()` and logging a
+`refresh_token_reuse_detected` `SecurityEventService` entry - both
+primitives already existed, wired to nothing; this is the first call
+site for either in response to a detected anomaly. The externally-
+visible response (401, same message) is unchanged between "reused" and
+"invalid" on purpose - not a behavior a client should be able to
+distinguish - only the internal reaction differs.
+**Also found while investigating (kept as-is, not touched by this
+item):** `touchSession()`'s `lastActiveAt` bump is called one line
+before the session it just touched gets destroyed in every refresh
+flow - vestigial, no observable effect, not worth a change bundled
+into a security-sensitive commit; a working step-up-MFA precedent
+already exists (`SellerLifecycleService.verifyStepUpMfa()`, suspend/
+ban only) that D82's later admin-step-up-MFA slice should extend
+rather than reinvent; CORS already has `credentials: true` wired
+(`main.ts`), ready for the cookie-transport slice; production runs
+`app.*`/`api.*` as same-site subdomains with no CORS configured at all
+(confirmed via `docker-compose.yml`'s Traefik host rules) - meaning the
+upcoming refresh-cookie's `SameSite` can be `Lax` (stricter than
+`auth-session-design.md`'s own Option A text, which proposed `None` on
+an apparent same-origin/same-site conflation) - noted here for that
+slice, not acted on yet.
+**Verified:** new e2e tests (one seller, one admin) prove the actual
+behavioral difference, not just that nothing broke - replaying an
+already-rotated-out token is rejected, AND a sibling session that was
+genuinely valid a moment earlier is also dead afterward (proving
+`destroyAllSessionsForUser()` really fired, not just the one replayed
+session), AND exactly one `refresh_token_reuse_detected` event is
+recorded. Full unit suite (50/321) and the 6 pre-existing auth/session/
+security-event/password-reset/buyer-account e2e suites (38 tests) all
+still pass unchanged.
+**Reasoning:** not elaborated beyond D82's own text - ships the lowest-
+risk, purely-additive slice first (no client-visible transport change
+at all) and independently proves it, rather than bundling it into the
+much larger, higher-risk cookie-migration slice where a mistake would
+be harder to isolate.
