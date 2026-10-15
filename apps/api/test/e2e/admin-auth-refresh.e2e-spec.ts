@@ -1,7 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, cookieHeaderFrom, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const ADMIN_PASSWORD = "admin-correct-horse-battery";
 
@@ -36,6 +36,12 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
     await seedSettings(superuser);
   });
 
+  // D82 admin slice - the refresh token now travels as a
+  // __Host-admin_refresh_token cookie (HttpOnly, Secure, SameSite=Lax),
+  // never in the request/response body - same reasoning and the same
+  // manual-cookie-capture pattern as auth.e2e-spec.ts's own D82 tests
+  // (supertest's agent() won't replay a Secure cookie over its plain-HTTP
+  // test transport).
   async function createAndLoginAdmin(email: string) {
     const bcrypt = await import("bcryptjs");
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
@@ -46,7 +52,7 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
     const { authenticator } = await import("otplib");
     const code = authenticator.generate(enroll.body.secret);
     const verify = await request(app.getHttpServer()).post("/admin/auth/mfa/verify").send({ preAuthToken: login.body.preAuthToken, code });
-    return verify.body as { accessToken: string; sessionId: string; refreshToken: string };
+    return { ...verify.body, cookie: cookieHeaderFrom(verify.headers["set-cookie"]) } as { accessToken: string; sessionId: string; cookie: string };
   }
 
   it("a valid refresh token issues a new admin-shaped access token without re-prompting for MFA", async () => {
@@ -54,7 +60,8 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
 
     const refreshed = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+      .set("Cookie", tokens.cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refreshed.status).toBe(200);
     expect(refreshed.body.accessToken).toBeDefined();
     expect(refreshed.body.sessionId).not.toBe(tokens.sessionId); // rotated, not reused
@@ -71,22 +78,32 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
 
     const refresh1 = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+      .set("Cookie", tokens.cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh1.status).toBe(200);
 
     const refresh2 = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+      .set("Cookie", tokens.cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh2.status).toBe(401);
   });
 
   it("rejects a refresh attempt with an invalid refresh token", async () => {
-    const tokens = await createAndLoginAdmin("refresh-admin3@example.com");
+    await createAndLoginAdmin("refresh-admin3@example.com");
 
     const res = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: tokens.sessionId, refreshToken: "not-the-real-token" });
+      .set("Cookie", "__Host-admin_refresh_token=not-a-real-session%3Anot-the-real-token")
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(res.status).toBe(401);
+  });
+
+  it("rejects a refresh attempt with no X-Requested-With header (CSRF defense)", async () => {
+    const tokens = await createAndLoginAdmin("refresh-admin-csrf@example.com");
+
+    const res = await request(app.getHttpServer()).post("/admin/auth/refresh").set("Cookie", tokens.cookie);
+    expect(res.status).toBe(403);
   });
 
   it("replaying an already-rotated-out admin refresh token revokes every session for that admin and logs a security event (D82 reuse detection)", async () => {
@@ -95,20 +112,24 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
 
     const refresh1 = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+      .set("Cookie", tokens.cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh1.status).toBe(200);
+    const refresh1Cookie = cookieHeaderFrom(refresh1.headers["set-cookie"]);
 
-    // Replaying the original (now-rotated-out) pair - reuse, not just "invalid".
+    // Replaying the original (now-rotated-out) cookie - reuse, not just "invalid".
     const replay = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: tokens.sessionId, refreshToken: tokens.refreshToken });
+      .set("Cookie", tokens.cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(replay.status).toBe(401);
 
-    // refresh1's own pair, genuinely valid a moment ago, is now also dead -
+    // refresh1's own cookie, genuinely valid a moment ago, is now also dead -
     // the whole account's sessions were revoked, not just the replayed one.
     const afterReuse = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: refresh1.body.sessionId, refreshToken: refresh1.body.refreshToken });
+      .set("Cookie", refresh1Cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(afterReuse.status).toBe(401);
 
     const events = await superuser.userSecurityEvent.findMany({

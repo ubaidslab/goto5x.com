@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { adminApi } from "@/lib/admin-api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -62,6 +63,7 @@ export default function AdminLoginPage() {
       const res = await fetch(`${apiBase}/admin/auth/mfa/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ preAuthToken, code }),
       });
       const body = await res.json().catch(() => ({}));
@@ -73,9 +75,12 @@ export default function AdminLoginPage() {
         // expired 15 minutes later with no way back in short of a fresh
         // login. See admin-api.ts's request() for the refresh flow this
         // now enables.
-        localStorage.setItem("adminAccessToken", body.accessToken);
-        localStorage.setItem("adminSessionId", body.sessionId);
-        localStorage.setItem("adminRefreshToken", body.refreshToken);
+        //
+        // D82 - the refresh token no longer appears in this response body
+        // at all (it's the __Host-admin_refresh_token cookie, set directly
+        // by the API); the access token/sessionId go into admin-api.ts's
+        // in-memory store, never localStorage.
+        adminApi.setSession(body.accessToken, body.sessionId);
         setLoggedIn(true);
         router.push("/admin");
       } else {

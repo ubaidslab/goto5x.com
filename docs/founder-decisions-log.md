@@ -2233,3 +2233,53 @@ catch, and between the two of them it caught one new bug immediately
 (D107's own fix) and one much older one (the dist path, present since
 whenever these Dockerfiles were first written) on its very first two
 real runs.
+
+### D110. D82 part 3 - the admin terminal's own refresh token moves to a cookie, mirroring D108
+**Status:** LOCKED. Sixth M1-1B item - the third slice of D82. Stricter
+admin session/access lifetimes and step-up MFA generalization are
+separate, still-to-come slices; staff sub-account session revocability
+(`docs/auth-session-design.md`'s own explicit "small, contained fix" line)
+is also still outstanding.
+**Decision:** `POST /admin/auth/mfa/verify`, `/admin/auth/refresh` now
+set/read a `__Host-admin_refresh_token` cookie
+(`auth/admin-refresh-cookie.util.ts`) instead of a response-body refresh
+token; `/admin/auth/refresh` and `/admin/auth/logout` are guarded by the
+SAME `RefreshCookieCsrfGuard` D108 already built (it only checks headers/
+Origin, nothing cookie-name-specific, so sharing it is safe and was the
+plan D108's own comment already stated). `/admin/auth/login` itself
+needed no change - admin MFA is mandatory, so no session/refresh token
+exists until `mfa/verify` succeeds.
+**A real collision risk found before writing any code, not after:** the
+admin terminal is NOT a separate origin from the seller dashboard -
+`(admin)` is a Next.js route group inside the same `apps/web` app, and
+`docker-compose.yml`'s Traefik rules confirm there is no separate
+`admin.*` host anywhere. Both hit the same API origin too. Reusing
+D108's exact cookie name would have let an admin who is also logged in
+as a seller in the same browser silently overwrite one session's cookie
+with the other's on every login - so the admin slice gets its own
+distinctly-named cookie (`admin-refresh-cookie.util.ts`, a small mirror
+of `refresh-cookie.util.ts` rather than a shared parameterized function,
+matching this codebase's existing per-actor-service convention) instead
+of trying to genericize the two into one.
+**Frontend (`admin-api.ts` and the admin login page):** access token and
+`sessionId` are now in-memory only, never localStorage - a full-repo grep
+for `adminAccessToken`/`adminSessionId`/`adminRefreshToken` across
+`apps/web` (excluding stale `.next` build output) found exactly two real
+source files (the login page and `admin-api.ts` itself), both fixed; no
+other admin page reads these keys directly. The admin-side impersonation
+"login as seller" trigger (`admin/sellers/[sellerId]/page.tsx`) already
+went entirely through `adminApi.post()`, so it needed no change at all.
+**Verified:** `admin-auth.e2e-spec.ts` and `admin-auth-refresh.e2e-spec.ts`
+rewritten for cookie-based refresh/logout (same manual-capture pattern
+D108 introduced, via the same shared `cookieHeaderFrom()` helper - no
+changes needed there, it's cookie-name-agnostic), plus one new test for
+the missing-CSRF-header case; all 11 tests pass with
+`CORS_ALLOWED_ORIGINS` forced empty to match real CI. Full unit suite
+(50/321 - unchanged count, confirming no regression), `apps/api` and
+`apps/web` typecheck, and both apps' lint are all clean (lint's handful
+of warnings are pre-existing, in files this change never touched).
+**Reasoning:** not elaborated beyond D82's own text - ships the admin
+terminal to the same standard D108 already proved out for the seller
+dashboard, reusing its CSRF guard directly (exactly as D108's own
+comment said it would) while keeping the actual token storage properly
+isolated per actor type.
