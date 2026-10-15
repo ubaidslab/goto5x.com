@@ -2283,3 +2283,70 @@ terminal to the same standard D108 already proved out for the seller
 dashboard, reusing its CSRF guard directly (exactly as D108's own
 comment said it would) while keeping the actual token storage properly
 isolated per actor type.
+
+### D111. D82's "staff sub-account tokens" bullet - a staff login now creates a real, revocable session
+**Status:** LOCKED. Seventh M1-1B item - closes
+`docs/auth-session-design.md`'s explicit "Staff sub-account tokens: give
+staff logins a real sessionId too, so they become revocable (currently a
+bare, non-revocable access token) - small, contained fix" bullet. This
+closes D82's last specifically-named sub-item; the two remaining D82
+pieces (stricter admin session/access lifetimes, and generalizing
+`SellerLifecycleService.verifyStepUpMfa()` into a reusable guard for other
+destructive admin actions) were never given this level of textual detail
+in the design doc and are tracked separately.
+**Decision:** `StaffAuthService.login()` now calls
+`SessionService.createSession(staff.id, ...)` - `SessionService` is
+actor-agnostic (admin sessions are already keyed by the shared `User.id`
+the same generic way), and `StaffAccount` has no backing `User` row at
+all, so its own `id` is just as valid an opaque session key. New
+`POST /staff/auth/refresh` and `/staff/auth/logout` endpoints (neither
+existed before - a staff account previously had no refresh path and had
+to re-enter their password every 15 minutes) reuse D108/D110's exact
+cookie-plus-CSRF-guard pattern (`staff-refresh-cookie.util.ts`, its own
+`__Host-staff_refresh_token` name for the same same-origin-collision
+reason D110 gave itself - staff, admin, and seller all share one
+apps/web origin and one API origin).
+**The actual security property, not just plumbing:** `refresh()`
+re-reads the staff account fresh from the DB on every call (status,
+`expiresAt`) rather than trusting the original login's claims - mirrors
+`AdminAuthService.refresh()`'s own "re-reads adminUser fresh... so a role
+change or de-provisioning is picked up immediately" reasoning exactly.
+Without this re-check, adding a refresh endpoint at all would have made
+the existing (already-bounded, 15-minute) staleness gap WORSE, not
+better - a revoked account could otherwise keep perpetually renewing
+itself forever via refresh. `staff-accounts.service.ts`'s `revoke()`/
+`suspend()`/`block()` additionally call `destroyAllSessionsForUser()`
+directly, so a live session dies at the moment of the action rather than
+only at its next refresh attempt.
+**Reuse detection uses `EventsService`, not `SecurityEventService`:**
+`UserSecurityEvent.userId` carries a real Prisma `@relation` against the
+`users` table (confirmed by reading `schema.prisma`, not assumed) -
+calling it with a `StaffAccount.id` would be a foreign-key violation, not
+a silent no-op. `EventsService.emit()` has no such constraint and is
+already the pattern this exact file uses for `staff_account.login`, so
+`staff_account.refresh_token_reuse_detected` follows the same shape.
+**A real, disclosed gap found while scoping this, not fixed here:**
+`POST /staff/auth/login` has no frontend caller anywhere in `apps/web` -
+confirmed by grepping the whole app (`.next` build-cache hits excluded).
+A staff account can be created, scoped, and password-reset through the
+owner/admin UI, and can complete that reset
+(`app/staff/reset-password/page.tsx` is the one piece of staff-facing UI
+that exists), but there is no actual login page for a staff member to
+use afterward. This is a separate, substantial, pre-existing frontend
+gap - unrelated to session revocability and out of this item's "small,
+contained fix" scope - flagged here rather than silently worked around
+or silently left for someone to discover later.
+**Verified:** new `test/e2e/staff-auth-refresh.e2e-spec.ts` (8 tests) -
+refresh + rotation, missing-CSRF-header rejection, reuse detection
+(session-wide revocation + exactly one platform event), logout, and
+three separate tests proving revoke/suspend/block each kill a live
+session's refresh ability immediately rather than only blocking a future
+login. All pre-existing staff e2e suites (`module35-staff-accounts`,
+`module101-staff-lifecycle`, 23 tests) still pass unchanged - the
+response-body shape change (no more bare `refreshToken` field) was
+confirmed to not be asserted on anywhere. Full unit suite (50/321),
+`apps/api` typecheck and lint all clean.
+**Reasoning:** not elaborated beyond the design doc's own text - this was
+genuinely the last specifically-scoped D82 sub-item left; what remains
+(admin lifetimes, step-up-MFA generalization) needs its own design
+decisions this entry doesn't make.

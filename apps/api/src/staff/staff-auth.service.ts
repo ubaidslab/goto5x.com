@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, UnauthorizedExcept
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
+import { SessionService } from "../auth/session.service";
 import { hashToken } from "../auth/token.util";
 import { JwtAccessPayload, StaffPermission, StaffScope } from "../common/types";
 import { EmailService } from "../notifications/email.service";
@@ -26,6 +27,17 @@ const BCRYPT_ROUNDS = 12;
  *
  * FR-52.10/52.12 (Module 97) - an expired or (when device-restricted) an
  * unrecognized-device login is rejected here, before any token is issued.
+ *
+ * D82 (`docs/auth-session-design.md`'s "Staff sub-account tokens" bullet)
+ * - a staff login now creates a real `SessionService` session (keyed by
+ * `staff.id`; `SessionService` is actor-agnostic, it already keys admin
+ * sessions by the shared `User.id` and buyer/seller the same way, so a
+ * `StaffAccount.id` - a separate table, no backing `User` row at all - is
+ * just as valid an opaque key). This is what makes the account genuinely
+ * revocable: `refresh()` below re-checks `status`/`expiresAt` fresh from
+ * the DB on every call, so an owner's/admin's suspend/block/revoke takes
+ * effect the moment the current access token's own (short, 15-minute) TTL
+ * forces a refresh, not only at the next full re-login.
  */
 @Injectable()
 export class StaffAuthService {
@@ -37,9 +49,20 @@ export class StaffAuthService {
     private readonly settings: SettingsService,
     private readonly events: EventsService,
     private readonly email: EmailService,
+    private readonly sessions: SessionService,
   ) {}
 
-  async login(dto: StaffLoginDto, ip: string): Promise<{ accessToken: string }> {
+  private signAccessToken(staffId: string, sellerId: string, scopePermissions: Partial<Record<StaffScope, StaffPermission>>): string {
+    return this.jwt.sign(
+      { sub: staffId, sellerId, staffAccountId: staffId, scopePermissions } satisfies JwtAccessPayload,
+      {
+        secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
+        expiresIn: `${this.config.getOrThrow<number>("JWT_ACCESS_TTL_MINUTES")}m`,
+      },
+    );
+  }
+
+  async login(dto: StaffLoginDto, ip: string): Promise<{ accessToken: string; sessionId: string; refreshToken: string }> {
     const loginLimit = await this.settings.resolve<number>("auth.login_rate_limit_per_hour");
     await this.rateLimit.enforcePerHour(`staff-login:${dto.email}`, loginLimit);
     await this.rateLimit.enforcePerHour(`staff-login-ip:${ip}`, loginLimit);
@@ -66,13 +89,8 @@ export class StaffAuthService {
       staff.scopePermissions.map((sp) => [sp.scope, sp.permission]),
     ) as Partial<Record<StaffScope, StaffPermission>>;
 
-    const accessToken = this.jwt.sign(
-      { sub: staff.id, sellerId: staff.sellerId, staffAccountId: staff.id, scopePermissions } satisfies JwtAccessPayload,
-      {
-        secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
-        expiresIn: `${this.config.getOrThrow<number>("JWT_ACCESS_TTL_MINUTES")}m`,
-      },
-    );
+    const accessToken = this.signAccessToken(staff.id, staff.sellerId, scopePermissions);
+    const { sessionId, refreshToken } = await this.sessions.createSession(staff.id, "Unknown device", ip);
 
     await this.events.emit({
       eventType: "staff_account.login",
@@ -82,7 +100,60 @@ export class StaffAuthService {
       entityId: staff.id,
       metadata: {},
     });
-    return { accessToken };
+    return { accessToken, sessionId, refreshToken };
+  }
+
+  /**
+   * D82 - mirrors AdminAuthService.refresh()'s own shape and reasoning
+   * exactly: re-reads the staff account fresh from the DB rather than
+   * trusting the original login's claims, so a suspend/block/revoke that
+   * happened since login is picked up here rather than silently renewing
+   * access regardless. `reused` uses EventsService, not
+   * SecurityEventService - the latter's `userId` column has a real FK
+   * against the `users` table, which a `StaffAccount.id` was never a row
+   * in.
+   */
+  async refresh(sessionId: string, refreshToken: string): Promise<{ accessToken: string; sessionId: string; refreshToken: string }> {
+    const validation = await this.sessions.validateRefreshToken(sessionId, refreshToken);
+    if (validation.status === "reused") {
+      await this.sessions.destroyAllSessionsForUser(validation.userId);
+      await this.events.emit({
+        eventType: "staff_account.refresh_token_reuse_detected",
+        actorType: "staff",
+        actorId: validation.userId,
+        entityType: "staff_account",
+        entityId: validation.userId,
+        metadata: {},
+      });
+      throw new UnauthorizedException("Invalid or expired refresh token.");
+    }
+    if (validation.status === "invalid") {
+      throw new UnauthorizedException("Invalid or expired refresh token.");
+    }
+
+    const staff = await this.prismaAdmin.staffAccount.findUnique({
+      where: { id: validation.userId },
+      include: { scopePermissions: true },
+    });
+    if (!staff || staff.status !== "active" || (staff.expiresAt && staff.expiresAt.getTime() <= Date.now())) {
+      throw new UnauthorizedException("This account no longer has active access.");
+    }
+
+    await this.sessions.touchSession(sessionId);
+    await this.sessions.rotateOutSession(sessionId);
+
+    const scopePermissions = Object.fromEntries(
+      staff.scopePermissions.map((sp) => [sp.scope, sp.permission]),
+    ) as Partial<Record<StaffScope, StaffPermission>>;
+    const accessToken = this.signAccessToken(staff.id, staff.sellerId, scopePermissions);
+    const { sessionId: newSessionId, refreshToken: newRefreshToken } = await this.sessions.createSession(staff.id);
+
+    return { accessToken, sessionId: newSessionId, refreshToken: newRefreshToken };
+  }
+
+  /** Mirrors AuthService.logout()/AdminAuthService.logout() - same shared SessionService, same destroy-on-logout contract. */
+  async logout(sessionId: string): Promise<void> {
+    await this.sessions.destroySession(sessionId);
   }
 
   /**
