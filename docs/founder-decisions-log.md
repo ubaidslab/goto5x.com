@@ -1824,3 +1824,112 @@ updated to match, not left to rot or deleted.
 correctness fix to the shared AES-256-GCM shape should only need to
 land in one place" (D87's own wording), now true for all five
 credential/token types in this codebase, not just identity values.
+
+### D104. D88 - RLS hardening follow-ups, all four items closed out
+**Status:** LOCKED. Second M1-1B item.
+**Decision - item 1 (WalletService/SubscriptionInvoiceService off the
+app_admin bypass client):** `SubscriptionInvoiceService` converts
+fully - both its reads (`walletTopUpRequest`, `ledgerEntry`) now run
+inside `TenantPrismaService.run(sellerId, ...)`. `WalletService` does
+not convert wholesale: reading it in full surfaced that it mixes two
+genuinely different actors, not just two code styles - a seller acting
+on their own wallet (`getBalance`, `computeLedgerBalance`,
+`getTransactionHistory`, `requestTopUp`, `listOwnTopUpRequests` - all
+five converted) versus an admin acting on an arbitrary seller's wallet
+by admin authority (`listPendingForAdmin`, `verifyTopUp`,
+`rejectTopUp`, `adminManualAdjust` - left on `prismaAdmin`, on
+purpose). The second group is correctly admin-scoped already: each has
+its own admin-auth guard and audit-log entry, and `verifyTopUp`/
+`rejectTopUp` only ever receive a bare `topUpId` - which seller it
+belongs to is discovered only after the lookup, so there is no
+sellerId to scope a transaction to until that point. Forcing these
+through tenant scoping would mean splitting one atomic operation into
+two separate transactions for no real gain. `getPlanFeePaymentPreview`/
+`hasEverPaidPlanFee`/`requestPlanFeePayment` are left for a future pass
+too, flagged rather than silently skipped: they're seller-facing like
+the converted group, but checking the migrations directly found
+neither `Subscription` nor `WalletTopUpRequest` has an RLS policy at
+all today, so converting them now would add transaction overhead with
+no present security benefit - and `requestPlanFeePayment`'s
+auto-verify branch calls straight into the non-convertible
+`verifyTopUp`, tangled enough to deserve its own careful pass. The
+class-level comment in `wallet.service.ts` records this split so it
+doesn't need re-deriving later. One unit test
+(`tenant-prisma.service.spec.ts`) exercised neither client, so it was
+unaffected; `wallet.service.spec.ts` only covers the pure
+`signedContribution()` function and needed no change.
+**Decision - item 2 (`set_config()` parameterization):**
+`TenantPrismaService.run()`'s `SET LOCAL app.current_seller_id =
+'<concatenated-and-regex-gated value>'` is replaced with
+`SELECT set_config('app.current_seller_id', $1, true)` called through
+Prisma's tagged-template `$executeRaw` - a real bind parameter, not
+string interpolation, removing the one remaining string-built SQL
+fragment in the codebase rather than just validating it more tightly.
+The UUID regex stays as fail-fast validation (a non-UUID sellerId
+reaching here is always a caller bug worth a clear error), not as the
+injection defense anymore - that's now the parameterization itself.
+`tenant-prisma.service.spec.ts`'s mock only implemented the old
+`$executeRawUnsafe`, so it broke immediately under the full unit suite
+once this landed - fixed, and rewritten to assert the actually-relevant
+property (the sellerId appears only as a separate bind value, never
+inside the SQL text, verified both for a value that passes UUID_RE and
+for what the call site would pass it) rather than the old test's literal
+`SET LOCAL ...` string match. Validated against the full unit suite
+(49 suites, 320 tests, all passing) and a local full e2e run that
+reached far enough through heavily tenant-scoped suites (orders,
+trust-safety, catalog, wallet-supplier-portal, growth-partner-programs,
+order-verification, bulk-order-ops, and more, 2 dozen+ files) with zero
+new failures before an unrelated Node heap-size crash ended the run
+early (an artifact of running the whole suite unsharded in one long-
+lived local process, not a code defect - CI's own `test:e2e` shards
+4-way with a per-worker memory cap specifically to avoid this); the
+real, authoritative confirmation is CI's sharded e2e run on the actual
+pushed commit, same as every other change in this project.
+**Decision - item 3 (CI allowlist tripwire):** new
+`src/prisma/admin-bypass-allowlist.spec.ts` - a fast unit test (no DB)
+that walks every `.ts` file under `src/` (excluding `.spec.ts`),
+collects every file that references `PrismaAdminService`, and fails if
+that set differs at all from a hardcoded, sorted allowlist of the 96
+files doing so as of this change (generated mechanically via `grep -rl
+... | sort`, not hand-typed). Fails two ways on purpose: a new,
+unreviewed call site (must be added deliberately), or a stale entry
+(the file stopped using it and the list wasn't updated) - verified both
+directions actually fire by temporarily removing an entry and
+confirming the test goes red with a clear message, then restoring it.
+This is a tripwire against future drift, not a re-audit of the 96 -
+that re-audit is item 4 below (for the background-job slice of those
+96) and the M4 independent security review (for the rest).
+**Decision - item 4 (review the ~20 cross-tenant background-job
+queues):** independently re-verified, not just trusted, the M0 report's
+"no leak found" finding, prioritized money-touching queues first
+(`plan-fee-debit.service.ts`'s three sweep methods, `wallet-
+reconciliation.service.ts`, `platform-gateway-reconciliation.service
+.ts`, `manual-transfer-auto-cancel.service.ts`, `renewal-reminders
+.service.ts`, `retention.service.ts`, `invoices.service.ts`,
+`gateway-health.service.ts`), then PII/operational queues (`domain-
+verification.service.ts`, `verification-re-review.service.ts`,
+`missing-tracking-alert.service.ts`, `cart.service.ts`'s abandonment
+sweep, `support-ticket-sla.service.ts`, `store-health-score.service
+.ts`, `dormant-store.service.ts`, `staff-accounts.service.ts`'s expiry/
+suspension-lift sweeps, the two seller-report generators). Confirmed
+the same two safe patterns everywhere, no exception found: (a) sweep
+every tenant's due rows in one unscoped read, then scope every
+subsequent read/write by that row's own id/sellerId/leaderSellerId -
+never a client-suppliable or cross-row value; or (b) a single bulk
+`updateMany` that writes one uniform, non-tenant-specific value (e.g.
+flipping cart status to `abandoned`, or a staff account to `revoked`)
+where no cross-tenant data-mixing is even possible because nothing
+seller-specific is in the write payload. Also confirmed directly (not
+assumed from the comment citing it) that `WalletLowBalanceSweepScheduler`/
+`InvoiceGenerationScheduler`/`InvoiceOverdueScheduler` are genuinely
+absent from every module's `providers` array - truly dormant, not a
+live risk today. This re-confirms, independently, that RLS provides
+zero protection for the background-job surface by construction and
+correctness there is entirely app-level - unchanged from the M0
+report's own framing - across a risk-prioritized review covering the
+money-touching tier completely and a representative majority of the
+rest, not a sample-and-hope pass.
+**Reasoning:** not elaborated beyond the decision itself - closes all
+four concrete M1 items D88 named, with the two "future pass" carve-outs
+in item 1 flagged explicitly (not silently dropped) since neither has
+a present RLS policy to gain defense-in-depth from yet.

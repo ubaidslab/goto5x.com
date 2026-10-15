@@ -1,24 +1,27 @@
 import { TenantPrismaService } from "./tenant-prisma.service";
 
 /**
- * Phase B pre-launch audit finding (RLS defense-in-depth). Tenant isolation
- * rests on TenantPrismaService.run() validating `sellerId` as a
- * syntactically-correct UUID before interpolating it into a raw
- * `SET LOCAL app.current_seller_id = '...'` statement (Postgres's wire
- * protocol can't parameterize SET LOCAL). It's correctly guarded today -
- * these tests exist so a future refactor can't silently weaken or remove
- * that guard without a test going red. Unit-level (a fake PrismaRuntimeService,
- * no real DB) because the guard itself throws before ever reaching
- * `$transaction()` - proving the guard doesn't need a real Postgres session.
+ * Phase B pre-launch audit finding (RLS defense-in-depth), updated for D88
+ * item 2. Tenant isolation rests on TenantPrismaService.run() setting
+ * `app.current_seller_id` via `set_config('app.current_seller_id', $1,
+ * true)` - a plain SQL function call, so the sellerId travels as a real
+ * bind parameter through Prisma's tagged-template `$executeRaw`, never
+ * concatenated into the SQL text (unlike the retired `SET LOCAL ... = '...'`
+ * form, whose own wire protocol can't parameterize a SET's value at all).
+ * The UUID_RE check below is fail-fast validation now, not the injection
+ * defense - that's the parameterization itself - but it's still correctly
+ * guarded, so these tests still exist to catch a future refactor silently
+ * weakening or removing it. Unit-level (a fake PrismaRuntimeService, no
+ * real DB) because the guard throws before ever reaching `$transaction()`.
  */
-describe("TenantPrismaService.run() - UUID validation before SET LOCAL interpolation", () => {
+describe("TenantPrismaService.run() - UUID validation before set_config() parameterization", () => {
   function buildService() {
-    const executeRawUnsafe = jest.fn().mockResolvedValue(undefined);
-    const tx = { $executeRawUnsafe: executeRawUnsafe };
+    const executeRaw = jest.fn().mockResolvedValue(undefined);
+    const tx = { $executeRaw: executeRaw };
     const transaction = jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(tx));
     const prisma = { $transaction: transaction };
     const service = new TenantPrismaService(prisma as any);
-    return { service, executeRawUnsafe, transaction };
+    return { service, executeRaw, transaction };
   }
 
   const REJECTED_INPUTS: Array<[string, unknown]> = [
@@ -49,18 +52,28 @@ describe("TenantPrismaService.run() - UUID validation before SET LOCAL interpola
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it("accepts a syntactically-correct lowercase UUID and interpolates exactly that value", async () => {
-    const { service, executeRawUnsafe } = buildService();
+  it("accepts a syntactically-correct lowercase UUID, passed as a bind parameter rather than concatenated into the SQL text", async () => {
+    const { service, executeRaw } = buildService();
     const sellerId = "123e4567-e89b-42d3-a456-426614174000";
     const result = await service.run(sellerId, async () => "ok");
     expect(result).toBe("ok");
-    expect(executeRawUnsafe).toHaveBeenCalledWith(`SET LOCAL app.current_seller_id = '${sellerId}'`);
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, ...values] = executeRaw.mock.calls[0];
+    // The core property this change is about: the sellerId never appears in
+    // the SQL text itself, only as a separate bind value - so even a
+    // sellerId that somehow bypassed UUID_RE above couldn't break out of the
+    // query, because it's never part of the query's text to begin with.
+    expect(strings.join("")).not.toContain(sellerId);
+    expect(strings.join("")).toContain("set_config('app.current_seller_id'");
+    expect(values).toEqual([sellerId]);
   });
 
   it("accepts a syntactically-correct uppercase UUID (case-insensitive, matches Postgres's own uuid type)", async () => {
-    const { service, executeRawUnsafe } = buildService();
+    const { service, executeRaw } = buildService();
     const sellerId = "123E4567-E89B-42D3-A456-426614174000";
     await service.run(sellerId, async () => "ok");
-    expect(executeRawUnsafe).toHaveBeenCalledWith(`SET LOCAL app.current_seller_id = '${sellerId}'`);
+    const [strings, ...values] = executeRaw.mock.calls[0];
+    expect(strings.join("")).not.toContain(sellerId);
+    expect(values).toEqual([sellerId]);
   });
 });

@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
 import { LedgerEntry, LedgerEntryType, Plan, PlanBillingInterval, Prisma, WalletTopUpRequest } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { AuditLogService } from "../admin/audit-log.service";
 import { EventsService } from "../events/events.service";
 import { round2 } from "../orders/money.util";
@@ -75,11 +76,40 @@ export interface WalletTransactionPage {
 const DEFAULT_TRANSACTION_PAGE_LIMIT = 20;
 const MAX_TRANSACTION_PAGE_LIMIT = 100;
 
-/** Module 20 (SRS §5.6e). "extends Module 11's ledger" per the founder's own instruction - same LedgerEntry table, new entry types, computed here. */
+/**
+ * Module 20 (SRS §5.6e). "extends Module 11's ledger" per the founder's own
+ * instruction - same LedgerEntry table, new entry types, computed here.
+ *
+ * D88 item 1 - this class mixes two genuinely different actors, not just
+ * two code styles: a seller reading/writing their OWN wallet (getBalance,
+ * computeLedgerBalance, getTransactionHistory, requestTopUp,
+ * listOwnTopUpRequests - all converted to TenantPrismaService.run() below,
+ * so ledger_entries'/wallet_balances' existing RLS policies back the
+ * application-layer sellerId filter as real defense-in-depth), versus an
+ * admin acting on an arbitrary seller's wallet by admin authority
+ * (listPendingForAdmin, verifyTopUp, rejectTopUp, adminManualAdjust - all
+ * still on prismaAdmin, on purpose: each is already gated by its own admin
+ * auth guard + audit log, and verifyTopUp/rejectTopUp only ever receive a
+ * bare topUpId, discovering which seller it belongs to AFTER the lookup -
+ * there is no sellerId to scope a transaction to until that point, so
+ * forcing these through tenant scoping would mean splitting one atomic
+ * operation into two separate transactions for no real gain). That split
+ * is the actual rule this file follows now, not "convert everything."
+ *
+ * getPlanFeePaymentPreview/hasEverPaidPlanFee/requestPlanFeePayment stay
+ * on prismaAdmin too, left for a future pass: they're seller-facing like
+ * the converted group, but read Subscription and WalletTopUpRequest -
+ * neither has an RLS policy today (confirmed via the migrations), so
+ * converting them now would add transaction overhead with no present
+ * security benefit, and requestPlanFeePayment's auto-verify branch calls
+ * straight into the non-convertible verifyTopUp above - tangled enough to
+ * deserve its own careful pass rather than a drive-by here.
+ */
 @Injectable()
 export class WalletService {
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
+    private readonly tenantPrisma: TenantPrismaService,
     private readonly auditLog: AuditLogService,
     private readonly events: EventsService,
     private readonly topUpAdapter: ManualBankTransferTopUpAdapter,
@@ -96,7 +126,7 @@ export class WalletService {
    * always was.
    */
   async getBalance(sellerId: string): Promise<number> {
-    const row = await this.prismaAdmin.walletBalance.findUnique({ where: { sellerId } });
+    const row = await this.tenantPrisma.run(sellerId, (tx) => tx.walletBalance.findUnique({ where: { sellerId } }));
     return row ? round2(Number(row.balance)) : 0;
   }
 
@@ -108,10 +138,12 @@ export class WalletService {
    * any hot path, so its O(n) cost is fine here.
    */
   async computeLedgerBalance(sellerId: string): Promise<number> {
-    const entries = await this.prismaAdmin.ledgerEntry.findMany({
-      where: { sellerId },
-      select: { type: true, amount: true },
-    });
+    const entries = await this.tenantPrisma.run(sellerId, (tx) =>
+      tx.ledgerEntry.findMany({
+        where: { sellerId },
+        select: { type: true, amount: true },
+      }),
+    );
     return round2(entries.reduce((sum, e) => sum + signedContribution(e.type, Number(e.amount)), 0));
   }
 
@@ -161,16 +193,18 @@ export class WalletService {
     const safePage = Math.max(1, Math.floor(page));
     const safeLimit = Math.min(MAX_TRANSACTION_PAGE_LIMIT, Math.max(1, Math.floor(limit)));
 
-    const [entries, total] = await Promise.all([
-      this.prismaAdmin.ledgerEntry.findMany({
-        where: { sellerId },
-        orderBy: { createdAt: "desc" },
-        include: { order: { select: { id: true } } },
-        skip: (safePage - 1) * safeLimit,
-        take: safeLimit,
-      }),
-      this.prismaAdmin.ledgerEntry.count({ where: { sellerId } }),
-    ]);
+    const [entries, total] = await this.tenantPrisma.run(sellerId, (tx) =>
+      Promise.all([
+        tx.ledgerEntry.findMany({
+          where: { sellerId },
+          orderBy: { createdAt: "desc" },
+          include: { order: { select: { id: true } } },
+          skip: (safePage - 1) * safeLimit,
+          take: safeLimit,
+        }),
+        tx.ledgerEntry.count({ where: { sellerId } }),
+      ]),
+    );
 
     return {
       items: entries.map((e) => ({
@@ -232,9 +266,11 @@ export class WalletService {
 
   async requestTopUp(sellerId: string, amount: number, currency: string) {
     if (amount <= 0) throw new BadRequestException("Top-up amount must be greater than zero.");
-    return this.prismaAdmin.walletTopUpRequest.create({
-      data: { ownerType: "seller", ownerId: sellerId, amount, currency, method: this.topUpAdapter.method },
-    });
+    return this.tenantPrisma.run(sellerId, (tx) =>
+      tx.walletTopUpRequest.create({
+        data: { ownerType: "seller", ownerId: sellerId, amount, currency, method: this.topUpAdapter.method },
+      }),
+    );
   }
 
   /**
@@ -379,10 +415,12 @@ export class WalletService {
   }
 
   async listOwnTopUpRequests(sellerId: string) {
-    return this.prismaAdmin.walletTopUpRequest.findMany({
-      where: { ownerType: "seller", ownerId: sellerId },
-      orderBy: { requestedAt: "desc" },
-    });
+    return this.tenantPrisma.run(sellerId, (tx) =>
+      tx.walletTopUpRequest.findMany({
+        where: { ownerType: "seller", ownerId: sellerId },
+        orderBy: { requestedAt: "desc" },
+      }),
+    );
   }
 
   async listPendingForAdmin() {
