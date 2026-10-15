@@ -56,6 +56,17 @@ name: CI
 # packages, and no job references `secrets.*` at all today, so a
 # compromised Action or a fork PR has nothing here to exfiltrate. No
 # `pull_request_target` is used anywhere in this workflow.
+#
+# D107 follow-up (2026-10-15): every `pnpm/action-setup` step below passes
+# no `version:` input any more. Root package.json's new `packageManager`
+# field (added to fix a separate Docker/corepack version-drift bug, D107)
+# is picked up by this Action automatically - and pnpm/action-setup
+# actively refuses to run at all when both a `version:` input and a
+# `packageManager` field are present ("Multiple versions of pnpm
+# specified"), so keeping the old explicit `version: "10"` here isn't a
+# harmless belt-and-suspenders - it hard-fails every job. One source of
+# truth now, which is the better outcome this pin was already trying to
+# protect against drifting anyway.
 
 on:
   push: {}
@@ -77,7 +88,6 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
-  PNPM_VERSION: "10"
 
 jobs:
   changes:
@@ -142,8 +152,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -174,8 +182,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -217,7 +223,7 @@ jobs:
 
       - name: Verify every image runs as the non-root `node` user and can read its own app code
         run: |
-          for pair in "uzeyn-api:ci dist/main.js" "uzeyn-api-worker:ci dist/worker/worker.main.js" "uzeyn-web:ci .next"; do
+          for pair in "uzeyn-api:ci dist/src/main.js" "uzeyn-api-worker:ci dist/src/worker/worker.main.js" "uzeyn-web:ci .next"; do
             image=$(echo "$pair" | cut -d' ' -f1)
             entry=$(echo "$pair" | cut -d' ' -f2)
             uid=$(docker run --rm "$image" id -u)
@@ -236,8 +242,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -280,8 +284,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -416,8 +418,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -545,8 +545,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -588,8 +586,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}

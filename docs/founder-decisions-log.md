@@ -2073,3 +2073,75 @@ exactly the kind of gap `docker-build` exists to catch (D105's own
 reasoning), and it caught one on its very first real run; worth
 recording plainly as a found-and-fixed bug rather than folding it
 silently into D105's history.
+
+### D109. Two CI breaks surfaced immediately after D107 and D105 landed - a `pnpm/action-setup` conflict D107's own fix caused, and a second, independent pre-existing Dockerfile bug D105's verify step caught
+**Status:** LOCKED - both are mechanical CI fixes, not new product
+decisions; filed here (not folded silently into D105/D107's own
+history) for the same "record what was actually found and fixed"
+reason D107 gave for itself.
+**Decision (bug 1 - D107's own fix broke every other job):** `831c878`
+(D107) added root `package.json`'s `packageManager: "pnpm@10.33.0"`
+field to fix `docker-build`'s pnpm-version drift. That same commit's
+next CI run failed on every OTHER job that uses `pnpm/action-setup`
+with an explicit `version:` input - `pnpm/action-setup@v4` hard-
+refuses to run at all when both a `version:` input and a
+`packageManager` field are present ("Multiple versions of pnpm
+specified... Remove one of these versions"), confirmed directly from
+that run's own job logs. **Fix:** removed `version: ${{
+env.PNPM_VERSION }}` from all 7 `pnpm/action-setup` steps in `ci.yml`
+(typecheck/lint/unit-tests/db-role-grants/e2e-tests/dependency-audit/
+web-build) and the now-unused `PNPM_VERSION` env var - `packageManager`
+is the single source of truth now, read automatically by the Action.
+One consolidated comment block replaces what was briefly 7 repeated
+copies of the same explanation (an intermediate state from fixing this
+iteratively, cleaned up before committing).
+**Decision (bug 2 - a second, independent, genuinely pre-existing bug,
+not caused by anything this session touched):** the same CI run's new
+`docker-build` job (D105) failed its own verify step with `ENOENT: no
+such file or directory, access 'dist/main.js'` - NOT a permissions
+regression (the non-root `uid` check immediately before it passed
+cleanly, proving `USER node`/`--chown` both work correctly), but a
+wrong path assumption baked into `apps/api/Dockerfile`'s `CMD`,
+`apps/api/Dockerfile.worker`'s `CMD`, `apps/api/package.json`'s
+`"start"` script, AND the verify step's own check - all four assumed a
+flat `dist/main.js`/`dist/worker/worker.main.js` layout that has never
+actually existed. **Root cause, confirmed by direct local
+reproduction** (`rm -rf dist && pnpm build`, then `find dist`):
+`apps/api/tsconfig.json` has no explicit `rootDir`, and the compiled
+project includes files outside `src/` (`scripts/**`, `test/**` -
+there's no `tsconfig.build.json` splitting these out, unlike the
+standard Nest starter), so tsc infers the common root as the
+`apps/api/` project directory itself, nesting all output under its
+original relative path - the real entry points are `dist/src/main.js`
+and `dist/src/worker/worker.main.js`. This means the API's production
+Docker image and its `pnpm start` script have never actually been
+runnable - entirely latent until `docker-build` (D105) was the first
+thing to ever actually build and exercise these images in CI.
+**Fix considered and rejected:** adding `rootDir: "./src"` to
+`tsconfig.json` to make the flat-path assumption correct instead -
+rejected because `scripts/**` and `test/**` genuinely are (and should
+stay) part of the same `tsc --noEmit` typecheck coverage, and forcing
+`rootDir` while compiling files outside it is a hard `tsc` error
+(TS6059), not a warning; doing this properly would mean introducing a
+separate `tsconfig.build.json` (splitting build-emit scope from
+typecheck scope) - a real improvement, but a wider, riskier change
+than this fix warrants right before the 1B checkpoint, and orthogonal
+to the actual bug (nothing is broken by the current nested output,
+only by the wrong assumption about where it lands). **Fix applied
+instead:** updated all 4 references to the real paths
+(`dist/src/main.js`, `dist/src/worker/worker.main.js`) and changed
+nothing about how the project builds or typechecks.
+**Verified:** reproduced both failures' exact error text before fixing
+anything (not assumed from reading alone); after the fix, a fresh
+local `tsc --noEmit` is clean, and a fresh `rm -rf dist && pnpm build`
+followed by `node --check` on both real output paths confirms they
+exist and are syntactically valid entry points. The actual `docker
+build`/`docker run` proof (same caveat D105 recorded - no Docker
+daemon in this sandbox) is this commit's own CI run, watched the same
+way as every other change this session.
+**Reasoning:** not elaborated beyond the findings themselves - both are
+exactly the kind of gap D105's own new `docker-build` job exists to
+catch, and between the two of them it caught one new bug immediately
+(D107's own fix) and one much older one (the dist path, present since
+whenever these Dockerfiles were first written) on its very first two
+real runs.
