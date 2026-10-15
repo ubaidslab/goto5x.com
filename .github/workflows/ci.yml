@@ -187,6 +187,48 @@ jobs:
       - name: Lint apps/web (next lint - next/core-web-vitals)
         run: pnpm --filter @uzeyn/web lint
 
+  # Security P0 (Risk #48, S12) - the non-root-user half of "pinned Actions
+  # by commit SHA (done, A5/D94), non-root images (this job)". No Dockerfile
+  # was ever built in CI before this - confirmed by reading this file
+  # fresh, Dockerfiles were previously only mentioned in the docs-only-skip
+  # filter's exclusion comment above. Builds each production target (no
+  # push - no registry/credentials needed) and proves the new non-root
+  # `USER node` can actually read the exact file it needs to execute,
+  # which is precisely the failure mode a wrong --chown would cause
+  # (EACCES at startup) - a full app boot would additionally need real
+  # Postgres/Redis/the whole boot-validated env-var list just to get past
+  # config validation, disproportionate for what this check is actually
+  # verifying.
+  docker-build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build apps/api production image
+        run: docker build --target production -t uzeyn-api:ci -f apps/api/Dockerfile .
+
+      - name: Build apps/api worker production image
+        run: docker build --target production -t uzeyn-api-worker:ci -f apps/api/Dockerfile.worker .
+
+      - name: Build apps/web production image
+        run: docker build --target production -t uzeyn-web:ci -f apps/web/Dockerfile .
+
+      - name: Verify every image runs as the non-root `node` user and can read its own app code
+        run: |
+          for pair in "uzeyn-api:ci dist/main.js" "uzeyn-api-worker:ci dist/worker/worker.main.js" "uzeyn-web:ci .next"; do
+            image=$(echo "$pair" | cut -d' ' -f1)
+            entry=$(echo "$pair" | cut -d' ' -f2)
+            uid=$(docker run --rm "$image" id -u)
+            if [ "$uid" = "0" ]; then
+              echo "$image is running as root (uid 0) - USER node did not take effect"
+              exit 1
+            fi
+            docker run --rm "$image" node -e "require('fs').accessSync('$entry', require('fs').constants.R_OK)"
+            echo "$image OK - runs as uid $uid, can read $entry"
+          done
+
   unit-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'

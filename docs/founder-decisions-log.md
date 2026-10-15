@@ -1933,3 +1933,50 @@ rest, not a sample-and-hope pass.
 four concrete M1 items D88 named, with the two "future pass" carve-outs
 in item 1 flagged explicitly (not silently dropped) since neither has
 a present RLS policy to gain defense-in-depth from yet.
+
+### D105. Security P0 (Risk #48/S12) - the non-root-images half, and a new docker-build CI check
+**Status:** LOCKED. Third M1-1B item - a supply-chain/CI control from
+the security P0 table, not a D-numbered founder decision with its own
+text; filed here under the Risk Register's own tagging (M1, S12).
+**Decision:** `apps/api/Dockerfile`, `apps/api/Dockerfile.worker`, and
+`apps/web/Dockerfile`'s `production` stages ran as root - confirmed by
+reading all three fresh, not assumed from the SHA-pinning half (D94/A5)
+already being done. All three now `COPY --chown=node:node` and `USER
+node` in the `production` stage only (`node:20-alpine`'s own built-in
+uid/gid-1000 user) - `dev`/`base`/`build` stages are untouched since
+they never run in a real deployment, only feed `production` via
+multi-stage `COPY --from=build`. The worker's `apk add
+postgresql16-client` (needed for `pg_dump`, Risk 5/13's backup sweep)
+stays before `USER node` since package installs need root; confirmed
+`pg_dump`'s output is piped through gzip and collected in memory
+(`database-backup.service.ts`), never written to local disk, so there's
+no runtime write-permission concern there.
+**Also found while implementing:** no Dockerfile had ever been built in
+CI at all - confirmed by reading `ci.yml` fresh; Dockerfiles were only
+named in the docs-only-skip filter's own exclusion comment. A new
+`docker-build` job (cheap tier, every code push, same as typecheck/
+lint) now builds all three `production` targets (no push - no registry
+credentials needed) and proves each one actually runs as the new
+non-root user AND can still read the exact file it needs to execute
+(`fs.accessSync` on `dist/main.js`/`dist/worker/worker.main.js`/
+`.next`) - the precise failure mode a wrong `--chown` would cause. A
+full running-container HTTP smoke test was considered and rejected as
+disproportionate here: `/health`'s own check (`health.controller.ts`)
+needs real Postgres+Redis, and boot validation needs the same long
+env-var list `e2e-tests`' `.env.test` step already assembles - cloning
+that just to prove a `USER` line works is a much bigger, slower job for
+the same answer the file-read check already gives directly.
+**Verification note:** this sandbox has the `docker` CLI but no running
+daemon, and CI itself never built an image before this change - so
+there is no prior automated baseline to diff against here, unlike every
+other change this session. YAML parses clean
+(`python3 -c "import yaml..."`) and the shell loop's field-splitting
+was dry-run against a fake `docker`/`node` shim locally, but the actual
+`docker build`/`docker run` steps are only proven by this commit's own
+CI run on a real runner - watched the same as everything else, just
+starting from a thinner local-verification base than usual, flagged
+explicitly rather than glossed over.
+**Reasoning:** not elaborated beyond the Risk Register's own framing -
+closes the second of the two S12 controls (SHA-pinning already done),
+and adds the one piece of ongoing verification (`docker-build` in CI)
+that would have caught this gap immediately had it existed earlier.
