@@ -14,10 +14,23 @@ import { SessionService } from "./session.service";
 
 const PRE_AUTH_TTL_MINUTES = 5;
 
+// D82 - the strict default when ADMIN_JWT_REFRESH_TTL_DAYS is unset: a
+// much shorter session lifetime than the seller default (JWT_REFRESH_TTL_
+// DAYS, 30 in every env this project ships), forcing a full password+TOTP
+// re-login far more often for the account type that holds BYPASSRLS
+// access. Not itself configurable without the env var - this is the
+// floor the env var overrides, not a magic number duplicated elsewhere.
+const ADMIN_DEFAULT_REFRESH_TTL_DAYS = 1;
+
 interface AdminPreAuthPayload {
   sub: string;
   adminUserId: string;
   type: "admin_pre_auth";
+}
+
+/** Shared with AdminAuthController so the refresh cookie's own maxAge never outlives the session it actually backs. */
+export function resolveAdminRefreshTtlDays(config: ConfigService): number {
+  return config.get<number>("ADMIN_JWT_REFRESH_TTL_DAYS") ?? ADMIN_DEFAULT_REFRESH_TTL_DAYS;
 }
 
 /**
@@ -125,7 +138,12 @@ export class AdminAuthService {
       targetId: user.adminUser!.id,
     });
 
-    const { sessionId, refreshToken } = await this.sessions.createSession(user.id);
+    const { sessionId, refreshToken } = await this.sessions.createSession(
+      user.id,
+      "Unknown device",
+      ip,
+      resolveAdminRefreshTtlDays(this.config),
+    );
     const accessToken = this.jwt.sign(
       {
         sub: user.id,
@@ -183,7 +201,12 @@ export class AdminAuthService {
     // Destroy the old session (tombstoned, for the reuse check above) and issue a new one (refresh-token rotation).
     await this.sessions.rotateOutSession(sessionId);
 
-    const { sessionId: newSessionId, refreshToken: newRefreshToken } = await this.sessions.createSession(user.id);
+    const { sessionId: newSessionId, refreshToken: newRefreshToken } = await this.sessions.createSession(
+      user.id,
+      "Unknown device",
+      "unknown",
+      resolveAdminRefreshTtlDays(this.config),
+    );
     const accessToken = this.jwt.sign(
       {
         sub: user.id,

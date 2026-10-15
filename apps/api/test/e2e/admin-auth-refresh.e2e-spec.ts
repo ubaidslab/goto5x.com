@@ -137,4 +137,32 @@ describe("Admin auth refresh (e2e) - Phase 0.5 founder-walkthrough fix", () => {
     });
     expect(events).toHaveLength(1);
   });
+
+  /**
+   * D82 - stricter admin lifetimes. JWT_REFRESH_TTL_DAYS is 30 in every
+   * env this project ships (seller default); ADMIN_JWT_REFRESH_TTL_DAYS
+   * is deliberately unset here (and in CI), so this proves the admin
+   * cookie actually falls back to its own much-shorter strict default
+   * (ADMIN_DEFAULT_REFRESH_TTL_DAYS = 1 day = 86400s) rather than quietly
+   * inheriting the seller-wide value.
+   */
+  it("the admin refresh cookie's Max-Age reflects the strict admin default, not the (far longer) seller-wide JWT_REFRESH_TTL_DAYS", async () => {
+    const bcrypt = await import("bcryptjs");
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    const user = await superuser.user.create({ data: { email: "refresh-admin-ttl@example.com", passwordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() } });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: "refresh-admin-ttl@example.com", password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const code = authenticator.generate(enroll.body.secret);
+    const verify = await request(app.getHttpServer()).post("/admin/auth/mfa/verify").send({ preAuthToken: login.body.preAuthToken, code });
+
+    const rawSetCookie = verify.headers["set-cookie"];
+    const raw = Array.isArray(rawSetCookie) ? rawSetCookie[0] : rawSetCookie;
+    const maxAgeMatch = /Max-Age=(\d+)/i.exec(raw ?? "");
+    expect(maxAgeMatch).not.toBeNull();
+    const maxAgeSeconds = Number(maxAgeMatch![1]);
+    expect(maxAgeSeconds).toBe(24 * 60 * 60); // exactly 1 day, the strict default
+    expect(maxAgeSeconds).toBeLessThan(30 * 24 * 60 * 60); // nowhere near JWT_REFRESH_TTL_DAYS=30
+  });
 });

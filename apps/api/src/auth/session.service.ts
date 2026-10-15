@@ -69,14 +69,22 @@ export class SessionService {
   /** Comfortably longer than any realistic refresh-retry/race window, short enough Redis doesn't accumulate these forever. */
   private static readonly TOMBSTONE_TTL_SECONDS = 24 * 60 * 60;
 
+  /**
+   * `ttlDaysOverride` - D82's stricter-admin-lifetimes slice: a caller
+   * that needs a different (shorter) session lifetime than the platform
+   * default passes it explicitly here rather than this service reaching
+   * into actor-specific config itself, which would make it no longer
+   * actor-agnostic.
+   */
   async createSession(
     userId: string,
     deviceLabel = "Unknown device",
     ipAddress = "unknown",
+    ttlDaysOverride?: number,
   ): Promise<{ sessionId: string; refreshToken: string }> {
     const sessionId = randomUUID();
     const refreshToken = randomUUID() + randomUUID();
-    const ttlSeconds = this.config.getOrThrow<number>("JWT_REFRESH_TTL_DAYS") * 24 * 60 * 60;
+    const ttlSeconds = (ttlDaysOverride ?? this.config.getOrThrow<number>("JWT_REFRESH_TTL_DAYS")) * 24 * 60 * 60;
     const now = new Date().toISOString();
 
     const record: SessionRecord = {

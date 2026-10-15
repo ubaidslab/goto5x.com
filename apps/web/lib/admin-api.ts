@@ -155,7 +155,12 @@ async function download(path: string): Promise<Blob> {
 
 export const adminApi = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
+  // D82 - `headers` is an escape hatch for a step-up-MFA-gated route
+  // (StepUpMfaGuard reads X-Step-Up-MFA-Code), not a general-purpose
+  // feature - every other existing call site keeps working unchanged
+  // since the parameter is optional.
+  post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, headers }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),

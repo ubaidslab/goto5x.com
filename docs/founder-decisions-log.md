@@ -2350,3 +2350,91 @@ confirmed to not be asserted on anywhere. Full unit suite (50/321),
 genuinely the last specifically-scoped D82 sub-item left; what remains
 (admin lifetimes, step-up-MFA generalization) needs its own design
 decisions this entry doesn't make.
+
+### D112. D82's last two pieces - admin sessions get a strict, short default lifetime; step-up MFA becomes a reusable mechanism, not a one-off private method
+**Status:** LOCKED. Eighth M1-1B item - closes D82 in full. The two
+remaining named gaps from the original item ("stricter admin session/
+access lifetimes" and "generalize verifyStepUpMfa() into a reusable
+guard/decorator for other money-moving/destructive admin actions") were
+judgment calls on exact numbers/shape rather than text already specified
+elsewhere - made here, documented, not escalated, consistent with every
+other D-numbered decision this session has made autonomously.
+**Decision (stricter admin lifetimes):** new optional
+`ADMIN_JWT_REFRESH_TTL_DAYS` env var; when unset, admin sessions default
+to `ADMIN_DEFAULT_REFRESH_TTL_DAYS = 1` day (`admin-auth.service.ts`) -
+a full password+TOTP re-login daily, versus the seller-wide
+`JWT_REFRESH_TTL_DAYS=30`. Optional, not required, so every existing
+deployment/CI env keeps working unchanged - it's an override for an
+already-strict default, not the switch that enables stricter behavior.
+`SessionService.createSession()` gained an optional `ttlDaysOverride`
+param rather than reaching into actor-specific config itself (would make
+it no longer actor-agnostic); `resolveAdminRefreshTtlDays()` is shared by
+`AdminAuthService` (the Redis session TTL) and `AdminAuthController`
+(the cookie's own `maxAge`) so the two can never drift apart - a cookie
+claiming a 30-day lifetime for a 1-day session would be a real, if minor,
+bug. Only the refresh/session lifetime changed, not the 15-minute access
+token TTL - that's already short, shared infrastructure, and shortening
+it further buys mostly UX friction, not a meaningfully smaller exposure
+window.
+**Decision (step-up MFA generalization):** `SellerLifecycleService.
+verifyStepUpMfa()`'s logic moved, unchanged, into a new shared
+`StepUpMfaService` (`src/auth/step-up-mfa.service.ts`) - a pure refactor;
+`SellerLifecycleService` calls it instead of its own private method, same
+body-based `mfaCode` wire contract it already had and already has a
+frontend for. A new `StepUpMfaGuard` (`common/guards/step-up-mfa.guard.ts`)
+wraps the same service for any NEW route: reads the code from an
+`X-Step-Up-MFA-Code` header rather than a DTO body field, so it's usable
+on any route without that route's own DTO needing to know this concern
+exists - same reasoning `RefreshCookieCsrfGuard`'s header already follows.
+Registered on `TrustSafetyModule` (where `SellerLifecycleService` already
+lived) and exported from there; `BillingModule` already imports
+`TrustSafetyModule`, so wiring the guard into a billing route needed zero
+new module imports and no circular-dependency risk.
+**First new call site, chosen deliberately:** `POST /admin/wallet-topups/
+sellers/:sellerId/adjust` (`WalletService.adminManualAdjust()`) - a
+direct, unbounded admin balance change with no step-up check at all
+before this, the clearest "money-moving admin action" in the codebase
+outside the lifecycle ladder itself. Verified this has a real, already-
+shipped frontend caller (`admin/sellers/[sellerId]/page.tsx`'s
+`adjustWallet()`) before touching the backend, specifically to avoid
+breaking a working feature - `adminApi.post()` gained an optional
+`headers` param (every other call site unaffected), and `adjustWallet()`
+now prompts for the admin's TOTP code and sends it via the header.
+**Deliberately NOT retrofitted here:** `AdminWalletController`'s
+`verifyTopUp`/`rejectTopUp` routes are also money-related and also have
+real frontend callers (`admin/invoices/page.tsx`) - good candidates for a
+future pass, left alone this time to keep this change's blast radius to
+one proven call site rather than several at once.
+**A real regression caught before it shipped, not after:** adding the
+guard to `adjust()` immediately broke 2 pre-existing, already-green e2e
+tests that called this route with no step-up header at all
+(`module25-admin-completion.e2e-spec.ts`'s manual-adjust and audit-log-
+list tests, `module47-wallet-balance-reconciliation.e2e-spec.ts`'s three
+ledger tests) - found by actually running the full suite after the
+change, not assumed safe. Fixed by exposing each admin helper's enrolled
+MFA secret so a fresh TOTP code can be generated per call (a fresh code
+per call, not one reused across a whole test, since a 30s TOTP window
+could otherwise go stale mid-test) - and, separately, confirmed that
+widening one test file's `createAndLoginAdmin()` return type from a bare
+string to an object would have silently "passed" `tsc` at every bare
+`const adminToken = await createAndLoginAdmin(...)` call site (a
+template literal stringifies an object without a type error) while
+actually breaking at runtime - caught by running every affected test
+file fully, not just the one directly touched, and resolved by leaving
+one helper's signature untouched and inlining the one test that needed
+the secret instead of widening a shape five other call sites depended on.
+**Verified:** `trust-safety.e2e-spec.ts`'s 6 step-up-MFA-specific tests
+(suspend/ban) still pass unchanged, proving the `SellerLifecycleService`
+refactor is behavior-preserving; `admin-auth-refresh.e2e-spec.ts` gained
+a test proving the admin cookie's `Max-Age` is exactly 86400s (1 day),
+not anywhere near `JWT_REFRESH_TTL_DAYS`'s 30 days; `module25`/`module47`
+updated and re-verified (17 tests); full unit suite (50/321, after also
+adding the new `step-up-mfa.service.ts` file to D88's
+`admin-bypass-allowlist.spec.ts` tripwire, which correctly caught it as
+an unreviewed new `PrismaAdminService` call site on the first run); both
+apps' typecheck and lint clean throughout.
+**Reasoning:** not elaborated beyond D82's own framing - admin sessions
+now get a materially shorter default lifetime than seller sessions
+without touching the shared access-token TTL, and step-up MFA is now a
+mechanism other admin actions can adopt in one line rather than a
+private method that only ever existed for one call site.

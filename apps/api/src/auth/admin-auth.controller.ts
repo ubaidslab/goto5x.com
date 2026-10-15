@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { Request, Response } from "express";
 import { RefreshCookieCsrfGuard } from "../common/guards/refresh-cookie-csrf.guard";
 import { clearAdminRefreshCookie, parseAdminRefreshCookie, setAdminRefreshCookie } from "./admin-refresh-cookie.util";
-import { AdminAuthService } from "./admin-auth.service";
+import { AdminAuthService, resolveAdminRefreshTtlDays } from "./admin-auth.service";
 import { AdminLoginDto, AdminMfaEnrollDto, AdminMfaVerifyDto } from "./dto/admin-login.dto";
 
 /**
@@ -21,8 +21,12 @@ export class AdminAuthController {
     private readonly config: ConfigService,
   ) {}
 
+  // D82 - the admin refresh cookie's own maxAge, not the seller default:
+  // resolveAdminRefreshTtlDays() is the same resolver AdminAuthService
+  // uses for the Redis session TTL itself, so the cookie never claims to
+  // outlive the session that actually backs it.
   private refreshCookieMaxAgeMs(): number {
-    return this.config.getOrThrow<number>("JWT_REFRESH_TTL_DAYS") * 24 * 60 * 60 * 1000;
+    return resolveAdminRefreshTtlDays(this.config) * 24 * 60 * 60 * 1000;
   }
 
   @Post("login")

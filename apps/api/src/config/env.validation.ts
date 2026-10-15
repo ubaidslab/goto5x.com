@@ -29,6 +29,21 @@ class EnvironmentVariables {
   @Min(1)
   JWT_REFRESH_TTL_DAYS!: number;
 
+  // D82 - admin sessions hold BYPASSRLS access, the highest-value
+  // compromise target in this codebase (SessionService's own refresh-
+  // reuse-detection comment already says as much) - an admin's refresh
+  // session/cookie defaults to a much shorter lifetime than the seller
+  // default above (ADMIN_DEFAULT_REFRESH_TTL_DAYS in admin-auth.service.ts
+  // when this is unset), forcing a full password+TOTP re-login far more
+  // often. Optional, not required: every existing deployment/CI env
+  // keeps working unchanged, and this exists as an override for the
+  // already-strict default, not the switch that enables stricter
+  // behavior in the first place.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  ADMIN_JWT_REFRESH_TTL_DAYS?: number;
+
   @IsString()
   ADMIN_MFA_ISSUER_NAME!: string;
 

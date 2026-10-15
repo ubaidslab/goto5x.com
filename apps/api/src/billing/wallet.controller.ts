@@ -5,6 +5,7 @@ import { CurrentSupplierId } from "../common/decorators/current-supplier.decorat
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AdminAuthGuard } from "../common/guards/admin-auth.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { StepUpMfaGuard } from "../common/guards/step-up-mfa.guard";
 import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
 import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.decorator";
@@ -232,8 +233,17 @@ export class AdminWalletController {
     return verified;
   }
 
-  /** Module 25 (Admin Completion) - the seller-360 page's "adjust wallet" inline action. */
+  /**
+   * Module 25 (Admin Completion) - the seller-360 page's "adjust wallet"
+   * inline action. D82 - a direct, unbounded balance change is exactly
+   * the "money-moving admin action" StepUpMfaGuard exists to cover
+   * (SellerLifecycleService.setLifecycleStatus()'s suspend/ban being the
+   * first; this is the generalized mechanism's first new call site), on
+   * top of the standard AdminAuthGuard login-time MFA check every route
+   * on this controller already requires.
+   */
   @Post("sellers/:sellerId/adjust")
+  @UseGuards(StepUpMfaGuard)
   adjust(@Param("sellerId") sellerId: string, @Body() dto: AdjustSellerWalletDto, @CurrentUser() user: JwtAccessPayload) {
     return this.wallet.adminManualAdjust(sellerId, dto.amount, "PKR", dto.reason, user.adminUserId!);
   }

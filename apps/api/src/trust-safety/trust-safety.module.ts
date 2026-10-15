@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
+import { StepUpMfaService } from "../auth/step-up-mfa.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsModule } from "../settings-registry/settings.module";
 import { AdminSellerLifecycleController } from "./admin-seller-lifecycle.controller";
@@ -33,6 +34,7 @@ import { TrustSafetyMonitorsService } from "./trust-safety-monitors.service";
     TrustSafetyMonitorsService,
     SubscriptionAbuseService,
     RateLimitService,
+    StepUpMfaService,
   ],
   exports: [
     SellerAgreementService,
@@ -44,6 +46,11 @@ import { TrustSafetyMonitorsService } from "./trust-safety-monitors.service";
     SellerLifecycleService,
     TrustSafetyMonitorsService,
     SubscriptionAbuseService,
+    // D82 - exported so any module needing a step-up-MFA-gated admin
+    // action (StepUpMfaGuard, or a direct call like SellerLifecycleService's
+    // own) can get it without re-deriving it from scratch; BillingModule
+    // already imports this module, so this needed no new module imports.
+    StepUpMfaService,
   ],
 })
 export class TrustSafetyModule {}

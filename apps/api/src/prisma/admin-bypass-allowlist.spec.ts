@@ -31,6 +31,10 @@ const REVIEWED_PRISMA_ADMIN_CALL_SITES = [
   "src/admin-completion/admin-search.service.ts",
   "src/admin-completion/admin-seller-overview.service.ts",
   "src/admin-email/admin-email-accounts.service.ts",
+  // D82 - looks up an admin's own enrolled MFA secret for the step-up
+  // re-check (SellerLifecycleService's own prismaAdmin usage for this was
+  // already reviewed; this is that same lookup, moved here so it's shared).
+  "src/auth/step-up-mfa.service.ts",
   "src/backups/backups.module.ts",
   "src/backups/database-backup.service.ts",
   "src/billing/email-templates.controller.ts",
