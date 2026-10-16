@@ -39,6 +39,15 @@ let accessToken: string | null = null;
 // listed session is "this one" - getCurrentSessionId() below is the read
 // path; nothing else in the app needs this value.
 let currentSessionId: string | null = null;
+// D116 item 4 (Stage 0) - a staff login also uses this module (same
+// (dashboard) UI, same JwtAuthGuard-shaped token - see staff-auth.service.
+// ts's signAccessToken(), which carries the same sellerId claim), but its
+// refresh/logout routes and cookie are entirely separate from the
+// seller's own (D111) - this is the one bit of actor-specific routing
+// tryRefresh()/logout() below need, defaulting to "seller" so every
+// existing setSession() call site (seller login, admin impersonate-entry,
+// support-center) is completely unaffected.
+let actorKind: "seller" | "staff" = "seller";
 
 /**
  * Called after login/mfa-verify/impersonate-entry - every place a fresh
@@ -47,9 +56,10 @@ let currentSessionId: string | null = null;
  * that file's own comment for why it calls this directly rather than going
  * through a normal login flow).
  */
-export function setSession(token: string | null, sessionId: string | null = null): void {
+export function setSession(token: string | null, sessionId: string | null = null, kind: "seller" | "staff" = "seller"): void {
   accessToken = token;
   currentSessionId = sessionId;
+  actorKind = kind;
 }
 
 export function getCurrentSessionId(): string | null {
@@ -72,7 +82,8 @@ let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
+    const refreshPath = actorKind === "staff" ? "/staff/auth/refresh" : "/auth/refresh";
+    refreshPromise = fetch(`${API_BASE}${refreshPath}`, {
       method: "POST",
       credentials: "include",
       headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -93,10 +104,12 @@ async function tryRefresh(): Promise<boolean> {
 }
 
 function clearSessionAndRedirectToLogin() {
+  const loginPath = actorKind === "staff" ? "/staff/login" : "/login";
   accessToken = null;
   currentSessionId = null;
+  actorKind = "seller";
   if (typeof window === "undefined") return;
-  window.location.href = "/login";
+  window.location.href = loginPath;
 }
 
 /**
@@ -107,7 +120,8 @@ function clearSessionAndRedirectToLogin() {
  * session to destroy from the same cookie the request carries.
  */
 async function logout() {
-  await fetch(`${API_BASE}/auth/logout`, {
+  const logoutPath = actorKind === "staff" ? "/staff/auth/logout" : "/auth/logout";
+  await fetch(`${API_BASE}${logoutPath}`, {
     method: "POST",
     credentials: "include",
     headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -129,7 +143,7 @@ async function request<T>(path: string, init?: RequestInit, isRetry = false): Pr
     },
   });
 
-  if (res.status === 401 && !isRetry && path !== "/auth/refresh") {
+  if (res.status === 401 && !isRetry && path !== "/auth/refresh" && path !== "/staff/auth/refresh") {
     if (await tryRefresh()) {
       return request<T>(path, init, true);
     }

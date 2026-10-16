@@ -2799,3 +2799,40 @@ side, where it's almost certainly abuse in an invite-only beta); "flag,
 don't block" for the same signal at checkout (buyer side, where it's
 sometimes a real, privacy-conscious customer) - the two surfaces warranted
 different enforcement, not the same rule copy-pasted twice.
+
+### D121. D116 item 4 - staff login UI
+**Status:** LOCKED. Closes D111's own flagged gap: `POST /staff/auth/
+login` has existed since D111 with no UI ever built for it.
+**Decision:** a minimal login page (`apps/web/app/staff/login/page.tsx`),
+styled with the same `AuthShell`/`Card`/`Field`/`Input`/`Button`/`Alert`
+primitives the seller and admin login pages already use (not the bare
+`<input>`/`<button>` tier `staff/reset-password/page.tsx` deliberately
+chose for itself) - a page a staff member sees every login, not a
+one-off recovery completion, warrants the same baseline polish/
+accessibility the rest of this app's auth surfaces already have, and
+costs nothing extra to use. No MFA sub-step - staff login has none.
+A staff JWT carries the same `sellerId` claim a seller's own token does
+(`staff-auth.service.ts`'s `signAccessToken()`), so a staff session
+shares `dashboard-api.ts`'s session store wholesale and lands on the
+exact same `(dashboard)` UI, scoped per-route by `StaffScopeGuard` -
+never a separate staff UI tree.
+**Found and fixed before this would have quietly broken in production:**
+`dashboard-api.ts`'s session-refresh-on-401 and logout were both
+hardcoded to the seller's own `/auth/refresh`/`/auth/logout` routes and
+cookie - reusing them as-is for a staff session would have refreshed
+against the wrong endpoint (failing silently) and logged out to the
+wrong page. `setSession()` gained a third `actorKind` parameter
+(defaulting to `"seller"`, so every existing call site - seller login,
+admin impersonate-entry, support-center - is unaffected), and `
+tryRefresh()`/`logout()`/the redirect-to-login path now branch on it.
+The existing dashboard sidebar's logout button (already shipped, no new
+UI) therefore already works correctly for a staff session too.
+**Verified:** apps/web typecheck and lint both clean. This repo's test
+suite doesn't cover frontend pages at all (e2e is Supertest-driven API
+testing only, confirmed by reading the existing e2e test shape - no
+Playwright-driven UI test convention exists anywhere to extend); that's
+a pre-existing gap, not a new one introduced here.
+**Reasoning:** "minimal" (the founder's own word) was read as minimal
+SCOPE (login + logout, nothing else), not minimal visual quality -
+CLAUDE.md's own UI/UX skills policy applies to any frontend work in this
+repo without a carve-out for "small" pages.
