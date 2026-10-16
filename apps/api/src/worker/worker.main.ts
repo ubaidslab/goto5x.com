@@ -1,4 +1,9 @@
 import "reflect-metadata";
+import { initSentry } from "../common/error-tracking/sentry";
+
+// D116 item 6 (Stage 0) - a separate process from main.ts's API server, needs its own init.
+initSentry();
+
 import { NestFactory } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { Worker } from "bullmq";

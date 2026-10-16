@@ -57,6 +57,13 @@ class EnvironmentVariables {
   @IsString()
   EMAIL_PROVIDER_API_KEY?: string;
 
+  // D116 item 6 (Stage 0) - optional, same "loudly skipped_not_configured,
+  // never a required secret" discipline as BACKUP_S3_* below: a missing
+  // DSN just means error tracking never initializes, not a boot failure.
+  @IsOptional()
+  @IsString()
+  SENTRY_DSN?: string;
+
   @IsString()
   EMAIL_FROM_ADDRESS!: string;
 

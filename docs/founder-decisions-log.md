@@ -2836,3 +2836,38 @@ a pre-existing gap, not a new one introduced here.
 SCOPE (login + logout, nothing else), not minimal visual quality -
 CLAUDE.md's own UI/UX skills policy applies to any frontend work in this
 repo without a carve-out for "small" pages.
+
+### D122. D116 item 6 - error tracking/alerting (Sentry)
+**Status:** LOCKED.
+**Decision:** `@sentry/node`, wired into both Node processes (`main.ts`'s
+API server and `worker/worker.main.ts`'s BullMQ worker, each needs its
+own `init()`), gated on an optional `SENTRY_DSN` env var - unset, it
+never initializes, same "skipped_not_configured, not a crash" discipline
+`backups/database-backup.service.ts` already established for `BACKUP_S3_
+*`. `HttpExceptionFilter` (the one place every unhandled server fault
+already funnels through) calls `Sentry.captureException(exception)`
+inside its existing `status >= 500` branch, right alongside the line
+that already logs it - a genuine server fault reaches Sentry; an
+ordinary 4xx client error never does.
+**PII discipline, checked rather than assumed:** this codebase has a
+standing "never send request bodies/headers/cookies anywhere outside
+this process" rule (`pii-redaction.interceptor.ts`). `captureException`
+is called with the bare exception only, never a request object. Looked
+for a `sendDefaultPii`-style init flag as an explicit backstop against
+the SDK's own default auto-instrumentation attaching ambient request
+data on its own - the installed major version's `NodeOptions` type has
+no such flag (confirmed by reading the actual shipped `.d.ts`, not
+assumed from older Sentry docs) - so `beforeSend` deletes `event.request`
+unconditionally instead, a mechanism that doesn't depend on guessing at
+SDK-version-specific option names.
+**Verified:** `http-exception.filter.spec.ts` (2 tests: a 5xx reaches
+`Sentry.captureException`, a 4xx never does - `jest.spyOn` doesn't work
+on `@sentry/node`'s own exports, so this mocks the whole module via
+`jest.mock`, not a real network call). Full unit suite and typecheck
+clean on both apps.
+**Reasoning:** picked the standard, hosted-SaaS-with-a-generous-free-tier
+option rather than self-hosting an error-tracking stack, same build-vs-
+buy call this session already made for Resend over self-hosted SMTP
+(D113) - "don't build/run infrastructure that's a specialized, already-
+solved, externally-maintained concern" is a repeated pattern, not a
+one-off.

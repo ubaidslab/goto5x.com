@@ -1,4 +1,9 @@
 import "reflect-metadata";
+import { initSentry } from "./common/error-tracking/sentry";
+
+// D116 item 6 (Stage 0) - before anything else, per Sentry's own guidance.
+initSentry();
+
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
