@@ -1,8 +1,10 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
 import { JwtAccessPayload } from "../common/types";
 import { CreateStoreDto } from "./dto/create-store.dto";
 import { UpdatePaymentModelDto } from "./dto/update-payment-model.dto";
@@ -11,8 +13,17 @@ import { StoresService } from "./stores.service";
 
 const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB - generous for a logo image
 
+/**
+ * D116 item 3 (Stage 0 IDOR/BOLA sweep) - owner-only. Found with no
+ * staff-scope gate at all - most notably, a staff account with ANY scope
+ * could change the store's payment-model (COD/prepaid/advance, a core
+ * business/financial decision) or create a brand-new store under the
+ * owner's seller account. See shipping-settings.controller.ts's own
+ * comment for the full finding; same fix, no existing StaffScope fits.
+ */
 @Controller("stores")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockStaffSessionsGuard)
+@BlockStaffSessions()
 export class StoresController {
   constructor(private readonly stores: StoresService) {}
 

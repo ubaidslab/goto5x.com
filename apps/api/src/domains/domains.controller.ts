@@ -1,12 +1,16 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { BlockStaffSessions } from "../common/decorators/block-staff-sessions.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
+import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { DomainVerificationService } from "./domain-verification.service";
 import { DomainsService } from "./domains.service";
 import { AttachDomainDto } from "./dto/attach-domain.dto";
 
+/** D116 item 3 (Stage 0 IDOR/BOLA sweep) - owner-only; DNS/domain control is at least as sensitive as the payment-instructions/wallet surfaces already treated this way, and no existing StaffScope fits. See shipping-settings.controller.ts's own comment for the full finding. */
 @Controller("stores/:storeId/domains")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockStaffSessionsGuard)
+@BlockStaffSessions()
 export class DomainsController {
   constructor(
     private readonly domains: DomainsService,

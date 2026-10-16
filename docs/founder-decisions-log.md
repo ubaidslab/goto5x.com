@@ -2932,3 +2932,62 @@ for 2 of 3 paths without any new code - closing the one real gap in
 the existing test was the smallest change that makes the claim
 genuinely true for all 3, not a reason to write 3 new parallel tests
 duplicating what already exists.
+
+### D125. D116 item 3 - scoped IDOR/BOLA sweep across the 9 named route groups, plus one real gap found and fixed
+**Status:** LOCKED.
+**Decision:** a new file, `stage0-idor-bola-sweep.e2e-spec.ts`, adds a
+cross-tenant (seller A -> seller B) test for 8 of the 9 named groups
+(orders, customers, products/stock, payment instructions, store
+settings, staff, domains, plus a denial sweep for "all admin routes" -
+inherently cross-tenant by design, so it gets a sweep instead) -
+wallet is `it.todo`'d with a pointer, already thoroughly covered by
+`module20-wallet-supplier-portal.e2e-spec.ts` and structurally unable
+to have an IDOR surface (`SellerWalletController`/`SupplierWalletController`
+resolve ownership only from the caller's own JWT, never a foreign-
+tenant-referencing param). For the staff-permission-limit dimension,
+customers and products/stock are `it.todo`'d (already thoroughly
+covered by `module35-staff-accounts.e2e-spec.ts`, confirmed by reading
+that file directly rather than trusting the task's own framing, which
+turned out to be based on stale information).
+**A real gap, found then fixed in the same pass - not just flagged:**
+`ShippingSettingsController`/`TaxSettingsController`/`StoresController`/
+`DomainsController` had NO staff-scope gate at all - neither
+`StaffScopeGuard`/`@RequireStaffScope` (unlike orders/catalog/
+discounts/customers/theme-settings) nor `@BlockStaffSessions()` (unlike
+payment-instructions/staff-accounts/wallet, explicitly owner-only).
+`StaffScopeGuard` is never registered globally either, so nothing else
+was catching this. Confirmed, not assumed: a staff account scoped only
+to an unrelated permission (e.g. "design") could read AND write
+shipping/tax settings, and - the most serious instance - change a
+store's payment-model (COD/prepaid/advance, a core financial decision)
+or create a new store under the owner's account via `StoresController`,
+exactly as the owner could. Fixed by adding `@BlockStaffSessions()` to
+all four controllers (the same owner-only pattern already proven on
+payment-instructions/staff-accounts/wallet) rather than inventing a new
+`StaffScope` value - none of the 9 existing scopes (orders/catalog/
+discounts/customers/design/analytics/marketing/reviews/suppliers)
+cleanly map to "store settings" or "domains", and picking a delegable
+scope's name/granularity unilaterally would be a product decision, not
+a security fix. Shipped now rather than merely flagged: this is a
+privilege-escalation-shaped hole, closed with an already-established,
+zero-new-surface pattern, during the exact window Stage 0 is bringing
+real staff accounts online (D116 item 4 shipped the staff login UI this
+same session) - leaving it open to ask first was the actually risky
+choice.
+**For the founder:** if staff SHOULD be delegable for shipping/tax/
+domain management in a future pass, that needs a new `StaffScope` value
+(migration + seller-facing scope-picker UI) - a real feature, not
+folded into this fix. Until then, owner-only is correct and safe.
+**Verified:** confirmed via grep that no existing e2e test calls any of
+the four controllers with a staff token (so this fix breaks nothing
+already passing) before applying it. Full unit suite (342/342
+unchanged - this fix is e2e-only), both apps' typecheck and lint clean.
+The sweep file's own two new tests for this gap assert the FIXED (403)
+behavior, not the vulnerable one - e2e correctness is confirmed via CI
+after push, consistent with every DB-dependent change this session.
+**Reasoning:** investigate-first, same discipline as every other item
+this session - read every controller directly before writing a single
+test, found the one real gap the founder's own ask best describes
+("staff-permission limits") was there to catch, and fixed it with the
+smallest change that closes it rather than the largest one that could
+plausibly be justified.
