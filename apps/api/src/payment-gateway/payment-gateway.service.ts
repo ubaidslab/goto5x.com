@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { PaymentGatewayProvider } from "@prisma/client";
 import { round2 } from "../orders/money.util";
 import { OrdersService } from "../orders/orders.service";
@@ -10,7 +9,7 @@ import { BankTransferGatewayAdapter } from "./adapters/bank-transfer-gateway.ada
 import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
-import { decryptGatewayCredential, encryptGatewayCredential } from "./payment-gateway-credential-crypto.util";
+import { GatewayCredentialVaultService } from "./gateway-credential-vault.service";
 import { GatewayVerifyResult, SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
 import { GatewayHealthService } from "./gateway-health.service";
 import { isGatewayLive } from "./gateway-registry";
@@ -55,7 +54,6 @@ const SAFE_SELECT = {
  */
 @Injectable()
 export class PaymentGatewayService {
-  private readonly encryptionKey: Buffer;
   private readonly adapters: Map<PaymentGatewayProvider, SellerPaymentGatewayAdapter>;
 
   constructor(
@@ -64,13 +62,12 @@ export class PaymentGatewayService {
     private readonly orders: OrdersService,
     private readonly settings: SettingsService,
     private readonly gatewayHealth: GatewayHealthService,
-    config: ConfigService,
+    private readonly vault: GatewayCredentialVaultService,
     raastAdapter: RaastGatewayAdapter,
     easypaisaAdapter: EasypaisaGatewayAdapter,
     jazzcashAdapter: JazzCashGatewayAdapter,
     bankAdapter: BankTransferGatewayAdapter,
   ) {
-    this.encryptionKey = Buffer.from(config.getOrThrow<string>("PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY"), "base64");
     this.adapters = new Map([
       [raastAdapter.provider, raastAdapter as SellerPaymentGatewayAdapter],
       [easypaisaAdapter.provider, easypaisaAdapter as SellerPaymentGatewayAdapter],
@@ -102,8 +99,9 @@ export class PaymentGatewayService {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
 
-      const apiKeyEncrypted = encryptGatewayCredential(dto.apiKey, this.encryptionKey);
-      const apiSecretEncrypted = dto.apiSecret ? encryptGatewayCredential(dto.apiSecret, this.encryptionKey) : null;
+      const { plaintextKey, wrappedDataKey } = await this.vault.issueDataKey();
+      const apiKeyEncrypted = this.vault.encryptWithDataKey(dto.apiKey, plaintextKey);
+      const apiSecretEncrypted = dto.apiSecret ? this.vault.encryptWithDataKey(dto.apiSecret, plaintextKey) : null;
 
       return tx.storePaymentGatewayConnection.upsert({
         where: { uniq_store_gateway_provider: { storeId, provider: dto.provider } },
@@ -113,12 +111,14 @@ export class PaymentGatewayService {
           merchantId: dto.merchantId ?? null,
           apiKeyEncrypted,
           apiSecretEncrypted,
+          dataKeyWrapped: wrappedDataKey,
           priorityOrder: PROVIDER_PRIORITY[dto.provider],
         },
         update: {
           merchantId: dto.merchantId ?? null,
           apiKeyEncrypted,
           apiSecretEncrypted,
+          dataKeyWrapped: wrappedDataKey,
           isActive: true,
         },
         select: SAFE_SELECT,
@@ -162,15 +162,17 @@ export class PaymentGatewayService {
     });
     const adapter = this.adapters.get(provider);
     if (!adapter) throw new BadRequestException("This provider is not supported.");
-    if (!connection.apiKeyEncrypted) {
+    if (!connection.apiKeyEncrypted || !connection.dataKeyWrapped) {
       throw new BadRequestException("This connection has no credentials saved yet.");
     }
 
     const result = await adapter.verifyPayment({
       connection: {
         merchantId: connection.merchantId,
-        apiKey: decryptGatewayCredential(connection.apiKeyEncrypted, this.encryptionKey),
-        apiSecret: connection.apiSecretEncrypted ? decryptGatewayCredential(connection.apiSecretEncrypted, this.encryptionKey) : null,
+        apiKey: await this.vault.decrypt(connection.apiKeyEncrypted, connection.dataKeyWrapped),
+        apiSecret: connection.apiSecretEncrypted
+          ? await this.vault.decrypt(connection.apiSecretEncrypted, connection.dataKeyWrapped)
+          : null,
       },
       orderId: "",
       amount: 0,
@@ -407,7 +409,7 @@ export class PaymentGatewayService {
     if (!connection || !connection.isActive || connection.storeId !== storeId) {
       throw new NotFoundException("No active connection for this provider.");
     }
-    if (!connection.apiKeyEncrypted) {
+    if (!connection.apiKeyEncrypted || !connection.dataKeyWrapped) {
       throw new BadRequestException("This connection has no credentials saved yet.");
     }
 
@@ -417,8 +419,10 @@ export class PaymentGatewayService {
     const result = await adapter.verifyPayment({
       connection: {
         merchantId: connection.merchantId,
-        apiKey: decryptGatewayCredential(connection.apiKeyEncrypted, this.encryptionKey),
-        apiSecret: connection.apiSecretEncrypted ? decryptGatewayCredential(connection.apiSecretEncrypted, this.encryptionKey) : null,
+        apiKey: await this.vault.decrypt(connection.apiKeyEncrypted, connection.dataKeyWrapped),
+        apiSecret: connection.apiSecretEncrypted
+          ? await this.vault.decrypt(connection.apiSecretEncrypted, connection.dataKeyWrapped)
+          : null,
       },
       orderId,
       amount,

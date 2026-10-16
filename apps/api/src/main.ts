@@ -5,9 +5,11 @@ import { initSentry } from "./common/error-tracking/sentry";
 initSentry();
 
 import { ValidationPipe } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { listOffOptionalIntegrations } from "./bootstrap/optional-integrations-status";
 import { seedDefaults } from "./bootstrap/seed-defaults";
 import { getAllowedOrigins } from "./common/cors-origins.util";
 import { PrismaAdminService } from "./prisma/prisma-admin.service";
@@ -54,6 +56,15 @@ async function bootstrap() {
   // rows - it only ever creates what's missing.
   await seedDefaults(app.get(PrismaAdminService));
   console.log("Settings Registry defaults, themes, and plans confirmed seeded.");
+
+  // D126 (founder decision, Stage 0 beta) - the beta's 5-10 sellers never
+  // touch Google Drive import or Printify dropshipping, so this is routine
+  // at launch, not a misconfiguration alarm - a plain startup log line, not
+  // a Sentry-worthy warning.
+  const offIntegrations = listOffOptionalIntegrations(app.get(ConfigService));
+  if (offIntegrations.length > 0) {
+    console.warn(`Optional integrations not configured (running with graceful degradation): ${offIntegrations.join(", ")}`);
+  }
   // Security-hardening fix (app-level audit): `true` trusts EVERY hop in a
   // client-supplied X-Forwarded-For unconditionally, so proxy-addr walks
   // all the way to its leftmost entry - which, since a well-behaved

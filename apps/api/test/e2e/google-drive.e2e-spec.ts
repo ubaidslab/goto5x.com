@@ -45,6 +45,7 @@ describe("Google Drive connect/status/revoke (e2e, with a fake Google client) - 
     await seedSettings(superuser);
 
     fakeDriveClient = {
+      isConfigured: jest.fn().mockReturnValue(true),
       getAuthUrl: jest.fn().mockImplementation((state: string) => `https://accounts.google.com/fake-auth?state=${state}`),
       exchangeCodeForTokens: jest.fn().mockResolvedValue({
         accessToken: "fake-access-token",
@@ -113,12 +114,15 @@ describe("Google Drive connect/status/revoke (e2e, with a fake Google client) - 
       .get("/media/drive/connection")
       .set("Authorization", `Bearer ${token}`);
     expect(status.status).toBe(200);
-    expect(status.body.googleAccountEmail).toBe("seller-drive-account@gmail.com");
-    expect(status.body.status).toBe("active");
+    // D126 - status() now also reports whether Drive is configured on this
+    // platform at all, alongside this seller's own connection.
+    expect(status.body.configured).toBe(true);
+    expect(status.body.connection.googleAccountEmail).toBe("seller-drive-account@gmail.com");
+    expect(status.body.connection.status).toBe("active");
     expect(JSON.stringify(status.body)).not.toContain("fake-refresh-token");
-    expect(status.body.refreshTokenEncrypted).toBeUndefined();
+    expect(status.body.connection.refreshTokenEncrypted).toBeUndefined();
 
-    const dbRow = await superuser.googleDriveConnection.findUniqueOrThrow({ where: { id: status.body.id } });
+    const dbRow = await superuser.googleDriveConnection.findUniqueOrThrow({ where: { id: status.body.connection.id } });
     expect(dbRow.refreshTokenEncrypted).not.toBe("fake-refresh-token"); // encrypted at rest, not the raw value
     expect(dbRow.refreshTokenEncrypted.length).toBeGreaterThan(0);
   });

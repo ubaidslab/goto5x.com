@@ -18,6 +18,9 @@ interface SupplierAdapter {
   displayName: string;
   isEnabled: boolean;
   config: Record<string, unknown>;
+  // D126 - false when this adapter type's credentials aren't set on this
+  // platform yet (currently only meaningful for adapterType "printify").
+  credentialsConfigured: boolean;
 }
 
 /**
@@ -123,6 +126,9 @@ export default function AdminSupplierAdaptersPage() {
               </p>
               <div className="flex items-center gap-2">
                 <Badge tone={a.isEnabled ? "success" : "neutral"}>{a.isEnabled ? "enabled" : "disabled"}</Badge>
+                {a.credentialsConfigured === false && (
+                  <Badge tone="warning">Not available yet - PRINTIFY_API_KEY not set</Badge>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => toggleEnabled(a)} loading={togglingId === a.id} disabled={togglingId !== null && togglingId !== a.id}>
                   {a.isEnabled ? "Disable" : "Enable"}
                 </Button>

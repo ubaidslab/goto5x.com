@@ -83,14 +83,23 @@ class EnvironmentVariables {
   @IsString()
   MEDIA_PUBLIC_BASE_URL?: string;
 
+  // D126 (founder decision, Stage 0 beta) - optional graceful degradation,
+  // same "skipped_not_configured, never a required secret" discipline as
+  // SENTRY_DSN/BACKUP_S3_* above: the first 5-10 beta sellers never touch
+  // Drive import, so a missing credential just means
+  // GoogleDriveClientService.isConfigured() is false and DriveController
+  // answers every Drive-touching request with a 503 instead of failing boot.
+  @IsOptional()
   @IsString()
-  GOOGLE_DRIVE_CLIENT_ID!: string;
+  GOOGLE_DRIVE_CLIENT_ID?: string;
 
+  @IsOptional()
   @IsString()
-  GOOGLE_DRIVE_CLIENT_SECRET!: string;
+  GOOGLE_DRIVE_CLIENT_SECRET?: string;
 
+  @IsOptional()
   @IsString()
-  GOOGLE_DRIVE_REDIRECT_URI!: string;
+  GOOGLE_DRIVE_REDIRECT_URI?: string;
 
   @IsString()
   DRIVE_TOKEN_ENCRYPTION_KEY!: string;
@@ -98,8 +107,13 @@ class EnvironmentVariables {
   @IsString()
   TRAEFIK_DYNAMIC_CONFIG_DIR!: string;
 
+  // D126 (founder decision, Stage 0 beta) - optional graceful degradation,
+  // same discipline as GOOGLE_DRIVE_* above: a missing key just means
+  // PrintifyHttpClient.isConfigured() is false and the Printify dropshipping
+  // adapter is unavailable rather than a boot failure.
+  @IsOptional()
   @IsString()
-  PRINTIFY_API_KEY!: string;
+  PRINTIFY_API_KEY?: string;
 
   @IsOptional()
   @IsString()
@@ -150,6 +164,37 @@ class EnvironmentVariables {
   // its own key so this secret rotates independently.
   @IsString()
   PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY!: string;
+
+  // D117/D126 (founder decision) - envelope encryption for gateway
+  // secrets (kms.module.ts). Optional at this global-schema level because
+  // which of the fields below is actually required depends on this
+  // value: "local-dev" (the default when unset) needs
+  // LOCAL_DEV_KMS_MASTER_KEY; "aws" needs AWS_KMS_KEY_ID/AWS_REGION. Each
+  // KmsProvider's own constructor enforces what IT needs via
+  // getOrThrow() - kms.module.ts's boot guard is what actually prevents
+  // local-dev from running in production, not this schema.
+  @IsOptional()
+  @IsIn(["aws", "local-dev"])
+  KMS_PROVIDER_TYPE?: string;
+
+  @IsOptional()
+  @IsString()
+  LOCAL_DEV_KMS_MASTER_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_KMS_KEY_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_REGION?: string;
+
+  // Only ever set in CI, to point AwsKmsProvider at a LocalStack KMS
+  // emulator instead of real AWS (.github/workflows/ci.yml's
+  // kms-localstack-test job) - unset in every real environment.
+  @IsOptional()
+  @IsString()
+  AWS_KMS_ENDPOINT?: string;
 }
 
 /**
@@ -199,6 +244,13 @@ export function validateEnv(config: Record<string, unknown>) {
   if (Buffer.from(validated.PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
     throw new Error(
       "Invalid environment configuration:\nPAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
+    );
+  }
+  // Unlike the keys above, this one is optional at the schema level (only
+  // local-dev's own KmsProvider needs it) - only checked when actually set.
+  if (validated.LOCAL_DEV_KMS_MASTER_KEY && Buffer.from(validated.LOCAL_DEV_KMS_MASTER_KEY, "base64").length !== 32) {
+    throw new Error(
+      "Invalid environment configuration:\nLOCAL_DEV_KMS_MASTER_KEY must be a base64-encoded 32-byte key (e.g. `openssl rand -base64 32`)",
     );
   }
   return validated;

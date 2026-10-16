@@ -141,6 +141,17 @@ launch) — skip nothing it tells you not to skip.
       ci.yml`, added alongside this checklist, D116 item 6) is green on
       `main` — it now exercises section 6's exact restore procedure on
       every push, not only as a one-off manual drill.
+- [ ] Confirm the `kms-localstack-test` CI job (`.github/workflows/
+      ci.yml`, D117/D126/D128) is green on `main` — same "real
+      infrastructure, not just a mock" bar as the drill above, proving
+      `AwsKmsProvider`'s `GenerateDataKey`/`Decrypt` round trip against a
+      real (LocalStack-emulated) KMS wire protocol. Also confirm
+      `KMS_PROVIDER_TYPE=aws` and a real `AWS_KMS_KEY_ID`/`AWS_REGION`
+      are set in production before any seller gateway credential is
+      saved — the app refuses to boot with the `local-dev` provider when
+      `NODE_ENV=production` (`kms.module.ts`'s own startup guard), so a
+      missing/misconfigured KMS here fails loudly at boot, not silently
+      at the first credential save.
 - [ ] `SENTRY_DSN` set in production (optional but recommended before
       real sellers touch the product — D116 item 6/D122).
 - [ ] Confirm every founder-facing item D116 item 3 scoped OUT of Stage 0

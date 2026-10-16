@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
+import { Injectable, InternalServerErrorException, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IPrintifyClient, PrintifyRawProduct } from "./printify-client.interface";
 
@@ -14,14 +14,27 @@ const PRINTIFY_API_BASE = "https://api.printify.com/v1";
  */
 @Injectable()
 export class PrintifyHttpClient implements IPrintifyClient {
-  constructor(private readonly config: ConfigService) {}
+  private readonly apiKey?: string;
+
+  constructor(private readonly config: ConfigService) {
+    this.apiKey = this.config.get<string>("PRINTIFY_API_KEY");
+  }
+
+  // D126 - request() below throws a 503 instead of reaching getOrThrow();
+  // exposed so PrintifyAdapter's callers could check it too, though today
+  // every caller just lets request()'s own check surface the 503.
+  isConfigured(): boolean {
+    return Boolean(this.apiKey);
+  }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const apiKey = this.config.getOrThrow<string>("PRINTIFY_API_KEY");
+    if (!this.apiKey) {
+      throw new ServiceUnavailableException("Printify integration isn't configured on this platform yet.");
+    }
     const res = await fetch(`${PRINTIFY_API_BASE}${path}`, {
       ...init,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
         ...init?.headers,
       },

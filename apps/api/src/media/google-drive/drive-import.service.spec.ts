@@ -16,6 +16,7 @@ describe("DriveImportService", () => {
 
   function buildFakeDriveClient(files: DriveFile[]): jest.Mocked<IDriveClient> {
     return {
+      isConfigured: jest.fn().mockReturnValue(true),
       getAuthUrl: jest.fn(),
       exchangeCodeForTokens: jest.fn(),
       refreshAccessToken: jest.fn().mockResolvedValue({ accessToken: "fresh-access-token", expiresInSeconds: 3600 }),

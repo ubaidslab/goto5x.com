@@ -7,6 +7,7 @@ import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
 import { BuyerPaymentGatewayController } from "./buyer-payment-gateway.controller";
+import { GatewayCredentialVaultService } from "./gateway-credential-vault.service";
 import { PaymentGatewayController } from "./payment-gateway.controller";
 import { PaymentGatewayService } from "./payment-gateway.service";
 import { GatewayHealthService } from "./gateway-health.service";
@@ -27,6 +28,7 @@ import { GatewayHealthScheduler } from "./gateway-health.scheduler";
     EasypaisaGatewayAdapter,
     JazzCashGatewayAdapter,
     BankTransferGatewayAdapter,
+    GatewayCredentialVaultService,
     PaymentGatewayService,
     GatewayHealthService,
     GatewayHealthScheduler,

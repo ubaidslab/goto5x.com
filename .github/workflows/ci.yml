@@ -479,6 +479,61 @@ jobs:
           fi
           echo "OK - all $(wc -l < /tmp/fk-after.txt) foreign-key constraints survived the restore unchanged."
 
+  kms-localstack-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # D117/D126 (founder decision) - "tested with mocks/LocalStack in CI."
+    # aws-kms.provider.spec.ts (the unit suite above) already proves
+    # AwsKmsProvider's own logic against a mocked AWS SDK client; this job
+    # is the other half the founder explicitly asked for - a real round
+    # trip over the network, with the real AWS SDK's request signing/wire
+    # format, against a LocalStack-emulated KMS endpoint, not a mock.
+    # Same cheap tier as backup-restore-drill (no Postgres/Redis/Playwright
+    # needed here).
+    services:
+      localstack:
+        image: localstack/localstack:3
+        env:
+          SERVICES: kms
+        ports: ["4566:4566"]
+        options: >-
+          --health-cmd="curl -sf http://localhost:4566/_localstack/health"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+
+      - name: Create a test CMK in LocalStack's emulated KMS
+        id: create-key
+        env:
+          AWS_ACCESS_KEY_ID: localstack-dummy-access-key-id
+          AWS_SECRET_ACCESS_KEY: localstack-dummy-secret-access-key
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          key_id=$(aws --endpoint-url http://localhost:4566 kms create-key \
+            --description "uzeyn CI kms-localstack-test" \
+            --query 'KeyMetadata.KeyId' --output text)
+          echo "Created CMK: $key_id"
+          echo "key_id=$key_id" >> "$GITHUB_OUTPUT"
+
+      - name: Real GenerateDataKey -> Decrypt round trip against LocalStack (AwsKmsProvider)
+        env:
+          AWS_ACCESS_KEY_ID: localstack-dummy-access-key-id
+          AWS_SECRET_ACCESS_KEY: localstack-dummy-secret-access-key
+          AWS_REGION: us-east-1
+          AWS_KMS_KEY_ID: ${{ steps.create-key.outputs.key_id }}
+          AWS_KMS_ENDPOINT: http://localhost:4566
+        run: pnpm --filter @uzeyn/api exec ts-node scripts/verify-kms-localstack.ts
+
   e2e-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'
@@ -609,6 +664,8 @@ jobs:
           SMTP_CREDENTIAL_ENCRYPTION_KEY=4NqGx0iUuAW/T+K88NSUB7b8pFHLXhUqVsVvzuyi6Qk=
           ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY=52ndSUecSgtM/FnxNWrvun1iPK21rzJhKgZV0I/fBPg=
           PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY=p6bqHrEqJhlod/7+aS0aCDwGrcSGeGx6s5a+EBTH+jg=
+          KMS_PROVIDER_TYPE=local-dev
+          LOCAL_DEV_KMS_MASTER_KEY=LGMjNgKGhPONGzz7lRH+9xj/RUzdi14fjXbuOk1a3tw=
           EOF
 
       - name: "E2E tests, shard ${{ matrix.shard }}/4 (real Postgres + Redis - the cross-tenant/RLS release gate)"

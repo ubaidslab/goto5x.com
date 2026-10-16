@@ -35,6 +35,7 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
     await seedSettings(superuser);
 
     fakeDriveClient = {
+      isConfigured: jest.fn().mockReturnValue(true),
       getAuthUrl: jest.fn(),
       exchangeCodeForTokens: jest.fn(),
       refreshAccessToken: jest.fn().mockResolvedValue({ accessToken: "fake-access-token", expiresInSeconds: 3600 }),

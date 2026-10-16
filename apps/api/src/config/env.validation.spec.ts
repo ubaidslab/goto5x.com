@@ -36,6 +36,17 @@ describe("validateEnv", () => {
     expect(() => validateEnv(validConfig)).not.toThrow();
   });
 
+  it("passes when GOOGLE_DRIVE_*/PRINTIFY_API_KEY are entirely absent (D126 - Stage 0 graceful degradation)", () => {
+    const {
+      GOOGLE_DRIVE_CLIENT_ID: _GOOGLE_DRIVE_CLIENT_ID,
+      GOOGLE_DRIVE_CLIENT_SECRET: _GOOGLE_DRIVE_CLIENT_SECRET,
+      GOOGLE_DRIVE_REDIRECT_URI: _GOOGLE_DRIVE_REDIRECT_URI,
+      PRINTIFY_API_KEY: _PRINTIFY_API_KEY,
+      ...withoutOptionalIntegrations
+    } = validConfig;
+    expect(() => validateEnv(withoutOptionalIntegrations)).not.toThrow();
+  });
+
   it("throws when a required variable is missing entirely", () => {
     const { DATABASE_URL: _DATABASE_URL, ...missingDbUrl } = validConfig;
     expect(() => validateEnv(missingDbUrl)).toThrow();
@@ -112,6 +123,26 @@ describe("validateEnv", () => {
         ...validConfig,
         PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 21).toString("base64"),
       }),
+    ).not.toThrow();
+  });
+
+  it("passes when KMS_PROVIDER_TYPE/LOCAL_DEV_KMS_MASTER_KEY/AWS_KMS_* are entirely absent (D117/D126 - kms.module.ts's own default/guard, not this schema, decides what's required)", () => {
+    expect(() => validateEnv(validConfig)).not.toThrow();
+  });
+
+  it("throws when KMS_PROVIDER_TYPE has a value outside the allowed set", () => {
+    expect(() => validateEnv({ ...validConfig, KMS_PROVIDER_TYPE: "self-hosted-vault" })).toThrow();
+  });
+
+  it("throws when LOCAL_DEV_KMS_MASTER_KEY is set but does not decode to exactly 32 bytes", () => {
+    expect(() =>
+      validateEnv({ ...validConfig, LOCAL_DEV_KMS_MASTER_KEY: Buffer.alloc(16, 1).toString("base64") }),
+    ).toThrow(/32-byte key/);
+  });
+
+  it("passes when LOCAL_DEV_KMS_MASTER_KEY decodes to exactly 32 bytes", () => {
+    expect(() =>
+      validateEnv({ ...validConfig, LOCAL_DEV_KMS_MASTER_KEY: Buffer.alloc(32, 19).toString("base64") }),
     ).not.toThrow();
   });
 });

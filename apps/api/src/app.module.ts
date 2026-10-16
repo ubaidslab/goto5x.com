@@ -19,6 +19,7 @@ import { ContentPagesModule } from "./content-pages/content-pages.module";
 import { CustomerSegmentsModule } from "./customer-segments/customer-segments.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { IdempotencyModule } from "./common/idempotency/idempotency.module";
+import { KmsModule } from "./payment-gateway/kms/kms.module";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
@@ -82,6 +83,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     PrismaModule,
     RedisModule,
     IdempotencyModule,
+    KmsModule,
     NotificationsModule,
     EventsModule,
     AdminModule,

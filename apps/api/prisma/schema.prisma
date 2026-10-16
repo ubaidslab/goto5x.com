@@ -988,6 +988,12 @@ model StorePaymentGatewayConnection {
   merchantId         String?                @map("merchant_id")
   apiKeyEncrypted    String?                @map("api_key_encrypted")
   apiSecretEncrypted String?                @map("api_secret_encrypted")
+  // D117/D126 - envelope encryption: this row's one data key, wrapped by
+  // the active KmsProvider, used to decrypt both apiKeyEncrypted and
+  // apiSecretEncrypted above (GatewayCredentialVaultService). Null only
+  // for a row stored before this migration landed, until the backfill
+  // script (scripts/rewrap-gateway-credentials.ts) re-wraps it.
+  dataKeyWrapped     String?                @map("data_key_wrapped")
   isActive           Boolean                @default(true) @map("is_active")
   // FR-6.36 - stable, seller-visible checkout ordering; Raast defaults to
   // the lowest (first) value, set by the service layer at connect time,
@@ -1035,6 +1041,9 @@ model PlatformGatewayConnection {
   merchantId         String?                @map("merchant_id")
   apiKeyEncrypted    String?                @map("api_key_encrypted")
   apiSecretEncrypted String?                @map("api_secret_encrypted")
+  // D117/D126 - see StorePaymentGatewayConnection's identical field for
+  // the full explanation.
+  dataKeyWrapped     String?                @map("data_key_wrapped")
   isActive           Boolean                @default(false) @map("is_active")
   verifiedCount      Int                    @default(0) @map("verified_count")
   failedCount        Int                    @default(0) @map("failed_count")

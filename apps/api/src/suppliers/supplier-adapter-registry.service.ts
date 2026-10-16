@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { CreateSupplierAdapterDto } from "./dto/create-supplier-adapter.dto";
@@ -13,10 +14,25 @@ import { UpdateSupplierAdapterDto } from "./dto/update-supplier-adapter.dto";
  */
 @Injectable()
 export class SupplierAdapterRegistryService {
-  constructor(private readonly prisma: PrismaRuntimeService) {}
+  constructor(
+    private readonly prisma: PrismaRuntimeService,
+    private readonly config: ConfigService,
+  ) {}
 
-  list() {
-    return this.prisma.supplierAdapter.findMany({ orderBy: { adapterType: "asc" } });
+  // D126 - deliberately a simple per-adapterType credential map, not a
+  // generalized plugin-credential-check system: Printify is v1.0's only
+  // Supplier Adapter implementation (see printify.adapter.ts's own
+  // docstring), so there is nothing else to generalize for yet. Any
+  // adapterType this map doesn't recognize defaults to
+  // credentialsConfigured: true, so it never blocks/flags a future adapter
+  // type it doesn't know about.
+  async list() {
+    const adapters = await this.prisma.supplierAdapter.findMany({ orderBy: { adapterType: "asc" } });
+    return adapters.map((adapter) => ({
+      ...adapter,
+      credentialsConfigured:
+        adapter.adapterType === "printify" ? Boolean(this.config.get<string>("PRINTIFY_API_KEY")) : true,
+    }));
   }
 
   async create(dto: CreateSupplierAdapterDto) {
