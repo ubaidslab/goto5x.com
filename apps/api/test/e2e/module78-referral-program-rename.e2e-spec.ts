@@ -85,8 +85,15 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     return approved.referralCode!;
   }
 
-  /** Submits + admin-verifies one plan-fee payment cycle for the seller, returning whether the flow reported it as a renewal. */
-  async function payOneCycle(token: string, adminToken: string) {
+  /**
+   * Submits + admin-verifies one plan-fee payment cycle for the seller,
+   * returning whether the flow reported it as a renewal.
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard); both
+   * of this helper's callers pass their own freshly-enrolled `stepUpCode`
+   * generator inline rather than through the shared createAndLoginAdmin()
+   * helper - see each test below for why.
+   */
+  async function payOneCycle(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
@@ -94,13 +101,32 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     expect(submit.status).toBe(201);
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
     return submit.body.isRenewal as boolean;
   }
 
   it("the first/initial payment never earns commission; each of up to 2 renewals earns a flat Rs 345, the 3rd renewal earns nothing", async () => {
     const referrer = await signup("csr-referrer@example.com");
-    const adminToken = await createAndLoginAdmin("csr-admin@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared createAndLoginAdmin() doesn't expose the enrolled
+    // secret, so a fresh enroll+verify flow is done inline here rather
+    // than widening that shared helper's return shape.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "csr-admin@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const referralCode = await applyApproveStudentReferral(referrer.token, "00000000-0000-0000-0000-000000000000");
 
     const referred = await signup("csr-referred@example.com", referralCode);
@@ -114,13 +140,13 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     expect(attribution.renewalPayoutCount).toBe(0);
 
     // Cycle 1 - the referred seller's first/initial plan-fee payment.
-    const firstIsRenewal = await payOneCycle(referred.token, adminToken);
+    const firstIsRenewal = await payOneCycle(referred.token, adminToken, stepUpCode);
     expect(firstIsRenewal).toBe(false);
     let commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
     expect(commission).toHaveLength(0);
 
     // Cycle 2 - renewal #1 -> Rs 345.
-    const secondIsRenewal = await payOneCycle(referred.token, adminToken);
+    const secondIsRenewal = await payOneCycle(referred.token, adminToken, stepUpCode);
     expect(secondIsRenewal).toBe(true);
     commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
     expect(commission).toHaveLength(1);
@@ -129,14 +155,14 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     expect(attributionAfter.renewalPayoutCount).toBe(1);
 
     // Cycle 3 - renewal #2 -> another Rs 345 (the cap).
-    await payOneCycle(referred.token, adminToken);
+    await payOneCycle(referred.token, adminToken, stepUpCode);
     commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
     expect(commission).toHaveLength(2);
     attributionAfter = await superuser.referralAttribution.findUniqueOrThrow({ where: { id: attribution.id } });
     expect(attributionAfter.renewalPayoutCount).toBe(2);
 
     // Cycle 4 - renewal #3, past the cap -> no further commission, count unchanged.
-    await payOneCycle(referred.token, adminToken);
+    await payOneCycle(referred.token, adminToken, stepUpCode);
     commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
     expect(commission).toHaveLength(2);
     attributionAfter = await superuser.referralAttribution.findUniqueOrThrow({ where: { id: attribution.id } });
@@ -145,7 +171,22 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
 
   it("the flat rate and renewal cap are Settings-configurable, admin-editable with no deploy", async () => {
     const referrer = await signup("csr-config-referrer@example.com");
-    const adminToken = await createAndLoginAdmin("csr-config-admin@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "csr-config-admin@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const referralCode = await applyApproveStudentReferral(referrer.token, "00000000-0000-0000-0000-000000000000");
     const referred = await signup("csr-config-referred@example.com", referralCode);
     // SRS §5.73 - signup now defaults to starter_free (price 0); the
@@ -157,9 +198,9 @@ describe("Referral Program Rename - Commerce Students Support (e2e) - SRS §5.33
     await app.get(SettingsService).setValue("growth.student_referral_flat_commission_pkr", "global", null, 500, "00000000-0000-0000-0000-000000000000");
     await app.get(SettingsService).setValue("growth.student_referral_max_renewal_payouts", "global", null, 1, "00000000-0000-0000-0000-000000000000");
 
-    await payOneCycle(referred.token, adminToken); // initial - no commission
-    await payOneCycle(referred.token, adminToken); // renewal #1 - Rs 500
-    await payOneCycle(referred.token, adminToken); // renewal #2 - past the (now lower) cap of 1
+    await payOneCycle(referred.token, adminToken, stepUpCode); // initial - no commission
+    await payOneCycle(referred.token, adminToken, stepUpCode); // renewal #1 - Rs 500
+    await payOneCycle(referred.token, adminToken, stepUpCode); // renewal #2 - past the (now lower) cap of 1
 
     const commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
     expect(commission).toHaveLength(1);

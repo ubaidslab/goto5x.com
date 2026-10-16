@@ -114,20 +114,40 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
    * puts the seller on a real paid plan due for renewal and returns the
    * admin token the caller needs to verify that payment itself.
    */
-  async function makeDueForRenewal(sellerId: string, adminEmailSuffix: string): Promise<string> {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). Both
+   * of this helper's callers (below) go straight on to payPlanFee(), which
+   * needs a step-up code, so a fresh enroll+verify flow is done inline
+   * here (exposing the raw secret, unlike the shared createAndLoginAdmin()
+   * this replaces) rather than widening that shared helper's return shape
+   * - it has no other caller in this file, so nothing else is affected.
+   */
+  async function makeDueForRenewal(sellerId: string, adminEmailSuffix: string): Promise<{ adminToken: string; stepUpCode: () => string }> {
     const paidPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: { gt: 0 } } });
     await superuser.subscription.update({ where: { sellerId }, data: { planId: paidPlan.id, currentPeriodEnd: new Date() } });
-    return createAndLoginAdmin(`admin-${adminEmailSuffix}@example.com`);
+    const bcrypt = await import("bcryptjs");
+    const email = `admin-${adminEmailSuffix}@example.com`;
+    const user = await superuser.user.create({ data: { email, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() } });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = enroll.body.secret as string;
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    return { adminToken: verify.body.accessToken as string, stepUpCode: () => authenticator.generate(mfaSecret) };
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     const verify = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
     expect(verify.status).toBe(201);
   }
 
@@ -170,8 +190,8 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
   it("a subscription renewal triggers an export containing the trailing-period products/orders/customers CSVs plus one summary PDF (FR-36.1/36.2)", async () => {
     const { token, storeId, sellerId } = await createStore("export-renewal@example.com", "export-renewal");
     await seedOneOfEach(storeId);
-    const adminToken = await makeDueForRenewal(sellerId, "export-renewal");
-    await payPlanFee(token, adminToken);
+    const { adminToken, stepUpCode } = await makeDueForRenewal(sellerId, "export-renewal");
+    await payPlanFee(token, adminToken, stepUpCode);
 
     const dataExport = app.get(DataExportService);
     await dataExport.triggerRenewalExport(sellerId);
@@ -302,8 +322,8 @@ describe("Seller Data Export (e2e) - SRS §5.36, §14.36", () => {
 
   it("a forced export-generation/delivery failure is logged and never blocks, delays, or fails the subscription renewal itself (FR-36.4)", async () => {
     const { token, sellerId } = await createStore("export-nonblocking@example.com", "export-nonblocking");
-    const adminToken = await makeDueForRenewal(sellerId, "export-nonblocking");
-    await payPlanFee(token, adminToken);
+    const { adminToken, stepUpCode } = await makeDueForRenewal(sellerId, "export-nonblocking");
+    await payPlanFee(token, adminToken, stepUpCode);
     const subscriptionAfterRenewal = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
 
     // Now force the export itself to fail outright (a bogus export ID - processExport must never throw).

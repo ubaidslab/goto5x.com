@@ -2614,3 +2614,150 @@ this session - the honest finding for all three was "here's exactly
 what's true today, here's the real gap, here's why building the full
 fix now would be the wrong call to make unilaterally," not silence and
 not a rushed partial implementation.
+
+---
+
+## 2026-10-16 — Founder decisions on the 1B report (D115–D118)
+
+Source: the founder, directly, replying to this session's 1B completion
+report. Status legend as before (LOCKED unless noted).
+
+### D115. D91 resolved - Stage 0 private beta scope confirmed
+**Status:** LOCKED. Resolves D91's outstanding "define the minimum
+feature/doc set" obligation.
+**Decision:** YES to Stage 0. Invite-only, 5-10 sellers, Free plan
+only. Payments limited to COD, manual mark-as-paid, and advance via
+manual transfer. No billing, no live seller gateway keys in any
+environment. Stated goal: reach Stage 0 as fast as safely possible,
+with M1-1C billing work built alongside it rather than strictly
+sequenced after.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D116. Stage 0 readiness sprint ordered - 7 items, before Stage 0 goes live
+**Status:** LOCKED. "Report after A, before starting B."
+**Decision:** before Stage 0 accepts real sellers, this session must:
+1. Build a reusable idempotency-key mechanism and apply it to order
+   creation, markAsPaid/"Not received", the manual-transfer reference
+   submission, and every wallet/top-up mutation. Test: the same key
+   submitted twice produces one effect.
+2. Wire `StepUpMfaGuard` onto the admin verify-topup and reject-topup
+   routes (same guard D112 already built).
+3. Generate IDOR/BOLA allow/deny tests, scoped to the high-risk route
+   groups only: orders, customers, products/stock, payment
+   instructions, store settings, staff, wallet, domains, and all admin
+   routes - cross-tenant (seller A -> seller B) and staff-permission-
+   limit cases. The full per-route sweep is deferred to before paid
+   public launch (D118), not required for Stage 0.
+4. Ship a minimal staff login UI (`POST /staff/auth/login` + logout) -
+   beta sellers are expected to use staff accounts from day one, and
+   D111 already flagged this page as the one missing piece.
+5. Confirm or finish store-domain separation (storefronts on a
+   separate domain from app/admin) and abuse controls (signup/order
+   rate limits, disposable-email block, basic fraud flags) - report
+   what already existed vs. what this session added.
+6. Operations minimum: automated daily DB backups plus one tested
+   restore, error tracking/alerting, a status/health endpoint, and a
+   "Stage 0 deploy checklist" appended to `docs/launch-runbook.md`
+   including SPF/DKIM/DMARC for the Resend sending domain.
+7. One end-to-end smoke test per payment path (COD, manual
+   mark-as-paid, advance via manual transfer), storefront order through
+   seller dashboard, running in CI.
+**Reasoning:** not elaborated beyond the decision itself - this is the
+minimum the founder judges necessary before real outside sellers touch
+the product.
+
+### D117. M1-1C go-ahead confirmed, sandbox only - gateway-secret custody via managed cloud KMS
+**Status:** LOCKED. The explicit go-ahead D114 flagged as needed before
+1C, now given with a concrete, scoped answer.
+**Decision:**
+1. Gateway-secret custody: implement the envelope encryption D57
+   actually specified - a per-secret data key encrypts the secret,
+   wrapped by an external master key behind a small KMS adapter
+   interface. Managed cloud KMS, explicitly not self-hosted Vault (too
+   much operations for a solo team). Until the KMS is wired in, only
+   sandbox/test gateway keys may be stored anywhere; no live seller
+   gateway keys in any environment until this is done and independently
+   reviewed.
+2. Stripe adapter, sandbox only, with webhook signature verification
+   and idempotent webhook handling (dedupe on event ID).
+3. Paddle sandbox billing for the platform's own subscriptions, using
+   the already-locked price ladder and bonus-day rules (D10).
+4. COD/advance/manual e2e, as already planned.
+**Reasoning:** not elaborated beyond the decision itself. Directly
+answers D114 finding #2 with a concrete KMS approach (cloud, not
+self-hosted) and a hard gate (sandbox-only until reviewed).
+
+### D118. Deferred to backlog - not built now
+**Status:** LOCKED.
+**Decision:** three items logged as backlog, explicitly not built in
+this pass:
+- SES email provider (Resend judged sufficient).
+- The full IDOR/BOLA generated-test-per-route sweep (D114 finding #1) -
+  required before paid public launch, not before Stage 0.
+- Buyer-initiated cancellation.
+**Reasoning:** not elaborated beyond the decision itself.
+
+---
+
+## Stage 0 readiness sprint (D116) - shipped items
+
+### D119. D116 item 1+2 - idempotency-key mechanism + step-up MFA on verify/reject/bulk-decide
+**Status:** LOCKED.
+**Decision:** a new `IdempotencyService`/`IdempotencyInterceptor` pair
+(`apps/api/src/common/idempotency/`), backed by the same shared
+`RedisService` every other Redis-backed service already injects
+(`RedisModule` is `@Global()`, mirrored here). Opt-in via an
+`Idempotency-Key` request header - a caller that never sends it gets
+exactly the pre-existing behavior, so applying `@UseInterceptors(
+IdempotencyInterceptor)` to an existing route is purely additive and
+broke no existing test on its own. Applied to the exact routes D116 item
+1 named: `CheckoutController.checkout()`, `OrdersController.markAsPaid()`
+and `.changeStatus()` (covers "Not received", which the frontend already
+implements as a `changeStatus({status:"cancelled"})` call - confirmed by
+reading `orders/[orderId]/page.tsx`, not assumed), `
+ManualTransferSubmissionController.submitReference()`, and all 6 wallet/
+top-up mutations in `wallet.controller.ts` (seller + supplier
+`requestTopUp()`, admin `verify()`/`reject()`/`bulkDecide()`/`adjust()`).
+A concurrent duplicate of an in-flight key is rejected (409), never
+silently re-run; a failed attempt releases its claim so a retry gets a
+genuinely fresh attempt, never permanently poisoned.
+**Step-up MFA (item 2):** `StepUpMfaGuard` (D112) added to `verify()` and
+`reject()`, matching the founder's literal ask - and, caught before
+shipping rather than after, to `bulkDecide()` too: it dispatches to the
+exact same `verifyOne()`/`rejectTopUp()` internally, so leaving it
+unguarded would make the per-item guard added to `verify()`/`reject()`
+trivially bypassable by going through the bulk route instead. One
+step-up code covers the whole batch, same as one `AdminAuthGuard` login
+covers it.
+**Test fallout, found and fixed:** adding the guard broke every e2e test
+that calls `verify()`/`bulkDecide()` as a setup/prerequisite step for
+something unrelated - 19 files, not the 2-3 a narrower search would have
+suggested (confirmed via a repo-wide grep, not assumed from memory).
+Fixed per-file using whichever of two patterns fit without silently
+breaking an unrelated call site: widen the file's local
+`createAndLoginAdmin()` helper to also return the enrolled `mfaSecret`
+(only where that file's helper is used almost exclusively for
+wallet-topup calls - `module20-wallet-supplier-portal` and `module47-
+wallet-balance-reconciliation`, the latter already partly done by D112),
+or leave that shared helper untouched and do a self-contained inline
+MFA enroll+verify at just the specific call sites that need it (every
+other file - lower blast radius, and the one that matches this
+codebase's own existing precedent, `module25-admin-completion`'s
+audit-log test). A fresh TOTP code is generated immediately before each
+call that needs one, never reused across calls (a stale code can fail a
+30-second-window check mid-test).
+**Verified:** `idempotency.service.spec.ts` (5 tests) and `
+idempotency.interceptor.spec.ts` (5 tests) - including "the same
+Idempotency-Key submitted twice runs the handler once and returns the
+same result both times," the exact property D116 item 1 asked to be
+tested. Full unit suite (342/342, +14 for this item), both apps'
+typecheck and lint clean. All 19 e2e files independently re-verified
+(typecheck clean, diffed to confirm no `expect(...)` assertion was added
+or removed - only auth/header plumbing changed) - their actual pass/fail
+against a real database can only be confirmed via CI (no local
+Postgres/Redis in this sandbox), same as every other e2e change this
+session.
+**Reasoning:** the interceptor-not-guard shape was deliberate: a guard
+can only allow/deny, it can't replay a cached response, and "replay the
+same result instead of re-running the side effect" is the actual
+property an idempotency key needs to provide.

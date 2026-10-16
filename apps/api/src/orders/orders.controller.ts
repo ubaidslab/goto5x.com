@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UseInterceptors } from "@nestjs/common";
 import { BlockDuringImpersonation } from "../common/decorators/block-during-impersonation.decorator";
 import { CurrentSellerId } from "../common/decorators/current-seller.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -6,6 +6,7 @@ import { RequireStaffScope } from "../common/decorators/require-staff-scope.deco
 import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { StaffScopeGuard } from "../common/guards/staff-scope.guard";
+import { IdempotencyInterceptor } from "../common/idempotency/idempotency.interceptor";
 import { JwtAccessPayload } from "../common/types";
 import { CheckoutService } from "./checkout.service";
 import { AddOrderNoteDto } from "./dto/add-order-note.dto";
@@ -91,6 +92,7 @@ export class OrdersController {
    */
   @Post(":orderId/mark-as-paid")
   @UseGuards(ImpersonationWriteGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @BlockDuringImpersonation()
   @RequireStaffScope("orders")
   markAsPaid(
@@ -131,7 +133,9 @@ export class OrdersController {
    * selected order). Only accepts `cancelled`/`disputed`/`completed` -
    * see ChangeOrderStatusDto's own doc comment.
    */
+  /** D116 item 1 (Stage 0) - covers the "Not received" action (apps/web calls this with {status:"cancelled"}). */
   @Patch(":orderId/status")
+  @UseInterceptors(IdempotencyInterceptor)
   @RequireStaffScope("orders")
   changeStatus(
     @CurrentSellerId() sellerId: string,

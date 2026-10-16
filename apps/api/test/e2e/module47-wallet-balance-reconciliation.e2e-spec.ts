@@ -100,14 +100,16 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     return authenticator.generate(mfaSecret);
   }
 
-  async function topUpAndVerify(token: string, adminToken: string, amount: number) {
+  /** D116 item 2 - verify() is now step-up-MFA-gated too (StepUpMfaGuard), same as adjust() already was (D82/D112). */
+  async function topUpAndVerify(token: string, adminToken: string, mfaSecret: string, amount: number) {
     const req = await request(app.getHttpServer())
       .post("/sellers/me/wallet/topup-requests")
       .set("Authorization", `Bearer ${token}`)
       .send({ amount });
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${req.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret));
   }
 
   async function addProduct(token: string, storeId: string, price: number) {
@@ -145,7 +147,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     // test below.
     await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
 
-    await topUpAndVerify(token, adminToken, 1000); // credit: +1000
+    await topUpAndVerify(token, adminToken, mfaSecret, 1000); // credit: +1000
     const { productId, variantId } = await addProduct(token, storeId, 500);
     const order = await createManualOrder(token, storeId, productId, variantId);
     await request(app.getHttpServer())
@@ -183,7 +185,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     // override. Set it at SELLER scope instead, so this test's real
     // per-order commission math still has a nonzero rate to measure.
     await settings.setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
-    await topUpAndVerify(token, adminToken, 5000);
+    await topUpAndVerify(token, adminToken, mfaSecret, 5000);
 
     // Measure the real per-order commission debit (K) empirically via one
     // sequential, already-legitimate order - avoids hardcoding assumptions
@@ -254,8 +256,8 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
 
   it("the daily reconciliation sweep detects a deliberately-introduced drift and flags it loudly (a new admin notification, an append-only drift row) without ever silently correcting the cached balance (new FR-6.29)", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("drift-test@example.com", "drift-test-store");
-    const { token: adminToken } = await createAndLoginAdmin("drift-test-admin@example.com");
-    await topUpAndVerify(token, adminToken, 800);
+    const { token: adminToken, mfaSecret } = await createAndLoginAdmin("drift-test-admin@example.com");
+    await topUpAndVerify(token, adminToken, mfaSecret, 800);
     const { productId, variantId } = await addProduct(token, storeId, 300);
     const order = await createManualOrder(token, storeId, productId, variantId);
     await request(app.getHttpServer())

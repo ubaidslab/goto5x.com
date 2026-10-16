@@ -18,6 +18,7 @@ import { CatalogModule } from "./catalog/catalog.module";
 import { ContentPagesModule } from "./content-pages/content-pages.module";
 import { CustomerSegmentsModule } from "./customer-segments/customer-segments.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
+import { IdempotencyModule } from "./common/idempotency/idempotency.module";
 import { PiiRedactionInterceptor } from "./common/logging/pii-redaction.interceptor";
 import { RedisModule } from "./common/redis/redis.module";
 import { validateEnv } from "./config/env.validation";
@@ -80,6 +81,7 @@ import { WhatsAppMessagingModule } from "./whatsapp-messaging/whatsapp-messaging
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT_PER_MINUTE) || 100 }]),
     PrismaModule,
     RedisModule,
+    IdempotencyModule,
     NotificationsModule,
     EventsModule,
     AdminModule,

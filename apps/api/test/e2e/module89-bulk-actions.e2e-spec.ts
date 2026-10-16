@@ -155,7 +155,28 @@ describe("Bulk-action backend endpoints (e2e) - SRS FR-8.17 (Module 89)", () => 
     }
 
     it("verifies a mixed batch, reports an unknown id as a per-item failure, and posts exactly one bulk_verified audit entry", async () => {
-      const adminToken = await createAndLoginAdmin("bulk-wallet-admin1@example.com");
+      // D116 item 2 - bulkDecide() is now step-up-MFA-gated (StepUpMfaGuard),
+      // same requirement as verify()/reject() (it dispatches to the exact
+      // same WalletService methods, so leaving it unguarded would make the
+      // per-item guard trivially bypassable). This file's shared
+      // createAndLoginAdmin() doesn't expose the enrolled secret and the
+      // moderation bulk-decide tests above never call this route at all, so
+      // a fresh enroll+verify flow is done inline here rather than widening
+      // that shared helper's return shape for every one of its other callers.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "bulk-wallet-admin1@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
       const first = await requestPlanFeeTopUp("bulk-wallet-seller1@example.com", "bulk-wallet-store1");
       const second = await requestPlanFeeTopUp("bulk-wallet-seller2@example.com", "bulk-wallet-store2");
       const unknownId = "2bdf7bce-5e70-4efb-8b34-0e93eab09ef8"; // syntactically valid v4 UUID, not a real row
@@ -163,6 +184,7 @@ describe("Bulk-action backend endpoints (e2e) - SRS FR-8.17 (Module 89)", () => 
       const bulk = await request(app.getHttpServer())
         .post("/admin/wallet-topups/bulk-decide")
         .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret))
         .send({ topUpIds: [first.topUpId, second.topUpId, unknownId], decision: "verify" });
 
       expect(bulk.status).toBe(201);
@@ -181,13 +203,28 @@ describe("Bulk-action backend endpoints (e2e) - SRS FR-8.17 (Module 89)", () => 
     });
 
     it("rejects a batch of pending top-ups, posting one bulk_rejected audit entry", async () => {
-      const adminToken = await createAndLoginAdmin("bulk-wallet-admin2@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "bulk-wallet-admin2@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
       const first = await requestPlanFeeTopUp("bulk-wallet-seller3@example.com", "bulk-wallet-store3");
       const second = await requestPlanFeeTopUp("bulk-wallet-seller4@example.com", "bulk-wallet-store4");
 
       const bulk = await request(app.getHttpServer())
         .post("/admin/wallet-topups/bulk-decide")
         .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret))
         .send({ topUpIds: [first.topUpId, second.topUpId], decision: "reject" });
 
       expect(bulk.status).toBe(201);
@@ -202,12 +239,27 @@ describe("Bulk-action backend endpoints (e2e) - SRS FR-8.17 (Module 89)", () => 
     });
 
     it("verifying the same top-up twice in one batch fails the second occurrence (no double-verify), and never double-audits the underlying WalletService entry", async () => {
-      const adminToken = await createAndLoginAdmin("bulk-wallet-admin3@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the tests above.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "bulk-wallet-admin3@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
       const only = await requestPlanFeeTopUp("bulk-wallet-seller5@example.com", "bulk-wallet-store5");
 
       const bulk = await request(app.getHttpServer())
         .post("/admin/wallet-topups/bulk-decide")
         .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret))
         .send({ topUpIds: [only.topUpId, only.topUpId], decision: "verify" });
 
       expect(bulk.status).toBe(201);

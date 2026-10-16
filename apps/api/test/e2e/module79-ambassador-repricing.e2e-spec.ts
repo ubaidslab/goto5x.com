@@ -101,7 +101,14 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
     return store.body.id as string;
   }
 
-  async function payOneCycle(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). This
+   * helper's only two callers (below) pass their own freshly-enrolled
+   * `stepUpCode` generator inline rather than through the shared
+   * createAndLoginAdmin() helper, which is used for many unrelated admin
+   * actions by the other tests in this file.
+   */
+  async function payOneCycle(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
@@ -109,13 +116,34 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
     expect(submit.status).toBe(201);
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
   }
 
   describe("Commission - flat per renewed month, capped, pro-rated", () => {
     it("the first/initial payment earns nothing; a monthly renewal earns a flat Rs 499", async () => {
       const referrer = await signup("amb79-referrer@example.com");
-      const adminToken = await createAndLoginAdmin("amb79-admin@example.com");
+      // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+      // this file's shared createAndLoginAdmin() doesn't expose the
+      // enrolled secret and is used for many unrelated admin actions
+      // elsewhere in this file, so a fresh enroll+verify flow is done
+      // inline here instead of widening that shared helper's return shape
+      // for every one of its other callers.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "amb79-admin@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
       const { referralCode } = await makeEligibleAndApplyApproveAmbassador(referrer.token, referrer.sellerId, adminToken);
       const referred = await signup("amb79-referred@example.com", referralCode);
       // SRS §5.73 - signup now defaults to starter_free (price 0); the
@@ -124,11 +152,11 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
       const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: goPlan.id } });
 
-      await payOneCycle(referred.token, adminToken); // first/initial payment
+      await payOneCycle(referred.token, adminToken, stepUpCode); // first/initial payment
       let commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
       expect(commission).toHaveLength(0);
 
-      await payOneCycle(referred.token, adminToken); // renewal #1 - 1 month (default monthly billing)
+      await payOneCycle(referred.token, adminToken, stepUpCode); // renewal #1 - 1 month (default monthly billing)
       commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
       expect(commission).toHaveLength(1);
       expect(Number(commission[0].amount)).toBe(499);
@@ -139,7 +167,22 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
 
     it("a renewal covering more months than remain under the cap is pro-rated down, and nothing further accrues once the cap is reached", async () => {
       const referrer = await signup("amb79-prorate-referrer@example.com");
-      const adminToken = await createAndLoginAdmin("amb79-prorate-admin@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "amb79-prorate-admin@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
       const { referralCode } = await makeEligibleAndApplyApproveAmbassador(referrer.token, referrer.sellerId, adminToken);
       const referred = await signup("amb79-prorate-referred@example.com", referralCode);
       // SRS §5.73 - signup now defaults to starter_free (price 0); the
@@ -150,8 +193,8 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
       const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       await superuser.subscription.update({ where: { sellerId: referred.sellerId }, data: { planId: goPlan.id, billingInterval: "six_month" } });
 
-      await payOneCycle(referred.token, adminToken); // first/initial payment - no commission
-      await payOneCycle(referred.token, adminToken); // renewal #1 - pro-rated to 3 months (the whole cap)
+      await payOneCycle(referred.token, adminToken, stepUpCode); // first/initial payment - no commission
+      await payOneCycle(referred.token, adminToken, stepUpCode); // renewal #1 - pro-rated to 3 months (the whole cap)
 
       const commission = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
       expect(commission).toHaveLength(1);
@@ -159,7 +202,7 @@ describe("Ambassador Program Repricing (e2e) - SRS §5.33, §14.33, FR-33.6 pre-
       let attribution = await superuser.referralAttribution.findUniqueOrThrow({ where: { referredSellerId: referred.sellerId } });
       expect(attribution.commissionMonthsPaid).toBe(3);
 
-      await payOneCycle(referred.token, adminToken); // renewal #2 - cap already fully used, earns nothing
+      await payOneCycle(referred.token, adminToken, stepUpCode); // renewal #2 - cap already fully used, earns nothing
       const commissionAfter = await superuser.ledgerEntry.findMany({ where: { sellerId: referrer.sellerId, type: "program_commission_credit" } });
       expect(commissionAfter).toHaveLength(1);
       attribution = await superuser.referralAttribution.findUniqueOrThrow({ where: { referredSellerId: referred.sellerId } });

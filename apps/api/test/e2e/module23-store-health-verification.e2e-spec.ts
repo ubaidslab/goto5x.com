@@ -70,9 +70,20 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
     return { token: verify.body.accessToken as string, adminUserId: adminUser.id };
   }
 
-  async function topUpAndVerify(token: string, adminToken: string, amount: number) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). This
+   * helper's callers (the verification-fee tests below) each pass their
+   * own freshly-enrolled `stepUpCode` generator inline rather than through
+   * the shared createAndLoginAdmin() helper - used for many unrelated
+   * admin actions by the other tests in this file (e.g. the direct-revoke
+   * test, which never calls verify() at all).
+   */
+  async function topUpAndVerify(token: string, adminToken: string, stepUpCode: () => string, amount: number) {
     const req = await request(app.getHttpServer()).post("/sellers/me/wallet/topup-requests").set("Authorization", `Bearer ${token}`).send({ amount });
-    await request(app.getHttpServer()).post(`/admin/wallet-topups/${req.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
+    await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/${req.body.request.id}/verify`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
   }
 
   /** Forces every eligibility criterion to pass directly via the DB, so tests can isolate one criterion at a time. */
@@ -231,9 +242,29 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
 
     it("the verification fee debits the wallet at application time, before any admin decision exists", async () => {
       const { token, storeId, sellerId } = await createStore("verif-fee@example.com", "verif-fee");
-      const { token: adminToken } = await createAndLoginAdmin("verif-fee-admin@example.com");
+      // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+      // this file's shared createAndLoginAdmin() doesn't expose the
+      // enrolled secret and is used for many unrelated admin actions
+      // elsewhere in this file, so a fresh enroll+verify flow is done
+      // inline here instead of widening that shared helper's return shape
+      // for every one of its other callers.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "verif-fee-admin@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
       await makeFullyEligible(storeId, sellerId);
-      await topUpAndVerify(token, adminToken, 5000);
+      await topUpAndVerify(token, adminToken, stepUpCode, 5000);
 
       const apply = await request(app.getHttpServer()).post(`/stores/${storeId}/verification/apply`).set("Authorization", `Bearer ${token}`);
       expect(apply.status).toBe(201);
@@ -259,9 +290,25 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
 
     it("an application that passes every automated criterion can still be rejected, and rejection refunds the fee in full", async () => {
       const { token, storeId, sellerId } = await createStore("verif-reject@example.com", "verif-reject");
-      const { token: adminToken, adminUserId } = await createAndLoginAdmin("verif-reject-admin@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "verif-reject-admin@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      const adminUserRow = await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminUserId = adminUserRow.id;
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
       await makeFullyEligible(storeId, sellerId);
-      await topUpAndVerify(token, adminToken, 5000);
+      await topUpAndVerify(token, adminToken, stepUpCode, 5000);
 
       const apply = await request(app.getHttpServer()).post(`/stores/${storeId}/verification/apply`).set("Authorization", `Bearer ${token}`);
       const reject = await request(app.getHttpServer())
@@ -282,9 +329,24 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
 
     it("the badge renders on the storefront header/checkout data for a verified store, and disappears immediately on revocation", async () => {
       const { token, storeId, sellerId } = await createStore("verif-badge@example.com", "verif-badge");
-      const { token: adminToken } = await createAndLoginAdmin("verif-badge-admin@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the tests above.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "verif-badge-admin@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
       await makeFullyEligible(storeId, sellerId);
-      await topUpAndVerify(token, adminToken, 5000);
+      await topUpAndVerify(token, adminToken, stepUpCode, 5000);
 
       const apply = await request(app.getHttpServer()).post(`/stores/${storeId}/verification/apply`).set("Authorization", `Bearer ${token}`);
       await request(app.getHttpServer()).post(`/admin/verification/applications/${apply.body.id}/approve`).set("Authorization", `Bearer ${adminToken}`).send({});
@@ -354,11 +416,26 @@ describe("Store Health Score + Verified Store Program (e2e) - SRS §5.34/§5.35"
 
     it("annual re-verification expires a verified store at 12 months and requires a full re-application, never a rubber-stamp renewal", async () => {
       const { token, storeId, sellerId } = await createStore("verif-annual@example.com", "verif-annual");
-      const { token: adminToken } = await createAndLoginAdmin("verif-annual-admin@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the tests above.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "verif-annual-admin@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
 
       // First cycle: apply, approve, and simulate the 12-month clock having already elapsed.
       await makeFullyEligible(storeId, sellerId);
-      await topUpAndVerify(token, adminToken, 5000);
+      await topUpAndVerify(token, adminToken, stepUpCode, 5000);
       const firstApply = await request(app.getHttpServer()).post(`/stores/${storeId}/verification/apply`).set("Authorization", `Bearer ${token}`);
       await request(app.getHttpServer()).post(`/admin/verification/applications/${firstApply.body.id}/approve`).set("Authorization", `Bearer ${adminToken}`).send({});
       await superuser.store.update({ where: { id: storeId }, data: { verifiedExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000) } });

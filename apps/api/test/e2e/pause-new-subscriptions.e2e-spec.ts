@@ -127,7 +127,26 @@ describe("Pause new subscriptions mode (e2e) - v0.41 founder request", () => {
   });
 
   it("when on: an EXISTING seller (already verified one plan-fee payment) can still submit a renewal - completely unaffected", async () => {
-    const adminToken = await createAndLoginAdmin("pns-admin4@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared createAndLoginAdmin() doesn't expose the
+    // enrolled secret and this is its only call site that ever reaches
+    // verify() (the other three tests only ever call setPaused()), so a
+    // fresh enroll+verify flow is done inline here rather than widening
+    // that shared helper's return shape for every one of its other callers.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "pns-admin4@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
     await request(app.getHttpServer())
       .post("/auth/signup")
       .send({ agreementAccepted: true, email: "pns-renewing@example.com", password: PASSWORD, businessName: "Renewing Co" });
@@ -142,7 +161,8 @@ describe("Pause new subscriptions mode (e2e) - v0.41 founder request", () => {
     expect(first.status).toBe(201);
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${first.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret));
 
     // Now pause new subscriptions.
     await setPaused(adminToken, true, "No new subscriptions right now.");
