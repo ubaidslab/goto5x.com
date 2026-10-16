@@ -1,5 +1,4 @@
 import { Injectable } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { PaymentGatewayProvider } from "@prisma/client";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
@@ -10,7 +9,7 @@ import { BankTransferGatewayAdapter } from "./adapters/bank-transfer-gateway.ada
 import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
-import { decryptGatewayCredential } from "./payment-gateway-credential-crypto.util";
+import { GatewayCredentialVaultService } from "./gateway-credential-vault.service";
 import { SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
 
 const ALL_PROVIDERS: PaymentGatewayProvider[] = ["raast", "easypaisa", "jazzcash", "bank"];
@@ -47,7 +46,6 @@ export interface ProviderHealthRollup {
  */
 @Injectable()
 export class GatewayHealthService {
-  private readonly encryptionKey: Buffer;
   private readonly adapters: Map<PaymentGatewayProvider, SellerPaymentGatewayAdapter>;
 
   constructor(
@@ -55,13 +53,12 @@ export class GatewayHealthService {
     private readonly settings: SettingsService,
     private readonly email: EmailService,
     private readonly platformMessages: PlatformMessagesService,
-    config: ConfigService,
+    private readonly vault: GatewayCredentialVaultService,
     raastAdapter: RaastGatewayAdapter,
     easypaisaAdapter: EasypaisaGatewayAdapter,
     jazzcashAdapter: JazzCashGatewayAdapter,
     bankAdapter: BankTransferGatewayAdapter,
   ) {
-    this.encryptionKey = Buffer.from(config.getOrThrow<string>("PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY"), "base64");
     this.adapters = new Map([
       [raastAdapter.provider, raastAdapter as SellerPaymentGatewayAdapter],
       [easypaisaAdapter.provider, easypaisaAdapter as SellerPaymentGatewayAdapter],
@@ -96,11 +93,21 @@ export class GatewayHealthService {
       if (!adapter) continue;
       let verified: boolean;
       try {
+        // D117/D126 - a connection saved before the envelope-encryption
+        // migration (scripts/rewrap-gateway-credentials.ts) has no
+        // dataKeyWrapped yet and genuinely can't be verified until that
+        // script reaches it - treated the same as any other verify
+        // failure below, not a special case worth its own log line.
+        if (!connection.apiKeyEncrypted || !connection.dataKeyWrapped) {
+          throw new Error("No wrapped data key yet - not migrated to envelope encryption.");
+        }
         const result = await adapter.verifyPayment({
           connection: {
             merchantId: connection.merchantId,
-            apiKey: decryptGatewayCredential(connection.apiKeyEncrypted!, this.encryptionKey),
-            apiSecret: connection.apiSecretEncrypted ? decryptGatewayCredential(connection.apiSecretEncrypted, this.encryptionKey) : null,
+            apiKey: await this.vault.decrypt(connection.apiKeyEncrypted, connection.dataKeyWrapped),
+            apiSecret: connection.apiSecretEncrypted
+              ? await this.vault.decrypt(connection.apiSecretEncrypted, connection.dataKeyWrapped)
+              : null,
           },
           orderId: "",
           amount: 0,

@@ -3111,3 +3111,155 @@ had quietly diverged from what "informational signal, never blocks
 checkout" should have also meant for retention, and a privacy-sensitive
 mechanism is exactly the kind of claim this session's "verify, don't
 assume" discipline exists for.
+
+### D128. KMS envelope encryption for gateway secrets (B1, D126 item 2)
+**Status:** LOCKED.
+**Decision:** per the founder's concrete spec - a generic `KmsProvider`
+interface (`generateDataKey()`/`unwrapDataKey()`), two implementations:
+- `AwsKmsProvider` - real AWS KMS `GenerateDataKey`/`Decrypt` via the AWS
+  SDK v3, with an `AWS_KMS_ENDPOINT` override so CI can point it at a
+  LocalStack-emulated KMS instead of real AWS.
+- `LocalDevKmsProvider` - env-sourced master key
+  (`LOCAL_DEV_KMS_MASTER_KEY`), explicitly `isProductionSafe = false`.
+- `KmsModule` (`@Global()`) selects and constructs only the active
+  provider directly (`new Provider(config)`), never both as ordinary
+  Nest-injected providers - Nest eagerly constructs every provider an
+  `inject` array names, which would make `AwsKmsProvider` throw on a
+  missing `AWS_KMS_KEY_ID` even when `local-dev` is the one actually
+  selected.
+- Boot guard: refuses to boot at all when `NODE_ENV=production` and the
+  selected provider isn't production-safe (`kms.module.spec.ts`, 4
+  tests, all 4 meaningful combinations).
+- `GatewayCredentialVaultService`: one random data key per gateway
+  connection row, wrapped by the active KMS provider; `issueDataKey()`
+  additionally refuses to run in production without a production-safe
+  KMS (never blocks `decrypt()` - an already-stored secret must stay
+  readable). `PaymentGatewayService`/`PlatformGatewayService` refactored
+  to use it instead of the old static-key encryption.
+- Migration: `dataKeyWrapped` column added to both gateway connection
+  tables; `scripts/rewrap-gateway-credentials.ts` idempotently re-wraps
+  existing rows under the new scheme (decrypt-under-old-key,
+  encrypt-under-new-per-row-key, same pattern as the existing
+  `rotate-encryption-key.ts`).
+- New `kms-localstack-test` CI job - a real `GenerateDataKey`/`Decrypt`
+  round trip against a LocalStack-emulated KMS endpoint, not just a
+  mock, per the founder's explicit "tested with mocks/LocalStack in CI."
+**A real bug found by this session's own local e2e verification, not CI**
+(the exact reason D130's pipefail rule exists): the refactor above
+missed one caller. `GatewayHealthService.runHealthCheckSweep()` (the
+6-hourly background sweep, FR-6.44) still decrypted stored credentials
+directly with the old static `PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY`
+instead of going through the vault - for any connection saved under the
+new per-row data key, that decrypt call threw, was silently swallowed by
+the method's own `catch { verified = false }`, and the gateway adapter's
+`verifyPayment()` was never even reached (confirmed: 0 calls). Left
+unfixed, every connection would eventually report as failing its health
+check and could trip false "payments degraded" alerts to every seller.
+Fixed by injecting `GatewayCredentialVaultService` into
+`GatewayHealthService` (already a provider in the same module,
+`PaymentGatewayModule`, so no new wiring needed) and switching both
+decrypt call sites to `vault.decrypt(ciphertext, dataKeyWrapped)`, with
+an explicit "not yet migrated" guard that cleanly falls through to the
+same `verified = false` path rather than throwing a confusing low-level
+error.
+**Verified:** full unit suite 63/63 suites, 385/385 tests, both before
+and after the `GatewayHealthService` fix. `apps/api`/`apps/web`
+typecheck and lint clean. e2e, run with `set -o pipefail` this time (not
+`| tail` alone) so a real failure couldn't hide again:
+`module62-payment-gateway-connect`, `platform-gateway.e2e`,
+`module76-prepaid-partial-advance`, and `module95-payment-model` passed
+clean on the first real (non-collided) run; `module67-gateway-health`
+failed for real on that same run (2/6 tests, the bug above), then passed
+6/6 once fixed, re-confirmed together with `module25-admin-completion`
+in one final combined run. `kms-localstack-test` passed in real CI
+(run `38957181394`) - the first real, non-mocked confirmation that
+`AwsKmsProvider`'s AWS SDK v3 request signing/wire format round-trips
+correctly. A full fresh CI run against the fixed code, and the PR
+merge, follow once that run is independently confirmed green.
+**Reasoning:** matches the founder's spec exactly; the one real defect
+this surfaced was caught specifically because local verification was
+re-run for real with a trustworthy exit code after the first
+(collision-corrupted) attempt, rather than trusting either the
+corrupted run or a quick re-skim of the diff.
+
+### D129. Drive/Printify graceful degradation (D126 reply, option b)
+**Status:** LOCKED.
+**Decision:** Google Drive import and Printify dropshipping become
+optional, the same degrade-gracefully pattern as Sentry/backups/email
+(D116, `BackupStorageService`) rather than a required boot dependency:
+- `GOOGLE_DRIVE_CLIENT_ID`/`_SECRET`/`_REDIRECT_URI` and
+  `PRINTIFY_API_KEY` are now `@IsOptional()` in `env.validation.ts`.
+- `IDriveClient`/`IPrintifyClient` both grow an `isConfigured(): boolean`;
+  every controller/service entry point that would actually touch the
+  unconfigured integration checks it first and throws
+  `ServiceUnavailableException` (503) instead of reaching a
+  `getOrThrow()` deep inside a request.
+- The dashboard (`ImagesSection.tsx`) and admin
+  (`supplier-adapters/page.tsx`) show "Not available yet" instead of the
+  normal UI/a misleading enabled toggle.
+- `main.ts` logs a plain startup line listing which optional
+  integrations are off (`optional-integrations-status.ts`'s
+  `listOffOptionalIntegrations()`) - routine for the Stage 0 beta, not a
+  Sentry-worthy misconfiguration alarm.
+- New `optional-integrations-boot.e2e-spec.ts` proves the app boots
+  cleanly with both unset.
+**Verified:** delegated to a background agent with a detailed,
+pre-investigated brief; the full diff was reviewed directly before it
+was committed. Full unit suite 63/63 suites, 385/385 tests (combined
+with B1/KMS). `apps/api`/`apps/web` typecheck/lint clean.
+`optional-integrations-boot.e2e-spec.ts` 1/1, confirmed on two separate
+isolated runs. `google-drive.e2e-spec.ts` 6/6,
+`module24-seller-data-export.e2e-spec.ts` 7/7 (both re-run in isolation
+after the fixture updates). `platform-events.e2e-spec.ts` 7/8 - the one
+failure (a real-DNS/TLS domain-verification test, unrelated to this
+change) reproduces identically on `domains.e2e-spec.ts`, a file this
+change never touched, confirming a pre-existing sandbox-only
+limitation, not a regression. Also confirmed directly rather than
+assumed: `orders.service.ts`'s `forwardSupplierItems()` already catches
+and logs a Printify adapter failure without rethrowing, so a 503 from
+the now-optional client degrades the same way; `GET /health` (not a
+weaker fallback) proves full HTTP+DI+DB/Redis connectivity in the boot
+test; `Badge`'s `warning` tone is a real, existing variant.
+**Reasoning:** matches the founder's explicit "same pattern as
+Sentry/backups/email" instruction and this codebase's existing
+optional-integration convention (`@IsOptional()` + `isConfigured()` +
+caller degrades) rather than inventing a new mechanism.
+
+### D130. Process rules after the e2e DB-collision false negative, plus KMS throwaway-key confirmation
+**Status:** LOCKED.
+**Decision:**
+1. Only one process may run tests against a shared local Postgres/Redis
+   at a time; parallel agents needing DB tests get separate
+   databases/schemas or run sequentially. Documented in README.md's
+   "Running tests" section - the exact failure mode (cross-process
+   `TRUNCATE CASCADE`) was caught firsthand twice in this session.
+2. Every test pipeline must use `set -o pipefail` (or otherwise check
+   the test runner's own exit code) - a `| tail` must never again hide
+   a non-zero jest exit code, which is exactly what happened when a
+   second, concurrent e2e run corrupted this session's own
+   verification and a misleading `exited with code 0` almost went
+   unnoticed.
+3. One unit of work per PR/commit where possible, going forward. B1
+   (KMS) and the Drive/Printify graceful-degradation work landed
+   together in one 43-file commit (`66b7337`) because both traced to
+   the same founder message and shared edited files (`app.module.ts`,
+   `env.validation.ts`) - confirmed fine this one time, but B2/B3/B4
+   each get their own commit (and likely their own PR rather than
+   continuing to stack onto the one long-running PR #12) from here on.
+**Confirmed, per the founder's direct question:** `LOCAL_DEV_KMS_MASTER_KEY`
+is a throwaway value in both places it's set, and the two values
+differ - local `apps/api/.env.test` (gitignored) vs. CI's inline
+heredoc in `ci.yml`. Grepped the full tracked repo tree for both exact
+strings: the CI value appears exactly once, nowhere else. The
+production boot guard is real, not just documented: `kms.module.ts`'s
+factory throws `Refusing to boot: KMS_PROVIDER_TYPE="local-dev" ... but
+NODE_ENV=production` whenever `NODE_ENV=production` and the selected
+provider's `isProductionSafe` is false; `LocalDevKmsProvider.isProductionSafe`
+is a hardcoded `false`, not env-derived. `kms.module.spec.ts` proves
+this in all 4 meaningful combinations, including the case where
+`KMS_PROVIDER_TYPE=local-dev` is set *explicitly* in production (not
+just left at its default) - still rejected.
+**Reasoning:** not elaborated beyond the decision itself - a direct
+founder instruction plus a direct founder question, answered by
+re-reading the actual code rather than restating what was already
+believed to be true.

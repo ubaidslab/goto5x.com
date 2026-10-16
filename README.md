@@ -341,6 +341,21 @@ database, not a mock):
    pnpm test:e2e
    ```
 
+**Only one e2e run at a time against a given Postgres/Redis pair.**
+`test/e2e/setup.ts`'s `resetDatabase()` does a full `TRUNCATE ... CASCADE`
+across nearly every table, and `resetRedis()` does `FLUSHALL`, at the start
+of every spec file. A second `jest.e2e.config.js` process (another
+terminal, another agent, a CI job pointed at the same database) racing
+the first will have its in-flight rows truncated out from under it,
+producing confusing, non-deterministic failures (typically foreign-key
+violations during `seedSettings()`/`seedDefaults()`, or a "record not
+found" right after a row was just created) that look like a real bug but
+aren't - caught firsthand twice in this project's history. If you need
+two e2e runs in parallel, point them at two separate databases/schemas
+(or just run them one after another); CI's 4 shards already each get
+their own ephemeral Postgres/Redis service containers, so this only
+matters for local/sandbox runs sharing one instance.
+
 All 127 e2e tests + 81 unit tests pass as of the v0.13 moderation amendment (see this module's
 verification report for the full list), stable across 3 consecutive full
 runs. `apps/web` has no automated test suite - see the Module 4/5
