@@ -3026,3 +3026,88 @@ session's own container, bootstrapped roles, ran migrations, and ran
 this exact spec file against them directly rather than typechecking
 and hoping - all 10 tests (3 todo) pass. Full unit suite (342/342)
 re-run clean alongside it.
+
+---
+
+### D126. Founder reply to the Stage 0 sprint report - D125 lock-in, KMS spec, fraud-flag privacy directive, B proceed
+**Status:** LOCKED.
+**Decision:**
+1. **D125 lock-in:** shipping/tax/stores/domains stay owner-only for MVP.
+   No new `StaffScope` value for now - closes the "for the founder"
+   question D125 itself raised.
+2. **KMS (M1-1C/B1), concrete spec:** a generic `KmsProvider` interface,
+   two implementations - `AwsKmsProvider` (real, AWS KMS envelope
+   encryption via GenerateDataKey/Decrypt; AWS is the first production
+   target "because it works from any host"; written against the AWS SDK,
+   tested with mocks/LocalStack in CI; credentials only ever arrive via
+   local `.env`, later) and `LocalDevKmsProvider` (env-sourced master key,
+   clearly marked non-production). A startup guard must refuse to boot in
+   `NODE_ENV=production` with `LocalDevKmsProvider`, and must refuse to
+   store any gateway secret at all without a real KMS configured - both
+   paths need a test. A migration must re-wrap any already-encrypted
+   gateway secrets under the new scheme, idempotently, with its own test.
+3. **Fraud-flag privacy check:** the `repeat_ip_short_window` signal (D120)
+   "must not become IP tracking" - only a salted hash of the IP, short
+   Redis TTL (24h example), only the resulting flag on the order, never
+   the IP itself, mentioned in the privacy notes. Confirm or change.
+4. **B (M1-1C) proceeds** as already approved (D117): Stripe sandbox
+   adapter with webhook signature verification and event-ID dedupe,
+   Paddle sandbox billing on the locked price ladder + D10 bonus-day
+   rules, COD/advance/manual e2e.
+5. **Stage 0 deployment, in parallel:** prepare per the runbook checklist
+   (D123) and send one exact list of the accounts/credentials needed
+   (domain, Resend, error tracking, backups storage, etc.) - to be
+   supplied only through the local `.env`, never in chat or the repo.
+**Reporting cadence set by the founder:** report after B1 (KMS) merges;
+send the Stage 0 needs list as soon as it's ready (not gated on B1).
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D127. D126 item 3 - fraud-flag IP privacy fix (checked, found wrong, fixed)
+**Status:** LOCKED.
+**Decision:** checked rather than confirmed - D120's `repeat_ip_short_window`
+signal did NOT match the privacy bar the founder described. It stored the
+buyer's raw IP permanently on the `Order` row (`buyer_ip` column) and
+queried it directly via Prisma (`order.count({where:{buyerIp,...}})`) -
+exactly the "IP tracking" the founder was checking against, not a false
+alarm. Fixed, not just confirmed:
+- The IP is now only ever hashed (`hashBuyerIpForFraudSignal()`, a salted
+  HMAC using the already-existing `IDENTITY_FINGERPRINT_HMAC_SECRET` - no
+  new secret - domain-separated by a fixed `"fraud-ip:"` prefix rather
+  than sharing the exact same digest space as the CNIC/payment-instrument
+  fingerprints). Deliberately does NOT reuse `identity-crypto.util.ts`'s
+  `fingerprintValue()` - that function strips non-alphanumerics for
+  identity-number formatting tolerance, which would be wrong for an IP
+  (dots/colons are structurally meaningful, not noise) and risks
+  collisions between two different IPs.
+- The hash is counted in a 24-hour fixed Redis window
+  (`RateLimitService.countInWindow()`, a new non-throwing sibling to the
+  existing `enforcePerHour()` - both now share the same INCR+conditional-
+  EXPIRE primitive) - 3rd-or-later order from the same fingerprint in the
+  window sets the flag. Redis's own TTL is the only thing that makes this
+  data disappear - nothing else has to remember to delete it.
+- `Order.buyerIp` column dropped entirely (new migration
+  `20261016160001_drop_order_buyer_ip`) - the raw IP never reaches
+  Postgres now, not even transiently. Only the resulting flag string
+  (`fraud_flags`, unchanged) is ever persisted.
+- Privacy policy (`docs/legal/privacy-policy.md` §2) updated to describe
+  the mechanism in the terms the founder asked for.
+**Verified:** confirmed via grep that `buyerIp`/`buyer_ip` had no other
+reader anywhere in the codebase before dropping the column. New unit
+tests, run for real (not just typechecked): `fraud-signal.util.spec.ts`
+(5 tests - deterministic, different IPs differ, different secret
+differs, output never contains the IP as a substring, fixed-length
+digest for both IPv4 and IPv6) and `rate-limit.service.spec.ts` (4 tests
+- new file, `RateLimitService` had zero tests before this; covers both
+`countInWindow()` and that `enforcePerHour()` still throws correctly
+after the refactor). Full unit suite 351/351 (+9). The migration applied
+cleanly against this session's local Postgres, and the checkout-
+exercising e2e files (`orders`, `b3b-manual-transfer`, `trust-safety`,
+`module22-growth-partner-programs`) were re-run against it directly, not
+just typechecked - all 4 suites, 77/77 tests, pass.
+**Reasoning:** the founder's "confirm that's how it works, or change it"
+was answered by reading the actual code first, not by re-asserting what
+D120's own doc comment claimed - the doc comment and the implementation
+had quietly diverged from what "informational signal, never blocks
+checkout" should have also meant for retention, and a privacy-sensitive
+mechanism is exactly the kind of claim this session's "verify, don't
+assume" discipline exists for.

@@ -21,6 +21,7 @@ import { SupplierListingsService } from "../suppliers/supplier-listings.service"
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 import { CheckoutDto } from "./dto/checkout.dto";
 import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
+import { hashBuyerIpForFraudSignal } from "./fraud-signal.util";
 import { round2 } from "./money.util";
 import { OrderPricingService, PricedItem } from "./order-pricing.service";
 import { computeOrderTotals } from "./order-totals.util";
@@ -49,7 +50,13 @@ interface PlaceOrderParams {
   /** Module 91 (SRS §5.67/FR-67.2) - set only from Cart.dealId (a buy-now cart), never client-supplied directly. */
   dealId?: string;
   source: OrderSource;
-  /** D116 item 5 (Stage 0) - only set on the storefront path; createManualOrder() has no buyer request to attribute an IP to. */
+  /**
+   * D116 item 5 (Stage 0) - only set on the storefront path;
+   * createManualOrder() has no buyer request to attribute an IP to.
+   * Transient only - see computeFraudFlags()'s own comment (D126):
+   * never persisted anywhere, not even hashed; used only in-memory to
+   * derive a Redis counter key for the current request.
+   */
   buyerIp?: string;
 }
 
@@ -437,7 +444,6 @@ export class CheckoutService {
             shippingAddress: params.shippingAddress as unknown as object,
             status: "pending",
             source: params.source,
-            buyerIp: params.buyerIp ?? null,
             fraudFlags,
             // Module 95 (SRS §5.6l/FR-6.65) - sticky snapshot, never
             // re-resolved from the store's current setting later.
@@ -553,6 +559,16 @@ export class CheckoutService {
    * separate, narrower concern from Seller.riskScore (RiskScoreService),
    * which scores the SELLER's own identity at signup, not buyer behavior
    * at order time.
+   *
+   * D126 (founder privacy directive) - the buyer's IP is never persisted,
+   * not even transiently: it's hashed (hashBuyerIpForFraudSignal(), a
+   * salted HMAC - see that file's own comment for why it doesn't reuse
+   * identity-crypto.util.ts's fingerprintValue()) and only that hash is
+   * used as a Redis counter key, with a 24h TTL set on the key's first hit
+   * (RateLimitService.countInWindow() - the same fixed-window primitive
+   * enforcePerHour() already uses for rate limiting, just without the
+   * throw). Only the resulting string flag below - never the IP or even
+   * its hash - ever reaches Postgres.
    */
   private async computeFraudFlags(params: PlaceOrderParams): Promise<string[]> {
     const flags: string[] = [];
@@ -560,12 +576,15 @@ export class CheckoutService {
       flags.push("disposable_email");
     }
     if (params.buyerIp) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const recentOrdersFromSameIp = await this.prismaAdmin.order.count({
-        where: { buyerIp: params.buyerIp, placedAt: { gte: oneHourAgo } },
-      });
-      // This order will be the (recentOrdersFromSameIp + 1)th from this IP this hour.
-      if (recentOrdersFromSameIp >= 2) {
+      const ipFingerprint = hashBuyerIpForFraudSignal(
+        params.buyerIp,
+        this.config.getOrThrow<string>("IDENTITY_FINGERPRINT_HMAC_SECRET"),
+      );
+      const ordersFromThisIpToday = await this.rateLimit.countInWindow(`fraud-ip:${ipFingerprint}`, 24 * 60 * 60);
+      // This order IS the Nth from this IP in the current 24h window (the
+      // counter was just incremented above) - so >= 3 means this is the
+      // 3rd-or-later order.
+      if (ordersFromThisIpToday >= 3) {
         flags.push("repeat_ip_short_window");
       }
     }
