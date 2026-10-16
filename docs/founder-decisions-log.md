@@ -2991,3 +2991,16 @@ test, found the one real gap the founder's own ask best describes
 ("staff-permission limits") was there to catch, and fixed it with the
 smallest change that closes it rather than the largest one that could
 plausibly be justified.
+**CI follow-up:** the PR-triggered full run on the above commit came
+back red - one test, not the fix. The group-8 domains cross-tenant
+test set `domains.custom_domain_enabled` with a `"global"`-scope
+override, but `PRECEDENCE` in `settings.types.ts` is `["seller",
+"store", "supplier", "plan", "category", "global"]` - a fresh test
+seller lands on the `starter_free` plan, which already carries its own
+plan-scoped override of that key to `false`, and plan outranks global.
+Confirmed, not assumed, via the real job log (`expect(201)` received
+`403`) and a direct read of `DomainsService.attach()` before touching
+anything. Not a regression from the staff-scope fix above - the failing
+call uses the seller's own owner token, never a staff one. Fixed by
+setting the override at seller scope instead (which outranks plan),
+same change in both affected tests in this file.
