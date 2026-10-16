@@ -3004,3 +3004,25 @@ anything. Not a regression from the staff-scope fix above - the failing
 call uses the seller's own owner token, never a staff one. Fixed by
 setting the override at seller scope instead (which outranks plan),
 same change in both affected tests in this file.
+**Correction (same CI follow-up, second round):** the seller-scope fix
+above was itself wrong, and CI caught it too - `setValue()` validates
+the scope against the key's own `allowedScopes` before PRECEDENCE is
+even consulted, and `domains.custom_domain_enabled`'s is `["global",
+"plan"]` (`plans.seed.ts`) - "seller" was never a legal scope for this
+key, so the call threw `BadRequestException` during test setup.
+Confirmed via the real job log (`SettingsService.setValue:121`) rather
+than assumed from the first fix's own (wrong) reasoning. Since neither
+"seller" nor "global" is usable here, and mutating the shared
+`starter_free` plan-scoped row would leak into every other
+starter_free-seller test sharing the database, the correct fix is the
+one `module16-seller-onboarding.e2e-spec.ts` already uses for this
+same gate: upgrade the test seller to a paid tier, which carries no
+override at all. The staff-permission-limit domains test never needed
+the override in the first place - `BlockStaffSessionsGuard` blocks a
+staff token before the handler ever reaches the plan-gate check - so
+it's dropped there rather than ported. Verified for real this time
+before pushing again: started local Postgres 16 + Redis in this
+session's own container, bootstrapped roles, ran migrations, and ran
+this exact spec file against them directly rather than typechecking
+and hoping - all 10 tests (3 todo) pass. Full unit suite (342/342)
+re-run clean alongside it.
