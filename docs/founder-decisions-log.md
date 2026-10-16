@@ -2513,3 +2513,104 @@ apps' typecheck and lint clean throughout.
 this was the one specifically launch-blocking item named in Part 3,
 closed with the smallest change that makes it genuinely true rather
 than the largest one that could plausibly be justified.
+
+### D114. Security P0 items (object-level authorization, gateway-secret custody, payment integrity) - investigated, findings recorded, no code changed
+**Status:** INVESTIGATION COMPLETE, IMPLEMENTATION NOT STARTED. Closes
+the investigation half of 1B's three remaining security P0 line items
+(`docs/security-audit-report.md`'s P0 table) with an honest current-
+state finding for each - none of the three gets a code change in this
+entry, for reasons specific to each, recorded below rather than
+silently expanded into a much larger undertaking or silently skipped.
+**#1 - Object-level authorization (IDOR/BOLA) on every route, "generated
+allow/deny test per route":** this is explicitly a NEW, larger-scoped
+item than the 2026-09-06 IDOR sweep already on record (§3 #13 of that
+same report) - the report's own text is unambiguous: "Every item below
+is a planned control... none of this is fixed yet," and "generated
+allow/deny test per route" describes a systematic test-generation pass
+across the entire route table, not a sampled check. That is genuinely
+larger than "finish 1B's remaining named items" - it's its own
+milestone-sized effort. What I *did* do, bounded and complete: checked
+every NEW route this session's D108-D113 work added that takes a
+client-suppliable resource id. All of them follow the already-audited
+pattern exactly - `DELETE /sellers/me/staff-accounts/:id` scopes via
+`@CurrentSellerId()` (derived from the authenticated token, never
+client-suppliable) and checks `staff.sellerId !== sellerId` before
+acting, exactly like every other owner-scoped method in this codebase;
+`/admin/wallet-topups/sellers/:sellerId/adjust` and the staff
+suspend/block admin routes are deliberately cross-tenant BY DESIGN
+(that is what admin authority means), gated by `AdminAuthGuard` (now
+also `StepUpMfaGuard` for the wallet-adjust one) rather than an IDOR
+concern. No new gap found in this session's own additions. The full
+generated-test-per-route sweep itself is recommended as its own
+dedicated effort, not squeezed into 1B's tail end.
+**#2 - Gateway-secret custody, D57's own "envelope encryption, master
+key outside the app host/image":** checked the actual implementation,
+not assumed. Every one of this codebase's 7 `*_ENCRYPTION_KEY` secrets
+(Drive token, CNIC/identity, external-API client, SMTP credential,
+admin-email credential, **payment-gateway credential**, and the newer
+ones since) uses the exact same single-tier scheme
+(`drive-token-crypto.util.ts`'s AES-256-GCM, reused verbatim by every
+other credential type including `payment-gateway-credential-crypto.
+util.ts` - D87's own comment confirms this was a deliberate "one
+audited implementation" reuse, not an oversight) - one static
+symmetric key, read directly from an environment variable on the same
+host/image that uses it. A full-repo grep for KMS/envelope/master-key/
+Vault/SecretsManager terminology returns zero matches anywhere in
+`apps/api/src`. This is real encryption at rest (meaningfully better
+than plaintext), but it is NOT what D57 actually decided: a master key
+held OUTSIDE the app host/image specifically protects against the
+scenario where the app host itself is compromised - under the current
+scheme, compromising the container also hands over the exact key
+needed to decrypt every gateway credential it's holding, defeating the
+property D57 asked for. **Not implemented here, and correctly so for
+this session:** building this for real means picking a KMS approach
+(a cloud KMS - AWS/GCP - vs. a self-hosted Vault, matching or breaking
+this project's self-host-first stance per `docs/tech-stack.md`),
+designing a per-record-DEK-wrapped-by-KMS-held-KEK scheme, migrating
+every already-encrypted credential to it, and standing up that KMS in
+every environment including local dev - a genuine architecture
+decision with real ops/cost implications, not a "small, contained fix"
+autonomous judgment call like D82/D83's items. Flagged here for
+founder decision before M1-1C (real seller gateway keys), matching
+D57/D58's own "before real seller gateway keys are ever accepted" gate.
+**#3 - Payment integrity (server-computed amounts, idempotency keys,
+atomic state transitions, webhook verification):** checked the two
+highest-value existing live money paths directly.
+`WalletService.requestTopUp()` validates `amount > 0` server-side and
+is a seller declaring their OWN top-up claim (fraud-prevention here is
+the admin's own human verification against an out-of-band bank
+receipt, not a code-level amount check - appropriate for a manual-
+transfer flow); `verifyTopUp()` reads the amount from the already-
+stored DB row (never re-accepts one from the admin's confirm call),
+guards re-processing via a `status !== "pending"` check (equivalent
+protection to an idempotency key for this specific admin-driven,
+single-actor flow), and wraps the ledger write + status update in one
+`$transaction` - server-computed, atomic, and effectively idempotent
+for this path, confirmed by reading the code, not assumed. **A real,
+systemic gap found, not fixed here:** a full-repo grep for "Idempotency-
+Key"/"idempotencyKey" returns zero matches anywhere - there is no
+FORMAL, reusable idempotency-key mechanism for client-retryable money-
+moving requests (e.g., a flaky-network double-submit on checkout or a
+mark-as-paid call). The admin/manual-driven paths checked above happen
+to be protected by their own status-check guards, but that's
+per-method incidental protection, not a systematic pattern a future
+endpoint can be assumed to inherit. **Webhook verification is not yet
+applicable, not skipped:** no real payment-gateway webhook endpoint
+exists anywhere in this codebase today - Safepay/Stripe/Simpaisa/
+Airwallex/Razorpay adapters are all M1-1C/M3 scope, explicitly blocked
+on founder-supplied keys, not started. This sub-item needs to be
+designed alongside whichever gateway adapter is actually built first
+(1C), not retrofitted onto a webhook receiver that doesn't exist.
+**Recommendation for the 1B report:** a formal idempotency-key
+middleware/decorator (client-supplied key, server dedupes by key+route
+within a TTL window) is a bounded, clearly-scoped follow-up that could
+reasonably happen inside 1B's spirit if the founder wants it done now
+rather than deferred to M1-1C; the KMS/envelope-encryption migration
+and the full IDOR generated-test-per-route sweep are both larger,
+genuinely milestone-sized efforts that need their own explicit go-ahead
+rather than being absorbed into "finish 1B's remaining items."
+**Reasoning:** investigate-first, same discipline as every other item
+this session - the honest finding for all three was "here's exactly
+what's true today, here's the real gap, here's why building the full
+fix now would be the wrong call to make unilaterally," not silence and
+not a rushed partial implementation.
