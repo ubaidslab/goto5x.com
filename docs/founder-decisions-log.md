@@ -2907,3 +2907,28 @@ reading of "one tested restore" for a sandbox with no access to the
 real production VPS/S3 bucket is "prove the mechanism and the exact
 documented failure mode stay caught, continuously," not a restore this
 session could perform against infrastructure it has no access to.
+
+### D124. D116 item 7 - one e2e smoke test per payment path, checked before writing anything new
+**Status:** LOCKED.
+**Decision:** audited existing coverage for all 3 named payment paths
+before adding anything, to avoid duplicating what already exists.
+**COD and manual mark-as-paid already have full-chain coverage**: `
+orders.e2e-spec.ts`'s Financial Truth Invariant test already goes real
+storefront checkout -> seller-dashboard-visible pending order -> real
+markAsPaid() -> confirmed, and mechanically "manual mark-as-paid" IS
+that same mechanism (checked, not assumed - `Store.paymentModel`
+defaults to `cod`, and `CheckoutService`'s per-model readiness gate
+only adds extra requirements for `prepaid`/`advance`, so an
+unconfigured default checkout already IS the COD path). **The advance
+model's Manual Transfer fallback (B3b) had a real, if narrow, gap**:
+`b3b-manual-transfer.e2e-spec.ts`'s happy-path test already chains real
+checkout -> real reference submission -> real markAsPaid(), but verified
+the intermediate and final state via direct Prisma reads, never the
+actual `GET /stores/:storeId/orders/:orderId` a seller's browser hits -
+closed by adding exactly that GET call in two places (after submission,
+after confirmation), same test, no new file.
+**Reasoning:** "one e2e smoke test per payment path" is already true
+for 2 of 3 paths without any new code - closing the one real gap in
+the existing test was the smallest change that makes the claim
+genuinely true for all 3, not a reason to write 3 new parallel tests
+duplicating what already exists.

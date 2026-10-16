@@ -152,6 +152,17 @@ describe("B3b: Manual Transfer for the Advance payment model (founder decision, 
       expect(afterSubmit.manualTransferSubmittedAt).not.toBeNull();
       expect(afterSubmit.status).toBe("pending"); // submitting a reference never confirms the order by itself
 
+      // A3/D116 item 7 (Stage 0) - this whole chain is meant to end seller-
+      // dashboard-visible, not just DB-correct: the seller's own GET must
+      // show the submitted reference before any mark-as-paid decision.
+      const sellerSeesSubmitted = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/orders/${order.id}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(sellerSeesSubmitted.status).toBe(200);
+      expect(sellerSeesSubmitted.body.status).toBe("pending");
+      expect(sellerSeesSubmitted.body.manualTransferReference).toBe("TXN-REF-12345");
+      expect(sellerSeesSubmitted.body.manualTransferSenderName).toBe("Ayesha Khan");
+
       const markPaid = await request(app.getHttpServer())
         .post(`/stores/${storeId}/orders/${order.id}/mark-as-paid`)
         .set("Authorization", `Bearer ${token}`);
@@ -160,6 +171,12 @@ describe("B3b: Manual Transfer for the Advance payment model (founder decision, 
 
       const placedEvent = await superuser.platformEvent.findFirstOrThrow({ where: { eventType: "order.placed", entityId: order.id } });
       expect((placedEvent.metadata as { confirmedByUserId?: string }).confirmedByUserId).toBe(userId);
+
+      // And the confirmation itself must be seller-dashboard-visible too, not just the mark-as-paid response body.
+      const sellerSeesConfirmed = await request(app.getHttpServer())
+        .get(`/stores/${storeId}/orders/${order.id}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(sellerSeesConfirmed.body.status).toBe("confirmed");
     });
   });
 
