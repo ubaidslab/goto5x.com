@@ -2438,3 +2438,78 @@ now get a materially shorter default lifetime than seller sessions
 without touching the shared access-token TTL, and step-up MFA is now a
 mechanism other admin actions can adopt in one line rather than a
 private method that only ever existed for one call site.
+
+### D113. D83 - EmailService gets a real provider instead of unconditionally throwing for anything but console
+**Status:** LOCKED. Closes `docs/auth-session-design.md`'s Part 3
+disclosure: "Non-console email providers are unimplemented... In a real
+deployment with a real EMAIL_PROVIDER configured, every email send -
+including password reset and email verification - fails. This is
+launch-blocking on its own terms."
+**Decision:** `EmailService.send()` was already the one choke point
+every one of its 20 other methods funneled through (confirmed by
+reading the whole file, not assumed) - it now dispatches to a real
+`EmailProvider` implementation (`email-provider.interface.ts`, one
+method, the same four params `send()` already took) instead of
+unconditionally throwing for anything but `"console"`.
+`ConsoleEmailProvider` is the exact pre-existing dev/test behavior,
+moved out verbatim - zero behavior change there. `ResendEmailProvider`
+is the first real one: a direct `fetch()` against Resend's HTTP API,
+not its SDK - one HTTP call, no new npm dependency, matching how this
+codebase already calls other external HTTP APIs (payment gateways)
+without adopting their SDKs. `docs/tech-stack.md`'s own Email row
+("Transactional email API (e.g. Resend/SES-class provider)... not
+worth building") already named Resend as the example, confirming this
+wasn't a build-vs-buy call that needed revisiting - a self-hosted SMTP
+transport was never actually the intended design for the platform's
+own transactional email (that's a separate, already-existing concern -
+`SMTP_CREDENTIAL_ENCRYPTION_KEY`, Module 26 - for a SELLER's own
+connected SMTP server for their campaigns, a different feature
+entirely).
+**Attachment handling:** Resend's API needs the actual bytes (base64),
+not a URL reference, so `ResendEmailProvider` fetches `attachmentUrl`
+itself and inlines it - best-effort, same "never blocks the main send"
+discipline `sendOrderConfirmationEmail`'s own `invoicePdfUrl` comment
+already documents: a failed attachment fetch logs a warning and sends
+without it rather than losing the email entirely over a PDF-storage
+hiccup.
+**Deliberately NOT done here:** `"ses"` stays a validated
+`EMAIL_PROVIDER` value (`env.validation.ts`'s existing `@IsIn`) but is
+still unimplemented - throws the same "not yet implemented" error,
+narrower now (just this one value). Resend alone closes the actual
+launch-blocking gap (at least one real provider works) with zero new
+dependencies; SES needs the AWS SDK plus region/credential setup, a
+separable follow-up rather than folded in silently here.
+**On `WalletGraceLadderService.publish()` (the other half of this
+item's name) - investigated, no code change made, and here's why:**
+`publish()` already has a `requireEmailVerification`-gated check
+against `seller.user.emailVerifiedAt` (pre-existing, unrelated to this
+item). That gate was already correct in shape; what made it hollow in
+a real deployment was that the verification email it depends on could
+never actually be delivered once a real `EMAIL_PROVIDER` was
+configured, since `send()` threw for anything but console. With
+`send()` now actually working for Resend, the existing gate becomes
+meaningful "for free" - no new precondition belongs in
+`WalletGraceLadderService` itself; the fix was upstream in
+`EmailService` the whole time. Adding a second, separate "is email
+transport configured" check directly inside a billing/publishing
+service would be unrelated infrastructure logic bleeding into a
+business-rule method for no benefit over fixing the actual root cause.
+**Verified:** new `resend-email.provider.spec.ts` (5 tests) - missing-
+API-key rejection, the request shape sent to Resend's API, attachment
+fetch-and-inline, attachment-fetch-failure graceful degradation, and
+non-OK-response surfacing. One test's own mock had a bug caught before
+trusting the result: `Buffer.from(str).buffer` is Node's pooled
+allocation, not a tightly-sized `ArrayBuffer` (small Buffers share an
+8KB pool), so the mock had to slice to the real byte range to match
+what a genuine `Response.arrayBuffer()` actually returns. A focused
+battery of 11 e2e files that exercise `EmailService` through its
+existing console path (signup/password-reset/admin-auth/seller-
+notifications/order-verification/support-tickets/monthly-reports/
+suppliers/missing-tracking-alerts/gateway-health/data-export - 90
+tests) all still pass, confirming the refactor is transparent to every
+existing caller. Full unit suite (51/326, +5 for this item), both
+apps' typecheck and lint clean throughout.
+**Reasoning:** not elaborated beyond the design doc's own framing -
+this was the one specifically launch-blocking item named in Part 3,
+closed with the smallest change that makes it genuinely true rather
+than the largest one that could plausibly be justified.
