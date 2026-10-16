@@ -2871,3 +2871,39 @@ buy call this session already made for Resend over self-hosted SMTP
 (D113) - "don't build/run infrastructure that's a specialized, already-
 solved, externally-maintained concern" is a repeated pattern, not a
 one-off.
+
+### D123. D116 item 6 (remainder) - automated backup-restore CI drill + Stage 0 deploy checklist
+**Status:** LOCKED.
+**Decision:** daily backups were already automated before this session
+(`backups/database-backup.service.ts`, Sept 2026) - what `docs/launch-
+runbook.md` §6 still only offered was a one-off MANUAL restore drill
+(and its own text already documents the one time it actually ran,
+Sept 2026, finding a real bug: FK constraints silently dropped without
+`psql -v ON_ERROR_STOP=1`). A new CI job, `backup-restore-drill` (`.
+github/workflows/ci.yml`, same cheap tier as `db-role-grants` - real
+Postgres, no Redis/Playwright/app boot), now runs the exact pg_dump
+invocation `DatabaseBackupService` itself uses in production, restores
+it into a scratch database with the runbook's own `ON_ERROR_STOP=1`
+discipline, and asserts two things a bare "the app booted" check would
+miss: a deterministic marker row survives byte-for-byte, and every
+foreign-key constraint name survives (the exact class of failure §6
+already found once). This makes the restore side of the backup story
+continuously, automatically re-verified on every push, not a drill the
+founder has to remember to repeat by hand.
+**Stage 0 deploy checklist:** a new §0b in `launch-runbook.md`,
+inserted right after the existing branch-protection section (read
+early, not buried at the end) - a condensed cross-reference saying
+which of the existing numbered sections apply to a Stage 0 deploy
+(skip load/soak, skip Paddle entirely), plus the one genuinely new item
+nothing else in the doc covers: SPF/DKIM/DMARC for the Resend sending
+domain. Checked directly rather than assumed: this is a DIFFERENT
+concern from §10's existing Cloudflare Email Routing instructions
+(founder's own inbound/send-as inbox) - if both mechanisms live on the
+same root domain, their SPF records must be MERGED into one TXT record,
+never two separate ones (invalid per the SPF spec), which the checklist
+calls out explicitly since it's the one non-obvious trap here.
+**Reasoning:** not elaborated beyond the decision itself - the honest
+reading of "one tested restore" for a sandbox with no access to the
+real production VPS/S3 bucket is "prove the mechanism and the exact
+documented failure mode stay caught, continuously," not a restore this
+session could perform against infrastructure it has no access to.

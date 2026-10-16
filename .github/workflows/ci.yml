@@ -376,6 +376,109 @@ jobs:
             exit 1
           fi
 
+  backup-restore-drill:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # D116 item 6 (Stage 0) - "automated daily DB backups plus one tested
+    # restore." Backups themselves are already automated (backups/database-
+    # backup.service.ts, running in the worker process against a real
+    # off-box S3 target); what's actually missing is proof that the restore
+    # SIDE of docs/launch-runbook.md's §6 procedure keeps working, on every
+    # change, not as a one-off manual drill the founder has to remember to
+    # repeat. This job runs the REAL pg_dump invocation DatabaseBackupService
+    # itself uses (same DATABASE_ADMIN_URL, same plain-text-then-gzip
+    # shape), then restores it with the runbook's own `-v ON_ERROR_STOP=1`
+    # discipline into a scratch database and checks two things a "the app
+    # booted and the row counts matched" check would miss: that the row
+    # pg_dump captured actually comes back, and that every foreign-key
+    # constraint survives (the exact class of failure §6 already documents
+    # finding once, silently, without this flag).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-superuser-password
+          POSTGRES_DB: uzeyn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+
+      - name: Bootstrap app_runtime/app_admin roles, then run migrations - same order db-role-grants already proved is required
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=uzeyn \
+            -f apps/api/scripts/bootstrap-db.sql
+      - run: pnpm --filter @uzeyn/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
+
+      - name: Insert a deterministic marker row + capture the real FK constraint list before backing up
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn -c "
+            CREATE TABLE backup_drill_marker (id text PRIMARY KEY, value text NOT NULL);
+            INSERT INTO backup_drill_marker (id, value) VALUES ('drill', 'uzeyn-backup-restore-drill');
+          "
+          psql -h localhost -U postgres -d uzeyn -t -A -c "
+            SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY 1;
+          " > /tmp/fk-before.txt
+          echo "Captured $(wc -l < /tmp/fk-before.txt) foreign-key constraint names before backup."
+
+      - name: pg_dump against DATABASE_ADMIN_URL + gzip - the exact invocation DatabaseBackupService uses in production
+        run: |
+          pg_dump "postgresql://app_admin:ci-admin-password@localhost:5432/uzeyn" | gzip > /tmp/backup.sql.gz
+          ls -la /tmp/backup.sql.gz
+
+      - name: Restore into a scratch database, with ON_ERROR_STOP=1 (docs/launch-runbook.md §6's own documented, previously-missing discipline)
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn -c "CREATE DATABASE uzeyn_restore_drill;"
+          gunzip -c /tmp/backup.sql.gz | psql -h localhost -U postgres -d uzeyn_restore_drill -v ON_ERROR_STOP=1
+
+      - name: Verify the marker row survived the restore
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          actual=$(psql -h localhost -U postgres -d uzeyn_restore_drill -t -A -c "SELECT value FROM backup_drill_marker WHERE id = 'drill';")
+          if [ "$actual" != "uzeyn-backup-restore-drill" ]; then
+            echo "Marker row missing or wrong after restore - got: '$actual'"
+            exit 1
+          fi
+          echo "OK - marker row survived pg_dump + restore unchanged."
+
+      - name: Verify every foreign-key constraint survived the restore (the exact silent-drop failure §6 documents)
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn_restore_drill -t -A -c "
+            SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY 1;
+          " > /tmp/fk-after.txt
+          if ! diff -q /tmp/fk-before.txt /tmp/fk-after.txt > /dev/null; then
+            echo "MISMATCH - the restored database's foreign-key constraints differ from the source. Missing/extra:"
+            diff /tmp/fk-before.txt /tmp/fk-after.txt
+            exit 1
+          fi
+          echo "OK - all $(wc -l < /tmp/fk-after.txt) foreign-key constraints survived the restore unchanged."
+
   e2e-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'

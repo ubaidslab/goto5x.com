@@ -90,6 +90,65 @@ nothing else is possible anyway.
 
 ---
 
+## 0b. Stage 0 deploy checklist (invite-only private beta)
+
+D115 (2026-10-16): Stage 0 is the minimum viable private beta — 5-10
+invited sellers, Free plan only, COD + manual mark-as-paid + advance via
+manual transfer, **no billing, no live seller gateway keys**. This is a
+condensed cross-reference for THAT deploy, not a replacement for the
+full checklist below (which stays the bar for the eventual paid public
+launch) — skip nothing it tells you not to skip.
+
+- [ ] Sections 0-7 below apply as written — branch protection, VPS, DNS
+      (app/api/support hosts only — no storefront-domain DNS needed yet
+      unless an invited seller actually wants a custom domain), secrets,
+      encryption-key rotation readiness, bringing the stack up, seeding
+      reference data, backup verification.
+- [ ] Section 8 (load/soak simulation) can be skipped or scaled down —
+      it validates launch-scale load, not 5-10-seller beta scale.
+- [ ] Section 9 (Launch Settings values) — set as written; nothing
+      Stage-0-specific here.
+- [ ] Section 10 (business email) applies as written — this is the
+      founder's own `support@`/`founder@` inbox, unrelated to the item
+      below.
+- [ ] **Section 11 (Paddle) is NOT needed for Stage 0** — D115 explicitly
+      excludes billing; skip it entirely until M1-1C.
+- [ ] **New: SPF/DKIM/DMARC for the Resend sending domain** — distinct
+      from section 10's Cloudflare Email Routing (that's the founder's
+      own inbound/send-as mail; this is the PLATFORM's own transactional
+      email — order confirmations, verification emails — sent via
+      `EMAIL_PROVIDER=resend`/`EMAIL_FROM_ADDRESS`, D113):
+      1. In the Resend dashboard, add and verify the domain in
+         `EMAIL_FROM_ADDRESS` (e.g. `no-reply@uzeyn.com`'s domain).
+      2. Add the DKIM CNAME/TXT records Resend's own domain-verification
+         page gives you.
+      3. Add (or **merge into one**) the SPF TXT record. If section 10's
+         Cloudflare Email Routing is also live on the same root domain,
+         there must be exactly ONE SPF TXT record covering both
+         mechanisms (e.g. `v=spf1 include:_spf.mx.cloudflare.net
+         include:amazonses.com ~all` — Resend's sending infrastructure
+         is Amazon SES, but confirm the exact `include:` Resend's own
+         dashboard specifies before copying this verbatim). Two separate
+         SPF TXT records for one domain is invalid per the SPF spec and
+         every deliverability checker will flag it.
+      4. Add a DMARC TXT record at `_dmarc.<domain>` if one doesn't
+         already exist (`p=none` to start — monitor before enforcing).
+      5. Confirm `EMAIL_PROVIDER=resend` and `EMAIL_PROVIDER_API_KEY`
+         are actually set in production — without this, `EmailService`
+         still works (`ConsoleEmailProvider`, D83's own fallback) but
+         nothing is delivered to a real inbox, silently.
+- [ ] Confirm the `backup-restore-drill` CI job (`.github/workflows/
+      ci.yml`, added alongside this checklist, D116 item 6) is green on
+      `main` — it now exercises section 6's exact restore procedure on
+      every push, not only as a one-off manual drill.
+- [ ] `SENTRY_DSN` set in production (optional but recommended before
+      real sellers touch the product — D116 item 6/D122).
+- [ ] Confirm every founder-facing item D116 item 3 scoped OUT of Stage 0
+      (the full IDOR/BOLA generated-test-per-route sweep) is understood
+      as deferred to before the PAID public launch, not before this one.
+
+---
+
 ## 1. VPS provisioning
 
 - [ ] Provision a VPS (sized per `docs/tech-stack.md`'s recommendation).
