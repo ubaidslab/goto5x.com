@@ -13,6 +13,7 @@ import { authenticator } from "otplib";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
+import { isDisposableEmailDomain } from "../common/disposable-email/disposable-email.util";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { RiskScoreService } from "../trust-safety/risk-score.service";
@@ -100,6 +101,14 @@ export class AuthService {
         await this.prisma.sellerSignupWaitlist.create({ data: { email: dto.email, country } });
         return { waitlisted: true };
       }
+    }
+
+    // D116 item 5 (Stage 0) - checked before any DB read/write, same
+    // placement discipline as the country gate above. A hard rejection,
+    // not a waitlist (unlike the country gate): there's nothing to wait
+    // for, a throwaway inbox is never going to become a real account.
+    if (isDisposableEmailDomain(dto.email)) {
+      throw new BadRequestException("Please sign up with a permanent email address, not a disposable/temporary one.");
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });

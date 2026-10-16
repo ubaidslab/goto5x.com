@@ -2356,6 +2356,14 @@ model Order {
   manualTransferReference   String?   @map("manual_transfer_reference")
   manualTransferSenderName  String?   @map("manual_transfer_sender_name")
   manualTransferSubmittedAt DateTime? @map("manual_transfer_submitted_at") @db.Timestamptz
+  // D116 item 5 (Stage 0) - "basic fraud flags." buyerIp is the checkout
+  // request's IP, persisted for the first time (previously used only
+  // transiently for rate-limiting); fraudFlags is a short, append-only
+  // list of cheap rule-based signals computed once at placement time
+  // (e.g. "disposable_email", "repeat_ip_short_window") - informational
+  // only, surfaced to the seller/admin, never blocks checkout.
+  buyerIp                   String?   @map("buyer_ip")
+  fraudFlags                String[]  @default([]) @map("fraud_flags")
 
   store               Store                @relation(fields: [storeId], references: [id])
   customer            Customer?            @relation(fields: [customerId], references: [id])

@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { OrderSource } from "@prisma/client";
+import { isDisposableEmailDomain } from "../common/disposable-email/disposable-email.util";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { CustomersService } from "../customers/customers.service";
@@ -48,6 +49,8 @@ interface PlaceOrderParams {
   /** Module 91 (SRS §5.67/FR-67.2) - set only from Cart.dealId (a buy-now cart), never client-supplied directly. */
   dealId?: string;
   source: OrderSource;
+  /** D116 item 5 (Stage 0) - only set on the storefront path; createManualOrder() has no buyer request to attribute an IP to. */
+  buyerIp?: string;
 }
 
 /**
@@ -137,6 +140,7 @@ export class CheckoutService {
         giftCardCode: dto.giftCardCode,
         dealId: cart.dealId ?? undefined,
         source: "storefront",
+        buyerIp: ip,
       }));
     } catch (err) {
       // Placing the order failed (sold out, bad discount code, etc.) - this
@@ -394,6 +398,7 @@ export class CheckoutService {
         giftCardReservation = await this.giftCards.validateAndReserve(params.storeId, params.giftCardCode, totalAmount);
       }
       const giftCardAmount = giftCardReservation?.amount ?? 0;
+      const fraudFlags = await this.computeFraudFlags(params);
 
       const order = await this.prismaAdmin.$transaction(async (tx) => {
         // FR-13.1 - applies uniformly regardless of order source (storefront
@@ -432,6 +437,8 @@ export class CheckoutService {
             shippingAddress: params.shippingAddress as unknown as object,
             status: "pending",
             source: params.source,
+            buyerIp: params.buyerIp ?? null,
+            fraudFlags,
             // Module 95 (SRS §5.6l/FR-6.65) - sticky snapshot, never
             // re-resolved from the store's current setting later.
             paymentModel: store.paymentModel,
@@ -537,6 +544,32 @@ export class CheckoutService {
       }
       throw err;
     }
+  }
+
+  /**
+   * D116 item 5 (Stage 0) - "basic fraud flags." Cheap, rule-based signals
+   * computed once at placement time and stored on the order for the
+   * seller/admin to see - informational only, never blocks checkout. A
+   * separate, narrower concern from Seller.riskScore (RiskScoreService),
+   * which scores the SELLER's own identity at signup, not buyer behavior
+   * at order time.
+   */
+  private async computeFraudFlags(params: PlaceOrderParams): Promise<string[]> {
+    const flags: string[] = [];
+    if (isDisposableEmailDomain(params.buyerEmail)) {
+      flags.push("disposable_email");
+    }
+    if (params.buyerIp) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentOrdersFromSameIp = await this.prismaAdmin.order.count({
+        where: { buyerIp: params.buyerIp, placedAt: { gte: oneHourAgo } },
+      });
+      // This order will be the (recentOrdersFromSameIp + 1)th from this IP this hour.
+      if (recentOrdersFromSameIp >= 2) {
+        flags.push("repeat_ip_short_window");
+      }
+    }
+    return flags;
   }
 
   /**

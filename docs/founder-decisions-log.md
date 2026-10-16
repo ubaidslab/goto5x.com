@@ -2761,3 +2761,41 @@ session.
 can only allow/deny, it can't replay a cached response, and "replay the
 same result instead of re-running the side effect" is the actual
 property an idempotency key needs to provide.
+
+### D120. D116 item 5 - disposable-email block (seller signup) + basic fraud flags (buyer checkout)
+**Status:** LOCKED.
+**Decision:** two related but distinct controls, matched to where each
+belongs:
+- **Seller/supplier signup** (`AuthService.signup()`): a disposable
+  email domain is a hard rejection (400), checked before any DB read/
+  write, same placement discipline as the existing country gate just
+  above it - but unlike that gate, never waitlisted (there's nothing to
+  wait for). Backed by the `disposable-email-domains` npm package
+  (121k+ domains, actively maintained - last published days before this
+  was written) plus its `wildcard.json` subdomain list, rather than a
+  hand-rolled list that would just go stale.
+- **Buyer checkout** (`CheckoutService.placeOrder()`): a new, informational-
+  only `computeFraudFlags()` step adds up to two string flags -
+  `disposable_email` (same check as above) and `repeat_ip_short_window`
+  (3rd+ order from the same IP within an hour) - onto two new `Order`
+  columns (`buyerIp`, `fraudFlags`, migration `20261016103000_order_
+  fraud_flags`). Never blocks checkout, deliberately: a hard block here
+  risks refusing a real sale over a privacy-conscious buyer's throwaway
+  email. Flows through to every existing seller/admin order-read path
+  automatically (none of them use a narrowing Prisma `select`, confirmed
+  by reading `orders.service.ts`, not assumed) - no new UI was built to
+  surface them specially; that's a reasonable fast-follow, not done here.
+  Deliberately separate from `Seller.riskScore` (`RiskScoreService`),
+  which scores a SELLER's own identity at signup, not buyer behavior at
+  order time - a different signal for a different actor.
+**Verified:** `disposable-email.util.spec.ts` (4 tests: known disposable
+domain, wildcard subdomain, ordinary domain, malformed input). The
+signup-rejection and checkout-fraud-flag behaviors themselves need a real
+database to exercise (buyer/seller creation, order placement) - covered
+by this session's existing e2e discipline going forward, verified via
+CI after push same as every DB-dependent change this session.
+**Reasoning:** "block" for a known-bad signal at account creation (seller
+side, where it's almost certainly abuse in an invite-only beta); "flag,
+don't block" for the same signal at checkout (buyer side, where it's
+sometimes a real, privacy-conscious customer) - the two surfaces warranted
+different enforcement, not the same rule copy-pasted twice.
