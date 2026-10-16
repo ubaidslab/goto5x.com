@@ -297,12 +297,18 @@ describe("Stage 0 IDOR/BOLA sweep (D116 item 3) - 9 high-risk route groups", () 
     it("tenant isolation: seller A cannot list, verify, or remove a domain attached to seller B's store", async () => {
       const a = await signupLoginAndCreateStore("idor-domains-a@example.com", "idor-domains-a-store");
       const b = await signupLoginAndCreateStore("idor-domains-b@example.com", "idor-domains-b-store");
-      // Seller-scoped, not global: PRECEDENCE (settings.types.ts) is
-      // ["seller", "store", "supplier", "plan", "category", "global"] - a
-      // fresh test seller lands on the starter_free plan (§5.73/FR-73.3),
-      // which already has its own plan-scoped override of this key set to
-      // false, outranking a merely-global one.
-      await app.get(SettingsService).setValue("domains.custom_domain_enabled", "seller", b.sellerId, true, ADMIN_ID);
+      // A fresh seller defaults to starter_free (§5.73/FR-73.3), which
+      // plan-scopes this key to false - and neither "seller" nor "global"
+      // is even in this key's allowedScopes (["global", "plan"] -
+      // plans.seed.ts), so there's no override this test can set without
+      // mutating the shared starter_free plan row itself (which would leak
+      // into every other starter_free-seller test sharing this database).
+      // Upgraded to a paid tier instead, which carries no override at all
+      // (only starter_free does) - the same fix
+      // module16-seller-onboarding.e2e-spec.ts already uses for this
+      // identical gate.
+      const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+      await superuser.subscription.update({ where: { sellerId: b.sellerId }, data: { planId: goPlan.id } });
 
       const attach = await request(app.getHttpServer())
         .post(`/stores/${b.storeId}/domains`)
@@ -454,10 +460,12 @@ describe("Stage 0 IDOR/BOLA sweep (D116 item 3) - 9 high-risk route groups", () 
 
     /** Same finding/fix as shipping-settings immediately above - see that test's doc comment for the full analysis. */
     it("domains is owner-only - a staff account, regardless of scope, is blocked exactly like payment-instructions already is", async () => {
-      const { token, storeId, sellerId } = await signupLoginAndCreateStore("idor-staffgap-domains@example.com", "idor-staffgap-domains-store");
+      const { token, storeId } = await signupLoginAndCreateStore("idor-staffgap-domains@example.com", "idor-staffgap-domains-store");
       await app.get(SettingsService).setValue("staff.max_accounts", "global", null, 5, ADMIN_ID);
-      // Seller-scoped, not global - see the cross-tenant domains test's own comment (outranks the starter_free plan's own override of this key).
-      await app.get(SettingsService).setValue("domains.custom_domain_enabled", "seller", sellerId, true, ADMIN_ID);
+      // No custom-domain-enabled override needed here (unlike the cross-
+      // tenant test above): BlockStaffSessionsGuard runs before the handler
+      // ever reaches DomainsService's plan-gate check, so a staff token
+      // 403s regardless of the seller's plan.
       const staff = await createStaff(token, "idor-staffgap-domains-hire@example.com", [scopeWrite("design")]);
 
       const list = await request(app.getHttpServer())
