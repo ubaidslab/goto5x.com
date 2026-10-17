@@ -130,6 +130,11 @@ describe("validateEnv", () => {
     expect(() => validateEnv(validConfig)).not.toThrow();
   });
 
+  it("passes when STRIPE_API_HOST/STRIPE_API_PROTOCOL are absent (B2 - CI-only stripe-mock override, never required in a real environment)", () => {
+    expect(() => validateEnv(validConfig)).not.toThrow();
+    expect(() => validateEnv({ ...validConfig, STRIPE_API_HOST: "localhost:12111", STRIPE_API_PROTOCOL: "http" })).not.toThrow();
+  });
+
   it("throws when KMS_PROVIDER_TYPE has a value outside the allowed set", () => {
     expect(() => validateEnv({ ...validConfig, KMS_PROVIDER_TYPE: "self-hosted-vault" })).toThrow();
   });

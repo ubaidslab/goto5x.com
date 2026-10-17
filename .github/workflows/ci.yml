@@ -534,6 +534,41 @@ jobs:
           AWS_KMS_ENDPOINT: http://localhost:4566
         run: pnpm --filter @uzeyn/api exec ts-node scripts/verify-kms-localstack.ts
 
+  stripe-mock-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # D117/B2 (founder decision, sandbox only) - stripe-gateway.adapter.
+    # spec.ts and stripe-webhook.controller.spec.ts already prove the
+    # logic against a mocked SDK client; this job is the real round
+    # trip the kms-localstack-test job above already established the
+    # pattern for - the real Stripe SDK's request signing/wire format,
+    # against Stripe's own open-source stripe-mock fake API server, not
+    # a mock. Same cheap tier as backup-restore-drill/kms-localstack-
+    # test (no Postgres/Redis/Playwright needed here).
+    services:
+      stripe-mock:
+        image: stripe/stripe-mock:latest
+        ports: ["12111:12111"]
+        options: >-
+          --health-cmd="wget -qO- http://localhost:12111/v1/charges || curl -sf http://localhost:12111/v1/charges"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Real Checkout Session create -> retrieve round trip + webhook signature verification against stripe-mock
+        env:
+          STRIPE_API_HOST: localhost:12111
+        run: pnpm --filter @uzeyn/api exec ts-node scripts/verify-stripe-mock.ts
+
   e2e-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'

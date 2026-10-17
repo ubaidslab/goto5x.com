@@ -9,16 +9,18 @@ import { BankTransferGatewayAdapter } from "./adapters/bank-transfer-gateway.ada
 import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
+import { StripeGatewayAdapter } from "./adapters/stripe-gateway.adapter";
 import { GatewayCredentialVaultService } from "./gateway-credential-vault.service";
 import { SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
 
-const ALL_PROVIDERS: PaymentGatewayProvider[] = ["raast", "easypaisa", "jazzcash", "bank"];
+const ALL_PROVIDERS: PaymentGatewayProvider[] = ["raast", "easypaisa", "jazzcash", "bank", "stripe"];
 
 const PROVIDER_LABEL: Record<PaymentGatewayProvider, string> = {
   raast: "Raast",
   easypaisa: "Easypaisa",
   jazzcash: "JazzCash",
   bank: "Bank transfer",
+  stripe: "Stripe",
 };
 
 export interface ProviderHealthRollup {
@@ -58,12 +60,14 @@ export class GatewayHealthService {
     easypaisaAdapter: EasypaisaGatewayAdapter,
     jazzcashAdapter: JazzCashGatewayAdapter,
     bankAdapter: BankTransferGatewayAdapter,
+    stripeAdapter: StripeGatewayAdapter,
   ) {
     this.adapters = new Map([
       [raastAdapter.provider, raastAdapter as SellerPaymentGatewayAdapter],
       [easypaisaAdapter.provider, easypaisaAdapter as SellerPaymentGatewayAdapter],
       [jazzcashAdapter.provider, jazzcashAdapter as SellerPaymentGatewayAdapter],
       [bankAdapter.provider, bankAdapter as SellerPaymentGatewayAdapter],
+      [stripeAdapter.provider, stripeAdapter as SellerPaymentGatewayAdapter],
     ]);
   }
 
