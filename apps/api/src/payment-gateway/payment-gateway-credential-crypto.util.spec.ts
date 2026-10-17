@@ -21,9 +21,12 @@ describe("payment-gateway-credential-crypto.util", () => {
     expect(() => decryptGatewayCredential(packed, randomBytes(32))).toThrow();
   });
 
+  // D87 - decryptGatewayCredential is now a re-export of
+  // decryptDriveToken (drive-token-crypto.util.ts); its error message
+  // names "Drive token" generically, same as identity-crypto.util.ts's
+  // own pre-existing re-export already does for CNIC/payment-instrument
+  // fingerprints - one shared message, not a per-domain string.
   it("rejects a malformed packed string", () => {
-    expect(() => decryptGatewayCredential("not-a-valid-packed-value", key)).toThrow(
-      /Malformed encrypted payment-gateway credential/,
-    );
+    expect(() => decryptGatewayCredential("not-a-valid-packed-value", key)).toThrow(/Malformed encrypted Drive token/);
   });
 });

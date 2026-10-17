@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Post, Query, ServiceUnavailableException, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { CurrentSellerId } from "../../common/decorators/current-seller.decorator";
@@ -34,6 +34,9 @@ export class DriveController {
   @Get("connect")
   @UseGuards(JwtAuthGuard)
   connect(@CurrentSellerId() sellerId: string, @CurrentUser() user: JwtAccessPayload) {
+    if (!this.driveClient.isConfigured()) {
+      throw new ServiceUnavailableException("Google Drive import isn't configured on this platform yet.");
+    }
     const state = this.jwt.sign({ sellerId, userId: user.sub } as DriveOAuthState, {
       secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),
       expiresIn: "10m",
@@ -43,6 +46,9 @@ export class DriveController {
 
   @Get("callback")
   async callback(@Query("code") code: string, @Query("state") state: string) {
+    if (!this.driveClient.isConfigured()) {
+      throw new ServiceUnavailableException("Google Drive import isn't configured on this platform yet.");
+    }
     if (!code || !state) throw new BadRequestException("Missing code or state.");
     let payload: DriveOAuthState;
     try {
@@ -56,8 +62,8 @@ export class DriveController {
 
   @Get("connection")
   @UseGuards(JwtAuthGuard)
-  status(@CurrentSellerId() sellerId: string) {
-    return this.connections.getStatus(sellerId);
+  async status(@CurrentSellerId() sellerId: string) {
+    return { configured: this.driveClient.isConfigured(), connection: await this.connections.getStatus(sellerId) };
   }
 
   @Delete("connection")
@@ -69,6 +75,9 @@ export class DriveController {
   @Get("files")
   @UseGuards(JwtAuthGuard)
   listFiles(@CurrentSellerId() sellerId: string) {
+    if (!this.driveClient.isConfigured()) {
+      throw new ServiceUnavailableException("Google Drive import isn't configured on this platform yet.");
+    }
     return this.imports.listImportableFiles(sellerId);
   }
 
@@ -79,6 +88,9 @@ export class DriveController {
     @Param("storeId") storeId: string,
     @Body() dto: ImportDriveFilesDto,
   ) {
+    if (!this.driveClient.isConfigured()) {
+      throw new ServiceUnavailableException("Google Drive import isn't configured on this platform yet.");
+    }
     return this.imports.importFiles(sellerId, storeId, dto.fileIds);
   }
 }

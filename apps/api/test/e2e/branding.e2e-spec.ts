@@ -77,7 +77,7 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
     expect(store.body.poweredByVisible).toBe(true);
     // FR-74.3 (§5.74) - the new loading-screen gate; mandatory for every
-    // non-FLY individual tier same as poweredByVisible above.
+    // non-RISE individual tier same as poweredByVisible above.
     expect(store.body.loadingScreenBrandingVisible).toBe(true);
   });
 
@@ -91,15 +91,34 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     const growth = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(growth.body.removable).toBe(false);
 
-    // FR-74.3 (§5.74) - same individual-FLY-only boundary on the new
-    // loading-screen gate; still mandatory on Growth (tierOrder 2).
+    // The OLD mechanism (branding.powered_by_removable) above stays
+    // FLY-only (tierOrder 3), unaffected by D76d. The NEW loading-screen
+    // gate still shows true here too, but only because `hidden` was
+    // never toggled on - see the dedicated RISE test below for proof
+    // that tierOrder 2 now actually grants removability there.
     const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
     expect(store.body.loadingScreenBrandingVisible).toBe(true);
   });
 
-  it("a Pro seller can hide the mark, and it actually disappears from the live storefront", async () => {
+  it("D76d (founder decision, 2026-10-10 - B4) - the NEW loading-screen gate becomes removable on RISE (tierOrder 2), superseding FR-74.3's original FLY-only boundary for the MVP window", async () => {
+    const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("branding-rise@example.com", "branding-rise-store");
+    await movePlan(sellerId, 2); // RISE
+
+    // The OLD mechanism is untouched by D76d - still FLY-only, so RISE
+    // still can't remove the original "Managed by UZEYN" mark.
+    const branding = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
+    expect(branding.body.removable).toBe(false);
+
+    await request(app.getHttpServer()).patch(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`).send({ hidden: true });
+
+    const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
+    expect(store.body.poweredByVisible).toBe(true); // OLD mark: still mandatory on RISE
+    expect(store.body.loadingScreenBrandingVisible).toBe(false); // NEW gate: now removable on RISE
+  });
+
+  it("a FLY seller can still hide the OLD mark, but the NEW loading-screen gate no longer follows it there (D76d moved that boundary to RISE)", async () => {
     const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore("branding-pro@example.com", "branding-pro-store");
-    await movePlan(sellerId, 3); // Pro
+    await movePlan(sellerId, 3); // FLY
 
     const before = await request(app.getHttpServer()).get(`/stores/${storeId}/branding`).set("Authorization", `Bearer ${token}`);
     expect(before.body).toEqual({ removable: true, hidden: false, visible: true });
@@ -112,13 +131,14 @@ describe("Storefront branding - 'Managed by UZEYN' mark (e2e)", () => {
     expect(update.body).toEqual({ removable: true, hidden: true, visible: false });
 
     const store = await request(app.getHttpServer()).get(`/storefront/store?hostname=${hostname}`);
-    expect(store.body.poweredByVisible).toBe(false);
-    // FR-74.3 (§5.74) - individual FLY is the one tier where the new
-    // loading-screen gate DOES follow the seller's hidden preference.
-    expect(store.body.loadingScreenBrandingVisible).toBe(false);
+    expect(store.body.poweredByVisible).toBe(false); // OLD mark: still removable on FLY, unaffected by D76d
+    // D76d (B4) - the NEW loading-screen gate moved its removable tier
+    // from FLY to RISE; FLY itself is also dormant for the MVP window
+    // (D75d), so this now stays mandatory here too.
+    expect(store.body.loadingScreenBrandingVisible).toBe(true);
   });
 
-  it("FR-74.3 (§5.74) - the new loading-screen gate is individual-FLY-only; Team Growth/Scale keep it mandatory even though the existing mark is removable for them", async () => {
+  it("D76d/FR-74.3 (§5.74) - the new loading-screen gate is individual-RISE-only; Team Growth/Scale keep it mandatory even though the existing mark is removable for them", async () => {
     const { token, storeId, sellerId, hostname } = await signupLoginAndCreateStore(
       "branding-team-growth@example.com",
       "branding-team-growth-store",

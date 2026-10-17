@@ -29,6 +29,10 @@ COPY apps/api apps/api
 WORKDIR /repo/apps/api
 RUN pnpm build
 
+# Security P0 (Risk #48, S12) - see apps/api/Dockerfile's identical
+# comment. `apk add` must run before `USER node` (package installs need
+# root); every COPY after it runs --chown so the node user can actually
+# read its own app code.
 FROM node:20-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
@@ -36,8 +40,9 @@ ENV NODE_ENV=production
 # final runtime image too, since this (not `base`/`dev`) is what actually
 # runs the worker in production.
 RUN apk add --no-cache postgresql16-client
-COPY --from=build /repo/apps/api/package.json ./
-COPY --from=build /repo/node_modules /repo/node_modules
-COPY --from=build /repo/apps/api/node_modules ./node_modules
-COPY --from=build /repo/apps/api/dist ./dist
-CMD ["node", "dist/worker/worker.main.js"]
+COPY --from=build --chown=node:node /repo/apps/api/package.json ./
+COPY --from=build --chown=node:node /repo/node_modules /repo/node_modules
+COPY --from=build --chown=node:node /repo/apps/api/node_modules ./node_modules
+COPY --from=build --chown=node:node /repo/apps/api/dist ./dist
+USER node
+CMD ["node", "dist/src/worker/worker.main.js"]

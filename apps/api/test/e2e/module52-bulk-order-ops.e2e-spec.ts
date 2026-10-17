@@ -162,6 +162,67 @@ describe("Bulk Order Operations, Tracking Entry & Advanced Search (e2e) - SRS §
         .send({ status: "confirmed" });
       expect(bad.status).toBe(400);
     });
+
+    it("founder item 3 (2026-10-11): cancelling a pending order restores its self-fulfilled stock exactly once, with an audit trail", async () => {
+      const { token, storeId, hostname } = await signupLoginAndCreateStore("cancel-restore@example.com", "cancel-restore-store");
+      const { productId, variantId } = await createSelfProduct(token, storeId, 500);
+      const cart = await request(app.getHttpServer())
+        .post("/storefront/cart")
+        .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId, variantId, quantity: 3 }] });
+      const checkout = await request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+      const orderId = checkout.body.id as string;
+
+      const afterCheckout = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+      expect(afterCheckout.stockQuantity).toBe(97); // 100 - 3
+
+      const cancel = await request(app.getHttpServer())
+        .patch(`/stores/${storeId}/orders/${orderId}/status`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ status: "cancelled" });
+      expect(cancel.status).toBe(200);
+
+      const afterCancel = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+      expect(afterCancel.stockQuantity).toBe(100); // restored in full
+
+      const adjustments = await superuser.stockAdjustment.findMany({ where: { productVariantId: variantId } });
+      expect(adjustments).toHaveLength(1);
+      expect(adjustments[0].quantityBefore).toBe(97);
+      expect(adjustments[0].quantityAfter).toBe(100);
+      expect(adjustments[0].reason).toContain("cancelled");
+    });
+
+    it("founder item 3 (2026-10-11): two concurrent cancel requests on the same order restore stock exactly once, not twice", async () => {
+      const { token, storeId, hostname } = await signupLoginAndCreateStore("cancel-race@example.com", "cancel-race-store");
+      const { productId, variantId } = await createSelfProduct(token, storeId, 500);
+      const cart = await request(app.getHttpServer())
+        .post("/storefront/cart")
+        .send({ hostname, buyerEmail: "buyer@example.com", items: [{ productId, variantId, quantity: 5 }] });
+      const checkout = await request(app.getHttpServer())
+        .post("/storefront/checkout")
+        .send({ hostname, sessionToken: cart.body.sessionToken, shippingAddress });
+      const orderId = checkout.body.id as string;
+
+      const [cancelA, cancelB] = await Promise.all([
+        request(app.getHttpServer())
+          .patch(`/stores/${storeId}/orders/${orderId}/status`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ status: "cancelled" }),
+        request(app.getHttpServer())
+          .patch(`/stores/${storeId}/orders/${orderId}/status`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ status: "cancelled" }),
+      ]);
+      const statuses = [cancelA.status, cancelB.status].sort();
+      expect(statuses).toEqual([200, 409]); // exactly one wins; the loser hits the concurrency guard, not a second restore
+
+      const variant = await superuser.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+      expect(variant.stockQuantity).toBe(100); // restored exactly once (95 + 5), never 105
+
+      const adjustments = await superuser.stockAdjustment.findMany({ where: { productVariantId: variantId } });
+      expect(adjustments).toHaveLength(1); // exactly one restore-adjustment row, not two
+    });
   });
 
   describe("Order-level tracking-entry path, shared by quick-entry and CSV import (FR-59.3)", () => {

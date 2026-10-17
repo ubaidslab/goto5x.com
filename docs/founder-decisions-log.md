@@ -411,6 +411,41 @@ now RESOLVED, Paddle-native support is still open:**
   bonus days for that provider rather than fake it - confirm this
   before 1C starts billing real six-month cycles on that provider.
 
+**Two different "months" figures - both locked, deliberately not the
+same number (founder item 4/D99, 2026-10-11):** six_month's 15 bonus
+days answer two different questions differently, and both functions
+live together in `apps/api/src/plans/plan-pricing.util.ts` specifically
+so a future reader sees both at once instead of "fixing" one to match
+the other:
+- `monthsOfService()` - "divide a cycle's total price by how many
+  months, for a price-per-month figure." six_month = **6.5**. The bonus
+  days genuinely lower the true per-month cost, so dividing by a plain
+  6 would overstate it. Used by MRR normalization
+  (`MrrAnalyticsService`) and the pricing page's "effective monthly"
+  savings label (`apps/web/app/pricing/page.tsx` - a separate app, its
+  own hardcoded `6.5`, cross-referenced in a comment rather than shared
+  code, since this repo has no shared package between `apps/api` and
+  `apps/web` today).
+- `paidMonths()` - "how many whole months of paid service did this
+  cycle buy," for anything that counts discrete commission/eligibility
+  months. six_month = **6**, a plain whole number. The 15 bonus days
+  were never a commission-bearing month under the Ambassador program,
+  confirmed explicitly by the founder - applying 6.5 here would both
+  increase real Ambassador payouts nothing asked for and require a
+  schema migration (`ReferralAttribution.commissionMonthsPaid` is an
+  `Int` column). Used only by `ProgramCommissionService`'s Ambassador
+  accrual.
+
+Before this, `MrrAnalyticsService` carried its own second, independently-
+maintained copy of the 6.5 figure (same value, but a real duplication-
+drift risk - the actual bug item 4 was asking about) and
+`ProgramCommissionService` carried its own separate whole-6 function
+under a different name - both now call these two shared functions
+instead. Zero e2e coverage existed for any non-monthly MRR cycle, or for
+an Ambassador commission on anything but a monthly renewal, before this;
+both gaps are now covered (`mrr-analytics.e2e-spec.ts`,
+`module22-growth-partner-programs.e2e-spec.ts`).
+
 ### D11. Retention rules
 **Status:** LOCKED.
 **Decision:** 14-day money-back on every cycle (no refunds after,
@@ -1487,3 +1522,1744 @@ than leaving 1C's start to this session's own judgment.
    network reachability need mocking; every milestone report lists
    tests removed/rewritten with reason; CI polling stays light.
 **Reasoning:** not elaborated beyond the decision itself.
+
+### D99. B3b (Manual Transfer for "advance") confirmed scope; buyer-cancel stays out of this milestone
+**Status:** LOCKED. B3b built to the 8-point spec below; item 3 (D98)
+shipped together with it as instructed. Both merged into PR #12,
+CI-confirmed green.
+**Decision:**
+1. B3b reuses existing pieces rather than adding new state: the same
+   OR-pattern B3a already uses for "prepaid" (live gateway OR a
+   configured `StorePaymentInstructions` payout method) now also gates
+   "advance", and the seller's existing `markAsPaid()` is the
+   confirmation action - no new `OrderStatus`.
+2. An unpaid advance order uses the existing pending/unpaid state and
+   is blocked from fulfillment/shipping until the seller confirms (new
+   `assertShippableForPaymentModel()` guard on both tracking-upload
+   paths).
+3. The buyer submits a transaction reference + sender name (text only,
+   validated, length-limited, escaped) via a public token-gated
+   endpoint; shown to the seller next to Mark as paid.
+4. The seller's "Not received" action reuses the existing cancel path
+   plus item 3 (D98)'s stock-restore function - no separate rejection
+   mechanism.
+5. Unpaid advance orders auto-cancel after a seller-set window (default
+   48h) through that same cancel-plus-restore path, run by a new hourly
+   sweep worker.
+6. Order creation is rate-limited per buyer email/phone in addition to
+   the existing per-IP limit.
+7. Label is exactly "Paid (confirmed by seller)", never "verified"; who
+   confirmed and when is recorded in the existing `order.placed`
+   platform-event's metadata (`EventsService`'s actor-table convention -
+   `OrderTimelineEvent` itself has no actor column anywhere in this
+   schema).
+8. Seller dashboard shows the founder's exact warning copy ("Check the
+   money in your own account before shipping - a screenshot or
+   reference number is not proof.") next to the confirm action.
+9. Checkout only offers advance-via-manual-transfer when the seller has
+   filled in at least one payout method (account title + number);
+   otherwise blocked, same as any other unconfigured channel today.
+
+   Tests: happy path, seller rejects, auto-cancel with stock restored,
+   shipping-before-confirmation blocked, and an injection attempt in the
+   reference field - all passing (backend e2e; frontend hand-verified,
+   see the B3b report for one disclosed browser-click caveat that
+   doesn't implicate the proven server-side logic).
+
+10. **Buyer-initiated cancellation is explicitly out of this milestone.**
+    The founder's item-3 wording ("seller/buyer/auto-cancel") named the
+    eventual full set, not a requirement for B3b/item 3 itself. In
+    scope now: seller cancel, seller "Not received", and auto-cancel -
+    all three already funneled through item 3 (D98)'s one generic,
+    idempotent restore-stock-on-cancel function, specifically so a
+    future buyer-cancel can call it with no changes to that function.
+    Until then, a buyer who wants to cancel contacts the seller, who
+    cancels on their behalf.
+
+**Post-MVP backlog addition:** buyer-initiated order cancellation, with
+seller-defined rules and a time window (e.g., only before the seller
+has started fulfillment, or only within N minutes of placing the
+order) - not scoped or estimated yet. Tracked here and in
+`docs/build-plan.md`'s "Explicitly re-tagged out of the pre-MVP code
+queue" section; pick up post-MVP, reusing item 3 (D98)'s
+`restoreStockForOrder()` unchanged.
+**Reasoning:** keeps B3b's shipped surface area to exactly what was
+asked, while making the eventual buyer-cancel feature a pure addition
+(new trigger path calling an already-generic function) instead of a
+future refactor.
+
+### D100. Founder item 5 - prepaid_partial_advance gated at save time, not just checkout time
+**Status:** LOCKED.
+**Decision:** `OrderVerificationService.updateSettingsForStore()` (the
+seller's own channel-selection save, `PATCH /stores/:storeId/
+verification-settings`) now runs the same `isGatewayLive()` check
+`assertChannelReady()` already ran at checkout time - a seller could
+previously save this channel with zero gateway connected and only
+discover it never works once a real buyer hit checkout. Exact copy per
+the founder's instruction: "Needs a live payment gateway. Not available
+yet in your country." `getSettingsForStore()` also now reports a
+`prepaidPartialAdvanceHasLiveGateway` flag, read by the Order
+Verification settings page so this shows before the seller ever clicks
+Save - the same "locked, not just a 403 on save" treatment the
+existing RUN+ plan gate already gets on that page, but this is a
+SEPARATE gate (upgrading plan tier doesn't fix it, so it's shown as a
+plain warning, never the plan-upgrade card).
+
+**Tests added proving a seller can't save a blocking configuration**
+(`module76-prepaid-partial-advance.e2e-spec.ts`): the save is rejected
+with the exact copy, both with no gateway connected at all and with one
+connected-but-not-"live" (D95's "verifying" status); the rejected save
+writes no settings row at all (not a silent half-save); the read
+endpoint's new flag reflects both states correctly.
+
+**Existing tests rewritten, with reason (founder item 6's own
+discipline, applied here ahead of item 6 itself):** no gateway is
+"live" platform-wide today (D95/D86 - every `PaymentGatewayProvider`
+adapter is "verifying"), so this new gate makes the real save endpoint
+unable to ever actually reach `prepaid_partial_advance` for any store
+today, in any test. Three pre-existing tests used that save endpoint
+only as SETUP for a DIFFERENT, downstream check and so needed a direct-
+write test helper (`forceChannel()`, bypassing this new gate the same
+way `upgradeToTier()` already bypasses the real billing flow) to keep
+testing what they were actually about, unaffected by this change:
+- `module76`'s own "Checkout readiness"/"verified-partial-payment flow"
+  blocks (2 tests) - about `assertChannelReady()`'s pre-existing gate.
+- `module95`'s cross-setting-rule setup test ("rejects switching the
+  payment model to Advance while that channel is already active").
+One `module76` test's RUN-seller-succeeds assertion was simply wrong
+after this change (a RUN seller has no live gateway either, today) -
+corrected to the real, current behavior rather than forced to keep
+passing. One `module95` cross-setting test ("rejects switching the
+channel to prepaid_partial_advance while payment model is already
+Advance") is renamed and re-pointed: it still asserts 400, but now
+honestly documents that THIS gate is what fires first today, not
+FR-6.67's cross-setting rule - that rule is unchanged, real code, and
+still reachable via `forceChannel()` in its own sibling test.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D101. Founder item 6 - test/tooling hygiene
+**Status:** LOCKED.
+**Decision:**
+1. **ESLint, confirmed broken, now real.** Neither app had an
+   `eslint.config.*`/`.eslintrc.*` anywhere, nor `eslint` itself in
+   either app's own devDependencies - `apps/api/package.json`'s `lint`
+   script and `apps/web`'s `next lint` both existed but had nothing
+   backing them; running either failed outright. Fixed with two
+   deliberately different setups, because the two apps' own
+   dependencies pull in two different ESLint majors:
+   - `apps/api`: `eslint.config.mjs` (flat config), `eslint@^10`,
+     `typescript-eslint@^8`'s `recommended` (NOT `recommendedTypeChecked`
+     - full type-aware linting is slower in CI and would have surfaced a
+     larger first-pass count than this LOW item's scope; this project
+     also has no Prettier and this pass doesn't add one, so no
+     stylistic/formatting rules are in here either).
+   - `apps/web`: `.eslintrc.json` (`next/core-web-vitals`, the Next 14
+     scaffold default), `eslint@^8.57.0` - `eslint-config-next@14.2.18`
+     (matching the installed Next version exactly) only supports ESLint
+     7/8 as a peer, so apps/web deliberately stays on the older major;
+     apps/api and apps/web are separate pnpm workspace packages with
+     fully independent `node_modules`, so this isn't a conflict.
+   - New `lint` CI job (`.github/workflows/ci.yml`), same cheap "every
+     code-touching push" tier as `typecheck`/`unit-tests` - not gated
+     behind `full_run`.
+2. **First-pass violations, fixed, not just configured away.** 88
+   problems in apps/api (1 real error, the rest warnings), 21 real
+   errors in apps/web (all `react/no-unescaped-entities` - a raw `'`/`"`
+   character directly in JSX text), both counts small enough to fix
+   directly rather than suppress:
+   - `gateway-health.service.ts` - a genuine (harmless but real)
+     `no-useless-assignment` finding: `let verified = false` was always
+     overwritten by both the try and catch branches before ever being
+     read. Changed to `let verified: boolean` (no initializer) - TS's
+     own definite-assignment analysis confirms both branches still
+     assign it before the one place it's read.
+   - A handful of truly-unused imports/variables removed
+     (`orders.service.ts`'s `Order`/`OrderBucket`,
+     `subscriptions.service.ts` and `verification-application.service.ts`'s
+     `ForbiddenException`).
+   - Several destructuring-omit sites (deliberately stripping a
+     sensitive/internal field before returning an object -
+     `tokenHash`/`signingSecretEncrypted`/a test's `DATABASE_URL`)
+     renamed to their already-established `_`-prefixed-ignore convention
+     (`tenancy/stores.service.ts`'s pre-existing `_omit` was the
+     precedent) - the eslint config's `varsIgnorePattern`/
+     `destructuredArrayIgnorePattern` now actually honor that
+     convention, which it turns out the lint rule's default options
+     didn't, before this.
+   - `teams.service.ts`'s `acceptInvite(..., dto)` - looked real at
+     first (the method's own doc comment claims consent is "enforced
+     here"), traced all the way through: `AcceptTeamInviteDto`'s
+     `@IsBoolean()`/`@Equals(true)` decorators enforce it at the
+     controller's `@Body()` binding via the global ValidationPipe
+     (confirmed registered in `main.ts`), before this method ever runs -
+     real and working, just not literally inside this method's body.
+     Renamed to `_dto` and the comment corrected to say where
+     enforcement actually happens, so a future reader doesn't go
+     looking for a check that was never going to be here.
+   - 77 stale `// eslint-disable-next-line no-console` comments across
+     seed files, `main.ts`, and `worker.main.ts` - dead code from before
+     this config existed (this config never enables `no-console` at all;
+     seed/worker scripts legitimately log to stdout for operator
+     visibility) - removed.
+   - apps/web: every `'`/`"` escaped to `&apos;` or `&ldquo;`/`&rdquo;`,
+     matching whichever entity convention is already dominant at each
+     call site in this codebase (`&apos;` has 33 pre-existing uses, used
+     throughout; `&ldquo;`/`&rdquo;` for one genuine open/close quoted
+     word). `react-hooks/exhaustive-deps` (5) and
+     `@next/next/no-img-element` (3) warnings left as warnings,
+     deliberately not auto-"fixed" - both require real behavioral
+     verification (a blind effect-deps fix risks an infinite-render
+     loop; an `<img>`-to-`<Image>` swap needs width/height/domain-config
+     checking) that's a bigger, riskier change than "lint hygiene," and
+     Next's own default severity for both is already "warning," not
+     "error" - they don't fail the command.
+3. **DNS/TLS tests, mocked, not reliant on real network reachability.**
+   `node-dns-resolver.service.spec.ts`/`node-tls-prober.service.spec.ts`
+   were deliberately written against the live public internet
+   (`dns.google`, `www.github.com`, `www.google.com`) - reachable in
+   whatever sandbox first wrote them, NOT reachable from this one
+   (confirmed directly: this container can't resolve raw DNS or complete
+   a raw TLS handshake to any of them), which is exactly the flake this
+   item flagged. Rewritten to mock `dns.promises`/`https.request`
+   directly - what's actually under test is these two thin wrapper
+   services' own try/catch-into-`[]` and resolve-true/false-on-response/
+   error/timeout logic, not any real hostname's real DNS/TLS state.
+   Same test intent preserved (A record, CNAME, NXDOMAIN-shaped reject,
+   ENODATA-shaped reject, handshake success, connection error) plus one
+   new case (timeout) the real-network version couldn't exercise on
+   demand at all.
+4. **Tests removed/rewritten this report, with reason** (consolidating
+   this item's own ask, going forward every report should do the same):
+   see D100 for the 3 `module76` + 1 `module95` test rewrites (save-time
+   live-gateway gate making their old setup unreachable); this entry's
+   own point 3 above for the 2 DNS/TLS spec rewrites (real-network to
+   mocked, same intent, zero tests deleted outright).
+5. **CI polling light** - standing discipline this whole session, not a
+   one-time deliverable; unchanged by this item.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D102. B4 (loader-mark flip) and B5 (programs gating) - closing out M1-1A
+**Status:** LOCKED.
+**Decision:**
+1. **B4 - D76d's loader-mark flip, code + the write-path it depends on.**
+   `BrandingService.getLoadingScreenBrandingVisible()`'s tierOrder check
+   changed from `=== 3` (FLY) to `=== 2` (RISE), per D76d's own
+   implementation note exactly (not `>= 2` - the note names 2
+   specifically). Found while testing, not in the implementation note:
+   the shared `branding.powered_by_hidden` preference this gate reads
+   can only ever be WRITTEN when the OLD mechanism's own
+   `branding.powered_by_removable` is true (FLY + team tiers only) -
+   `setHiddenForStore()` had its own separate gate on the same shared
+   write. Flipping only the read side would have made D76d's grant
+   unreachable in practice (a RISE seller could never set `hidden=true`
+   to begin with). Fixed by extracting the new check into
+   `isLoadingScreenBrandingRemovable()` and having `setHiddenForStore()`
+   accept EITHER capability as sufficient to write - the OLD mark's own
+   visibility computation is untouched and stays FLY-only, confirmed by
+   test. `branding.e2e-spec.ts`'s existing FLY-tier assertions for the
+   new gate are updated to the new boundary (D76d's own note flagged
+   these would need it); a new RISE-tier test proves the real grant,
+   writes included, not just the read-side number.
+2. **B5 - Growth & Partner Programs, out of the MVP build (D63), gated
+   off by a new `programs.enabled` (global, default false).** One real
+   enforcement point: `ProgramApplicationService.apply()` - every other
+   endpoint in the module (content submission, withdrawal, every admin
+   review/payout action) requires an already-approved
+   `ProgramParticipant` row to do anything, which this gate makes
+   impossible to create while off. Admin endpoints are deliberately left
+   ungated - admins are trusted, and nothing reaches them if no seller
+   can ever apply. New tests prove both directions (blocked while off,
+   immediately unblocked once on, no other code change needed). Five
+   pre-existing e2e files that apply to a program as test SETUP
+   (module22 itself, finance-terminal, module72/78/79) now explicitly
+   enable it in their own beforeAll/afterEach, same as any other test
+   exercising a plan-gated/admin-disabled-by-default capability - not
+   rewrites of what they test, just keeping their existing setup
+   working against the new default.
+3. **A CI flake, diagnosed, not chased.** `e2e-tests (4)` failed once on
+   this item's own commit (10d6058) - `finance-terminal.e2e-spec.ts`'s
+   `createAndLoginAdmin()` generates a TOTP code
+   (`authenticator.generate()`) and immediately submits it over the
+   network with zero slack for the verify call landing a 30-second
+   window late; the helper also never checks the verify response's
+   status before trusting `accessToken`, so a late code silently returns
+   an unusable token instead of a clear failure. This exact
+   generate-then-immediately-verify pattern is shared by many e2e
+   helpers across this codebase, all otherwise green for this entire
+   session's dozens of prior CI runs - confirmed consistent with a rare,
+   one-off timing hiccup, not a regression from this item's own changes
+   (this test file wasn't touched by it), by re-running just the failed
+   job on the unchanged commit. Not fixed here - hardening every such
+   helper (a fresh-window wait before generating the code, or a status
+   check with one retry) is real, broader scope beyond this item;
+   flagged here as a known, diagnosed, rare flake for a future pass
+   rather than silently ignored.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D103. D87 - the four duplicated credential-encryption implementations merged
+**Status:** LOCKED. First M1-1B item.
+**Decision:** `payment-gateway-credential-crypto.util.ts`,
+`smtp-credential-crypto.util.ts`, and
+`admin-email-credential-crypto.util.ts` each carried their own hand-
+copied AES-256-GCM implementation, byte-for-byte identical to
+`media/drive-token-crypto.util.ts`'s (same algorithm, IV length, and
+`iv:authTag:ciphertext` packing) - differing only in function names and
+the "malformed" error's credential-type wording. All three now
+re-export `drive-token-crypto.util.ts`'s `encryptDriveToken`/
+`decryptDriveToken` under their own existing names, exactly matching
+`trust-safety/identity-crypto.util.ts`'s own pre-existing two-line
+re-export pattern - the founder's own instruction named this as "already
+correct," so no new abstraction was introduced beyond copying it.
+Every call site keeps its exact existing import name and signature;
+each credential type still encrypts under its own independently-
+rotatable key (`PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY`/
+`SMTP_CREDENTIAL_ENCRYPTION_KEY`/`ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY`)
+- only the code is shared, never the key. One observable change: the
+"malformed packed value" error now always says "Drive token" instead of
+each credential's own name, same tradeoff identity-crypto.util.ts's own
+errors already accepted for CNIC/payment-instrument fingerprints - the
+three existing unit tests asserting the old per-domain wording are
+updated to match, not left to rot or deleted.
+**Reasoning:** not elaborated beyond the decision itself - "a future
+correctness fix to the shared AES-256-GCM shape should only need to
+land in one place" (D87's own wording), now true for all five
+credential/token types in this codebase, not just identity values.
+
+### D104. D88 - RLS hardening follow-ups, all four items closed out
+**Status:** LOCKED. Second M1-1B item.
+**Decision - item 1 (WalletService/SubscriptionInvoiceService off the
+app_admin bypass client):** `SubscriptionInvoiceService` converts
+fully - both its reads (`walletTopUpRequest`, `ledgerEntry`) now run
+inside `TenantPrismaService.run(sellerId, ...)`. `WalletService` does
+not convert wholesale: reading it in full surfaced that it mixes two
+genuinely different actors, not just two code styles - a seller acting
+on their own wallet (`getBalance`, `computeLedgerBalance`,
+`getTransactionHistory`, `requestTopUp`, `listOwnTopUpRequests` - all
+five converted) versus an admin acting on an arbitrary seller's wallet
+by admin authority (`listPendingForAdmin`, `verifyTopUp`,
+`rejectTopUp`, `adminManualAdjust` - left on `prismaAdmin`, on
+purpose). The second group is correctly admin-scoped already: each has
+its own admin-auth guard and audit-log entry, and `verifyTopUp`/
+`rejectTopUp` only ever receive a bare `topUpId` - which seller it
+belongs to is discovered only after the lookup, so there is no
+sellerId to scope a transaction to until that point. Forcing these
+through tenant scoping would mean splitting one atomic operation into
+two separate transactions for no real gain. `getPlanFeePaymentPreview`/
+`hasEverPaidPlanFee`/`requestPlanFeePayment` are left for a future pass
+too, flagged rather than silently skipped: they're seller-facing like
+the converted group, but checking the migrations directly found
+neither `Subscription` nor `WalletTopUpRequest` has an RLS policy at
+all today, so converting them now would add transaction overhead with
+no present security benefit - and `requestPlanFeePayment`'s
+auto-verify branch calls straight into the non-convertible
+`verifyTopUp`, tangled enough to deserve its own careful pass. The
+class-level comment in `wallet.service.ts` records this split so it
+doesn't need re-deriving later. One unit test
+(`tenant-prisma.service.spec.ts`) exercised neither client, so it was
+unaffected; `wallet.service.spec.ts` only covers the pure
+`signedContribution()` function and needed no change.
+**Decision - item 2 (`set_config()` parameterization):**
+`TenantPrismaService.run()`'s `SET LOCAL app.current_seller_id =
+'<concatenated-and-regex-gated value>'` is replaced with
+`SELECT set_config('app.current_seller_id', $1, true)` called through
+Prisma's tagged-template `$executeRaw` - a real bind parameter, not
+string interpolation, removing the one remaining string-built SQL
+fragment in the codebase rather than just validating it more tightly.
+The UUID regex stays as fail-fast validation (a non-UUID sellerId
+reaching here is always a caller bug worth a clear error), not as the
+injection defense anymore - that's now the parameterization itself.
+`tenant-prisma.service.spec.ts`'s mock only implemented the old
+`$executeRawUnsafe`, so it broke immediately under the full unit suite
+once this landed - fixed, and rewritten to assert the actually-relevant
+property (the sellerId appears only as a separate bind value, never
+inside the SQL text, verified both for a value that passes UUID_RE and
+for what the call site would pass it) rather than the old test's literal
+`SET LOCAL ...` string match. Validated against the full unit suite
+(49 suites, 320 tests, all passing) and a local full e2e run that
+reached far enough through heavily tenant-scoped suites (orders,
+trust-safety, catalog, wallet-supplier-portal, growth-partner-programs,
+order-verification, bulk-order-ops, and more, 2 dozen+ files) with zero
+new failures before an unrelated Node heap-size crash ended the run
+early (an artifact of running the whole suite unsharded in one long-
+lived local process, not a code defect - CI's own `test:e2e` shards
+4-way with a per-worker memory cap specifically to avoid this); the
+real, authoritative confirmation is CI's sharded e2e run on the actual
+pushed commit, same as every other change in this project.
+**Decision - item 3 (CI allowlist tripwire):** new
+`src/prisma/admin-bypass-allowlist.spec.ts` - a fast unit test (no DB)
+that walks every `.ts` file under `src/` (excluding `.spec.ts`),
+collects every file that references `PrismaAdminService`, and fails if
+that set differs at all from a hardcoded, sorted allowlist of the 96
+files doing so as of this change (generated mechanically via `grep -rl
+... | sort`, not hand-typed). Fails two ways on purpose: a new,
+unreviewed call site (must be added deliberately), or a stale entry
+(the file stopped using it and the list wasn't updated) - verified both
+directions actually fire by temporarily removing an entry and
+confirming the test goes red with a clear message, then restoring it.
+This is a tripwire against future drift, not a re-audit of the 96 -
+that re-audit is item 4 below (for the background-job slice of those
+96) and the M4 independent security review (for the rest).
+**Decision - item 4 (review the ~20 cross-tenant background-job
+queues):** independently re-verified, not just trusted, the M0 report's
+"no leak found" finding, prioritized money-touching queues first
+(`plan-fee-debit.service.ts`'s three sweep methods, `wallet-
+reconciliation.service.ts`, `platform-gateway-reconciliation.service
+.ts`, `manual-transfer-auto-cancel.service.ts`, `renewal-reminders
+.service.ts`, `retention.service.ts`, `invoices.service.ts`,
+`gateway-health.service.ts`), then PII/operational queues (`domain-
+verification.service.ts`, `verification-re-review.service.ts`,
+`missing-tracking-alert.service.ts`, `cart.service.ts`'s abandonment
+sweep, `support-ticket-sla.service.ts`, `store-health-score.service
+.ts`, `dormant-store.service.ts`, `staff-accounts.service.ts`'s expiry/
+suspension-lift sweeps, the two seller-report generators). Confirmed
+the same two safe patterns everywhere, no exception found: (a) sweep
+every tenant's due rows in one unscoped read, then scope every
+subsequent read/write by that row's own id/sellerId/leaderSellerId -
+never a client-suppliable or cross-row value; or (b) a single bulk
+`updateMany` that writes one uniform, non-tenant-specific value (e.g.
+flipping cart status to `abandoned`, or a staff account to `revoked`)
+where no cross-tenant data-mixing is even possible because nothing
+seller-specific is in the write payload. Also confirmed directly (not
+assumed from the comment citing it) that `WalletLowBalanceSweepScheduler`/
+`InvoiceGenerationScheduler`/`InvoiceOverdueScheduler` are genuinely
+absent from every module's `providers` array - truly dormant, not a
+live risk today. This re-confirms, independently, that RLS provides
+zero protection for the background-job surface by construction and
+correctness there is entirely app-level - unchanged from the M0
+report's own framing - across a risk-prioritized review covering the
+money-touching tier completely and a representative majority of the
+rest, not a sample-and-hope pass.
+**Reasoning:** not elaborated beyond the decision itself - closes all
+four concrete M1 items D88 named, with the two "future pass" carve-outs
+in item 1 flagged explicitly (not silently dropped) since neither has
+a present RLS policy to gain defense-in-depth from yet.
+
+### D105. Security P0 (Risk #48/S12) - the non-root-images half, and a new docker-build CI check
+**Status:** LOCKED. Third M1-1B item - a supply-chain/CI control from
+the security P0 table, not a D-numbered founder decision with its own
+text; filed here under the Risk Register's own tagging (M1, S12).
+**Decision:** `apps/api/Dockerfile`, `apps/api/Dockerfile.worker`, and
+`apps/web/Dockerfile`'s `production` stages ran as root - confirmed by
+reading all three fresh, not assumed from the SHA-pinning half (D94/A5)
+already being done. All three now `COPY --chown=node:node` and `USER
+node` in the `production` stage only (`node:20-alpine`'s own built-in
+uid/gid-1000 user) - `dev`/`base`/`build` stages are untouched since
+they never run in a real deployment, only feed `production` via
+multi-stage `COPY --from=build`. The worker's `apk add
+postgresql16-client` (needed for `pg_dump`, Risk 5/13's backup sweep)
+stays before `USER node` since package installs need root; confirmed
+`pg_dump`'s output is piped through gzip and collected in memory
+(`database-backup.service.ts`), never written to local disk, so there's
+no runtime write-permission concern there.
+**Also found while implementing:** no Dockerfile had ever been built in
+CI at all - confirmed by reading `ci.yml` fresh; Dockerfiles were only
+named in the docs-only-skip filter's own exclusion comment. A new
+`docker-build` job (cheap tier, every code push, same as typecheck/
+lint) now builds all three `production` targets (no push - no registry
+credentials needed) and proves each one actually runs as the new
+non-root user AND can still read the exact file it needs to execute
+(`fs.accessSync` on `dist/main.js`/`dist/worker/worker.main.js`/
+`.next`) - the precise failure mode a wrong `--chown` would cause. A
+full running-container HTTP smoke test was considered and rejected as
+disproportionate here: `/health`'s own check (`health.controller.ts`)
+needs real Postgres+Redis, and boot validation needs the same long
+env-var list `e2e-tests`' `.env.test` step already assembles - cloning
+that just to prove a `USER` line works is a much bigger, slower job for
+the same answer the file-read check already gives directly.
+**Verification note:** this sandbox has the `docker` CLI but no running
+daemon, and CI itself never built an image before this change - so
+there is no prior automated baseline to diff against here, unlike every
+other change this session. YAML parses clean
+(`python3 -c "import yaml..."`) and the shell loop's field-splitting
+was dry-run against a fake `docker`/`node` shim locally, but the actual
+`docker build`/`docker run` steps are only proven by this commit's own
+CI run on a real runner - watched the same as everything else, just
+starting from a thinner local-verification base than usual, flagged
+explicitly rather than glossed over.
+**Reasoning:** not elaborated beyond the Risk Register's own framing -
+closes the second of the two S12 controls (SHA-pinning already done),
+and adds the one piece of ongoing verification (`docker-build` in CI)
+that would have caught this gap immediately had it existed earlier.
+
+### D106. D82 part 1 - refresh-token reuse detection (seller, admin, buyer)
+**Status:** LOCKED. Fourth M1-1B item - the first slice of D82; the
+cookie-based transport/CSRF/CSP/stricter-admin-lifetimes/step-up-MFA
+pieces are separate, larger, still-to-come slices of the same decision.
+**Decision:** Dispatched a full current-state investigation first
+(confirmed directly against live code, not re-stated from
+`docs/auth-session-design.md`'s own citations) - `SessionService`
+already has real rotation and real server-side revocation; what it
+never had was reuse detection. `validateRefreshToken()` now returns a
+`"valid" | "reused" | "invalid"` result instead of a bare userId-or-
+null: a miss checks a new short-TTL (24h) tombstone left by the new
+`rotateOutSession()` (called from refresh-token rotation specifically,
+not from ordinary logout/revoke, which has no "this was valid a moment
+ago" story to detect) - recording exactly which (userId,
+refreshTokenHash) pair just got rotated out, so a later replay of that
+exact pair is told apart from a token that never existed. All three
+`refresh()` methods (seller `AuthService`, `AdminAuthService`,
+`BuyerAuthService` - all three share the one `SessionService`) react to
+a `"reused"` result by calling the already-existing but previously
+never-invoked `destroyAllSessionsForUser()` and logging a
+`refresh_token_reuse_detected` `SecurityEventService` entry - both
+primitives already existed, wired to nothing; this is the first call
+site for either in response to a detected anomaly. The externally-
+visible response (401, same message) is unchanged between "reused" and
+"invalid" on purpose - not a behavior a client should be able to
+distinguish - only the internal reaction differs.
+**Also found while investigating (kept as-is, not touched by this
+item):** `touchSession()`'s `lastActiveAt` bump is called one line
+before the session it just touched gets destroyed in every refresh
+flow - vestigial, no observable effect, not worth a change bundled
+into a security-sensitive commit; a working step-up-MFA precedent
+already exists (`SellerLifecycleService.verifyStepUpMfa()`, suspend/
+ban only) that D82's later admin-step-up-MFA slice should extend
+rather than reinvent; CORS already has `credentials: true` wired
+(`main.ts`), ready for the cookie-transport slice; production runs
+`app.*`/`api.*` as same-site subdomains with no CORS configured at all
+(confirmed via `docker-compose.yml`'s Traefik host rules) - meaning the
+upcoming refresh-cookie's `SameSite` can be `Lax` (stricter than
+`auth-session-design.md`'s own Option A text, which proposed `None` on
+an apparent same-origin/same-site conflation) - noted here for that
+slice, not acted on yet.
+**Verified:** new e2e tests (one seller, one admin) prove the actual
+behavioral difference, not just that nothing broke - replaying an
+already-rotated-out token is rejected, AND a sibling session that was
+genuinely valid a moment earlier is also dead afterward (proving
+`destroyAllSessionsForUser()` really fired, not just the one replayed
+session), AND exactly one `refresh_token_reuse_detected` event is
+recorded. Full unit suite (50/321) and the 6 pre-existing auth/session/
+security-event/password-reset/buyer-account e2e suites (38 tests) all
+still pass unchanged.
+**Reasoning:** not elaborated beyond D82's own text - ships the lowest-
+risk, purely-additive slice first (no client-visible transport change
+at all) and independently proves it, rather than bundling it into the
+much larger, higher-risk cookie-migration slice where a mistake would
+be harder to isolate.
+
+### D107. D105's own docker-build job caught a real, pre-existing Dockerfile bug on its first run
+**Status:** LOCKED - closes D105's own "verification note" (this
+sandbox has no Docker daemon; the real build was only ever going to be
+proven by CI itself) with the actual result.
+**Decision:** the first-ever `docker-build` CI run failed - not on the
+new `USER node`/`--chown` lines, but one step earlier, in the `base`
+stage's `pnpm install`, which has been latent and unexercised in CI
+since before this session. Root cause confirmed by reproducing it
+directly (an isolated copy of just the Dockerfile's `base`-stage input
+files, outside any Docker daemon): root `package.json` has no
+`packageManager` field, so `corepack enable` inside the Dockerfile
+resolves pnpm to whatever corepack's own default is - pnpm 12.11.2 on
+this run - a full major ahead of the pnpm 10.33.0 this repo is actually
+built, tested, and pinned against everywhere else
+(`ci.yml`'s `pnpm/action-setup` + `docs/security-audit-report.md`'s own
+confirmed-version citation). pnpm 12 rejects this lockfile two
+different ways pnpm 10 doesn't: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` on
+the frozen-lockfile attempt, then `ERR_PNPM_IGNORED_BUILDS` (a hard
+error in 12.x; a mere warning in 10.x) on the install fallback.
+**Fix:** added `"packageManager": "pnpm@10.33.0"` to root
+`package.json` - the standard, corepack-native way to pin this, read
+by `corepack enable` wherever it runs (Docker, and any future local/CI
+path that relies on it) without touching the three Dockerfiles
+themselves at all. **Directly verified, not just reasoned about:**
+reproduced the exact failure in an isolated copy with the field absent
+("Update available! 10.33.0 → 12.11.2", `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`),
+then reproduced the fix with the field present (`corepack pnpm
+--version` → exactly `10.33.0`; `pnpm install --frozen-lockfile` →
+"Lockfile is up to date... Done in 5.4s using pnpm v10.33.0", the
+ignored-build-scripts line now a non-blocking warning) - before
+trusting it enough to push again.
+**Reasoning:** not elaborated beyond the finding itself - this is
+exactly the kind of gap `docker-build` exists to catch (D105's own
+reasoning), and it caught one on its very first real run; worth
+recording plainly as a found-and-fixed bug rather than folding it
+silently into D105's history.
+
+### D108. D82 part 2 - the seller dashboard's refresh token moves to a cookie; nothing seller-facing left in localStorage
+**Status:** LOCKED. Fifth M1-1B item - the second slice of D82. Admin
+terminal (stricter lifetimes + step-up MFA) is a separate, still-to-come
+slice; buyer/storefront is untouched by design (already compliant, see
+below) and staff-session-revocability is still outstanding.
+**Decision:** `POST /auth/login`, `/auth/mfa/verify`, `/auth/refresh`
+now set/read a `__Host-refresh_token` cookie
+(`auth/refresh-cookie.util.ts`) instead of returning/accepting the
+refresh token in the JSON body at all; `sessionId` stays in the body
+(not a secret on its own, needed for the self-service session list).
+`SameSite=Lax`, not the `None` the design doc's own Option A text
+proposed - confirmed via `docker-compose.yml`'s Traefik host rules that
+every real topology (local dev AND production) has the dashboard/API
+on same-site subdomains (`app.*`/`api.*`), so `None`'s cross-site
+exposure was never actually needed; `Lax` + the `__Host-` prefix (no
+`Domain`, `Secure`, `Path=/`) is strictly tighter and still works.
+`RefreshCookieCsrfGuard` (new, shared - admin will reuse it) guards
+`/auth/refresh` and `/auth/logout`: requires `X-Requested-With:
+XMLHttpRequest` always, then checks `Sec-Fetch-Site` (browser-set, not
+spoofable, true regardless of CORS config) when present, falling back
+to an `Origin`-against-`CORS_ALLOWED_ORIGINS` check only when
+`Sec-Fetch-Site` is absent - a plain allowlist-only check would have
+incorrectly rejected every real production request, since production
+runs same-origin with no CORS allowlist configured at all but modern
+browsers still send `Origin` on state-changing requests.
+**Frontend (`dashboard-api.ts` and everything that depended on its old
+localStorage contract):** the access token now lives in one in-memory
+module variable, never localStorage - a fresh page load starts with no
+token, which is fine: the first request 401s with no Authorization
+header, the existing retry-after-refresh logic calls the now-cookie-
+authenticated `/auth/refresh`, and succeeds exactly as before. Fixed,
+not just the obvious `login/page.tsx` and `dashboard-api.ts`: a full-
+repo grep for the old localStorage keys surfaced 13 more files actually
+depending on the old contract - `support-center/login/page.tsx` (same
+`/auth/login` backend, separate origin, separate in-memory instance -
+isolation preserved the same way separate-origin localStorage already
+provided it); five `support-center/*` pages whose synchronous
+`localStorage.getItem("accessToken")` check would now ALWAYS fire even
+for a genuinely logged-in seller - removed, since each page's own
+`api.get()` 401-handling already covers it correctly (added a 401-
+specific redirect to the two pages that only had a generic error
+message before, to avoid a real regression); `impersonate/page.tsx` and
+`SupportModeBanner.tsx` (impersonation deliberately shares the
+dashboard's own token-storage mechanism so "every existing screen Just
+Works" - now shares the in-memory store via a new `setSession()`
+export instead; the destination navigation changed from
+`window.location.replace()` to a client-side `router.push()`, since a
+hard navigation would have discarded the in-memory token before the
+destination page could use it); `settings/page.tsx`'s session-list
+"which one is this" comparison (now `api.getCurrentSessionId()`).
+**Deliberately NOT changed:** `impersonationSessionId` stays in
+localStorage - it's a reference id, not a bearer credential (nothing
+can authenticate as anything with just this value), so it's outside
+the actual security concern "nothing may remain in localStorage" is
+about, and `SupportModeBanner` (a separately-mounted component) still
+needs a way to read it. Buyer/storefront's own `buyer_session` cookie
+pattern is untouched - it was already doing everything D82 asks for on
+the seller/admin surface (httpOnly cookie, same-origin via Server
+Actions, no token in client JS at all) before this item existed.
+**A real gap found while testing, not assumed:** the e2e test harness
+(`test/e2e/setup.ts`) builds the Nest app directly via
+`Test.createTestingModule()`, never through `bootstrap()` - so
+`main.ts`'s new `app.use(cookieParser())` was invisible to every e2e
+test until added there too. Without this fix, every cookie-based test
+would have failed on "missing cookie" regardless of whether the real
+mechanism worked - confirmed by deliberately reproducing the failure
+(a debug spec, since deleted) before fixing it, not just asserting
+green after the fact. Also found: supertest's own `Set-Cookie` response
+value includes the full attribute string (`Max-Age=`/`Path=`/`Secure`/
+etc.) - a real `Cookie` request header only ever carries bare
+`name=value`, so a new shared `cookieHeaderFrom()` test helper
+(`setup.ts`) strips the attributes the same way a browser's own cookie
+jar would, used everywhere a test needs to replay a captured cookie.
+**Verified:** every e2e spec that exercises `/auth/refresh`/`/auth/
+logout` for the seller surface (`auth`, `account-security`, `password-
+reset`, `module81-buyer-accounts`, `admin-auth`/`admin-auth-refresh`,
+`input-validation-sweep`) passes with `CORS_ALLOWED_ORIGINS` forced
+empty to match real CI's actual condition (confirmed this sandbox's
+own gitignored `.env` sets a dev-shaped value CI never has, which
+initially masked the real behavior under test). Full unit suite
+(50/321), `apps/web` typecheck, lint (zero new warnings - one pre-
+existing-pattern warning introduced by my own edit was found and fixed
+in the same pass), and a full production build all pass clean.
+**Reasoning:** not elaborated beyond D82's own text - this is the
+headline risk D82 exists to close (the refresh token's plaintext
+localStorage exposure), landed as its own slice after reuse detection
+(D106) for the same risk-isolation reason that slice was split out.
+
+### D109. Two CI breaks surfaced immediately after D107 and D105 landed - a `pnpm/action-setup` conflict D107's own fix caused, and a second, independent pre-existing Dockerfile bug D105's verify step caught
+**Status:** LOCKED - both are mechanical CI fixes, not new product
+decisions; filed here (not folded silently into D105/D107's own
+history) for the same "record what was actually found and fixed"
+reason D107 gave for itself.
+**Decision (bug 1 - D107's own fix broke every other job):** `831c878`
+(D107) added root `package.json`'s `packageManager: "pnpm@10.33.0"`
+field to fix `docker-build`'s pnpm-version drift. That same commit's
+next CI run failed on every OTHER job that uses `pnpm/action-setup`
+with an explicit `version:` input - `pnpm/action-setup@v4` hard-
+refuses to run at all when both a `version:` input and a
+`packageManager` field are present ("Multiple versions of pnpm
+specified... Remove one of these versions"), confirmed directly from
+that run's own job logs. **Fix:** removed `version: ${{
+env.PNPM_VERSION }}` from all 7 `pnpm/action-setup` steps in `ci.yml`
+(typecheck/lint/unit-tests/db-role-grants/e2e-tests/dependency-audit/
+web-build) and the now-unused `PNPM_VERSION` env var - `packageManager`
+is the single source of truth now, read automatically by the Action.
+One consolidated comment block replaces what was briefly 7 repeated
+copies of the same explanation (an intermediate state from fixing this
+iteratively, cleaned up before committing).
+**Decision (bug 2 - a second, independent, genuinely pre-existing bug,
+not caused by anything this session touched):** the same CI run's new
+`docker-build` job (D105) failed its own verify step with `ENOENT: no
+such file or directory, access 'dist/main.js'` - NOT a permissions
+regression (the non-root `uid` check immediately before it passed
+cleanly, proving `USER node`/`--chown` both work correctly), but a
+wrong path assumption baked into `apps/api/Dockerfile`'s `CMD`,
+`apps/api/Dockerfile.worker`'s `CMD`, `apps/api/package.json`'s
+`"start"` script, AND the verify step's own check - all four assumed a
+flat `dist/main.js`/`dist/worker/worker.main.js` layout that has never
+actually existed. **Root cause, confirmed by direct local
+reproduction** (`rm -rf dist && pnpm build`, then `find dist`):
+`apps/api/tsconfig.json` has no explicit `rootDir`, and the compiled
+project includes files outside `src/` (`scripts/**`, `test/**` -
+there's no `tsconfig.build.json` splitting these out, unlike the
+standard Nest starter), so tsc infers the common root as the
+`apps/api/` project directory itself, nesting all output under its
+original relative path - the real entry points are `dist/src/main.js`
+and `dist/src/worker/worker.main.js`. This means the API's production
+Docker image and its `pnpm start` script have never actually been
+runnable - entirely latent until `docker-build` (D105) was the first
+thing to ever actually build and exercise these images in CI.
+**Fix considered and rejected:** adding `rootDir: "./src"` to
+`tsconfig.json` to make the flat-path assumption correct instead -
+rejected because `scripts/**` and `test/**` genuinely are (and should
+stay) part of the same `tsc --noEmit` typecheck coverage, and forcing
+`rootDir` while compiling files outside it is a hard `tsc` error
+(TS6059), not a warning; doing this properly would mean introducing a
+separate `tsconfig.build.json` (splitting build-emit scope from
+typecheck scope) - a real improvement, but a wider, riskier change
+than this fix warrants right before the 1B checkpoint, and orthogonal
+to the actual bug (nothing is broken by the current nested output,
+only by the wrong assumption about where it lands). **Fix applied
+instead:** updated all 4 references to the real paths
+(`dist/src/main.js`, `dist/src/worker/worker.main.js`) and changed
+nothing about how the project builds or typechecks.
+**Verified:** reproduced both failures' exact error text before fixing
+anything (not assumed from reading alone); after the fix, a fresh
+local `tsc --noEmit` is clean, and a fresh `rm -rf dist && pnpm build`
+followed by `node --check` on both real output paths confirms they
+exist and are syntactically valid entry points. The actual `docker
+build`/`docker run` proof (same caveat D105 recorded - no Docker
+daemon in this sandbox) is this commit's own CI run, watched the same
+way as every other change this session.
+**Reasoning:** not elaborated beyond the findings themselves - both are
+exactly the kind of gap D105's own new `docker-build` job exists to
+catch, and between the two of them it caught one new bug immediately
+(D107's own fix) and one much older one (the dist path, present since
+whenever these Dockerfiles were first written) on its very first two
+real runs.
+
+### D110. D82 part 3 - the admin terminal's own refresh token moves to a cookie, mirroring D108
+**Status:** LOCKED. Sixth M1-1B item - the third slice of D82. Stricter
+admin session/access lifetimes and step-up MFA generalization are
+separate, still-to-come slices; staff sub-account session revocability
+(`docs/auth-session-design.md`'s own explicit "small, contained fix" line)
+is also still outstanding.
+**Decision:** `POST /admin/auth/mfa/verify`, `/admin/auth/refresh` now
+set/read a `__Host-admin_refresh_token` cookie
+(`auth/admin-refresh-cookie.util.ts`) instead of a response-body refresh
+token; `/admin/auth/refresh` and `/admin/auth/logout` are guarded by the
+SAME `RefreshCookieCsrfGuard` D108 already built (it only checks headers/
+Origin, nothing cookie-name-specific, so sharing it is safe and was the
+plan D108's own comment already stated). `/admin/auth/login` itself
+needed no change - admin MFA is mandatory, so no session/refresh token
+exists until `mfa/verify` succeeds.
+**A real collision risk found before writing any code, not after:** the
+admin terminal is NOT a separate origin from the seller dashboard -
+`(admin)` is a Next.js route group inside the same `apps/web` app, and
+`docker-compose.yml`'s Traefik rules confirm there is no separate
+`admin.*` host anywhere. Both hit the same API origin too. Reusing
+D108's exact cookie name would have let an admin who is also logged in
+as a seller in the same browser silently overwrite one session's cookie
+with the other's on every login - so the admin slice gets its own
+distinctly-named cookie (`admin-refresh-cookie.util.ts`, a small mirror
+of `refresh-cookie.util.ts` rather than a shared parameterized function,
+matching this codebase's existing per-actor-service convention) instead
+of trying to genericize the two into one.
+**Frontend (`admin-api.ts` and the admin login page):** access token and
+`sessionId` are now in-memory only, never localStorage - a full-repo grep
+for `adminAccessToken`/`adminSessionId`/`adminRefreshToken` across
+`apps/web` (excluding stale `.next` build output) found exactly two real
+source files (the login page and `admin-api.ts` itself), both fixed; no
+other admin page reads these keys directly. The admin-side impersonation
+"login as seller" trigger (`admin/sellers/[sellerId]/page.tsx`) already
+went entirely through `adminApi.post()`, so it needed no change at all.
+**Verified:** `admin-auth.e2e-spec.ts` and `admin-auth-refresh.e2e-spec.ts`
+rewritten for cookie-based refresh/logout (same manual-capture pattern
+D108 introduced, via the same shared `cookieHeaderFrom()` helper - no
+changes needed there, it's cookie-name-agnostic), plus one new test for
+the missing-CSRF-header case; all 11 tests pass with
+`CORS_ALLOWED_ORIGINS` forced empty to match real CI. Full unit suite
+(50/321 - unchanged count, confirming no regression), `apps/api` and
+`apps/web` typecheck, and both apps' lint are all clean (lint's handful
+of warnings are pre-existing, in files this change never touched).
+**Reasoning:** not elaborated beyond D82's own text - ships the admin
+terminal to the same standard D108 already proved out for the seller
+dashboard, reusing its CSRF guard directly (exactly as D108's own
+comment said it would) while keeping the actual token storage properly
+isolated per actor type.
+
+### D111. D82's "staff sub-account tokens" bullet - a staff login now creates a real, revocable session
+**Status:** LOCKED. Seventh M1-1B item - closes
+`docs/auth-session-design.md`'s explicit "Staff sub-account tokens: give
+staff logins a real sessionId too, so they become revocable (currently a
+bare, non-revocable access token) - small, contained fix" bullet. This
+closes D82's last specifically-named sub-item; the two remaining D82
+pieces (stricter admin session/access lifetimes, and generalizing
+`SellerLifecycleService.verifyStepUpMfa()` into a reusable guard for other
+destructive admin actions) were never given this level of textual detail
+in the design doc and are tracked separately.
+**Decision:** `StaffAuthService.login()` now calls
+`SessionService.createSession(staff.id, ...)` - `SessionService` is
+actor-agnostic (admin sessions are already keyed by the shared `User.id`
+the same generic way), and `StaffAccount` has no backing `User` row at
+all, so its own `id` is just as valid an opaque session key. New
+`POST /staff/auth/refresh` and `/staff/auth/logout` endpoints (neither
+existed before - a staff account previously had no refresh path and had
+to re-enter their password every 15 minutes) reuse D108/D110's exact
+cookie-plus-CSRF-guard pattern (`staff-refresh-cookie.util.ts`, its own
+`__Host-staff_refresh_token` name for the same same-origin-collision
+reason D110 gave itself - staff, admin, and seller all share one
+apps/web origin and one API origin).
+**The actual security property, not just plumbing:** `refresh()`
+re-reads the staff account fresh from the DB on every call (status,
+`expiresAt`) rather than trusting the original login's claims - mirrors
+`AdminAuthService.refresh()`'s own "re-reads adminUser fresh... so a role
+change or de-provisioning is picked up immediately" reasoning exactly.
+Without this re-check, adding a refresh endpoint at all would have made
+the existing (already-bounded, 15-minute) staleness gap WORSE, not
+better - a revoked account could otherwise keep perpetually renewing
+itself forever via refresh. `staff-accounts.service.ts`'s `revoke()`/
+`suspend()`/`block()` additionally call `destroyAllSessionsForUser()`
+directly, so a live session dies at the moment of the action rather than
+only at its next refresh attempt.
+**Reuse detection uses `EventsService`, not `SecurityEventService`:**
+`UserSecurityEvent.userId` carries a real Prisma `@relation` against the
+`users` table (confirmed by reading `schema.prisma`, not assumed) -
+calling it with a `StaffAccount.id` would be a foreign-key violation, not
+a silent no-op. `EventsService.emit()` has no such constraint and is
+already the pattern this exact file uses for `staff_account.login`, so
+`staff_account.refresh_token_reuse_detected` follows the same shape.
+**A real, disclosed gap found while scoping this, not fixed here:**
+`POST /staff/auth/login` has no frontend caller anywhere in `apps/web` -
+confirmed by grepping the whole app (`.next` build-cache hits excluded).
+A staff account can be created, scoped, and password-reset through the
+owner/admin UI, and can complete that reset
+(`app/staff/reset-password/page.tsx` is the one piece of staff-facing UI
+that exists), but there is no actual login page for a staff member to
+use afterward. This is a separate, substantial, pre-existing frontend
+gap - unrelated to session revocability and out of this item's "small,
+contained fix" scope - flagged here rather than silently worked around
+or silently left for someone to discover later.
+**Verified:** new `test/e2e/staff-auth-refresh.e2e-spec.ts` (8 tests) -
+refresh + rotation, missing-CSRF-header rejection, reuse detection
+(session-wide revocation + exactly one platform event), logout, and
+three separate tests proving revoke/suspend/block each kill a live
+session's refresh ability immediately rather than only blocking a future
+login. All pre-existing staff e2e suites (`module35-staff-accounts`,
+`module101-staff-lifecycle`, 23 tests) still pass unchanged - the
+response-body shape change (no more bare `refreshToken` field) was
+confirmed to not be asserted on anywhere. Full unit suite (50/321),
+`apps/api` typecheck and lint all clean.
+**Reasoning:** not elaborated beyond the design doc's own text - this was
+genuinely the last specifically-scoped D82 sub-item left; what remains
+(admin lifetimes, step-up-MFA generalization) needs its own design
+decisions this entry doesn't make.
+
+### D112. D82's last two pieces - admin sessions get a strict, short default lifetime; step-up MFA becomes a reusable mechanism, not a one-off private method
+**Status:** LOCKED. Eighth M1-1B item - closes D82 in full. The two
+remaining named gaps from the original item ("stricter admin session/
+access lifetimes" and "generalize verifyStepUpMfa() into a reusable
+guard/decorator for other money-moving/destructive admin actions") were
+judgment calls on exact numbers/shape rather than text already specified
+elsewhere - made here, documented, not escalated, consistent with every
+other D-numbered decision this session has made autonomously.
+**Decision (stricter admin lifetimes):** new optional
+`ADMIN_JWT_REFRESH_TTL_DAYS` env var; when unset, admin sessions default
+to `ADMIN_DEFAULT_REFRESH_TTL_DAYS = 1` day (`admin-auth.service.ts`) -
+a full password+TOTP re-login daily, versus the seller-wide
+`JWT_REFRESH_TTL_DAYS=30`. Optional, not required, so every existing
+deployment/CI env keeps working unchanged - it's an override for an
+already-strict default, not the switch that enables stricter behavior.
+`SessionService.createSession()` gained an optional `ttlDaysOverride`
+param rather than reaching into actor-specific config itself (would make
+it no longer actor-agnostic); `resolveAdminRefreshTtlDays()` is shared by
+`AdminAuthService` (the Redis session TTL) and `AdminAuthController`
+(the cookie's own `maxAge`) so the two can never drift apart - a cookie
+claiming a 30-day lifetime for a 1-day session would be a real, if minor,
+bug. Only the refresh/session lifetime changed, not the 15-minute access
+token TTL - that's already short, shared infrastructure, and shortening
+it further buys mostly UX friction, not a meaningfully smaller exposure
+window.
+**Decision (step-up MFA generalization):** `SellerLifecycleService.
+verifyStepUpMfa()`'s logic moved, unchanged, into a new shared
+`StepUpMfaService` (`src/auth/step-up-mfa.service.ts`) - a pure refactor;
+`SellerLifecycleService` calls it instead of its own private method, same
+body-based `mfaCode` wire contract it already had and already has a
+frontend for. A new `StepUpMfaGuard` (`common/guards/step-up-mfa.guard.ts`)
+wraps the same service for any NEW route: reads the code from an
+`X-Step-Up-MFA-Code` header rather than a DTO body field, so it's usable
+on any route without that route's own DTO needing to know this concern
+exists - same reasoning `RefreshCookieCsrfGuard`'s header already follows.
+Registered on `TrustSafetyModule` (where `SellerLifecycleService` already
+lived) and exported from there; `BillingModule` already imports
+`TrustSafetyModule`, so wiring the guard into a billing route needed zero
+new module imports and no circular-dependency risk.
+**First new call site, chosen deliberately:** `POST /admin/wallet-topups/
+sellers/:sellerId/adjust` (`WalletService.adminManualAdjust()`) - a
+direct, unbounded admin balance change with no step-up check at all
+before this, the clearest "money-moving admin action" in the codebase
+outside the lifecycle ladder itself. Verified this has a real, already-
+shipped frontend caller (`admin/sellers/[sellerId]/page.tsx`'s
+`adjustWallet()`) before touching the backend, specifically to avoid
+breaking a working feature - `adminApi.post()` gained an optional
+`headers` param (every other call site unaffected), and `adjustWallet()`
+now prompts for the admin's TOTP code and sends it via the header.
+**Deliberately NOT retrofitted here:** `AdminWalletController`'s
+`verifyTopUp`/`rejectTopUp` routes are also money-related and also have
+real frontend callers (`admin/invoices/page.tsx`) - good candidates for a
+future pass, left alone this time to keep this change's blast radius to
+one proven call site rather than several at once.
+**A real regression caught before it shipped, not after:** adding the
+guard to `adjust()` immediately broke 2 pre-existing, already-green e2e
+tests that called this route with no step-up header at all
+(`module25-admin-completion.e2e-spec.ts`'s manual-adjust and audit-log-
+list tests, `module47-wallet-balance-reconciliation.e2e-spec.ts`'s three
+ledger tests) - found by actually running the full suite after the
+change, not assumed safe. Fixed by exposing each admin helper's enrolled
+MFA secret so a fresh TOTP code can be generated per call (a fresh code
+per call, not one reused across a whole test, since a 30s TOTP window
+could otherwise go stale mid-test) - and, separately, confirmed that
+widening one test file's `createAndLoginAdmin()` return type from a bare
+string to an object would have silently "passed" `tsc` at every bare
+`const adminToken = await createAndLoginAdmin(...)` call site (a
+template literal stringifies an object without a type error) while
+actually breaking at runtime - caught by running every affected test
+file fully, not just the one directly touched, and resolved by leaving
+one helper's signature untouched and inlining the one test that needed
+the secret instead of widening a shape five other call sites depended on.
+**Verified:** `trust-safety.e2e-spec.ts`'s 6 step-up-MFA-specific tests
+(suspend/ban) still pass unchanged, proving the `SellerLifecycleService`
+refactor is behavior-preserving; `admin-auth-refresh.e2e-spec.ts` gained
+a test proving the admin cookie's `Max-Age` is exactly 86400s (1 day),
+not anywhere near `JWT_REFRESH_TTL_DAYS`'s 30 days; `module25`/`module47`
+updated and re-verified (17 tests); full unit suite (50/321, after also
+adding the new `step-up-mfa.service.ts` file to D88's
+`admin-bypass-allowlist.spec.ts` tripwire, which correctly caught it as
+an unreviewed new `PrismaAdminService` call site on the first run); both
+apps' typecheck and lint clean throughout.
+**Reasoning:** not elaborated beyond D82's own framing - admin sessions
+now get a materially shorter default lifetime than seller sessions
+without touching the shared access-token TTL, and step-up MFA is now a
+mechanism other admin actions can adopt in one line rather than a
+private method that only ever existed for one call site.
+
+### D113. D83 - EmailService gets a real provider instead of unconditionally throwing for anything but console
+**Status:** LOCKED. Closes `docs/auth-session-design.md`'s Part 3
+disclosure: "Non-console email providers are unimplemented... In a real
+deployment with a real EMAIL_PROVIDER configured, every email send -
+including password reset and email verification - fails. This is
+launch-blocking on its own terms."
+**Decision:** `EmailService.send()` was already the one choke point
+every one of its 20 other methods funneled through (confirmed by
+reading the whole file, not assumed) - it now dispatches to a real
+`EmailProvider` implementation (`email-provider.interface.ts`, one
+method, the same four params `send()` already took) instead of
+unconditionally throwing for anything but `"console"`.
+`ConsoleEmailProvider` is the exact pre-existing dev/test behavior,
+moved out verbatim - zero behavior change there. `ResendEmailProvider`
+is the first real one: a direct `fetch()` against Resend's HTTP API,
+not its SDK - one HTTP call, no new npm dependency, matching how this
+codebase already calls other external HTTP APIs (payment gateways)
+without adopting their SDKs. `docs/tech-stack.md`'s own Email row
+("Transactional email API (e.g. Resend/SES-class provider)... not
+worth building") already named Resend as the example, confirming this
+wasn't a build-vs-buy call that needed revisiting - a self-hosted SMTP
+transport was never actually the intended design for the platform's
+own transactional email (that's a separate, already-existing concern -
+`SMTP_CREDENTIAL_ENCRYPTION_KEY`, Module 26 - for a SELLER's own
+connected SMTP server for their campaigns, a different feature
+entirely).
+**Attachment handling:** Resend's API needs the actual bytes (base64),
+not a URL reference, so `ResendEmailProvider` fetches `attachmentUrl`
+itself and inlines it - best-effort, same "never blocks the main send"
+discipline `sendOrderConfirmationEmail`'s own `invoicePdfUrl` comment
+already documents: a failed attachment fetch logs a warning and sends
+without it rather than losing the email entirely over a PDF-storage
+hiccup.
+**Deliberately NOT done here:** `"ses"` stays a validated
+`EMAIL_PROVIDER` value (`env.validation.ts`'s existing `@IsIn`) but is
+still unimplemented - throws the same "not yet implemented" error,
+narrower now (just this one value). Resend alone closes the actual
+launch-blocking gap (at least one real provider works) with zero new
+dependencies; SES needs the AWS SDK plus region/credential setup, a
+separable follow-up rather than folded in silently here.
+**On `WalletGraceLadderService.publish()` (the other half of this
+item's name) - investigated, no code change made, and here's why:**
+`publish()` already has a `requireEmailVerification`-gated check
+against `seller.user.emailVerifiedAt` (pre-existing, unrelated to this
+item). That gate was already correct in shape; what made it hollow in
+a real deployment was that the verification email it depends on could
+never actually be delivered once a real `EMAIL_PROVIDER` was
+configured, since `send()` threw for anything but console. With
+`send()` now actually working for Resend, the existing gate becomes
+meaningful "for free" - no new precondition belongs in
+`WalletGraceLadderService` itself; the fix was upstream in
+`EmailService` the whole time. Adding a second, separate "is email
+transport configured" check directly inside a billing/publishing
+service would be unrelated infrastructure logic bleeding into a
+business-rule method for no benefit over fixing the actual root cause.
+**Verified:** new `resend-email.provider.spec.ts` (5 tests) - missing-
+API-key rejection, the request shape sent to Resend's API, attachment
+fetch-and-inline, attachment-fetch-failure graceful degradation, and
+non-OK-response surfacing. One test's own mock had a bug caught before
+trusting the result: `Buffer.from(str).buffer` is Node's pooled
+allocation, not a tightly-sized `ArrayBuffer` (small Buffers share an
+8KB pool), so the mock had to slice to the real byte range to match
+what a genuine `Response.arrayBuffer()` actually returns. A focused
+battery of 11 e2e files that exercise `EmailService` through its
+existing console path (signup/password-reset/admin-auth/seller-
+notifications/order-verification/support-tickets/monthly-reports/
+suppliers/missing-tracking-alerts/gateway-health/data-export - 90
+tests) all still pass, confirming the refactor is transparent to every
+existing caller. Full unit suite (51/326, +5 for this item), both
+apps' typecheck and lint clean throughout.
+**Reasoning:** not elaborated beyond the design doc's own framing -
+this was the one specifically launch-blocking item named in Part 3,
+closed with the smallest change that makes it genuinely true rather
+than the largest one that could plausibly be justified.
+
+### D114. Security P0 items (object-level authorization, gateway-secret custody, payment integrity) - investigated, findings recorded, no code changed
+**Status:** INVESTIGATION COMPLETE, IMPLEMENTATION NOT STARTED. Closes
+the investigation half of 1B's three remaining security P0 line items
+(`docs/security-audit-report.md`'s P0 table) with an honest current-
+state finding for each - none of the three gets a code change in this
+entry, for reasons specific to each, recorded below rather than
+silently expanded into a much larger undertaking or silently skipped.
+**#1 - Object-level authorization (IDOR/BOLA) on every route, "generated
+allow/deny test per route":** this is explicitly a NEW, larger-scoped
+item than the 2026-09-06 IDOR sweep already on record (§3 #13 of that
+same report) - the report's own text is unambiguous: "Every item below
+is a planned control... none of this is fixed yet," and "generated
+allow/deny test per route" describes a systematic test-generation pass
+across the entire route table, not a sampled check. That is genuinely
+larger than "finish 1B's remaining named items" - it's its own
+milestone-sized effort. What I *did* do, bounded and complete: checked
+every NEW route this session's D108-D113 work added that takes a
+client-suppliable resource id. All of them follow the already-audited
+pattern exactly - `DELETE /sellers/me/staff-accounts/:id` scopes via
+`@CurrentSellerId()` (derived from the authenticated token, never
+client-suppliable) and checks `staff.sellerId !== sellerId` before
+acting, exactly like every other owner-scoped method in this codebase;
+`/admin/wallet-topups/sellers/:sellerId/adjust` and the staff
+suspend/block admin routes are deliberately cross-tenant BY DESIGN
+(that is what admin authority means), gated by `AdminAuthGuard` (now
+also `StepUpMfaGuard` for the wallet-adjust one) rather than an IDOR
+concern. No new gap found in this session's own additions. The full
+generated-test-per-route sweep itself is recommended as its own
+dedicated effort, not squeezed into 1B's tail end.
+**#2 - Gateway-secret custody, D57's own "envelope encryption, master
+key outside the app host/image":** checked the actual implementation,
+not assumed. Every one of this codebase's 7 `*_ENCRYPTION_KEY` secrets
+(Drive token, CNIC/identity, external-API client, SMTP credential,
+admin-email credential, **payment-gateway credential**, and the newer
+ones since) uses the exact same single-tier scheme
+(`drive-token-crypto.util.ts`'s AES-256-GCM, reused verbatim by every
+other credential type including `payment-gateway-credential-crypto.
+util.ts` - D87's own comment confirms this was a deliberate "one
+audited implementation" reuse, not an oversight) - one static
+symmetric key, read directly from an environment variable on the same
+host/image that uses it. A full-repo grep for KMS/envelope/master-key/
+Vault/SecretsManager terminology returns zero matches anywhere in
+`apps/api/src`. This is real encryption at rest (meaningfully better
+than plaintext), but it is NOT what D57 actually decided: a master key
+held OUTSIDE the app host/image specifically protects against the
+scenario where the app host itself is compromised - under the current
+scheme, compromising the container also hands over the exact key
+needed to decrypt every gateway credential it's holding, defeating the
+property D57 asked for. **Not implemented here, and correctly so for
+this session:** building this for real means picking a KMS approach
+(a cloud KMS - AWS/GCP - vs. a self-hosted Vault, matching or breaking
+this project's self-host-first stance per `docs/tech-stack.md`),
+designing a per-record-DEK-wrapped-by-KMS-held-KEK scheme, migrating
+every already-encrypted credential to it, and standing up that KMS in
+every environment including local dev - a genuine architecture
+decision with real ops/cost implications, not a "small, contained fix"
+autonomous judgment call like D82/D83's items. Flagged here for
+founder decision before M1-1C (real seller gateway keys), matching
+D57/D58's own "before real seller gateway keys are ever accepted" gate.
+**#3 - Payment integrity (server-computed amounts, idempotency keys,
+atomic state transitions, webhook verification):** checked the two
+highest-value existing live money paths directly.
+`WalletService.requestTopUp()` validates `amount > 0` server-side and
+is a seller declaring their OWN top-up claim (fraud-prevention here is
+the admin's own human verification against an out-of-band bank
+receipt, not a code-level amount check - appropriate for a manual-
+transfer flow); `verifyTopUp()` reads the amount from the already-
+stored DB row (never re-accepts one from the admin's confirm call),
+guards re-processing via a `status !== "pending"` check (equivalent
+protection to an idempotency key for this specific admin-driven,
+single-actor flow), and wraps the ledger write + status update in one
+`$transaction` - server-computed, atomic, and effectively idempotent
+for this path, confirmed by reading the code, not assumed. **A real,
+systemic gap found, not fixed here:** a full-repo grep for "Idempotency-
+Key"/"idempotencyKey" returns zero matches anywhere - there is no
+FORMAL, reusable idempotency-key mechanism for client-retryable money-
+moving requests (e.g., a flaky-network double-submit on checkout or a
+mark-as-paid call). The admin/manual-driven paths checked above happen
+to be protected by their own status-check guards, but that's
+per-method incidental protection, not a systematic pattern a future
+endpoint can be assumed to inherit. **Webhook verification is not yet
+applicable, not skipped:** no real payment-gateway webhook endpoint
+exists anywhere in this codebase today - Safepay/Stripe/Simpaisa/
+Airwallex/Razorpay adapters are all M1-1C/M3 scope, explicitly blocked
+on founder-supplied keys, not started. This sub-item needs to be
+designed alongside whichever gateway adapter is actually built first
+(1C), not retrofitted onto a webhook receiver that doesn't exist.
+**Recommendation for the 1B report:** a formal idempotency-key
+middleware/decorator (client-supplied key, server dedupes by key+route
+within a TTL window) is a bounded, clearly-scoped follow-up that could
+reasonably happen inside 1B's spirit if the founder wants it done now
+rather than deferred to M1-1C; the KMS/envelope-encryption migration
+and the full IDOR generated-test-per-route sweep are both larger,
+genuinely milestone-sized efforts that need their own explicit go-ahead
+rather than being absorbed into "finish 1B's remaining items."
+**Reasoning:** investigate-first, same discipline as every other item
+this session - the honest finding for all three was "here's exactly
+what's true today, here's the real gap, here's why building the full
+fix now would be the wrong call to make unilaterally," not silence and
+not a rushed partial implementation.
+
+---
+
+## 2026-10-16 — Founder decisions on the 1B report (D115–D118)
+
+Source: the founder, directly, replying to this session's 1B completion
+report. Status legend as before (LOCKED unless noted).
+
+### D115. D91 resolved - Stage 0 private beta scope confirmed
+**Status:** LOCKED. Resolves D91's outstanding "define the minimum
+feature/doc set" obligation.
+**Decision:** YES to Stage 0. Invite-only, 5-10 sellers, Free plan
+only. Payments limited to COD, manual mark-as-paid, and advance via
+manual transfer. No billing, no live seller gateway keys in any
+environment. Stated goal: reach Stage 0 as fast as safely possible,
+with M1-1C billing work built alongside it rather than strictly
+sequenced after.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D116. Stage 0 readiness sprint ordered - 7 items, before Stage 0 goes live
+**Status:** LOCKED. "Report after A, before starting B."
+**Decision:** before Stage 0 accepts real sellers, this session must:
+1. Build a reusable idempotency-key mechanism and apply it to order
+   creation, markAsPaid/"Not received", the manual-transfer reference
+   submission, and every wallet/top-up mutation. Test: the same key
+   submitted twice produces one effect.
+2. Wire `StepUpMfaGuard` onto the admin verify-topup and reject-topup
+   routes (same guard D112 already built).
+3. Generate IDOR/BOLA allow/deny tests, scoped to the high-risk route
+   groups only: orders, customers, products/stock, payment
+   instructions, store settings, staff, wallet, domains, and all admin
+   routes - cross-tenant (seller A -> seller B) and staff-permission-
+   limit cases. The full per-route sweep is deferred to before paid
+   public launch (D118), not required for Stage 0.
+4. Ship a minimal staff login UI (`POST /staff/auth/login` + logout) -
+   beta sellers are expected to use staff accounts from day one, and
+   D111 already flagged this page as the one missing piece.
+5. Confirm or finish store-domain separation (storefronts on a
+   separate domain from app/admin) and abuse controls (signup/order
+   rate limits, disposable-email block, basic fraud flags) - report
+   what already existed vs. what this session added.
+6. Operations minimum: automated daily DB backups plus one tested
+   restore, error tracking/alerting, a status/health endpoint, and a
+   "Stage 0 deploy checklist" appended to `docs/launch-runbook.md`
+   including SPF/DKIM/DMARC for the Resend sending domain.
+7. One end-to-end smoke test per payment path (COD, manual
+   mark-as-paid, advance via manual transfer), storefront order through
+   seller dashboard, running in CI.
+**Reasoning:** not elaborated beyond the decision itself - this is the
+minimum the founder judges necessary before real outside sellers touch
+the product.
+
+### D117. M1-1C go-ahead confirmed, sandbox only - gateway-secret custody via managed cloud KMS
+**Status:** LOCKED. The explicit go-ahead D114 flagged as needed before
+1C, now given with a concrete, scoped answer.
+**Decision:**
+1. Gateway-secret custody: implement the envelope encryption D57
+   actually specified - a per-secret data key encrypts the secret,
+   wrapped by an external master key behind a small KMS adapter
+   interface. Managed cloud KMS, explicitly not self-hosted Vault (too
+   much operations for a solo team). Until the KMS is wired in, only
+   sandbox/test gateway keys may be stored anywhere; no live seller
+   gateway keys in any environment until this is done and independently
+   reviewed.
+2. Stripe adapter, sandbox only, with webhook signature verification
+   and idempotent webhook handling (dedupe on event ID).
+3. Paddle sandbox billing for the platform's own subscriptions, using
+   the already-locked price ladder and bonus-day rules (D10).
+4. COD/advance/manual e2e, as already planned.
+**Reasoning:** not elaborated beyond the decision itself. Directly
+answers D114 finding #2 with a concrete KMS approach (cloud, not
+self-hosted) and a hard gate (sandbox-only until reviewed).
+
+### D118. Deferred to backlog - not built now
+**Status:** LOCKED.
+**Decision:** three items logged as backlog, explicitly not built in
+this pass:
+- SES email provider (Resend judged sufficient).
+- The full IDOR/BOLA generated-test-per-route sweep (D114 finding #1) -
+  required before paid public launch, not before Stage 0.
+- Buyer-initiated cancellation.
+**Reasoning:** not elaborated beyond the decision itself.
+
+---
+
+## Stage 0 readiness sprint (D116) - shipped items
+
+### D119. D116 item 1+2 - idempotency-key mechanism + step-up MFA on verify/reject/bulk-decide
+**Status:** LOCKED.
+**Decision:** a new `IdempotencyService`/`IdempotencyInterceptor` pair
+(`apps/api/src/common/idempotency/`), backed by the same shared
+`RedisService` every other Redis-backed service already injects
+(`RedisModule` is `@Global()`, mirrored here). Opt-in via an
+`Idempotency-Key` request header - a caller that never sends it gets
+exactly the pre-existing behavior, so applying `@UseInterceptors(
+IdempotencyInterceptor)` to an existing route is purely additive and
+broke no existing test on its own. Applied to the exact routes D116 item
+1 named: `CheckoutController.checkout()`, `OrdersController.markAsPaid()`
+and `.changeStatus()` (covers "Not received", which the frontend already
+implements as a `changeStatus({status:"cancelled"})` call - confirmed by
+reading `orders/[orderId]/page.tsx`, not assumed), `
+ManualTransferSubmissionController.submitReference()`, and all 6 wallet/
+top-up mutations in `wallet.controller.ts` (seller + supplier
+`requestTopUp()`, admin `verify()`/`reject()`/`bulkDecide()`/`adjust()`).
+A concurrent duplicate of an in-flight key is rejected (409), never
+silently re-run; a failed attempt releases its claim so a retry gets a
+genuinely fresh attempt, never permanently poisoned.
+**Step-up MFA (item 2):** `StepUpMfaGuard` (D112) added to `verify()` and
+`reject()`, matching the founder's literal ask - and, caught before
+shipping rather than after, to `bulkDecide()` too: it dispatches to the
+exact same `verifyOne()`/`rejectTopUp()` internally, so leaving it
+unguarded would make the per-item guard added to `verify()`/`reject()`
+trivially bypassable by going through the bulk route instead. One
+step-up code covers the whole batch, same as one `AdminAuthGuard` login
+covers it.
+**Test fallout, found and fixed:** adding the guard broke every e2e test
+that calls `verify()`/`bulkDecide()` as a setup/prerequisite step for
+something unrelated - 19 files, not the 2-3 a narrower search would have
+suggested (confirmed via a repo-wide grep, not assumed from memory).
+Fixed per-file using whichever of two patterns fit without silently
+breaking an unrelated call site: widen the file's local
+`createAndLoginAdmin()` helper to also return the enrolled `mfaSecret`
+(only where that file's helper is used almost exclusively for
+wallet-topup calls - `module20-wallet-supplier-portal` and `module47-
+wallet-balance-reconciliation`, the latter already partly done by D112),
+or leave that shared helper untouched and do a self-contained inline
+MFA enroll+verify at just the specific call sites that need it (every
+other file - lower blast radius, and the one that matches this
+codebase's own existing precedent, `module25-admin-completion`'s
+audit-log test). A fresh TOTP code is generated immediately before each
+call that needs one, never reused across calls (a stale code can fail a
+30-second-window check mid-test).
+**Verified:** `idempotency.service.spec.ts` (5 tests) and `
+idempotency.interceptor.spec.ts` (5 tests) - including "the same
+Idempotency-Key submitted twice runs the handler once and returns the
+same result both times," the exact property D116 item 1 asked to be
+tested. Full unit suite (342/342, +14 for this item), both apps'
+typecheck and lint clean. All 19 e2e files independently re-verified
+(typecheck clean, diffed to confirm no `expect(...)` assertion was added
+or removed - only auth/header plumbing changed) - their actual pass/fail
+against a real database can only be confirmed via CI (no local
+Postgres/Redis in this sandbox), same as every other e2e change this
+session.
+**Reasoning:** the interceptor-not-guard shape was deliberate: a guard
+can only allow/deny, it can't replay a cached response, and "replay the
+same result instead of re-running the side effect" is the actual
+property an idempotency key needs to provide.
+
+### D120. D116 item 5 - disposable-email block (seller signup) + basic fraud flags (buyer checkout)
+**Status:** LOCKED.
+**Decision:** two related but distinct controls, matched to where each
+belongs:
+- **Seller/supplier signup** (`AuthService.signup()`): a disposable
+  email domain is a hard rejection (400), checked before any DB read/
+  write, same placement discipline as the existing country gate just
+  above it - but unlike that gate, never waitlisted (there's nothing to
+  wait for). Backed by the `disposable-email-domains` npm package
+  (121k+ domains, actively maintained - last published days before this
+  was written) plus its `wildcard.json` subdomain list, rather than a
+  hand-rolled list that would just go stale.
+- **Buyer checkout** (`CheckoutService.placeOrder()`): a new, informational-
+  only `computeFraudFlags()` step adds up to two string flags -
+  `disposable_email` (same check as above) and `repeat_ip_short_window`
+  (3rd+ order from the same IP within an hour) - onto two new `Order`
+  columns (`buyerIp`, `fraudFlags`, migration `20261016103000_order_
+  fraud_flags`). Never blocks checkout, deliberately: a hard block here
+  risks refusing a real sale over a privacy-conscious buyer's throwaway
+  email. Flows through to every existing seller/admin order-read path
+  automatically (none of them use a narrowing Prisma `select`, confirmed
+  by reading `orders.service.ts`, not assumed) - no new UI was built to
+  surface them specially; that's a reasonable fast-follow, not done here.
+  Deliberately separate from `Seller.riskScore` (`RiskScoreService`),
+  which scores a SELLER's own identity at signup, not buyer behavior at
+  order time - a different signal for a different actor.
+**Verified:** `disposable-email.util.spec.ts` (4 tests: known disposable
+domain, wildcard subdomain, ordinary domain, malformed input). The
+signup-rejection and checkout-fraud-flag behaviors themselves need a real
+database to exercise (buyer/seller creation, order placement) - covered
+by this session's existing e2e discipline going forward, verified via
+CI after push same as every DB-dependent change this session.
+**Reasoning:** "block" for a known-bad signal at account creation (seller
+side, where it's almost certainly abuse in an invite-only beta); "flag,
+don't block" for the same signal at checkout (buyer side, where it's
+sometimes a real, privacy-conscious customer) - the two surfaces warranted
+different enforcement, not the same rule copy-pasted twice.
+
+### D121. D116 item 4 - staff login UI
+**Status:** LOCKED. Closes D111's own flagged gap: `POST /staff/auth/
+login` has existed since D111 with no UI ever built for it.
+**Decision:** a minimal login page (`apps/web/app/staff/login/page.tsx`),
+styled with the same `AuthShell`/`Card`/`Field`/`Input`/`Button`/`Alert`
+primitives the seller and admin login pages already use (not the bare
+`<input>`/`<button>` tier `staff/reset-password/page.tsx` deliberately
+chose for itself) - a page a staff member sees every login, not a
+one-off recovery completion, warrants the same baseline polish/
+accessibility the rest of this app's auth surfaces already have, and
+costs nothing extra to use. No MFA sub-step - staff login has none.
+A staff JWT carries the same `sellerId` claim a seller's own token does
+(`staff-auth.service.ts`'s `signAccessToken()`), so a staff session
+shares `dashboard-api.ts`'s session store wholesale and lands on the
+exact same `(dashboard)` UI, scoped per-route by `StaffScopeGuard` -
+never a separate staff UI tree.
+**Found and fixed before this would have quietly broken in production:**
+`dashboard-api.ts`'s session-refresh-on-401 and logout were both
+hardcoded to the seller's own `/auth/refresh`/`/auth/logout` routes and
+cookie - reusing them as-is for a staff session would have refreshed
+against the wrong endpoint (failing silently) and logged out to the
+wrong page. `setSession()` gained a third `actorKind` parameter
+(defaulting to `"seller"`, so every existing call site - seller login,
+admin impersonate-entry, support-center - is unaffected), and `
+tryRefresh()`/`logout()`/the redirect-to-login path now branch on it.
+The existing dashboard sidebar's logout button (already shipped, no new
+UI) therefore already works correctly for a staff session too.
+**Verified:** apps/web typecheck and lint both clean. This repo's test
+suite doesn't cover frontend pages at all (e2e is Supertest-driven API
+testing only, confirmed by reading the existing e2e test shape - no
+Playwright-driven UI test convention exists anywhere to extend); that's
+a pre-existing gap, not a new one introduced here.
+**Reasoning:** "minimal" (the founder's own word) was read as minimal
+SCOPE (login + logout, nothing else), not minimal visual quality -
+CLAUDE.md's own UI/UX skills policy applies to any frontend work in this
+repo without a carve-out for "small" pages.
+
+### D122. D116 item 6 - error tracking/alerting (Sentry)
+**Status:** LOCKED.
+**Decision:** `@sentry/node`, wired into both Node processes (`main.ts`'s
+API server and `worker/worker.main.ts`'s BullMQ worker, each needs its
+own `init()`), gated on an optional `SENTRY_DSN` env var - unset, it
+never initializes, same "skipped_not_configured, not a crash" discipline
+`backups/database-backup.service.ts` already established for `BACKUP_S3_
+*`. `HttpExceptionFilter` (the one place every unhandled server fault
+already funnels through) calls `Sentry.captureException(exception)`
+inside its existing `status >= 500` branch, right alongside the line
+that already logs it - a genuine server fault reaches Sentry; an
+ordinary 4xx client error never does.
+**PII discipline, checked rather than assumed:** this codebase has a
+standing "never send request bodies/headers/cookies anywhere outside
+this process" rule (`pii-redaction.interceptor.ts`). `captureException`
+is called with the bare exception only, never a request object. Looked
+for a `sendDefaultPii`-style init flag as an explicit backstop against
+the SDK's own default auto-instrumentation attaching ambient request
+data on its own - the installed major version's `NodeOptions` type has
+no such flag (confirmed by reading the actual shipped `.d.ts`, not
+assumed from older Sentry docs) - so `beforeSend` deletes `event.request`
+unconditionally instead, a mechanism that doesn't depend on guessing at
+SDK-version-specific option names.
+**Verified:** `http-exception.filter.spec.ts` (2 tests: a 5xx reaches
+`Sentry.captureException`, a 4xx never does - `jest.spyOn` doesn't work
+on `@sentry/node`'s own exports, so this mocks the whole module via
+`jest.mock`, not a real network call). Full unit suite and typecheck
+clean on both apps.
+**Reasoning:** picked the standard, hosted-SaaS-with-a-generous-free-tier
+option rather than self-hosting an error-tracking stack, same build-vs-
+buy call this session already made for Resend over self-hosted SMTP
+(D113) - "don't build/run infrastructure that's a specialized, already-
+solved, externally-maintained concern" is a repeated pattern, not a
+one-off.
+
+### D123. D116 item 6 (remainder) - automated backup-restore CI drill + Stage 0 deploy checklist
+**Status:** LOCKED.
+**Decision:** daily backups were already automated before this session
+(`backups/database-backup.service.ts`, Sept 2026) - what `docs/launch-
+runbook.md` §6 still only offered was a one-off MANUAL restore drill
+(and its own text already documents the one time it actually ran,
+Sept 2026, finding a real bug: FK constraints silently dropped without
+`psql -v ON_ERROR_STOP=1`). A new CI job, `backup-restore-drill` (`.
+github/workflows/ci.yml`, same cheap tier as `db-role-grants` - real
+Postgres, no Redis/Playwright/app boot), now runs the exact pg_dump
+invocation `DatabaseBackupService` itself uses in production, restores
+it into a scratch database with the runbook's own `ON_ERROR_STOP=1`
+discipline, and asserts two things a bare "the app booted" check would
+miss: a deterministic marker row survives byte-for-byte, and every
+foreign-key constraint name survives (the exact class of failure §6
+already found once). This makes the restore side of the backup story
+continuously, automatically re-verified on every push, not a drill the
+founder has to remember to repeat by hand.
+**Stage 0 deploy checklist:** a new §0b in `launch-runbook.md`,
+inserted right after the existing branch-protection section (read
+early, not buried at the end) - a condensed cross-reference saying
+which of the existing numbered sections apply to a Stage 0 deploy
+(skip load/soak, skip Paddle entirely), plus the one genuinely new item
+nothing else in the doc covers: SPF/DKIM/DMARC for the Resend sending
+domain. Checked directly rather than assumed: this is a DIFFERENT
+concern from §10's existing Cloudflare Email Routing instructions
+(founder's own inbound/send-as inbox) - if both mechanisms live on the
+same root domain, their SPF records must be MERGED into one TXT record,
+never two separate ones (invalid per the SPF spec), which the checklist
+calls out explicitly since it's the one non-obvious trap here.
+**Reasoning:** not elaborated beyond the decision itself - the honest
+reading of "one tested restore" for a sandbox with no access to the
+real production VPS/S3 bucket is "prove the mechanism and the exact
+documented failure mode stay caught, continuously," not a restore this
+session could perform against infrastructure it has no access to.
+
+### D124. D116 item 7 - one e2e smoke test per payment path, checked before writing anything new
+**Status:** LOCKED.
+**Decision:** audited existing coverage for all 3 named payment paths
+before adding anything, to avoid duplicating what already exists.
+**COD and manual mark-as-paid already have full-chain coverage**: `
+orders.e2e-spec.ts`'s Financial Truth Invariant test already goes real
+storefront checkout -> seller-dashboard-visible pending order -> real
+markAsPaid() -> confirmed, and mechanically "manual mark-as-paid" IS
+that same mechanism (checked, not assumed - `Store.paymentModel`
+defaults to `cod`, and `CheckoutService`'s per-model readiness gate
+only adds extra requirements for `prepaid`/`advance`, so an
+unconfigured default checkout already IS the COD path). **The advance
+model's Manual Transfer fallback (B3b) had a real, if narrow, gap**:
+`b3b-manual-transfer.e2e-spec.ts`'s happy-path test already chains real
+checkout -> real reference submission -> real markAsPaid(), but verified
+the intermediate and final state via direct Prisma reads, never the
+actual `GET /stores/:storeId/orders/:orderId` a seller's browser hits -
+closed by adding exactly that GET call in two places (after submission,
+after confirmation), same test, no new file.
+**Reasoning:** "one e2e smoke test per payment path" is already true
+for 2 of 3 paths without any new code - closing the one real gap in
+the existing test was the smallest change that makes the claim
+genuinely true for all 3, not a reason to write 3 new parallel tests
+duplicating what already exists.
+
+### D125. D116 item 3 - scoped IDOR/BOLA sweep across the 9 named route groups, plus one real gap found and fixed
+**Status:** LOCKED.
+**Decision:** a new file, `stage0-idor-bola-sweep.e2e-spec.ts`, adds a
+cross-tenant (seller A -> seller B) test for 8 of the 9 named groups
+(orders, customers, products/stock, payment instructions, store
+settings, staff, domains, plus a denial sweep for "all admin routes" -
+inherently cross-tenant by design, so it gets a sweep instead) -
+wallet is `it.todo`'d with a pointer, already thoroughly covered by
+`module20-wallet-supplier-portal.e2e-spec.ts` and structurally unable
+to have an IDOR surface (`SellerWalletController`/`SupplierWalletController`
+resolve ownership only from the caller's own JWT, never a foreign-
+tenant-referencing param). For the staff-permission-limit dimension,
+customers and products/stock are `it.todo`'d (already thoroughly
+covered by `module35-staff-accounts.e2e-spec.ts`, confirmed by reading
+that file directly rather than trusting the task's own framing, which
+turned out to be based on stale information).
+**A real gap, found then fixed in the same pass - not just flagged:**
+`ShippingSettingsController`/`TaxSettingsController`/`StoresController`/
+`DomainsController` had NO staff-scope gate at all - neither
+`StaffScopeGuard`/`@RequireStaffScope` (unlike orders/catalog/
+discounts/customers/theme-settings) nor `@BlockStaffSessions()` (unlike
+payment-instructions/staff-accounts/wallet, explicitly owner-only).
+`StaffScopeGuard` is never registered globally either, so nothing else
+was catching this. Confirmed, not assumed: a staff account scoped only
+to an unrelated permission (e.g. "design") could read AND write
+shipping/tax settings, and - the most serious instance - change a
+store's payment-model (COD/prepaid/advance, a core financial decision)
+or create a new store under the owner's account via `StoresController`,
+exactly as the owner could. Fixed by adding `@BlockStaffSessions()` to
+all four controllers (the same owner-only pattern already proven on
+payment-instructions/staff-accounts/wallet) rather than inventing a new
+`StaffScope` value - none of the 9 existing scopes (orders/catalog/
+discounts/customers/design/analytics/marketing/reviews/suppliers)
+cleanly map to "store settings" or "domains", and picking a delegable
+scope's name/granularity unilaterally would be a product decision, not
+a security fix. Shipped now rather than merely flagged: this is a
+privilege-escalation-shaped hole, closed with an already-established,
+zero-new-surface pattern, during the exact window Stage 0 is bringing
+real staff accounts online (D116 item 4 shipped the staff login UI this
+same session) - leaving it open to ask first was the actually risky
+choice.
+**For the founder:** if staff SHOULD be delegable for shipping/tax/
+domain management in a future pass, that needs a new `StaffScope` value
+(migration + seller-facing scope-picker UI) - a real feature, not
+folded into this fix. Until then, owner-only is correct and safe.
+**Verified:** confirmed via grep that no existing e2e test calls any of
+the four controllers with a staff token (so this fix breaks nothing
+already passing) before applying it. Full unit suite (342/342
+unchanged - this fix is e2e-only), both apps' typecheck and lint clean.
+The sweep file's own two new tests for this gap assert the FIXED (403)
+behavior, not the vulnerable one - e2e correctness is confirmed via CI
+after push, consistent with every DB-dependent change this session.
+**Reasoning:** investigate-first, same discipline as every other item
+this session - read every controller directly before writing a single
+test, found the one real gap the founder's own ask best describes
+("staff-permission limits") was there to catch, and fixed it with the
+smallest change that closes it rather than the largest one that could
+plausibly be justified.
+**CI follow-up:** the PR-triggered full run on the above commit came
+back red - one test, not the fix. The group-8 domains cross-tenant
+test set `domains.custom_domain_enabled` with a `"global"`-scope
+override, but `PRECEDENCE` in `settings.types.ts` is `["seller",
+"store", "supplier", "plan", "category", "global"]` - a fresh test
+seller lands on the `starter_free` plan, which already carries its own
+plan-scoped override of that key to `false`, and plan outranks global.
+Confirmed, not assumed, via the real job log (`expect(201)` received
+`403`) and a direct read of `DomainsService.attach()` before touching
+anything. Not a regression from the staff-scope fix above - the failing
+call uses the seller's own owner token, never a staff one. Fixed by
+setting the override at seller scope instead (which outranks plan),
+same change in both affected tests in this file.
+**Correction (same CI follow-up, second round):** the seller-scope fix
+above was itself wrong, and CI caught it too - `setValue()` validates
+the scope against the key's own `allowedScopes` before PRECEDENCE is
+even consulted, and `domains.custom_domain_enabled`'s is `["global",
+"plan"]` (`plans.seed.ts`) - "seller" was never a legal scope for this
+key, so the call threw `BadRequestException` during test setup.
+Confirmed via the real job log (`SettingsService.setValue:121`) rather
+than assumed from the first fix's own (wrong) reasoning. Since neither
+"seller" nor "global" is usable here, and mutating the shared
+`starter_free` plan-scoped row would leak into every other
+starter_free-seller test sharing the database, the correct fix is the
+one `module16-seller-onboarding.e2e-spec.ts` already uses for this
+same gate: upgrade the test seller to a paid tier, which carries no
+override at all. The staff-permission-limit domains test never needed
+the override in the first place - `BlockStaffSessionsGuard` blocks a
+staff token before the handler ever reaches the plan-gate check - so
+it's dropped there rather than ported. Verified for real this time
+before pushing again: started local Postgres 16 + Redis in this
+session's own container, bootstrapped roles, ran migrations, and ran
+this exact spec file against them directly rather than typechecking
+and hoping - all 10 tests (3 todo) pass. Full unit suite (342/342)
+re-run clean alongside it.
+
+---
+
+### D126. Founder reply to the Stage 0 sprint report - D125 lock-in, KMS spec, fraud-flag privacy directive, B proceed
+**Status:** LOCKED.
+**Decision:**
+1. **D125 lock-in:** shipping/tax/stores/domains stay owner-only for MVP.
+   No new `StaffScope` value for now - closes the "for the founder"
+   question D125 itself raised.
+2. **KMS (M1-1C/B1), concrete spec:** a generic `KmsProvider` interface,
+   two implementations - `AwsKmsProvider` (real, AWS KMS envelope
+   encryption via GenerateDataKey/Decrypt; AWS is the first production
+   target "because it works from any host"; written against the AWS SDK,
+   tested with mocks/LocalStack in CI; credentials only ever arrive via
+   local `.env`, later) and `LocalDevKmsProvider` (env-sourced master key,
+   clearly marked non-production). A startup guard must refuse to boot in
+   `NODE_ENV=production` with `LocalDevKmsProvider`, and must refuse to
+   store any gateway secret at all without a real KMS configured - both
+   paths need a test. A migration must re-wrap any already-encrypted
+   gateway secrets under the new scheme, idempotently, with its own test.
+3. **Fraud-flag privacy check:** the `repeat_ip_short_window` signal (D120)
+   "must not become IP tracking" - only a salted hash of the IP, short
+   Redis TTL (24h example), only the resulting flag on the order, never
+   the IP itself, mentioned in the privacy notes. Confirm or change.
+4. **B (M1-1C) proceeds** as already approved (D117): Stripe sandbox
+   adapter with webhook signature verification and event-ID dedupe,
+   Paddle sandbox billing on the locked price ladder + D10 bonus-day
+   rules, COD/advance/manual e2e.
+5. **Stage 0 deployment, in parallel:** prepare per the runbook checklist
+   (D123) and send one exact list of the accounts/credentials needed
+   (domain, Resend, error tracking, backups storage, etc.) - to be
+   supplied only through the local `.env`, never in chat or the repo.
+**Reporting cadence set by the founder:** report after B1 (KMS) merges;
+send the Stage 0 needs list as soon as it's ready (not gated on B1).
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D127. D126 item 3 - fraud-flag IP privacy fix (checked, found wrong, fixed)
+**Status:** LOCKED.
+**Decision:** checked rather than confirmed - D120's `repeat_ip_short_window`
+signal did NOT match the privacy bar the founder described. It stored the
+buyer's raw IP permanently on the `Order` row (`buyer_ip` column) and
+queried it directly via Prisma (`order.count({where:{buyerIp,...}})`) -
+exactly the "IP tracking" the founder was checking against, not a false
+alarm. Fixed, not just confirmed:
+- The IP is now only ever hashed (`hashBuyerIpForFraudSignal()`, a salted
+  HMAC using the already-existing `IDENTITY_FINGERPRINT_HMAC_SECRET` - no
+  new secret - domain-separated by a fixed `"fraud-ip:"` prefix rather
+  than sharing the exact same digest space as the CNIC/payment-instrument
+  fingerprints). Deliberately does NOT reuse `identity-crypto.util.ts`'s
+  `fingerprintValue()` - that function strips non-alphanumerics for
+  identity-number formatting tolerance, which would be wrong for an IP
+  (dots/colons are structurally meaningful, not noise) and risks
+  collisions between two different IPs.
+- The hash is counted in a 24-hour fixed Redis window
+  (`RateLimitService.countInWindow()`, a new non-throwing sibling to the
+  existing `enforcePerHour()` - both now share the same INCR+conditional-
+  EXPIRE primitive) - 3rd-or-later order from the same fingerprint in the
+  window sets the flag. Redis's own TTL is the only thing that makes this
+  data disappear - nothing else has to remember to delete it.
+- `Order.buyerIp` column dropped entirely (new migration
+  `20261016160001_drop_order_buyer_ip`) - the raw IP never reaches
+  Postgres now, not even transiently. Only the resulting flag string
+  (`fraud_flags`, unchanged) is ever persisted.
+- Privacy policy (`docs/legal/privacy-policy.md` §2) updated to describe
+  the mechanism in the terms the founder asked for.
+**Verified:** confirmed via grep that `buyerIp`/`buyer_ip` had no other
+reader anywhere in the codebase before dropping the column. New unit
+tests, run for real (not just typechecked): `fraud-signal.util.spec.ts`
+(5 tests - deterministic, different IPs differ, different secret
+differs, output never contains the IP as a substring, fixed-length
+digest for both IPv4 and IPv6) and `rate-limit.service.spec.ts` (4 tests
+- new file, `RateLimitService` had zero tests before this; covers both
+`countInWindow()` and that `enforcePerHour()` still throws correctly
+after the refactor). Full unit suite 351/351 (+9). The migration applied
+cleanly against this session's local Postgres, and the checkout-
+exercising e2e files (`orders`, `b3b-manual-transfer`, `trust-safety`,
+`module22-growth-partner-programs`) were re-run against it directly, not
+just typechecked - all 4 suites, 77/77 tests, pass.
+**Reasoning:** the founder's "confirm that's how it works, or change it"
+was answered by reading the actual code first, not by re-asserting what
+D120's own doc comment claimed - the doc comment and the implementation
+had quietly diverged from what "informational signal, never blocks
+checkout" should have also meant for retention, and a privacy-sensitive
+mechanism is exactly the kind of claim this session's "verify, don't
+assume" discipline exists for.
+
+### D128. KMS envelope encryption for gateway secrets (B1, D126 item 2)
+**Status:** LOCKED.
+**Decision:** per the founder's concrete spec - a generic `KmsProvider`
+interface (`generateDataKey()`/`unwrapDataKey()`), two implementations:
+- `AwsKmsProvider` - real AWS KMS `GenerateDataKey`/`Decrypt` via the AWS
+  SDK v3, with an `AWS_KMS_ENDPOINT` override so CI can point it at a
+  LocalStack-emulated KMS instead of real AWS.
+- `LocalDevKmsProvider` - env-sourced master key
+  (`LOCAL_DEV_KMS_MASTER_KEY`), explicitly `isProductionSafe = false`.
+- `KmsModule` (`@Global()`) selects and constructs only the active
+  provider directly (`new Provider(config)`), never both as ordinary
+  Nest-injected providers - Nest eagerly constructs every provider an
+  `inject` array names, which would make `AwsKmsProvider` throw on a
+  missing `AWS_KMS_KEY_ID` even when `local-dev` is the one actually
+  selected.
+- Boot guard: refuses to boot at all when `NODE_ENV=production` and the
+  selected provider isn't production-safe (`kms.module.spec.ts`, 4
+  tests, all 4 meaningful combinations).
+- `GatewayCredentialVaultService`: one random data key per gateway
+  connection row, wrapped by the active KMS provider; `issueDataKey()`
+  additionally refuses to run in production without a production-safe
+  KMS (never blocks `decrypt()` - an already-stored secret must stay
+  readable). `PaymentGatewayService`/`PlatformGatewayService` refactored
+  to use it instead of the old static-key encryption.
+- Migration: `dataKeyWrapped` column added to both gateway connection
+  tables; `scripts/rewrap-gateway-credentials.ts` idempotently re-wraps
+  existing rows under the new scheme (decrypt-under-old-key,
+  encrypt-under-new-per-row-key, same pattern as the existing
+  `rotate-encryption-key.ts`).
+- New `kms-localstack-test` CI job - a real `GenerateDataKey`/`Decrypt`
+  round trip against a LocalStack-emulated KMS endpoint, not just a
+  mock, per the founder's explicit "tested with mocks/LocalStack in CI."
+**A real bug found by this session's own local e2e verification, not CI**
+(the exact reason D130's pipefail rule exists): the refactor above
+missed one caller. `GatewayHealthService.runHealthCheckSweep()` (the
+6-hourly background sweep, FR-6.44) still decrypted stored credentials
+directly with the old static `PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY`
+instead of going through the vault - for any connection saved under the
+new per-row data key, that decrypt call threw, was silently swallowed by
+the method's own `catch { verified = false }`, and the gateway adapter's
+`verifyPayment()` was never even reached (confirmed: 0 calls). Left
+unfixed, every connection would eventually report as failing its health
+check and could trip false "payments degraded" alerts to every seller.
+Fixed by injecting `GatewayCredentialVaultService` into
+`GatewayHealthService` (already a provider in the same module,
+`PaymentGatewayModule`, so no new wiring needed) and switching both
+decrypt call sites to `vault.decrypt(ciphertext, dataKeyWrapped)`, with
+an explicit "not yet migrated" guard that cleanly falls through to the
+same `verified = false` path rather than throwing a confusing low-level
+error.
+**Verified:** full unit suite 63/63 suites, 385/385 tests, both before
+and after the `GatewayHealthService` fix. `apps/api`/`apps/web`
+typecheck and lint clean. e2e, run with `set -o pipefail` this time (not
+`| tail` alone) so a real failure couldn't hide again:
+`module62-payment-gateway-connect`, `platform-gateway.e2e`,
+`module76-prepaid-partial-advance`, and `module95-payment-model` passed
+clean on the first real (non-collided) run; `module67-gateway-health`
+failed for real on that same run (2/6 tests, the bug above), then passed
+6/6 once fixed, re-confirmed together with `module25-admin-completion`
+in one final combined run. `kms-localstack-test` passed in real CI
+(run `38957181394`) - the first real, non-mocked confirmation that
+`AwsKmsProvider`'s AWS SDK v3 request signing/wire format round-trips
+correctly. A full fresh CI run against the fixed code, and the PR
+merge, follow once that run is independently confirmed green.
+**Reasoning:** matches the founder's spec exactly; the one real defect
+this surfaced was caught specifically because local verification was
+re-run for real with a trustworthy exit code after the first
+(collision-corrupted) attempt, rather than trusting either the
+corrupted run or a quick re-skim of the diff.
+
+### D129. Drive/Printify graceful degradation (D126 reply, option b)
+**Status:** LOCKED.
+**Decision:** Google Drive import and Printify dropshipping become
+optional, the same degrade-gracefully pattern as Sentry/backups/email
+(D116, `BackupStorageService`) rather than a required boot dependency:
+- `GOOGLE_DRIVE_CLIENT_ID`/`_SECRET`/`_REDIRECT_URI` and
+  `PRINTIFY_API_KEY` are now `@IsOptional()` in `env.validation.ts`.
+- `IDriveClient`/`IPrintifyClient` both grow an `isConfigured(): boolean`;
+  every controller/service entry point that would actually touch the
+  unconfigured integration checks it first and throws
+  `ServiceUnavailableException` (503) instead of reaching a
+  `getOrThrow()` deep inside a request.
+- The dashboard (`ImagesSection.tsx`) and admin
+  (`supplier-adapters/page.tsx`) show "Not available yet" instead of the
+  normal UI/a misleading enabled toggle.
+- `main.ts` logs a plain startup line listing which optional
+  integrations are off (`optional-integrations-status.ts`'s
+  `listOffOptionalIntegrations()`) - routine for the Stage 0 beta, not a
+  Sentry-worthy misconfiguration alarm.
+- New `optional-integrations-boot.e2e-spec.ts` proves the app boots
+  cleanly with both unset.
+**Verified:** delegated to a background agent with a detailed,
+pre-investigated brief; the full diff was reviewed directly before it
+was committed. Full unit suite 63/63 suites, 385/385 tests (combined
+with B1/KMS). `apps/api`/`apps/web` typecheck/lint clean.
+`optional-integrations-boot.e2e-spec.ts` 1/1, confirmed on two separate
+isolated runs. `google-drive.e2e-spec.ts` 6/6,
+`module24-seller-data-export.e2e-spec.ts` 7/7 (both re-run in isolation
+after the fixture updates). `platform-events.e2e-spec.ts` 7/8 - the one
+failure (a real-DNS/TLS domain-verification test, unrelated to this
+change) reproduces identically on `domains.e2e-spec.ts`, a file this
+change never touched, confirming a pre-existing sandbox-only
+limitation, not a regression. Also confirmed directly rather than
+assumed: `orders.service.ts`'s `forwardSupplierItems()` already catches
+and logs a Printify adapter failure without rethrowing, so a 503 from
+the now-optional client degrades the same way; `GET /health` (not a
+weaker fallback) proves full HTTP+DI+DB/Redis connectivity in the boot
+test; `Badge`'s `warning` tone is a real, existing variant.
+**Reasoning:** matches the founder's explicit "same pattern as
+Sentry/backups/email" instruction and this codebase's existing
+optional-integration convention (`@IsOptional()` + `isConfigured()` +
+caller degrades) rather than inventing a new mechanism.
+
+### D130. Process rules after the e2e DB-collision false negative, plus KMS throwaway-key confirmation
+**Status:** LOCKED.
+**Decision:**
+1. Only one process may run tests against a shared local Postgres/Redis
+   at a time; parallel agents needing DB tests get separate
+   databases/schemas or run sequentially. Documented in README.md's
+   "Running tests" section - the exact failure mode (cross-process
+   `TRUNCATE CASCADE`) was caught firsthand twice in this session.
+2. Every test pipeline must use `set -o pipefail` (or otherwise check
+   the test runner's own exit code) - a `| tail` must never again hide
+   a non-zero jest exit code, which is exactly what happened when a
+   second, concurrent e2e run corrupted this session's own
+   verification and a misleading `exited with code 0` almost went
+   unnoticed.
+3. One unit of work per PR/commit where possible, going forward. B1
+   (KMS) and the Drive/Printify graceful-degradation work landed
+   together in one 43-file commit (`66b7337`) because both traced to
+   the same founder message and shared edited files (`app.module.ts`,
+   `env.validation.ts`) - confirmed fine this one time, but B2/B3/B4
+   each get their own commit (and likely their own PR rather than
+   continuing to stack onto the one long-running PR #12) from here on.
+**Confirmed, per the founder's direct question:** `LOCAL_DEV_KMS_MASTER_KEY`
+is a throwaway value in both places it's set, and the two values
+differ - local `apps/api/.env.test` (gitignored) vs. CI's inline
+heredoc in `ci.yml`. Grepped the full tracked repo tree for both exact
+strings: the CI value appears exactly once, nowhere else. The
+production boot guard is real, not just documented: `kms.module.ts`'s
+factory throws `Refusing to boot: KMS_PROVIDER_TYPE="local-dev" ... but
+NODE_ENV=production` whenever `NODE_ENV=production` and the selected
+provider's `isProductionSafe` is false; `LocalDevKmsProvider.isProductionSafe`
+is a hardcoded `false`, not env-derived. `kms.module.spec.ts` proves
+this in all 4 meaningful combinations, including the case where
+`KMS_PROVIDER_TYPE=local-dev` is set *explicitly* in production (not
+just left at its default) - still rejected.
+**Reasoning:** not elaborated beyond the decision itself - a direct
+founder instruction plus a direct founder question, answered by
+re-reading the actual code rather than restating what was already
+believed to be true.

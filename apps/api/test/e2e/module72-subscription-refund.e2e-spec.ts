@@ -1,6 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -18,12 +19,20 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   let app: INestApplication;
   let superuser: PrismaClient;
 
+  // D63/B5 (founder decision, 2026-10-10/11) - programs.enabled defaults
+  // to false; this file's referral-code signup path needs an approved
+  // program participant, so it explicitly opts back in.
+  async function enablePrograms() {
+    await app.get(SettingsService).setValue("programs.enabled", "global", null, true, "00000000-0000-0000-0000-000000000000");
+  }
+
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
     app = await buildTestApp();
+    await enablePrograms();
   });
 
   afterAll(async () => {
@@ -35,6 +44,7 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
+    await enablePrograms();
   });
 
   async function signup(email: string, referralCode?: string) {
@@ -67,14 +77,23 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
     return verify.body.accessToken as string;
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). Most
+   * but not all of this file's tests call this helper (the plain
+   * "cancelling without a reason" rejection test below never pays a plan
+   * fee at all), so each caller that needs it passes its own
+   * freshly-enrolled `stepUpCode` generator inline rather than through the
+   * shared createAndLoginAdmin() helper.
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
   }
 
   /** FR-33.2/33.6 - applies + admin-approves a fresh Student Referral participant (no plan-eligibility gate, unlike Ambassador), returning its issued referral code. */
@@ -102,7 +121,27 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   });
 
   it("FR-6.49: a qualifying first-cycle cancellation posts a 50% refund_adjustment credit and cancels the subscription, audit-logged", async () => {
-    const adminToken = await createAndLoginAdmin("refund-admin2@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared createAndLoginAdmin() doesn't expose the enrolled
+    // secret, so a fresh enroll+verify flow is done inline here rather
+    // than widening that shared helper's return shape for every one of
+    // its other callers (including the no-reason-rejection test above,
+    // which never pays a plan fee at all).
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "refund-admin2@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const seller = await signup("refund-qualifying@example.com");
 
     // SRS §5.73 - signup now defaults to starter_free (price 0, no plan fee
@@ -111,7 +150,7 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
     const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: goPlan.id } });
 
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
     const expectedRefund = Number((Number(payment.planFeePortion) * 0.5).toFixed(2));
@@ -149,7 +188,22 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
    * effect of some other disqualifying condition.
    */
   it("FR-6.50: a seller referred via an approved Growth & Partner Program link never qualifies for the first-cycle refund, even though every other condition is met, with a clear reason", async () => {
-    const adminToken = await createAndLoginAdmin("refund-admin6@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail6 = "refund-admin6@example.com";
+    const adminUser6 = await superuser.user.create({
+      data: { email: adminEmail6, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser6.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin6 = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail6, password: ADMIN_PASSWORD });
+    const adminEnroll6 = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin6.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret6 = adminEnroll6.body.secret as string;
+    const adminVerify6 = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin6.body.preAuthToken, code: authenticator.generate(mfaSecret6) });
+    const adminToken = adminVerify6.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret6);
     const referrer = await signup("refund-referrer@example.com");
     const referralCode = await applyApproveStudentReferral(referrer.token, "00000000-0000-0000-0000-000000000000");
 
@@ -157,7 +211,7 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
     const attribution = await superuser.referralAttribution.findUniqueOrThrow({ where: { referredSellerId: referredSeller.sellerId } });
     expect(attribution.programType).toBe("student_referral");
 
-    await payPlanFee(referredSeller.token, adminToken); // first cycle, verified, well within the refund window
+    await payPlanFee(referredSeller.token, adminToken, stepUpCode); // first cycle, verified, well within the refund window
 
     const cancel = await request(app.getHttpServer())
       .post(`/admin/sellers/${referredSeller.sellerId}/subscription/cancel`)
@@ -180,7 +234,22 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   });
 
   it("FR-6.49: cancelling a second time is rejected (already cancelled), and never double-refunds", async () => {
-    const adminToken = await createAndLoginAdmin("refund-admin3@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "refund-admin3@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const seller = await signup("refund-double@example.com");
 
     // SRS §5.73 - signup now defaults to starter_free (price 0, no plan fee
@@ -189,7 +258,7 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
     const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: goPlan.id } });
 
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await request(app.getHttpServer())
       .post(`/admin/sellers/${seller.sellerId}/subscription/cancel`)
       .set("Authorization", `Bearer ${adminToken}`)
@@ -206,10 +275,25 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   });
 
   it("FR-6.49: a seller who already renewed (past the first cycle) does not qualify for a refund on cancellation", async () => {
-    const adminToken = await createAndLoginAdmin("refund-admin4@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "refund-admin4@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const seller = await signup("refund-renewed@example.com");
-    await payPlanFee(seller.token, adminToken); // first cycle
-    await payPlanFee(seller.token, adminToken); // renewal - now on their second verified payment
+    await payPlanFee(seller.token, adminToken, stepUpCode); // first cycle
+    await payPlanFee(seller.token, adminToken, stepUpCode); // renewal - now on their second verified payment
 
     const cancel = await request(app.getHttpServer())
       .post(`/admin/sellers/${seller.sellerId}/subscription/cancel`)
@@ -224,9 +308,24 @@ describe("Subscription refund policy (e2e) - SRS §5.6k/§14.66 (Module 72, FR-6
   });
 
   it("FR-6.49: a cancellation outside the refund window does not qualify", async () => {
-    const adminToken = await createAndLoginAdmin("refund-admin5@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "refund-admin5@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const seller = await signup("refund-expired-window@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
     await superuser.walletTopUpRequest.update({ where: { id: payment.id }, data: { verifiedAt: new Date(Date.now() - 8 * DAY_MS) } }); // window default is 7 days

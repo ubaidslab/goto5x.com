@@ -39,6 +39,8 @@ export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
  * property FR-9.2 requires in production is what makes this testable at all.
  */
 export interface IDriveClient {
+  /** D126 - true only when all 3 OAuth env vars are set; every other method assumes this was already checked by the caller. */
+  isConfigured(): boolean;
   getAuthUrl(state: string): string;
   exchangeCodeForTokens(code: string): Promise<DriveTokenExchangeResult>;
   refreshAccessToken(refreshToken: string): Promise<DriveAccessTokenRefresh>;

@@ -70,14 +70,40 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
     return verify.body.accessToken as string;
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard).
+   * Every test in this file ends up calling this, so each gets its own
+   * freshly-enrolled `stepUpCode` generator from createStepUpAdmin() below
+   * rather than through createAndLoginAdmin(), left untouched per D112/
+   * D116's own precedent ("rather than widening that shared helper's
+   * return shape").
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
+  }
+
+  /** A fresh, self-contained admin enroll+verify flow for tests that need a step-up code, without widening createAndLoginAdmin()'s return shape. */
+  async function createStepUpAdmin(email: string): Promise<{ adminToken: string; stepUpCode: () => string }> {
+    const bcrypt = await import("bcryptjs");
+    const user = await superuser.user.create({
+      data: { email, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = enroll.body.secret as string;
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    return { adminToken: verify.body.accessToken as string, stepUpCode: () => authenticator.generate(mfaSecret) };
   }
 
   /** Pauses the seller's store(s) for genuine plan-fee non-payment, going through the real code path (not a direct DB update) so terminalPausedAt is set exactly as production would set it. */
@@ -100,9 +126,9 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
   }
 
   it("FR-6.41: a store paused for non-payment gets terminalPausedAt set", async () => {
-    const adminToken = await createAndLoginAdmin("retain-admin1@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("retain-admin1@example.com");
     const seller = await signup("retain-pause@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     const store = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)
@@ -116,9 +142,9 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
   });
 
   it("warning emails fire once each at day 0/7/13 and never re-send the same milestone", async () => {
-    const adminToken = await createAndLoginAdmin("retain-admin2@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("retain-admin2@example.com");
     const seller = await signup("retain-warnings@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)
@@ -147,9 +173,9 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
   });
 
   it("FR-6.41: the deletion job deletes exactly the founder-specified scope and preserves everything else, audit-logged", async () => {
-    const adminToken = await createAndLoginAdmin("retain-admin3@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("retain-admin3@example.com");
     const seller = await signup("retain-delete@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     const storeRes = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)
@@ -190,9 +216,9 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
   });
 
   it("FR-6.41 race safety: a verified renewal payment that lands before the deletion sweep runs always wins - the store's data survives even though the retention window had elapsed", async () => {
-    const adminToken = await createAndLoginAdmin("retain-admin4@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("retain-admin4@example.com");
     const seller = await signup("retain-race@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     const storeRes = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)
@@ -209,7 +235,7 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
 
     // The renewal payment lands - clears terminalPausedAt via restoreAfterPlanFeePayment() -
     // before the sweep ever runs.
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const retention = app.get(RetentionService);
     const result = await retention.runSweep(new Date());
@@ -222,9 +248,9 @@ describe("14-day retention + scheduled deletion (e2e) - SRS §5.6k/§14.66 (Modu
   });
 
   it("restoreAfterPlanFeePayment() clears every warning-sent flag along with terminalPausedAt, so a future pause cycle starts fresh", async () => {
-    const adminToken = await createAndLoginAdmin("retain-admin5@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("retain-admin5@example.com");
     const seller = await signup("retain-restore-clears@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)

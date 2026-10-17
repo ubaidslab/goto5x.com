@@ -87,14 +87,40 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
     return verify.body.accessToken as string;
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard).
+   * Every test in this file ends up calling this, so each gets its own
+   * freshly-enrolled `stepUpCode` generator from createStepUpAdmin() below
+   * rather than through createAndLoginAdmin(), left untouched per D112/
+   * D116's own precedent ("rather than widening that shared helper's
+   * return shape").
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
+  }
+
+  /** A fresh, self-contained admin enroll+verify flow for tests that need a step-up code, without widening createAndLoginAdmin()'s return shape. */
+  async function createStepUpAdmin(email: string): Promise<{ adminToken: string; stepUpCode: () => string }> {
+    const bcrypt = await import("bcryptjs");
+    const user = await superuser.user.create({
+      data: { email, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = enroll.body.secret as string;
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    return { adminToken: verify.body.accessToken as string, stepUpCode: () => authenticator.generate(mfaSecret) };
   }
 
   async function pauseForNonPayment(sellerId: string): Promise<void> {
@@ -106,9 +132,9 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
   }
 
   it("FR-6.42: pre-expiry reminders fire once each at 7/3/1 days before currentPeriodEnd, and an expiry-day email fires once it passes, never re-sending the same milestone", async () => {
-    const adminToken = await createAndLoginAdmin("renew-admin1@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("renew-admin1@example.com");
     const seller = await signup("renew-preexpiry@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const reminders = app.get(RenewalRemindersService);
     const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
@@ -138,9 +164,9 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
   });
 
   it("FR-6.42: a verified renewal payment resets every pre-expiry reminder flag, so the next cycle's reminders fire fresh", async () => {
-    const adminToken = await createAndLoginAdmin("renew-admin2@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("renew-admin2@example.com");
     const seller = await signup("renew-reset@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const reminders = app.get(RenewalRemindersService);
     const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
@@ -149,7 +175,7 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
     expect(beforeRenewal.renewalReminderDay7SentAt).not.toBeNull();
 
     // A verified renewal payment advances currentPeriodEnd and must reset the ladder.
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     const afterRenewal = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
     expect(afterRenewal.renewalReminderDay7SentAt).toBeNull();
     expect(afterRenewal.currentPeriodEnd!.getTime()).toBeGreaterThan(beforeRenewal.currentPeriodEnd!.getTime());
@@ -160,9 +186,9 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
   });
 
   it("FR-6.42: win-back emails fire once each at 3/7/14 days into a terminalPausedAt window, never re-sending the same milestone", async () => {
-    const adminToken = await createAndLoginAdmin("renew-admin3@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("renew-admin3@example.com");
     const seller = await signup("renew-winback@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)
@@ -191,9 +217,9 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
   });
 
   it("FR-6.42: restoreAfterPlanFeePayment() clears every win-back flag along with terminalPausedAt", async () => {
-    const adminToken = await createAndLoginAdmin("renew-admin4@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("renew-admin4@example.com");
     const seller = await signup("renew-winback-clear@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${seller.token}`)
@@ -214,7 +240,7 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
   });
 
   it("FR-6.42: admin-editable templates - updating a template's copy changes what the console-provider send actually renders", async () => {
-    const adminToken = await createAndLoginAdmin("renew-admin5@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("renew-admin5@example.com");
     const before = await request(app.getHttpServer())
       .get("/admin/email-templates")
       .set("Authorization", `Bearer ${adminToken}`);
@@ -233,7 +259,7 @@ describe("Renewal reminders + win-back emails (e2e) - SRS §5.6k/§14.66 (Module
     expect((auditRow!.afterValue as { key: string }).key).toBe("renewal_reminder_day7");
 
     const seller = await signup("renew-template-render@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     const reminders = app.get(RenewalRemindersService);
     const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
     await reminders.runSweep(new Date(subscription.currentPeriodEnd!.getTime() - 7 * DAY_MS + 1000));

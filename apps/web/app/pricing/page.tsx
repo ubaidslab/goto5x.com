@@ -193,7 +193,11 @@ export default function PricingPage() {
     // B2 (2026-10-10, D10) - the EFFECTIVE monthly rate divides by 6.5 for
     // six_month (6 calendar months + 15 bonus days), never a plain 6 - the
     // bonus days lower the true per-month cost, the comparison text above
-    // still talks about the 6 calendar months being committed to.
+    // still talks about the 6 calendar months being committed to. This is
+    // the same figure as apps/api/src/plans/plan-pricing.util.ts's
+    // monthsOfService() (no shared package between apps/api and apps/web
+    // today to import it from - see D10/founder item 4) - if that 6.5
+    // ever changes, change it here too.
     const monthsOfService = cycle === "six_month" ? 6.5 : commitmentMonths;
     const cyclePrice = cyclePriceFor(plan);
     const payingMonthlyTotal = plan.activePrice * commitmentMonths;
@@ -281,7 +285,7 @@ export default function PricingPage() {
           )}
           <Reveal delay={0.15} className="mt-16 text-center">
             <p className="text-body text-ink-muted">
-              Every UZEYN plan undercuts Shopify's equivalent tier - no forced app fees, no 2.9%+30¢
+              Every UZEYN plan undercuts Shopify&apos;s equivalent tier - no forced app fees, no 2.9%+30¢
               payment-processor markup, and 0% commission on every sale, on every tier.
             </p>
             {copy?.shopifyComparison && <p className="mt-2 text-sm text-ink-faint">{copy.shopifyComparison}</p>}

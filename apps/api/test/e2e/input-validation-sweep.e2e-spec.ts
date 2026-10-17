@@ -57,24 +57,32 @@ describe("Input validation sweep (e2e) - P1.4", () => {
   }
 
   describe("Previously-untyped @Body() endpoints now behind real DTOs", () => {
-    it("POST /auth/refresh: a malformed body (wrong types, missing fields) is rejected with 400, not a 500 from downstream type confusion", async () => {
-      const wrongTypes = await request(app.getHttpServer())
-        .post("/auth/refresh")
-        .send({ sessionId: { nested: "object" }, refreshToken: 12345 });
-      expect(wrongTypes.status).toBe(400);
+    // D82 - POST /auth/refresh and /auth/logout (seller) are no longer
+    // @Body() DTO-validated at all: the refresh token travels as a
+    // __Host-refresh_token cookie now, so there's no body for
+    // ValidationPipe to reject a malformed shape against. The two cases
+    // below test the new, equivalent failure modes instead of deleting
+    // this coverage outright. /storefront/auth/logout (buyer) is
+    // untouched by D82 and keeps its original body-DTO assertion.
+    it("POST /auth/refresh: a missing or malformed cookie is rejected cleanly (403), not a 500 from downstream type confusion", async () => {
+      const noCookieAtAll = await request(app.getHttpServer()).post("/auth/refresh").set("X-Requested-With", "XMLHttpRequest");
+      expect(noCookieAtAll.status).toBe(403);
+      expect(noCookieAtAll.body.message.message).toMatch(/missing or malformed/i);
 
-      const missingField = await request(app.getHttpServer()).post("/auth/refresh").send({ sessionId: "not-a-uuid" });
-      expect(missingField.status).toBe(400);
-
-      const notAUuid = await request(app.getHttpServer())
+      const malformedCookie = await request(app.getHttpServer())
         .post("/auth/refresh")
-        .send({ sessionId: "not-a-uuid", refreshToken: "some-token" });
-      expect(notAUuid.status).toBe(400);
+        .set("Cookie", "__Host-refresh_token=not-a-valid-pair-at-all")
+        .set("X-Requested-With", "XMLHttpRequest");
+      expect(malformedCookie.status).toBe(403);
+
+      // The CSRF guard rejects it before cookie-parsing is even reached.
+      const noCsrfHeader = await request(app.getHttpServer()).post("/auth/refresh");
+      expect(noCsrfHeader.status).toBe(403);
     });
 
-    it("POST /auth/logout, /storefront/auth/logout: a non-UUID or wrong-typed sessionId is rejected with 400", async () => {
-      const sellerLogout = await request(app.getHttpServer()).post("/auth/logout").send({ sessionId: ["array", "not", "string"] });
-      expect(sellerLogout.status).toBe(400);
+    it("POST /auth/logout: a missing cookie is a graceful no-op (204), not a 500; /storefront/auth/logout (buyer, untouched by D82) still validates its body DTO", async () => {
+      const sellerLogout = await request(app.getHttpServer()).post("/auth/logout").set("X-Requested-With", "XMLHttpRequest");
+      expect(sellerLogout.status).toBe(204);
 
       const buyerLogout = await request(app.getHttpServer()).post("/storefront/auth/logout").send({ sessionId: "not-a-uuid" });
       expect(buyerLogout.status).toBe(400);

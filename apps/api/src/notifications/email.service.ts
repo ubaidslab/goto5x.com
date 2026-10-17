@@ -2,12 +2,21 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { formatPaymentInstructions, PaymentInstructionsLike } from "../store-settings/payment-instructions.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
+import { ConsoleEmailProvider } from "./console-email.provider";
+import { ResendEmailProvider } from "./resend-email.provider";
 
 /**
  * Minimal email sending for Module 1's auth flows only (verification,
  * password reset). The full Notifications module (order/payout/listing
  * emails) is a later module, per docs/build-plan.md - this is deliberately
  * not that module.
+ *
+ * D83 - send() was the one choke point every method below already funneled
+ * through; it now dispatches to a real EmailProvider implementation
+ * instead of unconditionally throwing for anything but "console". This
+ * closes a launch-blocking gap flagged in docs/auth-session-design.md:
+ * with any real EMAIL_PROVIDER configured, every send - including
+ * verification and password reset - failed outright.
  */
 @Injectable()
 export class EmailService {
@@ -16,6 +25,8 @@ export class EmailService {
   constructor(
     private readonly config: ConfigService,
     private readonly prismaAdmin: PrismaAdminService,
+    private readonly consoleProvider: ConsoleEmailProvider,
+    private readonly resendProvider: ResendEmailProvider,
   ) {}
 
   async send(to: string, subject: string, body: string, attachmentUrl?: string | null): Promise<void> {
@@ -24,14 +35,18 @@ export class EmailService {
     if (provider === "console") {
       // Local dev / test default: no real email provider required to run
       // the app or its test suite.
-      const attachmentLine = attachmentUrl ? `\n[attachment] ${attachmentUrl}` : "";
-      this.logger.log(`[console email] to=${to} subject="${subject}"\n${body}${attachmentLine}`);
-      return;
+      return this.consoleProvider.send({ to, subject, body, attachmentUrl });
+    }
+    if (provider === "resend") {
+      return this.resendProvider.send({ to, subject, body, attachmentUrl });
     }
 
-    // Real providers (Resend/SES-class, per docs/tech-stack.md) plug in here
-    // in a later module once EMAIL_PROVIDER_API_KEY is configured for a real
-    // environment. Not implemented in Module 1 beyond the console fallback.
+    // D83 - "ses" is validated as an allowed EMAIL_PROVIDER value
+    // (env.validation.ts) but deliberately left unimplemented in this
+    // pass: Resend closes "every real deployment's email is broken" with
+    // zero new dependencies (a plain fetch() against its HTTP API); SES
+    // needs the AWS SDK plus region/credential setup, a separable
+    // follow-up rather than something to fold in silently here.
     throw new Error(`Email provider "${provider}" is not yet implemented.`);
   }
 

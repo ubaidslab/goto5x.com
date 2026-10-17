@@ -1,11 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { Prisma, PaymentGatewayProvider } from "@prisma/client";
 import { BankTransferGatewayAdapter } from "../payment-gateway/adapters/bank-transfer-gateway.adapter";
 import { EasypaisaGatewayAdapter } from "../payment-gateway/adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "../payment-gateway/adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "../payment-gateway/adapters/raast-gateway.adapter";
-import { decryptGatewayCredential, encryptGatewayCredential } from "../payment-gateway/payment-gateway-credential-crypto.util";
+import { GatewayCredentialVaultService } from "../payment-gateway/gateway-credential-vault.service";
 import { GatewayVerifyContext, GatewayVerifyResult, SellerPaymentGatewayAdapter } from "../payment-gateway/seller-payment-gateway-adapter.interface";
 import { round2 } from "../orders/money.util";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
@@ -99,20 +98,18 @@ const SAFE_SELECT = {
 @Injectable()
 export class PlatformGatewayService {
   private readonly logger = new Logger(PlatformGatewayService.name);
-  private readonly encryptionKey: Buffer;
   private readonly adapters: Map<PaymentGatewayProvider, SellerPaymentGatewayAdapter>;
 
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
     private readonly redis: RedisService,
     private readonly settings: SettingsService,
-    config: ConfigService,
+    private readonly vault: GatewayCredentialVaultService,
     raastAdapter: RaastGatewayAdapter,
     easypaisaAdapter: EasypaisaGatewayAdapter,
     jazzcashAdapter: JazzCashGatewayAdapter,
     bankAdapter: BankTransferGatewayAdapter,
   ) {
-    this.encryptionKey = Buffer.from(config.getOrThrow<string>("PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY"), "base64");
     this.adapters = new Map([
       [raastAdapter.provider, raastAdapter as SellerPaymentGatewayAdapter],
       [easypaisaAdapter.provider, easypaisaAdapter as SellerPaymentGatewayAdapter],
@@ -128,8 +125,9 @@ export class PlatformGatewayService {
 
   /** Admin-only - connecting (or reconnecting with fresh credentials) never auto-activates; a separate explicit setActive() call is always required. */
   async connect(dto: { provider: PaymentGatewayProvider; merchantId?: string; apiKey: string; apiSecret?: string }) {
-    const apiKeyEncrypted = encryptGatewayCredential(dto.apiKey, this.encryptionKey);
-    const apiSecretEncrypted = dto.apiSecret ? encryptGatewayCredential(dto.apiSecret, this.encryptionKey) : null;
+    const { plaintextKey, wrappedDataKey } = await this.vault.issueDataKey();
+    const apiKeyEncrypted = this.vault.encryptWithDataKey(dto.apiKey, plaintextKey);
+    const apiSecretEncrypted = dto.apiSecret ? this.vault.encryptWithDataKey(dto.apiSecret, plaintextKey) : null;
 
     return this.prismaAdmin.platformGatewayConnection.upsert({
       where: { provider: dto.provider },
@@ -138,11 +136,13 @@ export class PlatformGatewayService {
         merchantId: dto.merchantId ?? null,
         apiKeyEncrypted,
         apiSecretEncrypted,
+        dataKeyWrapped: wrappedDataKey,
       },
       update: {
         merchantId: dto.merchantId ?? null,
         apiKeyEncrypted,
         apiSecretEncrypted,
+        dataKeyWrapped: wrappedDataKey,
       },
       select: SAFE_SELECT,
     });
@@ -170,13 +170,17 @@ export class PlatformGatewayService {
     if (!connection) throw new NotFoundException("Connection not found.");
     const adapter = this.adapters.get(provider);
     if (!adapter) throw new BadRequestException("This provider is not supported.");
-    if (!connection.apiKeyEncrypted) throw new BadRequestException("This connection has no credentials saved yet.");
+    if (!connection.apiKeyEncrypted || !connection.dataKeyWrapped) {
+      throw new BadRequestException("This connection has no credentials saved yet.");
+    }
 
     const result = await adapter.verifyPayment({
       connection: {
         merchantId: connection.merchantId,
-        apiKey: decryptGatewayCredential(connection.apiKeyEncrypted, this.encryptionKey),
-        apiSecret: connection.apiSecretEncrypted ? decryptGatewayCredential(connection.apiSecretEncrypted, this.encryptionKey) : null,
+        apiKey: await this.vault.decrypt(connection.apiKeyEncrypted, connection.dataKeyWrapped),
+        apiSecret: connection.apiSecretEncrypted
+          ? await this.vault.decrypt(connection.apiSecretEncrypted, connection.dataKeyWrapped)
+          : null,
       },
       orderId: "",
       amount: 0,
@@ -201,7 +205,7 @@ export class PlatformGatewayService {
     if (active.length === 0) return null;
 
     const connection = [...active].sort((a, b) => PROVIDER_PRIORITY[a.provider] - PROVIDER_PRIORITY[b.provider])[0];
-    if (!connection.apiKeyEncrypted) return null;
+    if (!connection.apiKeyEncrypted || !connection.dataKeyWrapped) return null;
 
     const adapter = this.adapters.get(connection.provider);
     if (!adapter) return null;
@@ -222,7 +226,7 @@ export class PlatformGatewayService {
     let result: GatewayVerifyResult;
     try {
       result = await adapter.verifyPayment(
-        this.buildVerifyContext(connection.provider, connection.merchantId, connection.apiKeyEncrypted, connection.apiSecretEncrypted, orderRef, amount, currency, reference),
+        await this.buildVerifyContext(connection.provider, connection.merchantId, connection.apiKeyEncrypted, connection.apiSecretEncrypted, connection.dataKeyWrapped, orderRef, amount, currency, reference),
       );
     } catch (err) {
       // Timeout/failure-safe fallback: never let a gateway outage or
@@ -290,21 +294,22 @@ export class PlatformGatewayService {
     return claimed === "OK";
   }
 
-  private buildVerifyContext(
+  private async buildVerifyContext(
     provider: PaymentGatewayProvider,
     merchantId: string | null,
     apiKeyEncrypted: string,
     apiSecretEncrypted: string | null,
+    dataKeyWrapped: string,
     orderId: string,
     amount: number,
     currency: string,
     reference?: string,
-  ): GatewayVerifyContext {
+  ): Promise<GatewayVerifyContext> {
     return {
       connection: {
         merchantId,
-        apiKey: decryptGatewayCredential(apiKeyEncrypted, this.encryptionKey),
-        apiSecret: apiSecretEncrypted ? decryptGatewayCredential(apiSecretEncrypted, this.encryptionKey) : null,
+        apiKey: await this.vault.decrypt(apiKeyEncrypted, dataKeyWrapped),
+        apiSecret: apiSecretEncrypted ? await this.vault.decrypt(apiSecretEncrypted, dataKeyWrapped) : null,
       },
       orderId,
       amount,
@@ -355,7 +360,7 @@ export class PlatformGatewayService {
    */
   async reconciliationRecheck(consumed: { provider: PaymentGatewayProvider; reference: string; orderRef: string; amount: Prisma.Decimal; currency: string }): Promise<void> {
     const connection = await this.prismaAdmin.platformGatewayConnection.findUnique({ where: { provider: consumed.provider } });
-    if (!connection?.apiKeyEncrypted) return; // connection removed/deactivated since - nothing to reconcile against
+    if (!connection?.apiKeyEncrypted || !connection.dataKeyWrapped) return; // connection removed/deactivated since - nothing to reconcile against
 
     const adapter = this.adapters.get(consumed.provider);
     if (!adapter) return;
@@ -364,7 +369,7 @@ export class PlatformGatewayService {
     let result: GatewayVerifyResult;
     try {
       result = await adapter.verifyPayment(
-        this.buildVerifyContext(connection.provider, connection.merchantId, connection.apiKeyEncrypted, connection.apiSecretEncrypted, consumed.orderRef, amount, consumed.currency, consumed.reference),
+        await this.buildVerifyContext(connection.provider, connection.merchantId, connection.apiKeyEncrypted, connection.apiSecretEncrypted, connection.dataKeyWrapped, consumed.orderRef, amount, consumed.currency, consumed.reference),
       );
     } catch (err) {
       this.logger.warn(`Reconciliation re-poll failed for ${consumed.provider} order ${consumed.orderRef}: ${err instanceof Error ? err.message : String(err)} - skipping this cycle, not flagging on a transient failure.`);

@@ -14,6 +14,8 @@ export interface PrintifyRawProduct {
 export const PRINTIFY_CLIENT = Symbol("PRINTIFY_CLIENT");
 
 export interface IPrintifyClient {
+  /** D126 - true only when PRINTIFY_API_KEY is set; every other method assumes this was already checked by the caller. */
+  isConfigured(): boolean;
   /** GET /v1/shops/{shop_id}/products.json */
   listShopProducts(shopId: string): Promise<PrintifyRawProduct[]>;
   /** POST /v1/shops/{shop_id}/orders.json */

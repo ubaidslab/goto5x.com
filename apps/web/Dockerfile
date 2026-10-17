@@ -20,12 +20,14 @@ COPY apps/web apps/web
 WORKDIR /repo/apps/web
 RUN pnpm build
 
+# Security P0 (Risk #48, S12) - see apps/api/Dockerfile's identical comment.
 FROM node:20-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /repo/apps/web/package.json ./
-COPY --from=build /repo/apps/web/node_modules ./node_modules
-COPY --from=build /repo/apps/web/.next ./.next
-COPY --from=build /repo/apps/web/public ./public
+COPY --from=build --chown=node:node /repo/apps/web/package.json ./
+COPY --from=build --chown=node:node /repo/apps/web/node_modules ./node_modules
+COPY --from=build --chown=node:node /repo/apps/web/.next ./.next
+COPY --from=build --chown=node:node /repo/apps/web/public ./public
+USER node
 EXPOSE 3000
 CMD ["node_modules/.bin/next", "start"]

@@ -56,6 +56,17 @@ name: CI
 # packages, and no job references `secrets.*` at all today, so a
 # compromised Action or a fork PR has nothing here to exfiltrate. No
 # `pull_request_target` is used anywhere in this workflow.
+#
+# D107 follow-up (2026-10-15): every `pnpm/action-setup` step below passes
+# no `version:` input any more. Root package.json's new `packageManager`
+# field (added to fix a separate Docker/corepack version-drift bug, D107)
+# is picked up by this Action automatically - and pnpm/action-setup
+# actively refuses to run at all when both a `version:` input and a
+# `packageManager` field are present ("Multiple versions of pnpm
+# specified"), so keeping the old explicit `version: "10"` here isn't a
+# harmless belt-and-suspenders - it hard-fails every job. One source of
+# truth now, which is the better outcome this pin was already trying to
+# protect against drifting anyway.
 
 on:
   push: {}
@@ -77,7 +88,6 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
-  PNPM_VERSION: "10"
 
 jobs:
   changes:
@@ -142,8 +152,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -158,6 +166,75 @@ jobs:
       - name: Typecheck apps/web
         run: pnpm --filter @uzeyn/web exec tsc --noEmit
 
+  # Founder item 6 (D99, 2026-10-11) - this repo's first lint CI job.
+  # `pnpm --filter @uzeyn/api lint`/`next lint` existed as scripts before
+  # this, but nothing backed them (no eslint.config.* anywhere, no eslint
+  # in either app's own devDependencies) - confirmed broken, not just
+  # unwired: running either locally failed outright. apps/api's
+  # eslint.config.mjs and apps/web's .eslintrc.json are new alongside this
+  # job. Same cheap tier as typecheck/unit-tests (every code-touching
+  # push, not gated behind full_run) - a lint pass takes seconds, same
+  # reasoning as D59's typecheck placement.
+  lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+      - name: Lint apps/api (ESLint - typescript-eslint recommended, not type-checked)
+        run: pnpm --filter @uzeyn/api lint
+      - name: Lint apps/web (next lint - next/core-web-vitals)
+        run: pnpm --filter @uzeyn/web lint
+
+  # Security P0 (Risk #48, S12) - the non-root-user half of "pinned Actions
+  # by commit SHA (done, A5/D94), non-root images (this job)". No Dockerfile
+  # was ever built in CI before this - confirmed by reading this file
+  # fresh, Dockerfiles were previously only mentioned in the docs-only-skip
+  # filter's exclusion comment above. Builds each production target (no
+  # push - no registry/credentials needed) and proves the new non-root
+  # `USER node` can actually read the exact file it needs to execute,
+  # which is precisely the failure mode a wrong --chown would cause
+  # (EACCES at startup) - a full app boot would additionally need real
+  # Postgres/Redis/the whole boot-validated env-var list just to get past
+  # config validation, disproportionate for what this check is actually
+  # verifying.
+  docker-build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build apps/api production image
+        run: docker build --target production -t uzeyn-api:ci -f apps/api/Dockerfile .
+
+      - name: Build apps/api worker production image
+        run: docker build --target production -t uzeyn-api-worker:ci -f apps/api/Dockerfile.worker .
+
+      - name: Build apps/web production image
+        run: docker build --target production -t uzeyn-web:ci -f apps/web/Dockerfile .
+
+      - name: Verify every image runs as the non-root `node` user and can read its own app code
+        run: |
+          for pair in "uzeyn-api:ci dist/src/main.js" "uzeyn-api-worker:ci dist/src/worker/worker.main.js" "uzeyn-web:ci .next"; do
+            image=$(echo "$pair" | cut -d' ' -f1)
+            entry=$(echo "$pair" | cut -d' ' -f2)
+            uid=$(docker run --rm "$image" id -u)
+            if [ "$uid" = "0" ]; then
+              echo "$image is running as root (uid 0) - USER node did not take effect"
+              exit 1
+            fi
+            docker run --rm "$image" node -e "require('fs').accessSync('$entry', require('fs').constants.R_OK)"
+            echo "$image OK - runs as uid $uid, can read $entry"
+          done
+
   unit-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -165,8 +242,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -209,8 +284,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -303,6 +376,164 @@ jobs:
             exit 1
           fi
 
+  backup-restore-drill:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # D116 item 6 (Stage 0) - "automated daily DB backups plus one tested
+    # restore." Backups themselves are already automated (backups/database-
+    # backup.service.ts, running in the worker process against a real
+    # off-box S3 target); what's actually missing is proof that the restore
+    # SIDE of docs/launch-runbook.md's §6 procedure keeps working, on every
+    # change, not as a one-off manual drill the founder has to remember to
+    # repeat. This job runs the REAL pg_dump invocation DatabaseBackupService
+    # itself uses (same DATABASE_ADMIN_URL, same plain-text-then-gzip
+    # shape), then restores it with the runbook's own `-v ON_ERROR_STOP=1`
+    # discipline into a scratch database and checks two things a "the app
+    # booted and the row counts matched" check would miss: that the row
+    # pg_dump captured actually comes back, and that every foreign-key
+    # constraint survives (the exact class of failure §6 already documents
+    # finding once, silently, without this flag).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-superuser-password
+          POSTGRES_DB: uzeyn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+
+      - name: Bootstrap app_runtime/app_admin roles, then run migrations - same order db-role-grants already proved is required
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn \
+            -v runtime_password=ci-runtime-password \
+            -v admin_password=ci-admin-password \
+            -v dbname=uzeyn \
+            -f apps/api/scripts/bootstrap-db.sql
+      - run: pnpm --filter @uzeyn/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:ci-superuser-password@localhost:5432/uzeyn?schema=public
+
+      - name: Insert a deterministic marker row + capture the real FK constraint list before backing up
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn -c "
+            CREATE TABLE backup_drill_marker (id text PRIMARY KEY, value text NOT NULL);
+            INSERT INTO backup_drill_marker (id, value) VALUES ('drill', 'uzeyn-backup-restore-drill');
+          "
+          psql -h localhost -U postgres -d uzeyn -t -A -c "
+            SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY 1;
+          " > /tmp/fk-before.txt
+          echo "Captured $(wc -l < /tmp/fk-before.txt) foreign-key constraint names before backup."
+
+      - name: pg_dump against DATABASE_ADMIN_URL + gzip - the exact invocation DatabaseBackupService uses in production
+        run: |
+          pg_dump "postgresql://app_admin:ci-admin-password@localhost:5432/uzeyn" | gzip > /tmp/backup.sql.gz
+          ls -la /tmp/backup.sql.gz
+
+      - name: Restore into a scratch database, with ON_ERROR_STOP=1 (docs/launch-runbook.md §6's own documented, previously-missing discipline)
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn -c "CREATE DATABASE uzeyn_restore_drill;"
+          gunzip -c /tmp/backup.sql.gz | psql -h localhost -U postgres -d uzeyn_restore_drill -v ON_ERROR_STOP=1
+
+      - name: Verify the marker row survived the restore
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          actual=$(psql -h localhost -U postgres -d uzeyn_restore_drill -t -A -c "SELECT value FROM backup_drill_marker WHERE id = 'drill';")
+          if [ "$actual" != "uzeyn-backup-restore-drill" ]; then
+            echo "Marker row missing or wrong after restore - got: '$actual'"
+            exit 1
+          fi
+          echo "OK - marker row survived pg_dump + restore unchanged."
+
+      - name: Verify every foreign-key constraint survived the restore (the exact silent-drop failure §6 documents)
+        env:
+          PGPASSWORD: ci-superuser-password
+        run: |
+          psql -h localhost -U postgres -d uzeyn_restore_drill -t -A -c "
+            SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY 1;
+          " > /tmp/fk-after.txt
+          if ! diff -q /tmp/fk-before.txt /tmp/fk-after.txt > /dev/null; then
+            echo "MISMATCH - the restored database's foreign-key constraints differ from the source. Missing/extra:"
+            diff /tmp/fk-before.txt /tmp/fk-after.txt
+            exit 1
+          fi
+          echo "OK - all $(wc -l < /tmp/fk-after.txt) foreign-key constraints survived the restore unchanged."
+
+  kms-localstack-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # D117/D126 (founder decision) - "tested with mocks/LocalStack in CI."
+    # aws-kms.provider.spec.ts (the unit suite above) already proves
+    # AwsKmsProvider's own logic against a mocked AWS SDK client; this job
+    # is the other half the founder explicitly asked for - a real round
+    # trip over the network, with the real AWS SDK's request signing/wire
+    # format, against a LocalStack-emulated KMS endpoint, not a mock.
+    # Same cheap tier as backup-restore-drill (no Postgres/Redis/Playwright
+    # needed here).
+    services:
+      localstack:
+        image: localstack/localstack:3
+        env:
+          SERVICES: kms
+        ports: ["4566:4566"]
+        options: >-
+          --health-cmd="curl -sf http://localhost:4566/_localstack/health"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uzeyn/api prisma:generate
+
+      - name: Create a test CMK in LocalStack's emulated KMS
+        id: create-key
+        env:
+          AWS_ACCESS_KEY_ID: localstack-dummy-access-key-id
+          AWS_SECRET_ACCESS_KEY: localstack-dummy-secret-access-key
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          key_id=$(aws --endpoint-url http://localhost:4566 kms create-key \
+            --description "uzeyn CI kms-localstack-test" \
+            --query 'KeyMetadata.KeyId' --output text)
+          echo "Created CMK: $key_id"
+          echo "key_id=$key_id" >> "$GITHUB_OUTPUT"
+
+      - name: Real GenerateDataKey -> Decrypt round trip against LocalStack (AwsKmsProvider)
+        env:
+          AWS_ACCESS_KEY_ID: localstack-dummy-access-key-id
+          AWS_SECRET_ACCESS_KEY: localstack-dummy-secret-access-key
+          AWS_REGION: us-east-1
+          AWS_KMS_KEY_ID: ${{ steps.create-key.outputs.key_id }}
+          AWS_KMS_ENDPOINT: http://localhost:4566
+        run: pnpm --filter @uzeyn/api exec ts-node scripts/verify-kms-localstack.ts
+
   e2e-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'
@@ -345,8 +576,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -435,6 +664,8 @@ jobs:
           SMTP_CREDENTIAL_ENCRYPTION_KEY=4NqGx0iUuAW/T+K88NSUB7b8pFHLXhUqVsVvzuyi6Qk=
           ADMIN_EMAIL_CREDENTIAL_ENCRYPTION_KEY=52ndSUecSgtM/FnxNWrvun1iPK21rzJhKgZV0I/fBPg=
           PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY=p6bqHrEqJhlod/7+aS0aCDwGrcSGeGx6s5a+EBTH+jg=
+          KMS_PROVIDER_TYPE=local-dev
+          LOCAL_DEV_KMS_MASTER_KEY=LGMjNgKGhPONGzz7lRH+9xj/RUzdi14fjXbuOk1a3tw=
           EOF
 
       - name: "E2E tests, shard ${{ matrix.shard }}/4 (real Postgres + Redis - the cross-tenant/RLS release gate)"
@@ -474,8 +705,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -517,8 +746,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}

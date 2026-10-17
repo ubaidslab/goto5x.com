@@ -41,7 +41,7 @@ export class ExternalApiClientsService {
           signingSecretEncrypted: encryptDriveToken(secret, this.encryptionKey),
         },
       });
-      const { signingSecretEncrypted, ...rest } = row;
+      const { signingSecretEncrypted: _signingSecretEncrypted, ...rest } = row;
       return { ...rest, signingSecret: secret };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -71,7 +71,7 @@ export class ExternalApiClientsService {
       where: { id },
       data: { signingSecretEncrypted: encryptDriveToken(secret, this.encryptionKey) },
     });
-    const { signingSecretEncrypted, ...rest } = updated;
+    const { signingSecretEncrypted: _signingSecretEncrypted, ...rest } = updated;
     return { ...rest, signingSecret: secret };
   }
 

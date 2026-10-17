@@ -349,6 +349,11 @@ export interface PublicOrderStatusFull {
     status: "pending" | "verified" | "failed" | "expired";
   } | null;
   paymentInstructions: PublicPaymentInstructions | null;
+  // B3b (founder decision, 2026-10-11) - the buyer's own previously
+  // submitted Manual Transfer proof, if any; null means not submitted yet.
+  manualTransferReference: string | null;
+  manualTransferSenderName: string | null;
+  manualTransferSubmittedAt: string | null;
   items: PublicOrderItem[];
   // Module 53 (SRS §5.60/FR-60.2/60.6)
   canRequestReturn: boolean;

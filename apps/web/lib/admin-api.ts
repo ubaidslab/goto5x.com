@@ -7,6 +7,12 @@
  * side) - this removes that duplication for every NEW admin page this
  * module adds. Existing admin pages are left as-is (out of this module's
  * scope to refactor 12 already-shipped, already-tested pages).
+ *
+ * D82 admin slice - mirrors dashboard-api.ts's own D82 fix exactly: the
+ * access token and sessionId are in-memory only now, never localStorage.
+ * The refresh token never reaches this module at all any more - it
+ * travels as the __Host-admin_refresh_token cookie, set/read directly by
+ * the API (admin-auth.controller.ts), never exposed to this JS.
  */
 
 import { getApiErrorMessage } from "./api-error";
@@ -22,10 +28,21 @@ export class AdminApiError extends Error {
   }
 }
 
+let accessToken: string | null = null;
+let currentSessionId: string | null = null;
+
+/** Called by the login page (post-MFA) on success, and by logout()/a failed refresh to clear state. */
+function setSession(token: string | null, sessionId?: string | null): void {
+  accessToken = token;
+  currentSessionId = sessionId ?? null;
+}
+
+function getCurrentSessionId(): string | null {
+  return currentSessionId;
+}
+
 function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const token = window.localStorage.getItem("adminAccessToken");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }
 
 /**
@@ -40,27 +57,26 @@ function authHeaders(): Record<string, string> {
  * endpoint this calls. Same shared-in-flight-promise shape as
  * dashboard-api.ts's tryRefresh() - a burst of concurrent 401s triggers
  * exactly one refresh.
+ *
+ * D82 - no body any more: the refresh token rides the
+ * __Host-admin_refresh_token cookie (credentials: "include"), proven by
+ * the custom X-Requested-With header RefreshCookieCsrfGuard requires.
  */
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  const sessionId = window.localStorage.getItem("adminSessionId");
-  const refreshToken = window.localStorage.getItem("adminRefreshToken");
-  if (!sessionId || !refreshToken) return false;
 
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_BASE}/admin/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, refreshToken }),
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "include",
     })
       .then(async (res) => {
         if (!res.ok) return false;
         const body = await res.json();
-        window.localStorage.setItem("adminAccessToken", body.accessToken);
-        window.localStorage.setItem("adminSessionId", body.sessionId);
-        window.localStorage.setItem("adminRefreshToken", body.refreshToken);
+        setSession(body.accessToken, body.sessionId);
         return true;
       })
       .catch(() => false)
@@ -73,9 +89,7 @@ async function tryRefresh(): Promise<boolean> {
 
 function clearSessionAndRedirectToLogin() {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem("adminAccessToken");
-  window.localStorage.removeItem("adminSessionId");
-  window.localStorage.removeItem("adminRefreshToken");
+  setSession(null);
   window.location.href = "/admin/login";
 }
 
@@ -86,20 +100,18 @@ function clearSessionAndRedirectToLogin() {
  */
 async function logout() {
   if (typeof window === "undefined") return;
-  const sessionId = window.localStorage.getItem("adminSessionId");
-  if (sessionId) {
-    await fetch(`${API_BASE}/admin/auth/logout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    }).catch(() => {});
-  }
+  await fetch(`${API_BASE}/admin/auth/logout`, {
+    method: "POST",
+    headers: { "X-Requested-With": "XMLHttpRequest" },
+    credentials: "include",
+  }).catch(() => {});
   clearSessionAndRedirectToLogin();
 }
 
 async function request<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
@@ -134,7 +146,7 @@ async function request<T>(path: string, init?: RequestInit, isRetry = false): Pr
  * via a short-lived blob object URL.
  */
 async function download(path: string): Promise<Blob> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}${path}`, { credentials: "include", headers: authHeaders() });
   if (!res.ok) {
     throw new AdminApiError(res.statusText, res.status);
   }
@@ -143,10 +155,17 @@ async function download(path: string): Promise<Blob> {
 
 export const adminApi = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
+  // D82 - `headers` is an escape hatch for a step-up-MFA-gated route
+  // (StepUpMfaGuard reads X-Step-Up-MFA-Code), not a general-purpose
+  // feature - every other existing call site keeps working unchanged
+  // since the parameter is optional.
+  post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, headers }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   download,
   logout,
+  setSession,
+  getCurrentSessionId,
 };

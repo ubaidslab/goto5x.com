@@ -25,13 +25,20 @@ COPY apps/api apps/api
 WORKDIR /repo/apps/api
 RUN pnpm build
 
+# Security P0 (Risk #48, S12) - node:20-alpine already ships a non-root
+# `node` user/group (uid/gid 1000); running as root in the shipped image
+# was the one piece this control was still missing (Actions were already
+# SHA-pinned, D94/A5). --chown on every COPY (not a separate `RUN chown
+# -R`) so ownership is set as each layer is created, not fixed up after -
+# cheaper and avoids a surprise if a later COPY re-roots a subtree.
 FROM node:20-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /repo/apps/api/package.json ./
-COPY --from=build /repo/node_modules /repo/node_modules
-COPY --from=build /repo/apps/api/node_modules ./node_modules
-COPY --from=build /repo/apps/api/dist ./dist
-COPY --from=build /repo/apps/api/prisma ./prisma
+COPY --from=build --chown=node:node /repo/apps/api/package.json ./
+COPY --from=build --chown=node:node /repo/node_modules /repo/node_modules
+COPY --from=build --chown=node:node /repo/apps/api/node_modules ./node_modules
+COPY --from=build --chown=node:node /repo/apps/api/dist ./dist
+COPY --from=build --chown=node:node /repo/apps/api/prisma ./prisma
+USER node
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]

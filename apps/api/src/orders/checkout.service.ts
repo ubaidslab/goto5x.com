@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { OrderSource } from "@prisma/client";
+import { isDisposableEmailDomain } from "../common/disposable-email/disposable-email.util";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { CustomersService } from "../customers/customers.service";
@@ -14,12 +15,13 @@ import { isGatewayLive } from "../payment-gateway/gateway-registry";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { TenantPrismaService } from "../prisma/tenant-prisma.service";
 import { DiscountCodesService } from "../store-settings/discount-codes.service";
-import { hasAnyPaymentMethod } from "../store-settings/payment-instructions.service";
+import { hasAnyPaymentMethod, hasConfiguredManualTransferInstrument } from "../store-settings/payment-instructions.service";
 import { StorefrontService } from "../storefront/storefront.service";
 import { SupplierListingsService } from "../suppliers/supplier-listings.service";
 import { SellerIdentityService } from "../trust-safety/seller-identity.service";
 import { CheckoutDto } from "./dto/checkout.dto";
 import { CreateManualOrderDto } from "./dto/create-manual-order.dto";
+import { hashBuyerIpForFraudSignal } from "./fraud-signal.util";
 import { round2 } from "./money.util";
 import { OrderPricingService, PricedItem } from "./order-pricing.service";
 import { computeOrderTotals } from "./order-totals.util";
@@ -48,6 +50,14 @@ interface PlaceOrderParams {
   /** Module 91 (SRS §5.67/FR-67.2) - set only from Cart.dealId (a buy-now cart), never client-supplied directly. */
   dealId?: string;
   source: OrderSource;
+  /**
+   * D116 item 5 (Stage 0) - only set on the storefront path;
+   * createManualOrder() has no buyer request to attribute an IP to.
+   * Transient only - see computeFraudFlags()'s own comment (D126):
+   * never persisted anywhere, not even hashed; used only in-memory to
+   * derive a Redis counter key for the current request.
+   */
+  buyerIp?: string;
 }
 
 /**
@@ -86,11 +96,18 @@ export class CheckoutService {
     // highest-severity gap found in the rate-limit re-audit.
     const checkoutLimit = await this.settings.resolve<number>("orders.checkout_rate_limit_per_hour");
     await this.rateLimit.enforcePerHour(`checkout-ip:${ip}`, checkoutLimit);
+    // Founder item 3/B3b (2026-10-11) - "rate-limit order creation per
+    // buyer/IP/phone," the same dual/triple-key idiom auth.service.ts
+    // already uses for login (one key per identifying attribute, IP alone
+    // is bypassable via rotation). Phone is on the request itself; email
+    // isn't known until the cart below resolves it.
+    await this.rateLimit.enforcePerHour(`checkout-phone:${dto.shippingAddress.phone}`, checkoutLimit);
 
     const store = await this.storefront.loadActiveStoreOrThrow(dto.hostname);
     const cart = await this.prismaAdmin.cart.findUnique({ where: { sessionToken: dto.sessionToken } });
     if (!cart || cart.storeId !== store.id) throw new NotFoundException("Cart not found.");
     if (cart.status !== "active") throw new BadRequestException("This cart is no longer active.");
+    await this.rateLimit.enforcePerHour(`checkout-email:${cart.buyerEmail}`, checkoutLimit);
 
     const items = cart.items as { productId: string; variantId: string; quantity: number }[];
     if (items.length === 0) throw new BadRequestException("This cart is empty.");
@@ -130,6 +147,7 @@ export class CheckoutService {
         giftCardCode: dto.giftCardCode,
         dealId: cart.dealId ?? undefined,
         source: "storefront",
+        buyerIp: ip,
       }));
     } catch (err) {
       // Placing the order failed (sold out, bad discount code, etc.) - this
@@ -317,8 +335,17 @@ export class CheckoutService {
           );
         }
       } else if (store.paymentModel === "advance") {
-        if (!(await this.hasActiveGatewayConnection(params.storeId))) {
-          throw new BadRequestException("Advance requires a connected payment gateway.");
+        // B3b (founder decision, 2026-10-11) - "advance" now also accepts
+        // a seller's own configured bank/JazzCash/Easypaisa payout details
+        // (Manual Transfer: buyer transfers manually, seller confirms via
+        // the pre-existing markAsPaid()) as an alternative to a live
+        // gateway connection - no gateway is live today (B3a/D86), so this
+        // is currently the ONLY way an advance-model order can be placed.
+        const hasManualTransferInstrument = hasConfiguredManualTransferInstrument(paymentInstructions);
+        if (!(await this.hasActiveGatewayConnection(params.storeId)) && !hasManualTransferInstrument) {
+          throw new BadRequestException(
+            "Advance requires a connected payment gateway, or a payout method with an account title and number (for Manual Transfer).",
+          );
         }
       }
 
@@ -378,6 +405,7 @@ export class CheckoutService {
         giftCardReservation = await this.giftCards.validateAndReserve(params.storeId, params.giftCardCode, totalAmount);
       }
       const giftCardAmount = giftCardReservation?.amount ?? 0;
+      const fraudFlags = await this.computeFraudFlags(params);
 
       const order = await this.prismaAdmin.$transaction(async (tx) => {
         // FR-13.1 - applies uniformly regardless of order source (storefront
@@ -416,6 +444,7 @@ export class CheckoutService {
             shippingAddress: params.shippingAddress as unknown as object,
             status: "pending",
             source: params.source,
+            fraudFlags,
             // Module 95 (SRS §5.6l/FR-6.65) - sticky snapshot, never
             // re-resolved from the store's current setting later.
             paymentModel: store.paymentModel,
@@ -521,6 +550,45 @@ export class CheckoutService {
       }
       throw err;
     }
+  }
+
+  /**
+   * D116 item 5 (Stage 0) - "basic fraud flags." Cheap, rule-based signals
+   * computed once at placement time and stored on the order for the
+   * seller/admin to see - informational only, never blocks checkout. A
+   * separate, narrower concern from Seller.riskScore (RiskScoreService),
+   * which scores the SELLER's own identity at signup, not buyer behavior
+   * at order time.
+   *
+   * D126 (founder privacy directive) - the buyer's IP is never persisted,
+   * not even transiently: it's hashed (hashBuyerIpForFraudSignal(), a
+   * salted HMAC - see that file's own comment for why it doesn't reuse
+   * identity-crypto.util.ts's fingerprintValue()) and only that hash is
+   * used as a Redis counter key, with a 24h TTL set on the key's first hit
+   * (RateLimitService.countInWindow() - the same fixed-window primitive
+   * enforcePerHour() already uses for rate limiting, just without the
+   * throw). Only the resulting string flag below - never the IP or even
+   * its hash - ever reaches Postgres.
+   */
+  private async computeFraudFlags(params: PlaceOrderParams): Promise<string[]> {
+    const flags: string[] = [];
+    if (isDisposableEmailDomain(params.buyerEmail)) {
+      flags.push("disposable_email");
+    }
+    if (params.buyerIp) {
+      const ipFingerprint = hashBuyerIpForFraudSignal(
+        params.buyerIp,
+        this.config.getOrThrow<string>("IDENTITY_FINGERPRINT_HMAC_SECRET"),
+      );
+      const ordersFromThisIpToday = await this.rateLimit.countInWindow(`fraud-ip:${ipFingerprint}`, 24 * 60 * 60);
+      // This order IS the Nth from this IP in the current 24h window (the
+      // counter was just incremented above) - so >= 3 means this is the
+      // 3rd-or-later order.
+      if (ordersFromThisIpToday >= 3) {
+        flags.push("repeat_ip_short_window");
+      }
+    }
+    return flags;
   }
 
   /**

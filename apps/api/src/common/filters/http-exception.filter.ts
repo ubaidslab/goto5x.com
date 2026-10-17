@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
+import * as Sentry from "@sentry/node";
 import { Prisma } from "@prisma/client";
 import { Response } from "express";
 
@@ -76,6 +77,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // Never log request bodies/headers here - see pii-redaction.interceptor.ts
       // for the same discipline applied to request logging.
       this.logger.error(exception instanceof Error ? exception.stack : exception);
+      // D116 item 6 (Stage 0) - error tracking/alerting. Passed the bare
+      // exception only, never ctx/request - same PII discipline as the
+      // log line above (a no-op if SENTRY_DSN was never configured).
+      Sentry.captureException(exception);
     }
 
     response.status(status).json({

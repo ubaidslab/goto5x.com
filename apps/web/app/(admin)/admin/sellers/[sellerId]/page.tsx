@@ -390,9 +390,17 @@ export default function AdminSellerOverviewPage({ params }: { params: { sellerId
       tone: amount < 0 ? "danger" : "default",
     });
     if (!ok) return;
+    // D82 - a direct balance change is step-up-MFA-gated (StepUpMfaGuard),
+    // on top of the standard admin session this page already requires.
+    const stepUpCode = window.prompt("Enter your admin MFA code to confirm this wallet adjustment:");
+    if (!stepUpCode) return;
     setPendingAction("adjustWallet");
     try {
-      await adminApi.post(`/admin/wallet-topups/sellers/${params.sellerId}/adjust`, { amount, reason: adjustReason });
+      await adminApi.post(
+        `/admin/wallet-topups/sellers/${params.sellerId}/adjust`,
+        { amount, reason: adjustReason },
+        { "X-Step-Up-MFA-Code": stepUpCode },
+      );
       setAdjustAmount("");
       setAdjustReason("");
       load();

@@ -59,7 +59,7 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     return { token, storeId: store.body.id as string, sellerId };
   }
 
-  async function createAndLoginAdmin(email: string): Promise<{ token: string; adminEmail: string }> {
+  async function createAndLoginAdmin(email: string): Promise<{ token: string; adminEmail: string; mfaSecret: string }> {
     const bcrypt = await import("bcryptjs");
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
     const user = await superuser.user.create({ data: { email, passwordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() } });
@@ -69,7 +69,7 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     const { authenticator } = await import("otplib");
     const code = authenticator.generate(enroll.body.secret);
     const verify = await request(app.getHttpServer()).post("/admin/auth/mfa/verify").send({ preAuthToken: login.body.preAuthToken, code });
-    return { token: verify.body.accessToken as string, adminEmail: email };
+    return { token: verify.body.accessToken as string, adminEmail: email, mfaSecret: enroll.body.secret as string };
   }
 
   it("the admin overview endpoint reflects today's signups and a pending wallet top-up in its queue counts (P0 HOME page)", async () => {
@@ -226,11 +226,17 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
 
   it("the wallet manual-adjust action credits/debits with a reason, rejects a zero amount or missing reason, and is audit-logged (P0)", async () => {
     const { sellerId } = await signup("adjust-seller@example.com");
-    const { token: adminToken } = await createAndLoginAdmin("adjust-admin@example.com");
+    const { token: adminToken, mfaSecret } = await createAndLoginAdmin("adjust-admin@example.com");
+    const { authenticator } = await import("otplib");
+    // D82 - adjust() is step-up-MFA-gated (StepUpMfaGuard); a fresh code
+    // per call, not one reused across the whole test, since a TOTP code's
+    // own 30s window could otherwise go stale mid-test.
+    const stepUpCode = () => authenticator.generate(mfaSecret);
 
     const credit = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode())
       .send({ amount: 500, reason: "Goodwill credit for shipping delay" });
     expect(credit.status).toBe(201);
 
@@ -242,6 +248,7 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     const debit = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode())
       .send({ amount: -200, reason: "Correcting a duplicate credit" });
     expect(debit.status).toBe(201);
 
@@ -253,14 +260,22 @@ describe("Admin Completion (e2e) - Module 25 P0", () => {
     const zeroAttempt = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode())
       .send({ amount: 0, reason: "should fail" });
     expect(zeroAttempt.status).toBe(400);
 
     const noReasonAttempt = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode())
       .send({ amount: 100 });
     expect(noReasonAttempt.status).toBe(400);
+
+    const missingStepUpCode = await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ amount: 100, reason: "no step-up code supplied" });
+    expect(missingStepUpCode.status).toBe(401);
 
     const auditRow = await superuser.adminAuditLog.findFirst({ where: { action: "billing.wallet_manual_adjust", targetId: sellerId } });
     expect(auditRow).not.toBeNull();
@@ -449,12 +464,29 @@ describe("Admin Completion (e2e) - Module 25 P1", () => {
   });
 
   it("the audit log list endpoint returns recent entries, most recent first, honoring a limit", async () => {
-    const adminToken = await createAndLoginAdmin("auditlist-p1-admin@example.com");
+    // D82 - adjust() is step-up-MFA-gated (StepUpMfaGuard); this test's own
+    // createAndLoginAdmin() helper (the P1 one above) doesn't expose the
+    // enrolled secret, so a fresh enroll+verify flow is done inline here
+    // rather than widening that shared helper's return shape for every one
+    // of its other callers.
+    const bcrypt = await import("bcryptjs");
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    const adminEmail = "auditlist-p1-admin@example.com";
+    const user = await superuser.user.create({ data: { email: adminEmail, passwordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() } });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code: authenticator.generate(enroll.body.secret) });
+    const adminToken = verify.body.accessToken as string;
     const { sellerId } = await signup("auditlist-p1-seller@example.com");
 
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", authenticator.generate(enroll.body.secret))
       .send({ amount: 100, reason: "audit-log listing test" });
 
     const list = await request(app.getHttpServer()).get("/admin/audit-logs?limit=5").set("Authorization", `Bearer ${adminToken}`);

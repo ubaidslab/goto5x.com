@@ -3,6 +3,7 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { round2 } from "../orders/money.util";
 import { WalletService } from "./wallet.service";
+import { paidMonths } from "../plans/plan-pricing.util";
 
 /**
  * SRS §5.33 FR-33.4/FR-33.9 - lives in BillingModule (not GrowthProgramsModule)
@@ -126,7 +127,7 @@ export class ProgramCommissionService {
 
     const subscription = await this.prismaAdmin.subscription.findUnique({ where: { sellerId: referredSellerId } });
     if (!subscription) return;
-    const monthsThisPayment = monthsForBillingInterval(subscription.billingInterval);
+    const monthsThisPayment = paidMonths(subscription.billingInterval as "monthly" | "quarterly" | "six_month" | "yearly");
     const monthsToPay = Math.min(monthsThisPayment, monthsRemaining);
     if (monthsToPay <= 0) return;
 
@@ -160,19 +161,4 @@ export class ProgramCommissionService {
     const storeCount = await this.prismaAdmin.store.count({ where: { sellerId } });
     return storeCount <= participant.freeStoreSlotsGranted;
   }
-}
-
-// B2 (2026-10-10) - whole-number months only, deliberately NOT the 6.5
-// "months of service" figure plan-pricing.util.ts's monthsOfService()
-// uses for price-per-month/MRR purposes. This counts commission-eligible
-// MONTHS toward the Ambassador program's whole-month cap
-// (growth.ambassador_max_commission_months) - the 15 bonus days a
-// six_month renewal buys were never a commission-bearing month under
-// that program, so applying the 6.5 figure here would silently change
-// how much commission gets paid out, which nothing in B2 asked for.
-function monthsForBillingInterval(interval: string): number {
-  if (interval === "yearly") return 12;
-  if (interval === "six_month") return 6;
-  if (interval === "quarterly") return 3;
-  return 1; // monthly
 }

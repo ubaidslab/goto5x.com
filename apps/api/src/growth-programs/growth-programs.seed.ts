@@ -6,6 +6,33 @@ import { PrismaClient } from "@prisma/client";
  * Settings Registry values, same idiom as every other module's *.seed.ts.
  */
 export async function seedGrowthProgramsSettings(prisma: PrismaClient) {
+  // D63/B5 (founder decision, 2026-10-10/11) - Earn Your Plan, UZEYN
+  // Partners, Students, and this referral/attribution engine are all
+  // post-MVP (documented only, per D63's own wording - nothing here is
+  // deleted or un-specced, it simply doesn't get built/offered in this
+  // window). This is the one master switch: off by default makes the
+  // already-real, already-tested code in this module unreachable by any
+  // seller for the MVP window, without deleting or disabling the module
+  // itself - same "default off, no blanket reactivation" discipline D86
+  // uses for the legacy payment gateways. The one real enforcement point
+  // is ProgramApplicationService.apply() - every other endpoint in this
+  // module (content submission, withdrawal, admin review/payout) requires
+  // an already-approved ProgramParticipant row to do anything, which this
+  // gate makes impossible to ever create while off.
+  await prisma.settingsDefinition.upsert({
+    where: { key: "programs.enabled" },
+    create: {
+      key: "programs.enabled",
+      valueType: "boolean",
+      allowedScopes: ["global"],
+      defaultValue: false,
+      description:
+        "Master switch for the Growth & Partner Programs referral engine (Ambassador/Student Referral/Creator) - D63, out of the MVP build. Off blocks new program applications; existing code/data is untouched.",
+      requiresConfirmation: true,
+    },
+    update: {},
+  });
+
   await prisma.settingsDefinition.upsert({
     where: { key: "growth.ambassador_eligible" },
     create: {

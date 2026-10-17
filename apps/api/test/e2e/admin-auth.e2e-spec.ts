@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { authenticator } from "otplib";
 import request from "supertest";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, cookieHeaderFrom, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 describe("Admin auth + MFA + audit log (e2e) - SRS FR-8.9/FR-8.12, §14.8/§14.12", () => {
   let app: INestApplication;
@@ -102,15 +102,18 @@ describe("Admin auth + MFA + audit log (e2e) - SRS FR-8.9/FR-8.12, §14.8/§14.1
     const verify = await request(app.getHttpServer())
       .post("/admin/auth/mfa/verify")
       .send({ preAuthToken: login.body.preAuthToken, code });
+    const verifyCookie = cookieHeaderFrom(verify.headers["set-cookie"]);
 
     const logout = await request(app.getHttpServer())
       .post("/admin/auth/logout")
-      .send({ sessionId: verify.body.sessionId });
+      .set("Cookie", verifyCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(logout.status).toBe(204);
 
     const refresh = await request(app.getHttpServer())
       .post("/admin/auth/refresh")
-      .send({ sessionId: verify.body.sessionId, refreshToken: verify.body.refreshToken });
+      .set("Cookie", verifyCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh.status).toBe(401);
   });
 

@@ -1,5 +1,6 @@
 import { forwardRef, Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module";
+import { StepUpMfaGuard } from "../common/guards/step-up-mfa.guard";
 import { InvoicesModule } from "../invoices/invoices.module";
 import { PlansModule } from "../plans/plans.module";
 import { PlatformGatewayModule } from "../platform-gateway/platform-gateway.module";
@@ -96,6 +97,10 @@ import {
     RenewalRemindersScheduler,
     SubscriptionInvoiceService,
     SubscriptionRefundService,
+    // D82 - TrustSafetyModule (already imported above) exports
+    // StepUpMfaService, so this needed no new module imports; guards the
+    // admin wallet-adjust route (wallet.controller.ts).
+    StepUpMfaGuard,
   ],
   exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService, SubscriptionInvoiceService, SubscriptionRefundService],
 })

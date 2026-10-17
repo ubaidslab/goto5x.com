@@ -341,6 +341,21 @@ database, not a mock):
    pnpm test:e2e
    ```
 
+**Only one e2e run at a time against a given Postgres/Redis pair.**
+`test/e2e/setup.ts`'s `resetDatabase()` does a full `TRUNCATE ... CASCADE`
+across nearly every table, and `resetRedis()` does `FLUSHALL`, at the start
+of every spec file. A second `jest.e2e.config.js` process (another
+terminal, another agent, a CI job pointed at the same database) racing
+the first will have its in-flight rows truncated out from under it,
+producing confusing, non-deterministic failures (typically foreign-key
+violations during `seedSettings()`/`seedDefaults()`, or a "record not
+found" right after a row was just created) that look like a real bug but
+aren't - caught firsthand twice in this project's history. If you need
+two e2e runs in parallel, point them at two separate databases/schemas
+(or just run them one after another); CI's 4 shards already each get
+their own ephemeral Postgres/Redis service containers, so this only
+matters for local/sandbox runs sharing one instance.
+
 All 127 e2e tests + 81 unit tests pass as of the v0.13 moderation amendment (see this module's
 verification report for the full list), stable across 3 consecutive full
 runs. `apps/web` has no automated test suite - see the Module 4/5
@@ -381,6 +396,10 @@ visitor out, which is the same intended blast radius as a session.
 | `EXTERNAL_API_SECRET_ENCRYPTION_KEY` | `openssl rand -base64 32` - encrypts each `external_api_clients` row's HMAC signing secret at rest (SRS §5.24/§6.5), same mechanism/key-management discipline as `DRIVE_TOKEN_ENCRYPTION_KEY`, kept as its own key |
 | `API_BASE_URL` (`apps/web`, its own `apps/web/.env.local` — see `apps/web/.env.example`) | The `apps/api` base URL this Next.js app calls for every live data fetch. `next.config.js` maps it into the client-visible `NEXT_PUBLIC_API_BASE_URL`. Not a secret |
 | `BACKUP_S3_ENDPOINT` / `BACKUP_S3_BUCKET` / `BACKUP_S3_ACCESS_KEY_ID` / `BACKUP_S3_SECRET_ACCESS_KEY` | Optional (backups reality check, Sept 2026) - a real, off-box S3-compatible account (AWS S3, Cloudflare R2, Backblaze B2, a second self-hosted MinIO on a different host) for the automated daily database backup sweep (`apps/api/src/backups/`). Deliberately a SEPARATE account from `MINIO_*` above - that's the primary on-box store, not a backup target. Leave unset in local dev/CI; the sweep then records `skipped_not_configured` instead of running |
+| `PAYMENT_GATEWAY_CREDENTIAL_ENCRYPTION_KEY` | `openssl rand -base64 32` - the old, pre-envelope-encryption scheme's static key (D117/D126, Module 62). Still required until every row is re-wrapped under the new scheme below (`scripts/rewrap-gateway-credentials.ts`) |
+| `KMS_PROVIDER_TYPE` | `"local-dev"` (default, dev/test/sandbox only) or `"aws"` (the real, production-bound provider) - selects which `KmsProvider` wraps the per-secret data key that now protects every gateway credential (D117/D126, `apps/api/src/payment-gateway/kms/`). The app refuses to boot with `"local-dev"` when `NODE_ENV=production` |
+| `LOCAL_DEV_KMS_MASTER_KEY` | `openssl rand -base64 32` - only used by `KMS_PROVIDER_TYPE=local-dev`. Never set this in a production environment |
+| `AWS_KMS_KEY_ID` / `AWS_REGION` | Only used by `KMS_PROVIDER_TYPE=aws` - an AWS KMS key (ARN, key ID, or alias) and its region. AWS credentials themselves resolve through the AWS SDK's own standard chain (shared config file or an attached IAM role in production), never a var here |
 
 ---
 

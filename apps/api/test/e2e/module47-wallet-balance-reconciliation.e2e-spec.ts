@@ -75,7 +75,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     return { token, storeId, sellerId };
   }
 
-  async function createAndLoginAdmin(email: string): Promise<string> {
+  async function createAndLoginAdmin(email: string): Promise<{ token: string; mfaSecret: string }> {
     const bcrypt = await import("bcryptjs");
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
     const user = await superuser.user.create({
@@ -91,17 +91,25 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     const verify = await request(app.getHttpServer())
       .post("/admin/auth/mfa/verify")
       .send({ preAuthToken: login.body.preAuthToken, code });
-    return verify.body.accessToken as string;
+    return { token: verify.body.accessToken as string, mfaSecret: enroll.body.secret as string };
   }
 
-  async function topUpAndVerify(token: string, adminToken: string, amount: number) {
+  /** D82 - adjust() is step-up-MFA-gated (StepUpMfaGuard); a fresh TOTP code per call, not one reused across a whole test. */
+  async function stepUpCode(mfaSecret: string): Promise<string> {
+    const { authenticator } = await import("otplib");
+    return authenticator.generate(mfaSecret);
+  }
+
+  /** D116 item 2 - verify() is now step-up-MFA-gated too (StepUpMfaGuard), same as adjust() already was (D82/D112). */
+  async function topUpAndVerify(token: string, adminToken: string, mfaSecret: string, amount: number) {
     const req = await request(app.getHttpServer())
       .post("/sellers/me/wallet/topup-requests")
       .set("Authorization", `Bearer ${token}`)
       .send({ amount });
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${req.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret));
   }
 
   async function addProduct(token: string, storeId: string, price: number) {
@@ -132,14 +140,14 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
 
   it("balance is correct after a mix of credits and debits, and matches an independent from-scratch ledger recomputation", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("mixed-ledger@example.com", "mixed-ledger-store");
-    const adminToken = await createAndLoginAdmin("mixed-ledger-admin@example.com");
+    const { token: adminToken, mfaSecret } = await createAndLoginAdmin("mixed-ledger-admin@example.com");
     // Module 74 (v0.39) - every tier seeds commissionPercent 0 now; a
     // seller-scoped override (highest precedence) gives this test a real
     // nonzero commission debit to exercise, same pattern as the race-fix
     // test below.
     await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
 
-    await topUpAndVerify(token, adminToken, 1000); // credit: +1000
+    await topUpAndVerify(token, adminToken, mfaSecret, 1000); // credit: +1000
     const { productId, variantId } = await addProduct(token, storeId, 500);
     const order = await createManualOrder(token, storeId, productId, variantId);
     await request(app.getHttpServer())
@@ -150,10 +158,12 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret))
       .send({ amount: 50, reason: "goodwill credit" });
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
       .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret))
       .send({ amount: -20, reason: "correction" });
 
     const cachedBalance = await getBalance(token);
@@ -167,7 +177,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
 
   it("two concurrent commission debits are both applied exactly once each (no lost update) and correctly cross the negative-float floor together, even though neither would alone (FR-6.21/FR-6.26 race fix)", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("race-fix@example.com", "race-fix-store");
-    const adminToken = await createAndLoginAdmin("race-fix-admin@example.com");
+    const { token: adminToken, mfaSecret } = await createAndLoginAdmin("race-fix-admin@example.com");
     const settings = app.get(SettingsService);
 
     // Module 74 (v0.39) - every tier now seeds commissionPercent 0, which
@@ -175,7 +185,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
     // override. Set it at SELLER scope instead, so this test's real
     // per-order commission math still has a nonzero rate to measure.
     await settings.setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
-    await topUpAndVerify(token, adminToken, 5000);
+    await topUpAndVerify(token, adminToken, mfaSecret, 5000);
 
     // Measure the real per-order commission debit (K) empirically via one
     // sequential, already-legitimate order - avoids hardcoding assumptions
@@ -202,6 +212,7 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
       await request(app.getHttpServer())
         .post(`/admin/wallet-topups/sellers/${sellerId}/adjust`)
         .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret))
         .send({ amount: -debitToTarget, reason: "position for race test" });
     }
     const startBalance = await getBalance(token);
@@ -245,8 +256,8 @@ describe("Wallet Balance Reconciliation (e2e) - SRS §5.6e, new FR-6.29", () => 
 
   it("the daily reconciliation sweep detects a deliberately-introduced drift and flags it loudly (a new admin notification, an append-only drift row) without ever silently correcting the cached balance (new FR-6.29)", async () => {
     const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("drift-test@example.com", "drift-test-store");
-    const adminToken = await createAndLoginAdmin("drift-test-admin@example.com");
-    await topUpAndVerify(token, adminToken, 800);
+    const { token: adminToken, mfaSecret } = await createAndLoginAdmin("drift-test-admin@example.com");
+    await topUpAndVerify(token, adminToken, mfaSecret, 800);
     const { productId, variantId } = await addProduct(token, storeId, 300);
     const order = await createManualOrder(token, storeId, productId, variantId);
     await request(app.getHttpServer())

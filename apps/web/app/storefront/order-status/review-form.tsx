@@ -90,7 +90,7 @@ export function ReviewForm({ token, items }: { token: string; items: { productId
         />
       </label>
       {files.length > 0 && <p>{files.length} file(s) selected.</p>}
-      {result === "error" && <p style={{ color: "crimson" }}>Couldn't submit that review - please try again.</p>}
+      {result === "error" && <p style={{ color: "crimson" }}>Couldn&apos;t submit that review - please try again.</p>}
       <button type="submit" disabled={submitting}>
         {submitting ? "Submitting..." : "Submit review"}
       </button>

@@ -62,7 +62,7 @@ export class SellerApiTokensService {
     const rows = await this.tenantPrisma.run(sellerId, (tx) =>
       tx.sellerApiToken.findMany({ orderBy: { createdAt: "desc" }, include: { client: { select: { displayName: true } } } }),
     );
-    return rows.map(({ tokenHash, ...rest }) => rest);
+    return rows.map(({ tokenHash: _tokenHash, ...rest }) => rest);
   }
 
   /** FR-24.10 - a revoked token is rejected on its very next use (ProductFeedService checks revokedAt on every call). */

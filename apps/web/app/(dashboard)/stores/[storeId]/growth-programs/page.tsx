@@ -306,7 +306,7 @@ export default function GrowthProgramsPage() {
                   </div>
                 </form>
               ) : (
-                <p className="text-sm text-ink-muted">Your Creator application is {byType.get("creator")?.status} - submissions open once it's approved.</p>
+                <p className="text-sm text-ink-muted">Your Creator application is {byType.get("creator")?.status} - submissions open once it&apos;s approved.</p>
               )}
 
               {submissions.length === 0 ? (

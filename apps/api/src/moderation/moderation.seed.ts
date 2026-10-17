@@ -78,12 +78,10 @@ if (require.main === module) {
   const prisma = new PrismaClient();
   seedModerationSettings(prisma)
     .then(() => {
-      // eslint-disable-next-line no-console
       console.log("Moderation settings seeded.");
       return prisma.$disconnect();
     })
     .catch(async (err) => {
-      // eslint-disable-next-line no-console
       console.error(err);
       await prisma.$disconnect();
       process.exit(1);

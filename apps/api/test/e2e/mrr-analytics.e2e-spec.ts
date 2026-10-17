@@ -1,8 +1,9 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { resolveActivePlanPrice } from "../../src/plans/plan-pricing.util";
+import { computeCyclePrice, monthsOfService, resolveActivePlanPrice } from "../../src/plans/plan-pricing.util";
 import { round2 } from "../../src/orders/money.util";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -67,18 +68,43 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     return verify.body.accessToken as string;
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). All
+   * but one of this file's tests call this helper (the empty-state test
+   * below never pays a plan fee at all), so each caller that needs it
+   * passes its own freshly-enrolled `stepUpCode` generator inline rather
+   * than through the shared createAndLoginAdmin() helper.
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
+  }
+
+  /** D116 item 2 - a fresh, self-contained admin enroll+verify flow for tests that need a step-up code, without widening createAndLoginAdmin()'s return shape for its other (unaffected) callers. */
+  async function createStepUpAdmin(email: string): Promise<{ adminToken: string; stepUpCode: () => string }> {
+    const bcrypt = await import("bcryptjs");
+    const user = await superuser.user.create({
+      data: { email, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = enroll.body.secret as string;
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    return { adminToken: verify.body.accessToken as string, stepUpCode: () => authenticator.generate(mfaSecret) };
   }
 
   it("MRR sums active paid subscriptions at their standing (non-first-cycle-discounted) price, grouped correctly by tier", async () => {
-    const adminToken = await createAndLoginAdmin("mrr-admin1@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin1@example.com");
     const a = await signup("mrr-a@example.com");
     const b = await signup("mrr-b@example.com");
     const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
@@ -87,8 +113,8 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     // fee, which this test's MRR sum is actually about.
     await superuser.subscription.update({ where: { sellerId: a.sellerId }, data: { planId: entryPlan.id } });
     await superuser.subscription.update({ where: { sellerId: b.sellerId }, data: { planId: entryPlan.id } });
-    await payPlanFee(a.token, adminToken);
-    await payPlanFee(b.token, adminToken);
+    await payPlanFee(a.token, adminToken, stepUpCode);
+    await payPlanFee(b.token, adminToken, stepUpCode);
 
     const standingMonthly = resolveActivePlanPrice(entryPlan);
 
@@ -99,13 +125,60 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     expect(res.body.activeSubscriptionCount).toBe(2);
   });
 
+  /**
+   * Founder item 4 (D99/D10, 2026-10-11) - this is the test that would
+   * have caught MrrAnalyticsService's own locally-duplicated months map
+   * drifting from plan-pricing.util.ts's monthsOfService() (it never had
+   * any non-monthly coverage before this): normalization against the
+   * REAL /admin/analytics/mrr response, not just the pure util function,
+   * for all three non-monthly cycles at once (monthly's own normalization
+   * is already covered above - cycleTotal/1 is trivial either way).
+   */
+  it("normalizes quarterly/six_month/yearly subscriptions to their real per-month contribution (six_month divides by 6.5, never a plain 6)", async () => {
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin8@example.com");
+    const quarterlySeller = await signup("mrr-quarterly@example.com");
+    const sixMonthSeller = await signup("mrr-sixmonth@example.com");
+    const yearlySeller = await signup("mrr-yearly@example.com");
+    const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
+
+    await superuser.subscription.update({ where: { sellerId: quarterlySeller.sellerId }, data: { planId: entryPlan.id, billingInterval: "quarterly" } });
+    await superuser.subscription.update({ where: { sellerId: sixMonthSeller.sellerId }, data: { planId: entryPlan.id, billingInterval: "six_month" } });
+    await superuser.subscription.update({ where: { sellerId: yearlySeller.sellerId }, data: { planId: entryPlan.id, billingInterval: "yearly" } });
+    await payPlanFee(quarterlySeller.token, adminToken, stepUpCode);
+    await payPlanFee(sixMonthSeller.token, adminToken, stepUpCode);
+    await payPlanFee(yearlySeller.token, adminToken, stepUpCode);
+
+    const settings = app.get(SettingsService);
+    const multipliers = {
+      quarterly: await settings.resolve<number>("billing.quarterly_price_multiplier"),
+      sixMonth: await settings.resolve<number>("billing.six_month_price_multiplier"),
+      yearly: await settings.resolve<number>("billing.yearly_price_multiplier"),
+    };
+    const standingMonthly = resolveActivePlanPrice(entryPlan);
+    const expectedMrr = round2(
+      computeCyclePrice(standingMonthly, "quarterly", multipliers) / monthsOfService("quarterly") +
+        computeCyclePrice(standingMonthly, "six_month", multipliers) / monthsOfService("six_month") +
+        computeCyclePrice(standingMonthly, "yearly", multipliers) / monthsOfService("yearly"),
+    );
+
+    const res = await request(app.getHttpServer()).get("/admin/analytics/mrr").set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.activeSubscriptionCount).toBe(3);
+    expect(res.body.mrr).toBe(expectedMrr);
+    // six_month's own contribution specifically divides by 6.5, never a
+    // plain 6 - if it did, this sixMonthOnlyMrr would be strictly higher
+    // than what the real endpoint returns for that one seller's share.
+    const sixMonthCyclePrice = computeCyclePrice(standingMonthly, "six_month", multipliers);
+    expect(sixMonthCyclePrice / 6).not.toBe(sixMonthCyclePrice / monthsOfService("six_month"));
+  });
+
   it("first-cycle-to-full conversion rate counts only sellers with 2+ verified plan-fee payments as converted", async () => {
-    const adminToken = await createAndLoginAdmin("mrr-admin2@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin2@example.com");
     const renewed = await signup("mrr-renewed@example.com");
     const firstCycleOnly = await signup("mrr-first-only@example.com");
-    await payPlanFee(renewed.token, adminToken);
-    await payPlanFee(renewed.token, adminToken); // renewal - second verified payment
-    await payPlanFee(firstCycleOnly.token, adminToken); // only ever pays once
+    await payPlanFee(renewed.token, adminToken, stepUpCode);
+    await payPlanFee(renewed.token, adminToken, stepUpCode); // renewal - second verified payment
+    await payPlanFee(firstCycleOnly.token, adminToken, stepUpCode); // only ever pays once
 
     const res = await request(app.getHttpServer()).get("/admin/analytics/mrr").set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
@@ -114,7 +187,7 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
   });
 
   it("a subscription with currentPeriodEnd already in the past counts as expired-not-renewed, not toward MRR or upcoming renewals", async () => {
-    const adminToken = await createAndLoginAdmin("mrr-admin3@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin3@example.com");
     const seller = await signup("mrr-expired@example.com");
     // SRS §5.73 - signup now defaults to starter_free (price 0); upgraded
     // so payPlanFee() below has a real fee, and so this subscription is
@@ -122,7 +195,7 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     // scoped to real paid subscriptions, never starter_free).
     const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: entryPlan.id } });
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await superuser.subscription.update({
       where: { sellerId: seller.sellerId },
       data: { currentPeriodEnd: new Date(Date.now() - 24 * 60 * 60 * 1000) },
@@ -137,7 +210,7 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
   });
 
   it("a subscription renewing within the next 7 days counts toward both the 7-day and 30-day upcoming-renewal windows", async () => {
-    const adminToken = await createAndLoginAdmin("mrr-admin4@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin4@example.com");
     const seller = await signup("mrr-renewing-soon@example.com");
     // SRS §5.73 - signup now defaults to starter_free (price 0); upgraded
     // so payPlanFee() below has a real fee, and so this subscription is
@@ -145,7 +218,7 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
     // query is scoped to plan.planGroup === "individual" && price > 0).
     const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: entryPlan.id } });
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await superuser.subscription.update({
       where: { sellerId: seller.sellerId },
       data: { currentPeriodEnd: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) },
@@ -158,9 +231,9 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
   });
 
   it("realized revenue this month/quarter sums only verified plan-fee payments verified within the calendar window, unlike expectedRevenueThisMonth's projection", async () => {
-    const adminToken = await createAndLoginAdmin("mrr-admin6@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin6@example.com");
     const seller = await signup("mrr-realized@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
 
@@ -171,9 +244,9 @@ describe("MRR analytics (e2e) - SRS §5.6k/§14.66 (Module 63, FR-6.40)", () => 
   });
 
   it("a verified plan-fee payment from last calendar quarter does not count toward this quarter's realized revenue", async () => {
-    const adminToken = await createAndLoginAdmin("mrr-admin7@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("mrr-admin7@example.com");
     const seller = await signup("mrr-old-quarter@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
     await superuser.walletTopUpRequest.update({ where: { id: payment.id }, data: { verifiedAt: new Date("2020-01-15T00:00:00Z") } });

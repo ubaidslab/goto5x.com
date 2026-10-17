@@ -42,12 +42,26 @@ export class BrandingService {
     return { removable, hidden, visible: !(removable && hidden) };
   }
 
+  /**
+   * D76d (founder decision, 2026-10-10 - B4) - `branding.powered_by_hidden`
+   * is the ONE stored preference both getForStore()/getVisibleForStorefront()
+   * (the OLD mark) AND getLoadingScreenBrandingVisible() (the NEW gate) read.
+   * Gating the write on the OLD mechanism's own `removable` ALONE would make
+   * a RISE seller unable to ever set hidden=true in the first place - RISE
+   * doesn't qualify for the OLD mechanism (still FLY-only, unchanged), so
+   * the new gate's own tierOrder===2 check must ALSO unlock this write, or
+   * D76d's "removable on RISE" would be unreachable in practice. Either
+   * capability independently justifies the one shared write.
+   */
   async setHiddenForStore(sellerId: string, storeId: string, userId: string, hidden: boolean) {
     await this.assertOwnsStore(sellerId, storeId);
     if (hidden) {
       const planContext = await this.subscriptions.getPlanContext(sellerId);
-      const removable = await this.settings.resolve<boolean>("branding.powered_by_removable", planContext);
-      if (!removable) {
+      const [removableOld, removableNew] = await Promise.all([
+        this.settings.resolve<boolean>("branding.powered_by_removable", planContext),
+        this.isLoadingScreenBrandingRemovable(sellerId),
+      ]);
+      if (!removableOld && !removableNew) {
         throw new ForbiddenException("Removing the UZEYN mark isn't included in your current plan.");
       }
     }
@@ -75,23 +89,37 @@ export class BrandingService {
   }
 
   /**
-   * SRS §5.74 FR-74.3 - the new loading-screen's own removability gate,
-   * individual-FLY only (planGroup === "individual" && tierOrder === 3).
+   * SRS §5.74 FR-74.3, superseded for the MVP window by D76d (founder
+   * decision, 2026-10-10 - B4) - the loading-screen's own removability
+   * gate is now individual-RISE-only (planGroup === "individual" &&
+   * tierOrder === 2), not FLY (tierOrder === 3) - the founder's own
+   * implementation note names tierOrder === 2 explicitly, not ">= 2".
+   * FLY stays dormant for the MVP window (D75d) with no seller actually
+   * on it, so a grant only FLY could use would be dead code in practice;
+   * RISE becomes the top *active* brand-control tier at launch instead.
    * Deliberately NOT branding.powered_by_removable - that setting also
    * resolves true for Team Growth/Scale (see seedTemplatesBrandingSettings),
-   * and this new rule must never reach Team-tier branding, which keeps its
-   * existing behavior untouched. Same fail-open-to-visible philosophy as
-   * getVisibleForStorefront above on any lookup gap.
+   * and this rule must never reach Team-tier branding, which keeps its
+   * existing behavior untouched. Shared with setHiddenForStore() above,
+   * which this same check also unlocks for writing the shared `hidden`
+   * preference - see that method's own comment for why.
    */
+  private async isLoadingScreenBrandingRemovable(sellerId: string): Promise<boolean> {
+    const subscription = await this.prismaAdmin.subscription.findUnique({
+      where: { sellerId },
+      select: { plan: { select: { planGroup: true, tierOrder: true } } },
+    });
+    return subscription?.plan.planGroup === "individual" && subscription?.plan.tierOrder === 2;
+  }
+
+  /** Same fail-open-to-visible philosophy as getVisibleForStorefront above on any lookup gap. */
   async getLoadingScreenBrandingVisible(storeId: string): Promise<boolean> {
     const store = await this.prismaAdmin.store.findUnique({ where: { id: storeId } });
     if (!store) return true;
-    const subscription = await this.prismaAdmin.subscription.findUnique({
-      where: { sellerId: store.sellerId },
-      select: { plan: { select: { planGroup: true, tierOrder: true } } },
-    });
-    const removable = subscription?.plan.planGroup === "individual" && subscription?.plan.tierOrder === 3;
-    const hidden = await this.settings.resolve<boolean>("branding.powered_by_hidden", { storeId });
+    const [removable, hidden] = await Promise.all([
+      this.isLoadingScreenBrandingRemovable(store.sellerId),
+      this.settings.resolve<boolean>("branding.powered_by_hidden", { storeId }),
+    ]);
     return !(removable && hidden);
   }
 }

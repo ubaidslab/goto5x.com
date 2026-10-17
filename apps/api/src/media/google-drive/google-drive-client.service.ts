@@ -40,14 +40,26 @@ const DRIVE_SCOPES = [
  */
 @Injectable()
 export class GoogleDriveClientService implements IDriveClient {
-  constructor(private readonly config: ConfigService) {}
+  private readonly clientId?: string;
+  private readonly clientSecret?: string;
+  private readonly redirectUri?: string;
+
+  constructor(private readonly config: ConfigService) {
+    this.clientId = this.config.get<string>("GOOGLE_DRIVE_CLIENT_ID");
+    this.clientSecret = this.config.get<string>("GOOGLE_DRIVE_CLIENT_SECRET");
+    this.redirectUri = this.config.get<string>("GOOGLE_DRIVE_REDIRECT_URI");
+  }
+
+  // D126 - DriveController checks this before every handler that actually
+  // touches Drive/Google, so buildOAuthClient() below is only ever reached
+  // once a caller already confirmed all 3 vars are present - no redundant
+  // throw needed here.
+  isConfigured(): boolean {
+    return Boolean(this.clientId && this.clientSecret && this.redirectUri);
+  }
 
   private buildOAuthClient() {
-    return new google.auth.OAuth2(
-      this.config.getOrThrow<string>("GOOGLE_DRIVE_CLIENT_ID"),
-      this.config.getOrThrow<string>("GOOGLE_DRIVE_CLIENT_SECRET"),
-      this.config.getOrThrow<string>("GOOGLE_DRIVE_REDIRECT_URI"),
-    );
+    return new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
   }
 
   getAuthUrl(state: string): string {

@@ -209,14 +209,33 @@ describe("Entry-tier assignment: starter_free at signup, GO+ permanent once chos
     const pausedStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
     expect(pausedStore.status).toBe("orders_paused");
 
-    const adminToken = await createAndLoginAdmin("basic-restore-admin@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared createAndLoginAdmin() doesn't expose the
+    // enrolled secret and this is its only call site in the whole file,
+    // so a fresh enroll+verify flow is done inline here rather than
+    // widening that shared helper's return shape.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "basic-restore-admin@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret));
 
     const restoredStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
     expect(restoredStore.status).toBe("active");

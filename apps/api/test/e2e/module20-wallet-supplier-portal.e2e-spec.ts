@@ -78,7 +78,12 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     return { token, storeId, sellerId };
   }
 
-  async function createAndLoginAdmin(email: string): Promise<string> {
+  // D116 item 2 - every admin this file creates is used, directly or via
+  // topUpAndVerify(), to call AdminWalletController.verify() (now step-up-
+  // MFA-gated, StepUpMfaGuard) - this whole file is specifically about the
+  // wallet, so (per D112/D116's own precedent in module47) the helper's
+  // return type is widened here rather than inline-fixing each call site.
+  async function createAndLoginAdmin(email: string): Promise<{ token: string; mfaSecret: string }> {
     const bcrypt = await import("bcryptjs");
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
     const user = await superuser.user.create({
@@ -94,17 +99,24 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     const verify = await request(app.getHttpServer())
       .post("/admin/auth/mfa/verify")
       .send({ preAuthToken: login.body.preAuthToken, code });
-    return verify.body.accessToken as string;
+    return { token: verify.body.accessToken as string, mfaSecret: enroll.body.secret as string };
   }
 
-  async function topUpAndVerify(token: string, adminToken: string, amount: number) {
+  /** A fresh TOTP code per call, not one reused across a whole test - a 30s TOTP window could otherwise go stale mid-test. */
+  async function stepUpCode(mfaSecret: string): Promise<string> {
+    const { authenticator } = await import("otplib");
+    return authenticator.generate(mfaSecret);
+  }
+
+  async function topUpAndVerify(token: string, adminToken: string, mfaSecret: string, amount: number) {
     const req = await request(app.getHttpServer())
       .post("/sellers/me/wallet/topup-requests")
       .set("Authorization", `Bearer ${token}`)
       .send({ amount });
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${req.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret));
   }
 
   async function addProduct(token: string, storeId: string, price: number) {
@@ -223,12 +235,12 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
   describe("Top-up + commission debit (FR-6.22/6.23, Financial Truth Invariant)", () => {
     it("a verified top-up credits the wallet, audit-logged; marking an order paid debits commission - never a pending order", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("wallet-flow@example.com", "wallet-flow-store");
-      const adminToken = await createAndLoginAdmin("wallet-flow-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("wallet-flow-admin@example.com");
       // Module 74 dropped every plan's seeded commissionPercent to 0 - a
       // seller-scoped override (highest precedence) restores this test's
       // original nonzero-rate assumption regardless of the seeded default.
       await app.get(SettingsService).setValue("billing.commission_rate_percent", "seller", sellerId, 2, ADMIN_ID);
-      await topUpAndVerify(token, adminToken, 1000);
+      await topUpAndVerify(token, adminToken, mfaSecret, 1000);
 
       const balanceAfterTopUp = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${token}`);
       expect(balanceAfterTopUp.body.balance).toBe(1000);
@@ -262,11 +274,11 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
   describe("Wallet transaction history pagination (Phase B pre-launch audit finding)", () => {
     it("getTransactionHistory() paginates instead of returning every entry, newest first", async () => {
       const { token } = await signupLoginAndCreatePublishedStore("wallet-page@example.com", "wallet-page-store");
-      const adminToken = await createAndLoginAdmin("wallet-page-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("wallet-page-admin@example.com");
 
       // 5 distinct-amount top-ups, sequential so createdAt strictly increases.
       for (const amount of [100, 200, 300, 400, 500]) {
-        await topUpAndVerify(token, adminToken, amount);
+        await topUpAndVerify(token, adminToken, mfaSecret, amount);
       }
 
       const page1 = await request(app.getHttpServer())
@@ -329,7 +341,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
 
     it("a sale that drives the balance below the floor pauses stores immediately, without waiting for grace to expire; a verified top-up restores (FR-6.26 fix)", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("floor-breach@example.com", "floor-breach-store");
-      const adminToken = await createAndLoginAdmin("floor-breach-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("floor-breach-admin@example.com");
       const settings = app.get(SettingsService);
       // A tight floor. No sweep ever runs in this test - the pause must
       // come from markAsPaid's own immediate floor check, never the
@@ -365,7 +377,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       const blockedOrder = await createAndPayManualOrder(token, storeId, productId, variantId);
       expect(blockedOrder.status).toBe(400);
 
-      await topUpAndVerify(token, adminToken, 500);
+      await topUpAndVerify(token, adminToken, mfaSecret, 500);
       const restoredStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
       expect(restoredStore.status).toBe("active");
     });
@@ -374,7 +386,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
   describe("Low-balance grace ladder + orders_paused (FR-6.25)", () => {
     it("warns, then pauses orders after the grace period, then restores instantly on a verified top-up - never overwriting an admin suspension", async () => {
       const { token, storeId, sellerId } = await signupLoginAndCreatePublishedStore("grace-ladder@example.com", "grace-ladder-store");
-      const adminToken = await createAndLoginAdmin("grace-ladder-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("grace-ladder-admin@example.com");
       const settings = app.get(SettingsService);
       await settings.setValue("billing.wallet_low_balance_warning_threshold", "global", null, 100, ADMIN_ID);
       await settings.setValue("billing.wallet_grace_days", "global", null, 3, ADMIN_ID);
@@ -407,7 +419,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       expect(blockedOrder.status).toBe(400);
 
       // A verified top-up restores instantly, no admin action beyond verification.
-      await topUpAndVerify(token, adminToken, 500);
+      await topUpAndVerify(token, adminToken, mfaSecret, 500);
       const restoredStore = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
       expect(restoredStore.status).toBe("active");
 
@@ -489,14 +501,15 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
         .set("Authorization", `Bearer ${supplierToken}`)
         .send({ planId: premiumPlan.id });
 
-      const adminToken = await createAndLoginAdmin("wallet-supplier-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("wallet-supplier-admin@example.com");
       const topUp = await request(app.getHttpServer())
         .post("/suppliers/me/wallet/topup-requests")
         .set("Authorization", `Bearer ${supplierToken}`)
         .send({ amount: 3000 });
       await request(app.getHttpServer())
         .post(`/admin/wallet-topups/${topUp.body.request.id}/verify`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret));
 
       const balance = await request(app.getHttpServer()).get("/suppliers/me/wallet").set("Authorization", `Bearer ${supplierToken}`);
       expect(balance.body.balance).toBe(3000);
@@ -535,7 +548,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
         .set("Authorization", `Bearer ${supplierToken}`)
         .send({ planId: premiumPlan.id });
 
-      const adminToken = await createAndLoginAdmin("wallet-supplier-race-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("wallet-supplier-race-admin@example.com");
       const fee = Number(premiumPlan.price);
       // Top up EXACTLY the fee - enough for one debit, not two. Pre-fix,
       // two concurrent sweeps would each independently read this same
@@ -547,7 +560,8 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
         .send({ amount: fee });
       await request(app.getHttpServer())
         .post(`/admin/wallet-topups/${topUp.body.request.id}/verify`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret));
 
       const supplierRow = await superuser.supplier.findFirstOrThrow({ where: { user: { email: supplierEmail } } });
       const supplierSubscription = await superuser.subscription.findUniqueOrThrow({ where: { supplierId: supplierRow.id } });
@@ -611,9 +625,9 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
     it("seller A's wallet balance/transactions/topup-requests are invisible from seller B's own session, and vice versa", async () => {
       const a = await signupLoginAndCreatePublishedStore("wallet-isolation-a@example.com", "wallet-isolation-a-store");
       const b = await signupLoginAndCreatePublishedStore("wallet-isolation-b@example.com", "wallet-isolation-b-store");
-      const adminToken = await createAndLoginAdmin("wallet-isolation-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("wallet-isolation-admin@example.com");
 
-      await topUpAndVerify(a.token, adminToken, 5000);
+      await topUpAndVerify(a.token, adminToken, mfaSecret, 5000);
 
       const aBalance = await request(app.getHttpServer()).get("/sellers/me/wallet").set("Authorization", `Bearer ${a.token}`);
       expect(aBalance.body.balance).toBe(5000);
@@ -641,7 +655,7 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
       }
       const supplierAToken = await signupSupplier("wallet-isolation-supplier-a@example.com");
       const supplierBToken = await signupSupplier("wallet-isolation-supplier-b@example.com");
-      const adminToken = await createAndLoginAdmin("wallet-isolation-supplier-admin@example.com");
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("wallet-isolation-supplier-admin@example.com");
 
       const topUp = await request(app.getHttpServer())
         .post("/suppliers/me/wallet/topup-requests")
@@ -649,7 +663,8 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
         .send({ amount: 2000 });
       await request(app.getHttpServer())
         .post(`/admin/wallet-topups/${topUp.body.request.id}/verify`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", await stepUpCode(mfaSecret));
 
       const aBalance = await request(app.getHttpServer()).get("/suppliers/me/wallet").set("Authorization", `Bearer ${supplierAToken}`);
       expect(aBalance.body.balance).toBe(2000);
@@ -666,8 +681,8 @@ describe("Prepaid Credits Wallet + Supplier Portal Completion (e2e) - SRS §5.6e
   describe("Dormant invoicing mechanism (FR-6.28)", () => {
     it("the old commission-invoice generation job produces no new rows going forward (unscheduled, not deleted)", async () => {
       const { token, storeId } = await signupLoginAndCreatePublishedStore("dormant-invoice@example.com", "dormant-invoice-store");
-      const adminToken = await createAndLoginAdmin("dormant-invoice-admin@example.com");
-      await topUpAndVerify(token, adminToken, 1000);
+      const { token: adminToken, mfaSecret } = await createAndLoginAdmin("dormant-invoice-admin@example.com");
+      await topUpAndVerify(token, adminToken, mfaSecret, 1000);
       const { productId, variantId } = await addProduct(token, storeId, 500);
       const order = await createAndPayManualOrder(token, storeId, productId, variantId);
       await request(app.getHttpServer())

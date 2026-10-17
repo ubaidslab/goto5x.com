@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { AuditLogService } from "../admin/audit-log.service";
+import { SessionService } from "../auth/session.service";
 import { generateToken } from "../auth/token.util";
 import { EventsService } from "../events/events.service";
 import { EmailService } from "../notifications/email.service";
@@ -59,6 +60,7 @@ export class StaffAccountsService {
     private readonly auditLog: AuditLogService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    private readonly sessions: SessionService,
   ) {}
 
   getRoleTemplates() {
@@ -175,6 +177,9 @@ export class StaffAccountsService {
       data: { status: "revoked", revokedAt: new Date() },
       select: SAFE_SELECT,
     });
+    // D82 - kill any already-issued session immediately rather than
+    // waiting for its own refresh() to notice the status change.
+    await this.sessions.destroyAllSessionsForUser(id);
     await this.events.emit({
       eventType: "staff_account.revoked",
       actorType: "seller",
@@ -305,6 +310,9 @@ export class StaffAccountsService {
       data: { status: "suspended", suspendedAt: new Date(), suspendedUntil: until },
       select: SAFE_SELECT,
     });
+    // D82 - kill any already-issued session immediately rather than
+    // waiting for its own refresh() to notice the status change.
+    await this.sessions.destroyAllSessionsForUser(id);
     await this.auditLog.record({
       adminUserId,
       action: "staff_account.suspended",
@@ -325,6 +333,9 @@ export class StaffAccountsService {
       data: { status: "blocked", blockedAt: new Date() },
       select: SAFE_SELECT,
     });
+    // D82 - kill any already-issued session immediately rather than
+    // waiting for its own refresh() to notice the status change.
+    await this.sessions.destroyAllSessionsForUser(id);
     await this.auditLog.record({
       adminUserId,
       action: "staff_account.blocked",

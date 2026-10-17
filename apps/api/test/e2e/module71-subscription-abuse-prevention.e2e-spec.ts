@@ -172,7 +172,26 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
   });
 
   it("FR-6.48: a retroactive match after the discount was already used posts a one-time wallet_plan_fee_debit for the difference, never twice", async () => {
-    const adminToken = await createAndLoginAdmin("abuse-admin2@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared createAndLoginAdmin() doesn't expose the
+    // enrolled secret and most of this file's other tests never call
+    // verify() at all, so a fresh enroll+verify flow is done inline here
+    // rather than widening that shared helper's return shape for every
+    // one of its other callers.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "abuse-admin2@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
     const sellerA = await signup("abuse-chargeback-a@example.com");
     await superuser.user.update({ where: { id: sellerA.userId }, data: { phone: "03007778888" } });
 
@@ -180,7 +199,10 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
     const sellerB = await signup("abuse-chargeback-b@example.com");
     await upgradeToGo(sellerB.sellerId);
     const submit = await request(app.getHttpServer()).post("/sellers/me/wallet/plan-fee-payment").set("Authorization", `Bearer ${sellerB.token}`).send({});
-    await request(app.getHttpServer()).post(`/admin/wallet-topups/${submit.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
+    await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret));
 
     const price = await fullPrice();
     const discountPercent = 50; // seeded default, billing.first_cycle_discount_percent
@@ -202,7 +224,21 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
   });
 
   it("FR-6.48 trigger 3 (payment instructions): a bank/JazzCash conflict is the strongest signal - the save is still rejected exactly as before, but the conflicting seller is flagged and charged back if already discounted", async () => {
-    const adminToken = await createAndLoginAdmin("abuse-admin3@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail3 = "abuse-admin3@example.com";
+    const adminUser3 = await superuser.user.create({
+      data: { email: adminEmail3, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser3.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin3 = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail3, password: ADMIN_PASSWORD });
+    const adminEnroll3 = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin3.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret3 = adminEnroll3.body.secret as string;
+    const adminVerify3 = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin3.body.preAuthToken, code: authenticator.generate(mfaSecret3) });
+    const adminToken = adminVerify3.body.accessToken as string;
 
     const sellerA = await signup("abuse-instrument-a@example.com");
     const storeA = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${sellerA.token}`).send({ name: "A", slug: "abuse-instrument-a-store" });
@@ -215,7 +251,10 @@ describe("First-cycle discount abuse prevention (e2e) - SRS §5.6k/§14.66 (Modu
     const sellerB = await signup("abuse-instrument-b@example.com");
     await upgradeToGo(sellerB.sellerId);
     const submit = await request(app.getHttpServer()).post("/sellers/me/wallet/plan-fee-payment").set("Authorization", `Bearer ${sellerB.token}`).send({});
-    await request(app.getHttpServer()).post(`/admin/wallet-topups/${submit.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
+    await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", authenticator.generate(mfaSecret3));
 
     const storeB = await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${sellerB.token}`).send({ name: "B", slug: "abuse-instrument-b-store" });
     const conflict = await request(app.getHttpServer())

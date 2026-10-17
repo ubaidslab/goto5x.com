@@ -1,7 +1,8 @@
-import { Body, Controller, Post, Req } from "@nestjs/common";
+import { Body, Controller, Post, Req, UseInterceptors } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { Request } from "express";
+import { IdempotencyInterceptor } from "../common/idempotency/idempotency.interceptor";
 import { JwtAccessPayload } from "../common/types";
 import { CheckoutService } from "./checkout.service";
 import { CheckoutDto } from "./dto/checkout.dto";
@@ -23,7 +24,9 @@ export class CheckoutController {
     private readonly config: ConfigService,
   ) {}
 
+  /** D116 item 1 (Stage 0) - a flaky-network double-submit must not create two orders from one cart. */
   @Post()
+  @UseInterceptors(IdempotencyInterceptor)
   checkout(@Body() dto: CheckoutDto, @Req() req: Request) {
     return this.checkoutService.checkout(dto, req.ip ?? "unknown", this.tryExtractBuyerId(req));
   }

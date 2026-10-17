@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { api } from "@/lib/dashboard-api";
 
 /**
  * v0.23 impersonation-transparency amendment (FR-8.4) - a persistent,
  * unmissable banner for the entire duration of an impersonation session.
- * "Exit" here is a local/soft exit (clears this browser tab's stored
- * token) - the authoritative end (audit-logged) happens from the admin's
- * own tab, which is the only place holding an admin-authenticated token.
+ * "Exit" here is a local/soft exit (clears this browser tab's in-memory
+ * token, D82) - the authoritative end (audit-logged) happens from the
+ * admin's own tab, which is the only place holding an admin-authenticated
+ * token.
  */
 export function SupportModeBanner() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -19,7 +21,7 @@ export function SupportModeBanner() {
   if (!sessionId) return null;
 
   function exit() {
-    localStorage.removeItem("accessToken");
+    api.setSession(null);
     localStorage.removeItem("impersonationSessionId");
     window.close();
   }

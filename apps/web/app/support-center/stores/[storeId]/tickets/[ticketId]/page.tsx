@@ -38,20 +38,22 @@ export default function SupportCenterTicketDetailPage({ params }: { params: { st
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!window.localStorage.getItem("accessToken")) {
-      router.replace("/login");
-    }
-  }, [router]);
-
+  // D82 - the access token lives in dashboard-api.ts's in-memory store now,
+  // never localStorage; load() below handles "not logged in" on its own.
   function load() {
     api
       .get<SupportTicket>(`/stores/${params.storeId}/support-tickets/${params.ticketId}`)
       .then(setTicket)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load this ticket."));
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        setError(err instanceof ApiError ? err.message : "Couldn't load this ticket.");
+      });
   }
 
-  useEffect(load, [params.storeId, params.ticketId]);
+  useEffect(load, [params.storeId, params.ticketId, router]);
 
   async function onReply(e: React.FormEvent) {
     e.preventDefault();

@@ -46,6 +46,9 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [driveConnection, setDriveConnection] = useState<DriveConnection | null | undefined>(undefined);
+  // D126 - defaults to true until the first fetch resolves, so the Drive
+  // section doesn't flash "not available" before we actually know.
+  const [driveConfigured, setDriveConfigured] = useState(true);
   const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null);
   const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
@@ -65,8 +68,11 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
 
   useEffect(() => {
     api
-      .get<DriveConnection | null>("/media/drive/connection")
-      .then(setDriveConnection)
+      .get<{ configured: boolean; connection: DriveConnection | null }>("/media/drive/connection")
+      .then(({ configured, connection }) => {
+        setDriveConfigured(configured);
+        setDriveConnection(connection);
+      })
       .catch(() => setDriveConnection(null));
   }, []);
 
@@ -329,43 +335,47 @@ export function ImagesSection({ storeId, productId }: { storeId: string; product
           </Disclosure>
         )}
 
-        <Disclosure label="Import from Google Drive">
-          {driveConnection === undefined ? (
-            <p className="text-sm text-ink-muted">Checking connection…</p>
-          ) : !driveConnection || driveConnection.status !== "connected" ? (
-            <div className="space-y-2">
-              <p className="text-sm text-ink-muted">Connect your Google Drive to import product photos directly.</p>
-              <Button type="button" variant="secondary" onClick={connectDrive}>
-                Connect Google Drive
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-ink-muted">Connected as {driveConnection.googleAccountEmail}.</p>
-              {driveFiles === null ? (
-                <Button type="button" variant="secondary" onClick={loadDriveFiles}>
-                  Browse Drive files
+        {driveConfigured === false ? (
+          <p className="text-sm text-ink-muted">Google Drive import isn&apos;t available yet.</p>
+        ) : (
+          <Disclosure label="Import from Google Drive">
+            {driveConnection === undefined ? (
+              <p className="text-sm text-ink-muted">Checking connection…</p>
+            ) : !driveConnection || driveConnection.status !== "connected" ? (
+              <div className="space-y-2">
+                <p className="text-sm text-ink-muted">Connect your Google Drive to import product photos directly.</p>
+                <Button type="button" variant="secondary" onClick={connectDrive}>
+                  Connect Google Drive
                 </Button>
-              ) : driveFiles.length === 0 ? (
-                <p className="text-sm text-ink-muted">No importable image files found in Drive.</p>
-              ) : (
-                <>
-                  <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-                    {driveFiles.map((file) => (
-                      <label key={file.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm transition-smooth-fast hover:bg-canvas">
-                        <input type="checkbox" checked={selectedDriveIds.has(file.id)} onChange={() => toggleDriveFile(file.id)} />
-                        {file.name}
-                      </label>
-                    ))}
-                  </div>
-                  <Button type="button" loading={importing} disabled={selectedDriveIds.size === 0} onClick={importSelected}>
-                    Import selected ({selectedDriveIds.size})
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-ink-muted">Connected as {driveConnection.googleAccountEmail}.</p>
+                {driveFiles === null ? (
+                  <Button type="button" variant="secondary" onClick={loadDriveFiles}>
+                    Browse Drive files
                   </Button>
-                </>
-              )}
-            </div>
-          )}
-        </Disclosure>
+                ) : driveFiles.length === 0 ? (
+                  <p className="text-sm text-ink-muted">No importable image files found in Drive.</p>
+                ) : (
+                  <>
+                    <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                      {driveFiles.map((file) => (
+                        <label key={file.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm transition-smooth-fast hover:bg-canvas">
+                          <input type="checkbox" checked={selectedDriveIds.has(file.id)} onChange={() => toggleDriveFile(file.id)} />
+                          {file.name}
+                        </label>
+                      ))}
+                    </div>
+                    <Button type="button" loading={importing} disabled={selectedDriveIds.size === 0} onClick={importSelected}>
+                      Import selected ({selectedDriveIds.size})
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </Disclosure>
+        )}
       </CardBody>
     </Card>
   );

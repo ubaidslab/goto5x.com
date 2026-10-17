@@ -23,7 +23,13 @@ the Platform.
   contents, collected at checkout for the purpose of fulfilling that order. Buyers
   are not required to create an account.
 - **Automatically collected:** basic technical data (IP address, device/browser
-  information) for security, fraud prevention, and analytics purposes.
+  information) for security, fraud prevention, and analytics purposes. For the
+  specific "repeated orders from the same connection in a short window" fraud
+  signal on Buyer checkout, the IP address itself is never stored: it is
+  hashed with a secret key the Platform holds, counted for 24 hours, and then
+  discarded — only the resulting yes/no flag on the order is kept. The raw IP
+  is never written to the order or any other persistent record for this
+  purpose.
 
 ## 3. How We Use Data
 - To operate Seller stores, process orders, and forward fulfillment information to

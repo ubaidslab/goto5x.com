@@ -85,15 +85,41 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     return verify.body.accessToken as string;
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard).
+   * Every test in this file ends up calling this (directly or via
+   * payPlanFee), so each gets its own freshly-enrolled `stepUpCode`
+   * generator from createStepUpAdmin() below rather than through
+   * createAndLoginAdmin(), left untouched per D112/D116's own precedent
+   * ("rather than widening that shared helper's return shape").
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     const verify = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
     return { submit: submit.body, verify: verify.body };
+  }
+
+  /** A fresh, self-contained admin enroll+verify flow for tests that need a step-up code, without widening createAndLoginAdmin()'s return shape. */
+  async function createStepUpAdmin(email: string): Promise<{ adminToken: string; stepUpCode: () => string }> {
+    const bcrypt = await import("bcryptjs");
+    const user = await superuser.user.create({
+      data: { email, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: user.id, role: "super_admin", mfaEnabled: false } });
+    const login = await request(app.getHttpServer()).post("/admin/auth/login").send({ email, password: ADMIN_PASSWORD });
+    const enroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: login.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = enroll.body.secret as string;
+    const verify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: login.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    return { adminToken: verify.body.accessToken as string, stepUpCode: () => authenticator.generate(mfaSecret) };
   }
 
   async function getBalance(token: string): Promise<number> {
@@ -103,7 +129,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
 
   it("Module 74 (v0.39) - a first plan-fee payment previews at the Settings-driven first-cycle discount off the active price and activates currentPeriodEnd fresh from verification time", async () => {
     const { token, sellerId } = await signup("first-payment@example.com");
-    const adminToken = await createAndLoginAdmin("first-payment-admin@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("first-payment-admin@example.com");
     const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     // SRS §5.73 - signup now defaults to starter_free (price 0), not this
     // entry individual tier; upgraded explicitly since this whole file is
@@ -122,7 +148,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     expect(preview.body.amountDue).toBeLessThan(round2(Number(entryPlan.price)));
 
     const before = new Date();
-    const { submit, verify } = await payPlanFee(token, adminToken);
+    const { submit, verify } = await payPlanFee(token, adminToken, stepUpCode);
     const after = new Date();
     expect(verify.planFeePortion).not.toBeNull();
     expect(Number(verify.amount)).toBe(0); // never a wallet-credit portion any more
@@ -143,13 +169,13 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
 
   it("a second payment previews the full active price (not the first-cycle discount) and ADVANCES (stacks onto) the existing currentPeriodEnd rather than resetting from now", async () => {
     const { token, sellerId } = await signup("renewal@example.com");
-    const adminToken = await createAndLoginAdmin("renewal-admin@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("renewal-admin@example.com");
     const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     // SRS §5.73 - signup now defaults to starter_free (price 0); upgraded
     // so the first/second payment amounts below are meaningfully nonzero.
     await superuser.subscription.update({ where: { sellerId }, data: { planId: basic.id } });
 
-    await payPlanFee(token, adminToken);
+    await payPlanFee(token, adminToken, stepUpCode);
     const afterFirst = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
 
     const preview = await request(app.getHttpServer())
@@ -158,7 +184,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     expect(preview.body.isRenewal).toBe(true);
     expect(preview.body.amountDue).toBe(round2(Number(basic.price))); // full price, no discount
 
-    const { verify } = await payPlanFee(token, adminToken);
+    const { verify } = await payPlanFee(token, adminToken, stepUpCode);
     expect(verify.planFeePortion).not.toBeNull();
 
     const afterSecond = await superuser.subscription.findUniqueOrThrow({ where: { sellerId } });
@@ -168,7 +194,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
 
   it("a pending plan-fee request blocks a second submission, but a verified one never blocks the next cycle's request", async () => {
     const { token } = await signup("pending-guard@example.com");
-    const adminToken = await createAndLoginAdmin("pending-guard-admin@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("pending-guard-admin@example.com");
 
     const first = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
@@ -184,7 +210,8 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
 
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${first.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
 
     const afterVerified = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
@@ -195,11 +222,11 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
 
   it("a renewal during an active campaign previews the campaign price, and a six-month interval multiplies it by the six-month multiplier (Module 61 unified with the new payment mechanism)", async () => {
     const { token } = await signup("campaign-six-month@example.com");
-    const adminToken = await createAndLoginAdmin("campaign-six-month-admin@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("campaign-six-month-admin@example.com");
     const settings = app.get(SettingsService);
     const sixMonthMultiplier = await settings.resolve<number>("billing.six_month_price_multiplier");
 
-    await payPlanFee(token, adminToken); // first payment, discounted
+    await payPlanFee(token, adminToken, stepUpCode); // first payment, discounted
 
     const basic = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     // Module 74 (v0.39) - GO no longer seeds a real campaignPrice (the
@@ -228,7 +255,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
   it("referral commission accrues on both the first payment AND every renewal after it (FR-33.4, one call site now: AdminWalletController.verify())", async () => {
     const referrer = await signup("referrer@example.com");
     const referred = await signup("referred@example.com");
-    const adminToken = await createAndLoginAdmin("referral-admin@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("referral-admin@example.com");
     // SRS §5.73 - signup now defaults to starter_free (price 0); the
     // REFERRED seller (whose plan-fee payments the commission is a percent
     // of) is upgraded so there's a real nonzero amount to accrue a percent
@@ -259,11 +286,11 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     const settings = app.get(SettingsService);
     const ratePercent = await settings.resolve<number>("growth.student_creator_commission_percent");
 
-    const { submit: firstSubmit } = await payPlanFee(referred.token, adminToken);
+    const { submit: firstSubmit } = await payPlanFee(referred.token, adminToken, stepUpCode);
     const balanceAfterFirst = await getBalance(referrer.token);
     expect(balanceAfterFirst).toBe(round2((firstSubmit.amountDue * ratePercent) / 100));
 
-    const { submit: secondSubmit } = await payPlanFee(referred.token, adminToken);
+    const { submit: secondSubmit } = await payPlanFee(referred.token, adminToken, stepUpCode);
     const balanceAfterSecond = await getBalance(referrer.token);
     const expectedTotal = round2(((firstSubmit.amountDue + secondSubmit.amountDue) * ratePercent) / 100);
     expect(balanceAfterSecond).toBe(expectedTotal);
@@ -276,7 +303,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
 
   it("the grace-day sweep does not pause within the grace window, pauses once it elapses with no verified renewal, and a verified payment restores instantly", async () => {
     const { token, sellerId } = await signup("grace-sweep@example.com");
-    const adminToken = await createAndLoginAdmin("grace-sweep-admin@example.com");
+    const { adminToken, stepUpCode } = await createStepUpAdmin("grace-sweep-admin@example.com");
     const store = await request(app.getHttpServer())
       .post("/stores")
       .set("Authorization", `Bearer ${token}`)
@@ -290,7 +317,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     const entryPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
     await superuser.subscription.update({ where: { sellerId }, data: { planId: entryPlan.id } });
 
-    await payPlanFee(token, adminToken); // establish a real paid cycle first
+    await payPlanFee(token, adminToken, stepUpCode); // establish a real paid cycle first
     const settings = app.get(SettingsService);
     const graceDays = await settings.resolve<number>("billing.plan_fee_grace_days");
 
@@ -309,7 +336,7 @@ describe("Subscription-Only Renewal Mechanism (e2e) - SRS §5.6g amended, v0.38"
     expect(storePaused.status).toBe("orders_paused");
 
     // A verified renewal restores instantly - no admin action needed beyond the verify itself.
-    await payPlanFee(token, adminToken);
+    await payPlanFee(token, adminToken, stepUpCode);
     const storeRestored = await superuser.store.findUniqueOrThrow({ where: { id: storeId } });
     expect(storeRestored.status).toBe("active");
   });

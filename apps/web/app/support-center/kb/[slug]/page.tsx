@@ -20,18 +20,20 @@ export default function SupportCenterArticlePage({ params }: { params: { slug: s
   const [page, setPage] = useState<ContentPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!window.localStorage.getItem("accessToken")) {
-      router.replace("/login");
-    }
-  }, [router]);
-
+  // D82 - the access token lives in dashboard-api.ts's in-memory store now,
+  // never localStorage; api.get() below handles "not logged in" on its own.
   useEffect(() => {
     api
       .get<ContentPage>(`/content-pages/${params.slug}`)
       .then(setPage)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load this article."));
-  }, [params.slug]);
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        setError(err instanceof ApiError ? err.message : "Couldn't load this article.");
+      });
+  }, [params.slug, router]);
 
   return (
     <div>

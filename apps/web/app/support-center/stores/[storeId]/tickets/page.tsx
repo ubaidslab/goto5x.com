@@ -25,18 +25,20 @@ export default function SupportCenterTicketsPage({ params }: { params: { storeId
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!window.localStorage.getItem("accessToken")) {
-      router.replace("/login");
-    }
-  }, [router]);
-
+  // D82 - the access token lives in dashboard-api.ts's in-memory store now,
+  // never localStorage; api.get() below handles "not logged in" on its own.
   useEffect(() => {
     api
       .get<SupportTicket[]>(`/stores/${params.storeId}/support-tickets`)
       .then(setTickets)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't load your tickets."));
-  }, [params.storeId]);
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        setError(err instanceof ApiError ? err.message : "Couldn't load your tickets.");
+      });
+  }, [params.storeId, router]);
 
   return (
     <div>
@@ -62,7 +64,7 @@ export default function SupportCenterTicketsPage({ params }: { params: { storeId
           <CardHeader title="All tickets" />
           <CardBody className="px-0 py-0">
             {tickets.length === 0 ? (
-              <p className="px-6 py-8 text-center text-sm text-ink-muted">No tickets yet. Raise one if a knowledge-base article doesn't answer your question.</p>
+              <p className="px-6 py-8 text-center text-sm text-ink-muted">No tickets yet. Raise one if a knowledge-base article doesn&apos;t answer your question.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {tickets.map((t) => (

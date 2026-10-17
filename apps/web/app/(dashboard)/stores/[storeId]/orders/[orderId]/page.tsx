@@ -62,6 +62,12 @@ interface Order {
   buyerWhatsapp: string | null;
   status: OrderStatus;
   source: "storefront" | "manual";
+  paymentModel: "prepaid" | "cod" | "advance";
+  // B3b (founder decision, 2026-10-11) - the buyer's self-reported Manual
+  // Transfer proof, if any; never itself proof of payment.
+  manualTransferReference: string | null;
+  manualTransferSenderName: string | null;
+  manualTransferSubmittedAt: string | null;
   shippingAddress: ShippingAddress;
   shippingAmount: string;
   taxAmount: string;
@@ -145,6 +151,7 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
   const [verifyActionLoading, setVerifyActionLoading] = useState(false);
   const [returnRequest, setReturnRequest] = useState<OrderReturnRequest | null | undefined>(undefined);
   const [markingDeliveredItemId, setMarkingDeliveredItemId] = useState<string | null>(null);
+  const [rejectingManualTransfer, setRejectingManualTransfer] = useState(false);
 
   function load() {
     api
@@ -321,6 +328,26 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
     }
   }
 
+  /**
+   * B3b (founder decision, 2026-10-11) - "Not received" reuses the
+   * existing cancel endpoint (OrdersService.changeStatus -> item 3's
+   * restoreStockForOrder()) rather than a new backend action; this is
+   * purely a seller-facing label for what's already the right tool for
+   * the job here.
+   */
+  async function notReceived() {
+    setError(null);
+    setRejectingManualTransfer(true);
+    try {
+      await api.patch(`/stores/${params.storeId}/orders/${params.orderId}/status`, { status: "cancelled" });
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't cancel this order.");
+    } finally {
+      setRejectingManualTransfer(false);
+    }
+  }
+
   async function markDelivered(itemId: string) {
     setError(null);
     setMarkingDeliveredItemId(itemId);
@@ -408,6 +435,52 @@ export default function OrderDetailPage({ params }: { params: { storeId: string;
                     </Button>
                   )}
                 </div>
+              )}
+            </div>
+          </DashCard>
+        )}
+
+        {order.paymentModel === "advance" && (
+          <DashCard>
+            <DashCardHeader
+              title="Manual transfer"
+              description="This order's Advance payment is collected by bank/mobile-wallet transfer, not a connected gateway."
+            />
+            <div className="space-y-3">
+              {order.manualTransferReference ? (
+                <div className="rounded-md bg-canvas p-3 text-sm">
+                  <p className="text-ink">
+                    Buyer says they sent this {order.manualTransferSubmittedAt ? `on ${new Date(order.manualTransferSubmittedAt).toLocaleString()}` : ""}:
+                  </p>
+                  <p className="mt-1 text-ink">
+                    <span className="font-medium">Reference:</span> {order.manualTransferReference}
+                  </p>
+                  <p className="text-ink">
+                    <span className="font-medium">Sender name:</span> {order.manualTransferSenderName}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted">Waiting for the buyer to submit their transfer reference.</p>
+              )}
+
+              {order.status === "pending" ? (
+                <>
+                  <Alert tone="warning">
+                    Check the money in your own account before shipping. A screenshot or reference number is not proof.
+                  </Alert>
+                  <div className="flex gap-2">
+                    <Button loading={markingPaid} onClick={markAsPaid}>
+                      Mark as paid
+                    </Button>
+                    <Button variant="danger" loading={rejectingManualTransfer} onClick={notReceived}>
+                      Not received
+                    </Button>
+                  </div>
+                </>
+              ) : order.status === "cancelled" ? (
+                <Badge tone="neutral">Not received - order cancelled</Badge>
+              ) : (
+                <Badge tone="success">Paid (confirmed by seller)</Badge>
               )}
             </div>
           </DashCard>

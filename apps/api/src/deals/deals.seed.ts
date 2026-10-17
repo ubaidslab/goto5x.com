@@ -20,12 +20,10 @@ if (require.main === module) {
   const prisma = new PrismaClient();
   seedDealsSettings(prisma)
     .then(() => {
-      // eslint-disable-next-line no-console
       console.log("Deals settings seeded.");
       return prisma.$disconnect();
     })
     .catch(async (err) => {
-      // eslint-disable-next-line no-console
       console.error(err);
       await prisma.$disconnect();
       process.exit(1);

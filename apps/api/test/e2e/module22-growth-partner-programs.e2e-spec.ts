@@ -19,12 +19,22 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
   let app: INestApplication;
   let superuser: PrismaClient;
 
+  // D63/B5 (founder decision, 2026-10-10/11) - programs.enabled defaults
+  // to false (Growth & Partner Programs are out of the MVP build); this
+  // whole suite is specifically about that feature, so it explicitly
+  // opts back in, same as any other test exercising a plan-gated/admin-
+  // disabled-by-default capability.
+  async function enablePrograms() {
+    await app.get(SettingsService).setValue("programs.enabled", "global", null, true, ADMIN_ID);
+  }
+
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
     app = await buildTestApp();
+    await enablePrograms();
   });
 
   afterAll(async () => {
@@ -36,6 +46,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
+    await enablePrograms();
   });
 
   async function signup(email: string, referralCode?: string) {
@@ -62,9 +73,19 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
     return verify.body.accessToken as string;
   }
 
-  async function topUpAndVerify(token: string, adminToken: string, amount: number) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated too (StepUpMfaGuard).
+   * This helper has exactly one caller in this file (the attribution test
+   * below), which supplies its own freshly-enrolled `stepUpCode` generator
+   * inline rather than through the shared createAndLoginAdmin() helper -
+   * see that test for why.
+   */
+  async function topUpAndVerify(token: string, adminToken: string, stepUpCode: () => string, amount: number) {
     const req = await request(app.getHttpServer()).post("/sellers/me/wallet/topup-requests").set("Authorization", `Bearer ${token}`).send({ amount });
-    await request(app.getHttpServer()).post(`/admin/wallet-topups/${req.body.request.id}/verify`).set("Authorization", `Bearer ${adminToken}`);
+    await request(app.getHttpServer())
+      .post(`/admin/wallet-topups/${req.body.request.id}/verify`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
   }
 
   async function applyApproveAmbassador(token: string, sellerId: string, adminUserId: string): Promise<string> {
@@ -85,6 +106,42 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
     });
     return approved.referralCode!;
   }
+
+  describe("Master switch (D63/B5, founder decision, 2026-10-10/11) - programs.enabled", () => {
+    it("blocks any program application (Ambassador, Student Referral, Creator alike) while off, with no self-serve way around it", async () => {
+      await app.get(SettingsService).setValue("programs.enabled", "global", null, false, ADMIN_ID);
+      const { token } = await signup("programs-disabled@example.com");
+
+      for (const programType of ["student_referral", "creator"]) {
+        const res = await request(app.getHttpServer())
+          .post("/sellers/me/growth-programs/applications")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ programType });
+        expect(res.status).toBe(403);
+      }
+
+      const participants = await superuser.programParticipant.findMany();
+      expect(participants).toHaveLength(0); // no ProgramParticipant row was ever created
+    });
+
+    it("re-enabling it unblocks new applications immediately, with no other code change needed", async () => {
+      await app.get(SettingsService).setValue("programs.enabled", "global", null, false, ADMIN_ID);
+      const { token } = await signup("programs-reenabled@example.com");
+
+      const blocked = await request(app.getHttpServer())
+        .post("/sellers/me/growth-programs/applications")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ programType: "creator" });
+      expect(blocked.status).toBe(403);
+
+      await app.get(SettingsService).setValue("programs.enabled", "global", null, true, ADMIN_ID);
+      const allowed = await request(app.getHttpServer())
+        .post("/sellers/me/growth-programs/applications")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ programType: "creator" });
+      expect(allowed.status).toBe(201);
+    });
+  });
 
   describe("Application shape (FR-33.2/33.5)", () => {
     it("rejects an Ambassador application without an eligible paid plan", async () => {
@@ -159,7 +216,28 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
 
   describe("Single-referral-source attribution (FR-33.1/33.3) - DB-level enforcement, never GMV/top-ups", () => {
     it("attributes a referred seller at signup, rejects a second attribution at the DATA layer (unique constraint), and never accrues commission from top-ups/GMV", async () => {
-      const adminToken = await createAndLoginAdmin("growth-admin-2@example.com");
+      // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+      // this file's shared createAndLoginAdmin() doesn't expose the
+      // enrolled secret and is used for many unrelated admin actions
+      // elsewhere in this file, so a fresh enroll+verify flow is done
+      // inline here instead of widening that shared helper's return shape
+      // for every one of its other callers.
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "growth-admin-2@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
+
       const ambassador = await signup("ambassador-attrib@example.com");
       const ambassadorCode = await applyApproveAmbassador(ambassador.token, ambassador.sellerId, ADMIN_ID);
 
@@ -202,7 +280,7 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
 
       // --- Commission accrual: ONLY from the referred seller's own plan-subscription fee ---
       // v0.33 - Starter now costs 5799 (was 1500), so the top-up must cover it.
-      await topUpAndVerify(referred.token, adminToken, 10000);
+      await topUpAndVerify(referred.token, adminToken, stepUpCode, 10000);
 
       // A wallet top-up must NEVER generate referral commission.
       const commissionAfterTopup = await superuser.ledgerEntry.findMany({
@@ -243,7 +321,8 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
         .send({});
       await request(app.getHttpServer())
         .post(`/admin/wallet-topups/${firstPayment.body.request.id}/verify`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", stepUpCode());
       const noCommissionYet = await superuser.ledgerEntry.findMany({
         where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
       });
@@ -256,12 +335,86 @@ describe("Growth & Partner Programs Phase A (e2e) - SRS §5.33, §14.33", () => 
         .send({});
       await request(app.getHttpServer())
         .post(`/admin/wallet-topups/${renewal.body.request.id}/verify`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", stepUpCode());
 
       const commissionEntry = await superuser.ledgerEntry.findFirstOrThrow({
         where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
       });
       expect(Number(commissionEntry.amount)).toBe(499);
+    });
+
+    /**
+     * Founder item 4 (D99/D10, 2026-10-11) - the whole reason paidMonths()
+     * exists as its own shared function, separate from monthsOfService():
+     * a six_month renewal pays commission for exactly 6 whole months, never
+     * 6.5 - the 15 bonus days of service a six_month cycle buys are never
+     * commission-bearing under this program. The cap is raised well above
+     * 6 so this proves paidMonths("six_month") itself, not the separate
+     * (and separately-tested) pro-ration-against-the-cap behavior.
+     */
+    it("an Ambassador's six_month-cycle referral renewal pays commission for exactly 6 months, never 6.5", async () => {
+      // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+      // inline enroll+verify flow here too, for the same reason as the
+      // attribution test above (this file's shared createAndLoginAdmin()
+      // doesn't expose the enrolled secret and is used for many unrelated
+      // admin actions elsewhere in this file).
+      const bcrypt = await import("bcryptjs");
+      const adminEmail = "growth-admin-6mo@example.com";
+      const adminUser = await superuser.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+      const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+      const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = adminEnroll.body.secret as string;
+      const adminVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const adminToken = adminVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
+      const settings = app.get(SettingsService);
+      await settings.setValue("growth.ambassador_max_commission_months", "global", null, 12, ADMIN_ID);
+
+      const ambassador = await signup("ambassador-6mo@example.com");
+      const ambassadorCode = await applyApproveAmbassador(ambassador.token, ambassador.sellerId, ADMIN_ID);
+      const referred = await signup("referred-6mo@example.com", ambassadorCode);
+
+      const starterPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 1 } });
+      await superuser.subscription.update({
+        where: { sellerId: referred.sellerId },
+        data: { planId: starterPlan.id, pendingPlanId: null, billingInterval: "six_month" },
+      });
+
+      // First/initial payment never earns commission (Module 79) - only
+      // establishes hasEverPaidPlanFee() so the NEXT payment is a renewal.
+      const firstPayment = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${referred.token}`)
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${firstPayment.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", stepUpCode());
+
+      const renewal = await request(app.getHttpServer())
+        .post("/sellers/me/wallet/plan-fee-payment")
+        .set("Authorization", `Bearer ${referred.token}`)
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/admin/wallet-topups/${renewal.body.request.id}/verify`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Step-Up-MFA-Code", stepUpCode());
+
+      const commissionEntry = await superuser.ledgerEntry.findFirstOrThrow({
+        where: { sellerId: ambassador.sellerId, type: "program_commission_credit" },
+      });
+      // growth.ambassador_flat_commission_per_month_pkr defaults to 499 - 6 whole months, never 6.5.
+      expect(Number(commissionEntry.amount)).toBe(499 * 6);
+
+      const attribution = await superuser.referralAttribution.findUniqueOrThrow({ where: { referredSellerId: referred.sellerId } });
+      expect(attribution.commissionMonthsPaid).toBe(6);
     });
 
     it("a stale/unmatched referral code never blocks signup and creates no attribution", async () => {

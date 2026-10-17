@@ -39,6 +39,7 @@ describe("Platform Event Log (e2e) - SRS §3.11/FR-26.x, §14.23", () => {
     await seedSettings(superuser);
 
     fakeDriveClient = {
+      isConfigured: jest.fn().mockReturnValue(true),
       getAuthUrl: jest.fn().mockImplementation((state: string) => `https://accounts.google.com/fake-auth?state=${state}`),
       exchangeCodeForTokens: jest.fn().mockResolvedValue({
         accessToken: "fake-access-token",

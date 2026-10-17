@@ -1,7 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { buildTestApp, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
+import { buildTestApp, cookieHeaderFrom, resetDatabase, resetRedis, seedSettings, superuserPrismaForTests } from "./setup";
 
 describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
   let app: INestApplication;
@@ -135,6 +135,19 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
     expect(res.status).toBe(401);
   });
 
+  // D82 - the refresh token now travels as a __Host-refresh_token cookie
+  // (HttpOnly, Secure, SameSite=Lax), never in the request/response body.
+  // supertest's own agent()/cookie-jar won't replay a Secure cookie back
+  // over its plain-HTTP in-memory test transport (correct per cookie
+  // semantics for a non-HTTPS channel - a real browser's HTTPS-equivalent
+  // exception for *.localhost doesn't apply to supertest's own client),
+  // so every call below captures `Set-Cookie` from the PREVIOUS response
+  // explicitly and passes it forward by hand instead of relying on an
+  // automatic jar - this is what actually proves the server-side cookie
+  // round-trips, independent of that test-transport quirk. X-Requested-With
+  // is the CSRF custom header RefreshCookieCsrfGuard requires on every
+  // cookie-authenticated call.
+  //
   it("refresh rotates the session and the old refresh token can't be reused", async () => {
     await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
       email: "founder3@example.com",
@@ -144,19 +157,64 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email: "founder3@example.com", password: "correct-horse-battery" });
+    expect(login.body.refreshToken).toBeUndefined(); // D82 - never in the body
+    const loginCookie = cookieHeaderFrom(login.headers["set-cookie"]);
 
-    const refresh1 = await request(app.getHttpServer()).post("/auth/refresh").send({
-      sessionId: login.body.sessionId,
-      refreshToken: login.body.refreshToken,
-    });
+    const refresh1 = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", loginCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh1.status).toBe(200);
 
-    // Old session/refresh token pair is dead after rotation.
-    const refresh2 = await request(app.getHttpServer()).post("/auth/refresh").send({
-      sessionId: login.body.sessionId,
-      refreshToken: login.body.refreshToken,
-    });
+    // Old cookie is dead after rotation.
+    const refresh2 = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", loginCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh2.status).toBe(401);
+  });
+
+  it("replaying an already-rotated-out refresh token revokes every session for that user and logs a security event (D82 reuse detection)", async () => {
+    await request(app.getHttpServer()).post("/auth/signup").send({ agreementAccepted: true,
+      email: "founder-reuse@example.com",
+      password: "correct-horse-battery",
+      businessName: "Test Store Reuse",
+    });
+    const user = await superuser.user.findUniqueOrThrow({ where: { email: "founder-reuse@example.com" } });
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: "founder-reuse@example.com", password: "correct-horse-battery" });
+    const loginCookie = cookieHeaderFrom(login.headers["set-cookie"]);
+
+    const refresh1 = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", loginCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
+    expect(refresh1.status).toBe(200);
+    const refresh1Cookie = cookieHeaderFrom(refresh1.headers["set-cookie"]);
+
+    // Replaying the original (now-rotated-out) cookie - not just "invalid", this is reuse.
+    const replay = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", loginCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
+    expect(replay.status).toBe(401);
+
+    // The real behavioral proof: reuse revokes EVERY session for this user,
+    // not just the replayed one - refresh1's own cookie, genuinely valid a
+    // moment ago, is now also dead. (A plain "invalid" response here -
+    // treating this exactly like a garbage token - would leave refresh1's
+    // session alive, and this assertion would fail.)
+    const afterReuse = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", refresh1Cookie)
+      .set("X-Requested-With", "XMLHttpRequest");
+    expect(afterReuse.status).toBe(401);
+
+    const events = await superuser.userSecurityEvent.findMany({
+      where: { userId: user.id, eventType: "refresh_token_reuse_detected" },
+    });
+    expect(events).toHaveLength(1);
   });
 
   it("logout destroys the session so its refresh token no longer works", async () => {
@@ -168,13 +226,17 @@ describe("Auth flow (e2e) - SRS §14.0 signup/login checklist items", () => {
     const login = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email: "founder4@example.com", password: "correct-horse-battery" });
+    const loginCookie = cookieHeaderFrom(login.headers["set-cookie"]);
 
-    await request(app.getHttpServer()).post("/auth/logout").send({ sessionId: login.body.sessionId });
+    await request(app.getHttpServer())
+      .post("/auth/logout")
+      .set("Cookie", loginCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
 
-    const refresh = await request(app.getHttpServer()).post("/auth/refresh").send({
-      sessionId: login.body.sessionId,
-      refreshToken: login.body.refreshToken,
-    });
+    const refresh = await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", loginCookie)
+      .set("X-Requested-With", "XMLHttpRequest");
     expect(refresh.status).toBe(401);
   });
 

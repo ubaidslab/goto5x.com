@@ -1,6 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { SettingsService } from "../../src/settings-registry/settings.service";
 import { buildTestApp, resetDatabase, resetRedis, seedLedgerEntry, seedSettings, superuserPrismaForTests } from "./setup";
 
 const PASSWORD = "correct-horse-battery";
@@ -18,12 +19,20 @@ describe("Finance Terminal (e2e) - founder-approved scope", () => {
   let app: INestApplication;
   let superuser: PrismaClient;
 
+  // D63/B5 (founder decision, 2026-10-10/11) - programs.enabled defaults
+  // to false; this file exercises growth-program obligations, so it
+  // explicitly opts back in.
+  async function enablePrograms() {
+    await app.get(SettingsService).setValue("programs.enabled", "global", null, true, "00000000-0000-0000-0000-000000000000");
+  }
+
   beforeAll(async () => {
     superuser = superuserPrismaForTests();
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
     app = await buildTestApp();
+    await enablePrograms();
   });
 
   afterAll(async () => {
@@ -35,6 +44,7 @@ describe("Finance Terminal (e2e) - founder-approved scope", () => {
     await resetDatabase(superuser);
     await resetRedis();
     await seedSettings(superuser);
+    await enablePrograms();
   });
 
   async function signup(email: string) {
@@ -61,19 +71,49 @@ describe("Finance Terminal (e2e) - founder-approved scope", () => {
     return { token: verify.body.accessToken as string, adminUserId: adminUser.id };
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). This
+   * helper has exactly one caller in this file (the refund-history test
+   * below), which supplies its own freshly-enrolled `stepUpCode` generator
+   * inline rather than through the shared createAndLoginAdmin() helper,
+   * used for many unrelated admin actions by every other test here.
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
   }
 
   describe("Refund history & totals", () => {
     it("sums refund_adjustment ledger entries platform-wide and lists them with seller attribution", async () => {
       const admin = await createAndLoginAdmin("finance-refund-admin1@example.com");
+      // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+      // this file's shared createAndLoginAdmin() doesn't expose the
+      // enrolled secret and is used for many unrelated admin actions
+      // elsewhere in this file, so a second, fresh enroll+verify flow is
+      // done inline here just to get a step-up code, rather than widening
+      // that shared helper's return shape for every one of its other
+      // callers.
+      const bcrypt = await import("bcryptjs");
+      const stepUpAdminEmail = "finance-refund-admin1-stepup@example.com";
+      const stepUpAdminUser = await superuser.user.create({
+        data: { email: stepUpAdminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: stepUpAdminUser.id, role: "super_admin", mfaEnabled: false } });
+      const stepUpLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: stepUpAdminEmail, password: ADMIN_PASSWORD });
+      const stepUpEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: stepUpLogin.body.preAuthToken });
+      const { authenticator } = await import("otplib");
+      const mfaSecret = stepUpEnroll.body.secret as string;
+      const stepUpVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: stepUpLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+      const stepUpAdminToken = stepUpVerify.body.accessToken as string;
+      const stepUpCode = () => authenticator.generate(mfaSecret);
       const seller = await signup("finance-refund-1@example.com");
       // SRS §5.73 - signup now defaults to starter_free (price 0, no plan
       // fee ever due); upgraded to GO so payPlanFee() below has a real
@@ -81,7 +121,7 @@ describe("Finance Terminal (e2e) - founder-approved scope", () => {
       // percentage of.
       const goPlan = await superuser.plan.findFirstOrThrow({ where: { planGroup: "individual", tierOrder: 0 } });
       await superuser.subscription.update({ where: { sellerId: seller.sellerId }, data: { planId: goPlan.id } });
-      await payPlanFee(seller.token, admin.token);
+      await payPlanFee(seller.token, stepUpAdminToken, stepUpCode);
 
       const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });
       const expectedRefund = Number((Number(payment.planFeePortion) * 0.5).toFixed(2));

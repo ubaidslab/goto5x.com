@@ -8,6 +8,7 @@ import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 import { BuyerSignupDto } from "./dto/buyer-signup.dto";
 import { LoginDto } from "./dto/login.dto";
+import { SecurityEventService } from "./security-event.service";
 import { SessionService } from "./session.service";
 
 const BCRYPT_ROUNDS = 12;
@@ -33,6 +34,7 @@ export class BuyerAuthService {
     private readonly sessions: SessionService,
     private readonly rateLimit: RateLimitService,
     private readonly settings: SettingsService,
+    private readonly securityEvents: SecurityEventService,
   ) {}
 
   async signup(dto: BuyerSignupDto, ip: string) {
@@ -76,13 +78,21 @@ export class BuyerAuthService {
   }
 
   async refresh(sessionId: string, refreshToken: string) {
-    const userId = await this.sessions.validateRefreshToken(sessionId, refreshToken);
-    if (!userId) {
+    const validation = await this.sessions.validateRefreshToken(sessionId, refreshToken);
+    if (validation.status === "reused") {
+      // D82 reuse detection - see AuthService.refresh()'s identical comment.
+      await this.sessions.destroyAllSessionsForUser(validation.userId);
+      await this.securityEvents.record(validation.userId, "refresh_token_reuse_detected");
       throw new UnauthorizedException("Invalid or expired refresh token.");
     }
+    if (validation.status === "invalid") {
+      throw new UnauthorizedException("Invalid or expired refresh token.");
+    }
+    const userId = validation.userId;
     const deviceInfo = await this.sessions.getDeviceInfo(sessionId);
     await this.sessions.touchSession(sessionId);
-    await this.sessions.destroySession(sessionId);
+    // Destroy the old session (tombstoned, for the reuse check above) and issue a new one (refresh-token rotation).
+    await this.sessions.rotateOutSession(sessionId);
 
     const buyerProfile = await this.prisma.buyerProfile.findUniqueOrThrow({ where: { userId } });
     return this.issueTokens(userId, buyerProfile.id, deviceInfo?.ipAddress ?? "unknown");

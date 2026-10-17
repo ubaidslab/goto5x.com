@@ -1,4 +1,9 @@
 import "reflect-metadata";
+import { initSentry } from "../common/error-tracking/sentry";
+
+// D116 item 6 (Stage 0) - a separate process from main.ts's API server, needs its own init.
+initSentry();
+
 import { NestFactory } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { Worker } from "bullmq";
@@ -30,6 +35,8 @@ import { CartService } from "../orders/cart.service";
 import { CART_ABANDONMENT_QUEUE_NAME } from "../orders/cart-abandonment.queue";
 import { MissingTrackingAlertService } from "../orders/missing-tracking-alert.service";
 import { MISSING_TRACKING_ALERT_QUEUE_NAME } from "../orders/missing-tracking-alert.queue";
+import { ManualTransferAutoCancelService } from "../orders/manual-transfer-auto-cancel.service";
+import { MANUAL_TRANSFER_AUTO_CANCEL_QUEUE_NAME } from "../orders/manual-transfer-auto-cancel.queue";
 import { SupplierSyncService } from "../suppliers/supplier-sync.service";
 import { SUPPLIER_SYNC_QUEUE_NAME } from "../suppliers/supplier-sync.queue";
 import { StoreHealthScoreService } from "../store-health/store-health-score.service";
@@ -66,6 +73,7 @@ async function main() {
   const supplierSync = appContext.get(SupplierSyncService);
   const cart = appContext.get(CartService);
   const missingTrackingAlert = appContext.get(MissingTrackingAlertService);
+  const manualTransferAutoCancel = appContext.get(ManualTransferAutoCancelService);
   const planFeeDebit = appContext.get(PlanFeeDebitService);
   const walletReconciliation = appContext.get(WalletReconciliationService);
   const platformGatewayReconciliation = appContext.get(PlatformGatewayReconciliationService);
@@ -92,7 +100,6 @@ async function main() {
     async () => {
       const result = await domainVerification.recheckOutstandingDomains();
       if (result.failures.length > 0) {
-        // eslint-disable-next-line no-console
         console.error(`domain-verification: ${result.failures.length}/${result.checked} rechecks failed`, result.failures);
       }
       return result;
@@ -101,7 +108,6 @@ async function main() {
   );
 
   domainWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`domain-verification job ${job?.id} failed:`, err);
   });
 
@@ -115,7 +121,6 @@ async function main() {
   );
 
   supplierSyncWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`supplier-sync job ${job?.id} failed:`, err);
   });
 
@@ -129,7 +134,6 @@ async function main() {
   );
 
   cartAbandonmentWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`cart-abandonment job ${job?.id} failed:`, err);
   });
 
@@ -143,8 +147,20 @@ async function main() {
   );
 
   missingTrackingAlertWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`missing-tracking-alert-sweep job ${job?.id} failed:`, err);
+  });
+
+  // B3b (founder decision, 2026-10-11) - runSweep() never throws for the
+  // whole batch (each order's own cancel attempt is caught individually),
+  // same discipline as every other sweep here.
+  const manualTransferAutoCancelWorker = new Worker(
+    MANUAL_TRANSFER_AUTO_CANCEL_QUEUE_NAME,
+    async () => manualTransferAutoCancel.runSweep(),
+    { connection: { url: config.getOrThrow<string>("REDIS_URL") } },
+  );
+
+  manualTransferAutoCancelWorker.on("failed", (job, err) => {
+    console.error(`manual-transfer-auto-cancel-sweep job ${job?.id} failed:`, err);
   });
 
   // Module 20 (SRS §5.6e, FR-6.24, revised FR-7.2) - replaces Module 11's
@@ -170,7 +186,6 @@ async function main() {
   );
 
   planFeeDebitWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`plan-fee-debit job ${job?.id} failed:`, err);
   });
 
@@ -191,7 +206,6 @@ async function main() {
   );
 
   planFeeRenewalExportWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`plan-fee-renewal-export job ${job?.id} failed:`, err);
   });
 
@@ -205,7 +219,6 @@ async function main() {
   );
 
   walletReconciliationWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`wallet-reconciliation job ${job?.id} failed:`, err);
   });
 
@@ -220,7 +233,6 @@ async function main() {
   );
 
   platformGatewayReconciliationWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`platform-gateway-reconciliation job ${job?.id} failed:`, err);
   });
 
@@ -232,7 +244,6 @@ async function main() {
   );
 
   dormantStoreWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`dormant-store-sweep job ${job?.id} failed:`, err);
   });
 
@@ -243,7 +254,6 @@ async function main() {
   });
 
   retentionWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`billing-retention-sweep job ${job?.id} failed:`, err);
   });
 
@@ -254,7 +264,6 @@ async function main() {
   });
 
   renewalRemindersWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`billing-renewal-reminders-sweep job ${job?.id} failed:`, err);
   });
 
@@ -265,7 +274,6 @@ async function main() {
   });
 
   planCycleWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`plans-cycle-change-sweep job ${job?.id} failed:`, err);
   });
 
@@ -275,7 +283,6 @@ async function main() {
   });
 
   gatewayHealthWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`payment-gateway-health-sweep job ${job?.id} failed:`, err);
   });
 
@@ -285,7 +292,6 @@ async function main() {
   });
 
   supportTicketSlaWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`support-ticket-sla-sweep job ${job?.id} failed:`, err);
   });
 
@@ -301,7 +307,6 @@ async function main() {
   );
 
   productImportWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`product-import job ${job?.id} failed:`, err);
   });
 
@@ -313,7 +318,6 @@ async function main() {
   );
 
   storeHealthSweepWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`store-health-sweep job ${job?.id} failed:`, err);
   });
 
@@ -325,7 +329,6 @@ async function main() {
   );
 
   verificationReReviewSweepWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`verification-re-review-sweep job ${job?.id} failed:`, err);
   });
 
@@ -340,7 +343,6 @@ async function main() {
   );
 
   dataExportWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`${DATA_EXPORT_JOB_NAME} (seller-data-export) job ${job?.id} failed:`, err);
   });
 
@@ -355,7 +357,6 @@ async function main() {
   );
 
   emailCampaignsWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`email-campaigns job ${job?.id} failed:`, err);
   });
 
@@ -371,7 +372,6 @@ async function main() {
   );
 
   dailySalesSummaryWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`daily-sales-summary job ${job?.id} failed:`, err);
   });
 
@@ -381,7 +381,6 @@ async function main() {
   });
 
   monthlySellerReportWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`monthly-seller-report-sweep job ${job?.id} failed:`, err);
   });
 
@@ -397,7 +396,6 @@ async function main() {
   );
 
   platformNewsletterWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`platform-newsletter job ${job?.id} failed:`, err);
   });
 
@@ -421,7 +419,6 @@ async function main() {
   );
 
   staffAccountExpiryWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`staff-account-expiry-sweep job ${job?.id} failed:`, err);
   });
 
@@ -434,13 +431,11 @@ async function main() {
   });
 
   databaseBackupWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
     console.error(`database-backup job ${job?.id} failed:`, err);
   });
 
-  // eslint-disable-next-line no-console
   console.log(
-    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening; staff-account-expiry-sweep - Module 97, FR-52.10; database-backup - Risk 5/13 backups reality check).",
+    "UZEYN worker started (domain-verification - Module 3; supplier-sync - Module 8; cart-abandonment - Module 9; missing-tracking-alert-sweep - Phase 5; manual-transfer-auto-cancel-sweep - B3b; dormant-store-sweep - Module 14; product-import - Module 15; plan-fee-debit - Module 20, replacing Module 11's now-unscheduled invoice-generation/invoice-overdue-sweep; store-health-sweep/verification-re-review-sweep - Module 23; seller-data-export - Module 24; email-campaigns - Module 34; wallet-reconciliation - Module 47; daily-sales-summary/platform-newsletter - Module 55; plan-fee-renewal-export - Module 73, replacing Module 20's now-unscheduled wallet-low-balance-sweep; billing-retention-sweep - Module 64; billing-renewal-reminders-sweep - Module 65; plans-cycle-change-sweep - FR-7.5, now also driving Module 66's multi-store downgrade pause/reclaim; payment-gateway-health-sweep - Module 67; support-ticket-sla-sweep - Module 90; monthly-seller-report-sweep - Module 70; platform-gateway-reconciliation-sweep - financial-safety hardening; staff-account-expiry-sweep - Module 97, FR-52.10; database-backup - Risk 5/13 backups reality check).",
   );
 
   const shutdown = async () => {
@@ -448,6 +443,7 @@ async function main() {
     await supplierSyncWorker.close();
     await cartAbandonmentWorker.close();
     await missingTrackingAlertWorker.close();
+    await manualTransferAutoCancelWorker.close();
     await planFeeDebitWorker.close();
     await planFeeRenewalExportWorker.close();
     await walletReconciliationWorker.close();

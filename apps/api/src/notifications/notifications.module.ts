@@ -1,5 +1,7 @@
 import { Global, Module } from "@nestjs/common";
+import { ConsoleEmailProvider } from "./console-email.provider";
 import { EmailService } from "./email.service";
+import { ResendEmailProvider } from "./resend-email.provider";
 
 /**
  * Global singleton for EmailService. Previously seven feature modules each
@@ -13,7 +15,7 @@ import { EmailService } from "./email.service";
  */
 @Global()
 @Module({
-  providers: [EmailService],
+  providers: [EmailService, ConsoleEmailProvider, ResendEmailProvider],
   exports: [EmailService],
 })
 export class NotificationsModule {}

@@ -176,6 +176,26 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
 
   it("active connection + an unverified gateway response: falls through to the unchanged manual pending flow, not an error", async () => {
     const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-3@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared fullyVerifiedAdminToken() doesn't expose the
+    // enrolled secret and almost every other test in this file never
+    // calls verify() at all, so a second, fresh enroll+verify flow is
+    // done inline here just to get a step-up code, rather than widening
+    // that shared helper's return shape for every one of its other
+    // callers.
+    const stepUpPasswordHash = await bcrypt.hash("admin-password", 10);
+    const stepUpEmail = "platform-gw-admin-3-stepup@example.com";
+    const stepUpUser = await superuser.user.create({
+      data: { email: stepUpEmail, passwordHash: stepUpPasswordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: stepUpUser.id, role: "super_admin", mfaEnabled: false } });
+    const stepUpLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: stepUpEmail, password: "admin-password" });
+    const stepUpEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: stepUpLogin.body.preAuthToken });
+    const stepUpMfaSecret = stepUpEnroll.body.secret as string;
+    const stepUpVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: stepUpLogin.body.preAuthToken, code: authenticator.generate(stepUpMfaSecret) });
+    const stepUpAdminToken = stepUpVerify.body.accessToken as string;
     await request(app.getHttpServer())
       .post("/admin/platform-gateway")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -199,7 +219,8 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
     // Still resolvable the old way - an admin can manually verify it.
     const adminVerify = await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${res.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${stepUpAdminToken}`)
+      .set("X-Step-Up-MFA-Code", authenticator.generate(stepUpMfaSecret));
     expect(adminVerify.status).toBe(201);
   });
 
@@ -426,6 +447,20 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
 
     it("timeout/failure-safe fallback: a thrown gateway error never surfaces as a 500 - falls back to the unchanged manual flow", async () => {
       const adminToken = await fullyVerifiedAdminToken("platform-gw-admin-timeout@example.com");
+      // D116 item 2 - inline enroll+verify flow, same reason as the "falls through to the unchanged manual pending flow" test above.
+      const stepUpPasswordHash = await bcrypt.hash("admin-password", 10);
+      const stepUpEmail = "platform-gw-admin-timeout-stepup@example.com";
+      const stepUpUser = await superuser.user.create({
+        data: { email: stepUpEmail, passwordHash: stepUpPasswordHash, roleFlags: ["admin"], emailVerifiedAt: new Date() },
+      });
+      await superuser.adminUser.create({ data: { userId: stepUpUser.id, role: "super_admin", mfaEnabled: false } });
+      const stepUpLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: stepUpEmail, password: "admin-password" });
+      const stepUpEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: stepUpLogin.body.preAuthToken });
+      const stepUpMfaSecret = stepUpEnroll.body.secret as string;
+      const stepUpVerify = await request(app.getHttpServer())
+        .post("/admin/auth/mfa/verify")
+        .send({ preAuthToken: stepUpLogin.body.preAuthToken, code: authenticator.generate(stepUpMfaSecret) });
+      const stepUpAdminToken = stepUpVerify.body.accessToken as string;
       await request(app.getHttpServer())
         .post("/admin/platform-gateway")
         .set("Authorization", `Bearer ${adminToken}`)
@@ -448,7 +483,8 @@ describe("Platform Merchant Connection (e2e) - founder-directed scope addition",
       // Still resolvable the old way.
       const adminVerify = await request(app.getHttpServer())
         .post(`/admin/wallet-topups/${res.body.request.id}/verify`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .set("Authorization", `Bearer ${stepUpAdminToken}`)
+        .set("X-Step-Up-MFA-Code", authenticator.generate(stepUpMfaSecret));
       expect(adminVerify.status).toBe(201);
     });
 

@@ -68,20 +68,45 @@ describe("Monthly seller report + UZEYN subscription invoice (e2e) - SRS §5.6k/
     return verify.body.accessToken as string;
   }
 
-  async function payPlanFee(token: string, adminToken: string) {
+  /**
+   * D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard). This
+   * helper's only two callers (below) pass their own freshly-enrolled
+   * `stepUpCode` generator inline rather than through the shared
+   * createAndLoginAdmin() helper.
+   */
+  async function payPlanFee(token: string, adminToken: string, stepUpCode: () => string) {
     const submit = await request(app.getHttpServer())
       .post("/sellers/me/wallet/plan-fee-payment")
       .set("Authorization", `Bearer ${token}`)
       .send({});
     await request(app.getHttpServer())
       .post(`/admin/wallet-topups/${submit.body.request.id}/verify`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("X-Step-Up-MFA-Code", stepUpCode());
   }
 
   it("FR-6.47: the monthly sweep only sends on the 1st of the month, unconditionally (no opt-out), and skips a seller with nothing to report", async () => {
-    const adminToken = await createAndLoginAdmin("report-admin1@example.com");
+    // D116 item 2 - verify() is now step-up-MFA-gated (StepUpMfaGuard);
+    // this file's shared createAndLoginAdmin() doesn't expose the
+    // enrolled secret, so a fresh enroll+verify flow is done inline here
+    // rather than widening that shared helper's return shape.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "report-admin1@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const seller = await signup("report-monthly@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
     await request(app.getHttpServer()).post("/stores").set("Authorization", `Bearer ${seller.token}`).send({ name: "Store", slug: "report-monthly-store" });
     const noActivitySeller = await signup("report-no-activity@example.com");
 
@@ -110,9 +135,24 @@ describe("Monthly seller report + UZEYN subscription invoice (e2e) - SRS §5.6k/
   });
 
   it("FR-6.47: the subscription invoice PDF scopes to verified plan-fee payments in the requested month, commission-free", async () => {
-    const adminToken = await createAndLoginAdmin("report-admin2@example.com");
+    // D116 item 2 - inline enroll+verify flow, same reason as the test above.
+    const bcrypt = await import("bcryptjs");
+    const adminEmail = "report-admin2@example.com";
+    const adminUser = await superuser.user.create({
+      data: { email: adminEmail, passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10), roleFlags: ["admin"], emailVerifiedAt: new Date() },
+    });
+    await superuser.adminUser.create({ data: { userId: adminUser.id, role: "super_admin", mfaEnabled: false } });
+    const adminLogin = await request(app.getHttpServer()).post("/admin/auth/login").send({ email: adminEmail, password: ADMIN_PASSWORD });
+    const adminEnroll = await request(app.getHttpServer()).post("/admin/auth/mfa/enroll").send({ preAuthToken: adminLogin.body.preAuthToken });
+    const { authenticator } = await import("otplib");
+    const mfaSecret = adminEnroll.body.secret as string;
+    const adminVerify = await request(app.getHttpServer())
+      .post("/admin/auth/mfa/verify")
+      .send({ preAuthToken: adminLogin.body.preAuthToken, code: authenticator.generate(mfaSecret) });
+    const adminToken = adminVerify.body.accessToken as string;
+    const stepUpCode = () => authenticator.generate(mfaSecret);
     const seller = await signup("report-invoice@example.com");
-    await payPlanFee(seller.token, adminToken);
+    await payPlanFee(seller.token, adminToken, stepUpCode);
 
     const subscription = await superuser.subscription.findUniqueOrThrow({ where: { sellerId: seller.sellerId } });
     const payment = await superuser.walletTopUpRequest.findFirstOrThrow({ where: { ownerId: seller.sellerId, planFeePortion: { not: null } } });

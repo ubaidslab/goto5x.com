@@ -1,8 +1,17 @@
 import "reflect-metadata";
+import { initSentry } from "./common/error-tracking/sentry";
+
+// D116 item 6 (Stage 0) - before anything else, per Sentry's own guidance.
+initSentry();
+
 import { ValidationPipe } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
+import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { listOffOptionalIntegrations } from "./bootstrap/optional-integrations-status";
 import { seedDefaults } from "./bootstrap/seed-defaults";
+import { getAllowedOrigins } from "./common/cors-origins.util";
 import { PrismaAdminService } from "./prisma/prisma-admin.service";
 
 async function bootstrap() {
@@ -30,6 +39,11 @@ async function bootstrap() {
   // which is the actual input-validation posture FR-... intends.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
+  // D82 - the seller/admin refresh-token cookie needs server-side parsing;
+  // this is the one piece of cookie-based auth the API has (buyer_session
+  // is parsed entirely inside Next.js Server Actions, never sent here).
+  app.use(cookieParser());
+
   // Founder walkthrough finding (pre-Milestone-A): this previously only ran
   // via `test/e2e/setup.ts` (under the name `seedSettings`) or a manually-run
   // `scripts/dev-seed.ts` - a real deployment's first boot against a fresh
@@ -41,8 +55,16 @@ async function bootstrap() {
   // boot, including redeploys against a database that already has these
   // rows - it only ever creates what's missing.
   await seedDefaults(app.get(PrismaAdminService));
-  // eslint-disable-next-line no-console
   console.log("Settings Registry defaults, themes, and plans confirmed seeded.");
+
+  // D126 (founder decision, Stage 0 beta) - the beta's 5-10 sellers never
+  // touch Google Drive import or Printify dropshipping, so this is routine
+  // at launch, not a misconfiguration alarm - a plain startup log line, not
+  // a Sentry-worthy warning.
+  const offIntegrations = listOffOptionalIntegrations(app.get(ConfigService));
+  if (offIntegrations.length > 0) {
+    console.warn(`Optional integrations not configured (running with graceful degradation): ${offIntegrations.join(", ")}`);
+  }
   // Security-hardening fix (app-level audit): `true` trusts EVERY hop in a
   // client-supplied X-Forwarded-For unconditionally, so proxy-addr walks
   // all the way to its leftmost entry - which, since a well-behaved
@@ -70,17 +92,13 @@ async function bootstrap() {
   // Production stays same-origin behind Traefik and needs no CORS at all.
   // Local dev (web on :3000, API on a different port) and future mobile apps
   // need an explicit, configurable allowlist - never a blanket wildcard.
-  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = getAllowedOrigins();
   if (allowedOrigins.length > 0) {
     app.enableCors({ origin: allowedOrigins, credentials: true });
   }
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  // eslint-disable-next-line no-console
   console.log(`UZEYN API listening on port ${port}`);
 }
 

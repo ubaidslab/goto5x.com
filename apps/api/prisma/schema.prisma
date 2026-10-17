@@ -988,6 +988,12 @@ model StorePaymentGatewayConnection {
   merchantId         String?                @map("merchant_id")
   apiKeyEncrypted    String?                @map("api_key_encrypted")
   apiSecretEncrypted String?                @map("api_secret_encrypted")
+  // D117/D126 - envelope encryption: this row's one data key, wrapped by
+  // the active KmsProvider, used to decrypt both apiKeyEncrypted and
+  // apiSecretEncrypted above (GatewayCredentialVaultService). Null only
+  // for a row stored before this migration landed, until the backfill
+  // script (scripts/rewrap-gateway-credentials.ts) re-wraps it.
+  dataKeyWrapped     String?                @map("data_key_wrapped")
   isActive           Boolean                @default(true) @map("is_active")
   // FR-6.36 - stable, seller-visible checkout ordering; Raast defaults to
   // the lowest (first) value, set by the service layer at connect time,
@@ -1035,6 +1041,9 @@ model PlatformGatewayConnection {
   merchantId         String?                @map("merchant_id")
   apiKeyEncrypted    String?                @map("api_key_encrypted")
   apiSecretEncrypted String?                @map("api_secret_encrypted")
+  // D117/D126 - see StorePaymentGatewayConnection's identical field for
+  // the full explanation.
+  dataKeyWrapped     String?                @map("data_key_wrapped")
   isActive           Boolean                @default(false) @map("is_active")
   verifiedCount      Int                    @default(0) @map("verified_count")
   failedCount        Int                    @default(0) @map("failed_count")
@@ -2345,6 +2354,28 @@ model Order {
   // mattering once the order leaves the "awaitingTracking" bucket (moves
   // to shipped/cancelled/etc.) - no reset needed, this is a one-time flag.
   missingTrackingAlertedAt DateTime?    @map("missing_tracking_alerted_at") @db.Timestamptz
+  // B3b (2026-10-11, founder decision) - the buyer's self-reported proof
+  // for the "advance" payment model's Manual Transfer fallback (no live
+  // gateway required). Deliberately NOT a new OrderStatus - the order
+  // stays `pending` until the seller reviews this against their own bank
+  // account and calls the pre-existing markAsPaid()/changeStatus(
+  // "cancelled") actions. Text only, validated/length-limited at the DTO
+  // layer (SubmitManualTransferReferenceDto) - never proof by itself, see
+  // the seller-facing warning copy in the dashboard UI.
+  manualTransferReference   String?   @map("manual_transfer_reference")
+  manualTransferSenderName  String?   @map("manual_transfer_sender_name")
+  manualTransferSubmittedAt DateTime? @map("manual_transfer_submitted_at") @db.Timestamptz
+  // D116 item 5 (Stage 0) - "basic fraud flags." A short, append-only
+  // list of cheap rule-based signals computed once at placement time
+  // (e.g. "disposable_email", "repeat_ip_short_window") - informational
+  // only, surfaced to the seller/admin, never blocks checkout. D126
+  // (founder privacy directive) - the buyer's IP itself is never
+  // persisted here or anywhere else; the repeat-IP signal is derived
+  // from a salted hash counted in a short-TTL Redis window, never
+  // written to Postgres (CheckoutService.computeFraudFlags()). An
+  // earlier pass of this column set briefly stored the raw IP in a
+  // buyer_ip column too - see the migration that drops it.
+  fraudFlags                String[]  @default([]) @map("fraud_flags")
 
   store               Store                @relation(fields: [storeId], references: [id])
   customer            Customer?            @relation(fields: [customerId], references: [id])

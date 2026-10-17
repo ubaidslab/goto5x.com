@@ -1,10 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { $Enums } from "@prisma/client";
-import { authenticator } from "otplib";
 import { AuditLogService } from "../admin/audit-log.service";
+import { StepUpMfaService } from "../auth/step-up-mfa.service";
 import { PrismaAdminService } from "../prisma/prisma-admin.service";
-import { RateLimitService } from "../common/rate-limit/rate-limit.service";
-import { SettingsService } from "../settings-registry/settings.service";
 
 type LifecycleStatus = $Enums.SellerLifecycleStatus;
 
@@ -34,31 +32,8 @@ export class SellerLifecycleService {
   constructor(
     private readonly prismaAdmin: PrismaAdminService,
     private readonly auditLog: AuditLogService,
-    private readonly rateLimit: RateLimitService,
-    private readonly settings: SettingsService,
+    private readonly stepUpMfa: StepUpMfaService,
   ) {}
-
-  /**
-   * Founder walkthrough finding (Phase 2 item 16) - step-up re-verification
-   * for the two enforcement statuses, replacing the generic typed-value
-   * confirm dialog every other admin action uses. Reuses the exact same
-   * TOTP check as admin login (AdminAuthService.verifyMfaAndIssueSession) -
-   * the admin's own already-enrolled secret, just invoked mid-session
-   * instead of at login, so no new credential/enrollment flow is needed.
-   */
-  private async verifyStepUpMfa(adminUserId: string, code: string | undefined, ip: string): Promise<void> {
-    const mfaVerifyLimit = await this.settings.resolve<number>("auth.mfa_verify_rate_limit_per_hour");
-    await this.rateLimit.enforcePerHour(`admin-mfa-stepup:${adminUserId}`, mfaVerifyLimit);
-    await this.rateLimit.enforcePerHour(`admin-mfa-stepup-ip:${ip}`, mfaVerifyLimit);
-
-    const adminUser = await this.prismaAdmin.adminUser.findUnique({ where: { id: adminUserId }, include: { user: true } });
-    if (!adminUser?.user.mfaSecret) {
-      throw new BadRequestException("MFA has not been enrolled for this account yet.");
-    }
-    if (!code || !authenticator.check(code, adminUser.user.mfaSecret)) {
-      throw new UnauthorizedException("Invalid MFA code.");
-    }
-  }
 
   /** FR-8.4 "approve" - lifts the FR-30.5 activation gate after an admin reviews a pending_review/blocked seller. */
   async approveActivation(adminUserId: string, sellerId: string) {
@@ -83,12 +58,13 @@ export class SellerLifecycleService {
    * FR-29.4 - warning/restriction/suspension/ban, in either direction
    * (escalate or lift), always an explicit admin action. Founder
    * walkthrough finding (Phase 2 item 16): `suspended`/`banned` now
-   * require step-up MFA (verifyStepUpMfa above) instead of just the
-   * typed-value confirm dialog, since those two are the ones that
-   * actually enforce against the storefront. `until` (only meaningful
-   * when status is "suspended") sets a real auto-lift date - omitted
-   * means indefinite, requiring an explicit admin action to lift, same as
-   * before this change.
+   * require step-up MFA (`StepUpMfaService`, D82 - extracted out of this
+   * file into a reusable shared service) instead of just the typed-value
+   * confirm dialog, since those two are the ones that actually enforce
+   * against the storefront. `until` (only meaningful when status is
+   * "suspended") sets a real auto-lift date - omitted means indefinite,
+   * requiring an explicit admin action to lift, same as before this
+   * change.
    */
   async setLifecycleStatus(
     adminUserId: string,
@@ -103,7 +79,7 @@ export class SellerLifecycleService {
       throw new BadRequestException(`Unknown lifecycle status: ${status}`);
     }
     if (ENFORCEMENT_STATUSES.includes(status)) {
-      await this.verifyStepUpMfa(adminUserId, mfaCode, ip);
+      await this.stepUpMfa.verify(adminUserId, mfaCode, ip);
     }
     if (until && status !== "suspended") {
       throw new BadRequestException('"until" is only meaningful when status is "suspended".');

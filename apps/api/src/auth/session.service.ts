@@ -21,6 +21,17 @@ interface SessionRecord {
   lastActiveAt: string;
 }
 
+interface SessionTombstone {
+  userId: string;
+  refreshTokenHash: string;
+}
+
+export type RefreshValidationResult =
+  | { status: "valid"; userId: string }
+  /** D82 reuse detection - this exact (sessionId, refreshToken) pair was valid a moment ago and has already been rotated out; being presented again means it was copied/stolen before rotation consumed it. */
+  | { status: "reused"; userId: string }
+  | { status: "invalid" };
+
 /**
  * Refresh sessions live in Redis, not in-process memory (SRS §3.2a
  * statelessness principle) - any app server behind a future load balancer can
@@ -51,14 +62,29 @@ export class SessionService {
     return `user-sessions:${userId}`;
   }
 
+  private tombstoneKey(sessionId: string) {
+    return `session-tombstone:${sessionId}`;
+  }
+
+  /** Comfortably longer than any realistic refresh-retry/race window, short enough Redis doesn't accumulate these forever. */
+  private static readonly TOMBSTONE_TTL_SECONDS = 24 * 60 * 60;
+
+  /**
+   * `ttlDaysOverride` - D82's stricter-admin-lifetimes slice: a caller
+   * that needs a different (shorter) session lifetime than the platform
+   * default passes it explicitly here rather than this service reaching
+   * into actor-specific config itself, which would make it no longer
+   * actor-agnostic.
+   */
   async createSession(
     userId: string,
     deviceLabel = "Unknown device",
     ipAddress = "unknown",
+    ttlDaysOverride?: number,
   ): Promise<{ sessionId: string; refreshToken: string }> {
     const sessionId = randomUUID();
     const refreshToken = randomUUID() + randomUUID();
-    const ttlSeconds = this.config.getOrThrow<number>("JWT_REFRESH_TTL_DAYS") * 24 * 60 * 60;
+    const ttlSeconds = (ttlDaysOverride ?? this.config.getOrThrow<number>("JWT_REFRESH_TTL_DAYS")) * 24 * 60 * 60;
     const now = new Date().toISOString();
 
     const record: SessionRecord = {
@@ -89,12 +115,27 @@ export class SessionService {
     return sessionIds.length;
   }
 
-  async validateRefreshToken(sessionId: string, refreshToken: string): Promise<string | null> {
+  async validateRefreshToken(sessionId: string, refreshToken: string): Promise<RefreshValidationResult> {
     const raw = await this.redis.get(this.sessionKey(sessionId));
-    if (!raw) return null;
-    const record = JSON.parse(raw) as SessionRecord;
-    if (record.refreshTokenHash !== hashToken(refreshToken)) return null;
-    return record.userId;
+    if (raw) {
+      const record = JSON.parse(raw) as SessionRecord;
+      if (record.refreshTokenHash === hashToken(refreshToken)) {
+        return { status: "valid", userId: record.userId };
+      }
+      return { status: "invalid" };
+    }
+    // Not live - tell "never existed" apart from "existed, already rotated
+    // out" (D82). A sessionId match with a non-matching token here is NOT
+    // elevated to "reused" - that's indistinguishable from a random guess
+    // against a dead id, not a meaningful theft signal.
+    const tombstoneRaw = await this.redis.get(this.tombstoneKey(sessionId));
+    if (tombstoneRaw) {
+      const tombstone = JSON.parse(tombstoneRaw) as SessionTombstone;
+      if (tombstone.refreshTokenHash === hashToken(refreshToken)) {
+        return { status: "reused", userId: tombstone.userId };
+      }
+    }
+    return { status: "invalid" };
   }
 
   /** Bumps `lastActiveAt` without extending the TTL - a stolen refresh token still expires on schedule. */
@@ -143,6 +184,25 @@ export class SessionService {
       await this.redis.srem(this.userSessionsKey(userId), sessionId);
     }
     await this.redis.del(this.sessionKey(sessionId));
+  }
+
+  /**
+   * D82 - refresh-token rotation's own destroy step, not a plain
+   * destroySession(): leaves a short-TTL tombstone of exactly which
+   * (userId, refreshTokenHash) this was, so a later attempt to reuse this
+   * same now-dead token is told apart from one that never existed
+   * (validateRefreshToken() above). Ordinary user-initiated logout/revoke
+   * stays on plain destroySession() - there's no "this was valid a moment
+   * ago" story to detect there.
+   */
+  async rotateOutSession(sessionId: string): Promise<void> {
+    const raw = await this.redis.get(this.sessionKey(sessionId));
+    if (raw) {
+      const record = JSON.parse(raw) as SessionRecord;
+      const tombstone: SessionTombstone = { userId: record.userId, refreshTokenHash: record.refreshTokenHash };
+      await this.redis.set(this.tombstoneKey(sessionId), JSON.stringify(tombstone), "EX", SessionService.TOMBSTONE_TTL_SECONDS);
+    }
+    await this.destroySession(sessionId);
   }
 
   /** SRS FR-25.4: completing a password reset invalidates every existing session. */
