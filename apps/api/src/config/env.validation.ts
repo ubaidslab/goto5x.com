@@ -195,6 +195,21 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   AWS_KMS_ENDPOINT?: string;
+
+  // B2 (founder decision, sandbox only) - only ever set in CI, to point
+  // StripeGatewayAdapter at stripe-mock instead of real Stripe
+  // (.github/workflows/ci.yml's stripe-mock-test job) - same precedent
+  // as AWS_KMS_ENDPOINT above. Unset in every real environment; a
+  // store's own Stripe restricted key (StorePaymentGatewayConnection,
+  // via the gateway-credential vault) is the only credential this
+  // adapter ever needs for real Stripe.
+  @IsOptional()
+  @IsString()
+  STRIPE_API_HOST?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_API_PROTOCOL?: string;
 }
 
 /**

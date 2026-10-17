@@ -21,14 +21,15 @@ export interface PaymentMethodRegistryEntry {
  * runtime-configurable data.
  *
  * Live: COD, Advance, and manual-mark-as-paid are payment MODELS, not
- * gateways (D86) - none of the four PaymentGatewayProvider adapters are
+ * gateways (D86) - none of the five PaymentGatewayProvider adapters are
  * live yet. "Advance" itself stays live here even while every gateway
  * is verifying, because B3 (2026-10-10, founder decision) gave it a
  * non-gateway Manual Transfer fallback - see payment-gateway.service.ts.
  *
- * Soon: these six have no adapter at all yet (M3/1C scope, D90) - listed
+ * Soon: these five have no adapter at all yet (M3/1C scope, D90) - listed
  * for admin visibility only, never backed by a PaymentGatewayProvider
- * enum value or a real connection.
+ * enum value or a real connection. Stripe moved out of this list (B2,
+ * 2026-10-17) once its sandbox adapter actually shipped.
  */
 export const PAYMENT_METHOD_REGISTRY: PaymentMethodRegistryEntry[] = [
   { key: "cod", label: "Cash on Delivery", kind: "payment_model", status: "live" },
@@ -38,7 +39,11 @@ export const PAYMENT_METHOD_REGISTRY: PaymentMethodRegistryEntry[] = [
   { key: "easypaisa", label: "Easypaisa", kind: "gateway", status: "verifying" },
   { key: "jazzcash", label: "JazzCash", kind: "gateway", status: "verifying" },
   { key: "bank", label: "Bank transfer (gateway-verified)", kind: "gateway", status: "verifying" },
-  { key: "stripe", label: "Stripe", kind: "gateway", status: "soon" },
+  // B2 (2026-10-17, founder decision) - sandbox-only adapter now built;
+  // "verifying" (not "live") until it passes the same contract-test/
+  // evidence gate as the other four - see docs/gateway-verification/
+  // README.md. Still excluded from Stage 0 regardless of status (D126 reply item 5).
+  { key: "stripe", label: "Stripe", kind: "gateway", status: "verifying" },
   { key: "simpaisa", label: "Simpaisa", kind: "gateway", status: "soon" },
   { key: "airwallex", label: "Airwallex", kind: "gateway", status: "soon" },
   { key: "razorpay", label: "Razorpay", kind: "gateway", status: "soon" },
@@ -51,6 +56,7 @@ const GATEWAY_STATUS_BY_PROVIDER: Record<PaymentGatewayProvider, PaymentMethodRe
   easypaisa: "verifying",
   jazzcash: "verifying",
   bank: "verifying",
+  stripe: "verifying",
 };
 
 /**

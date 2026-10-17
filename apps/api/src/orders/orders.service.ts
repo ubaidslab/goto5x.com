@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { OrderStatus, PaymentModel, Prisma } from "@prisma/client";
+import { OrderStatus, PaymentGateway, PaymentModel, Prisma } from "@prisma/client";
 import { LedgerService } from "../billing/ledger.service";
 import { WalletGraceLadderService } from "../billing/wallet-grace-ladder.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
@@ -215,7 +215,31 @@ export class OrdersService {
    * correspondingly the sole place `order.placed` (SRS §3.11 - "means a
    * confirmed, paid order") is ever emitted.
    */
-  async markAsPaid(sellerId: string, storeId: string, orderId: string, actorUserId?: string) {
+  /**
+   * B2 (founder decision) - `paymentDetails` is optional and additive:
+   * every pre-existing caller (the seller's own manual mark-as-paid
+   * action, and PaymentGatewayService's three verify-and-confirm call
+   * sites for Raast/Easypaisa/JazzCash/Bank) omits it and keeps getting
+   * today's `gateway: "manual"` Payment row, unchanged. Only the new
+   * Stripe webhook handler supplies it, so a webhook-confirmed payment
+   * is attributed to the gateway that actually verified it instead of
+   * being mislabeled "manual" and silently excluded from the daily
+   * reconciliation job (FR-6.6, which explicitly skips `manual` rows
+   * for having no external settlement report to check them against).
+   * Deliberately carries no `amount` field - the Payment row's amount
+   * always comes from the order's own `totalAmount` below, never a
+   * caller-supplied value, so a webhook payload can never talk this
+   * method into recording a different amount than what the order
+   * actually cost; an amount mismatch is the caller's job to catch
+   * and refuse to confirm *before* ever reaching here.
+   */
+  async markAsPaid(
+    sellerId: string,
+    storeId: string,
+    orderId: string,
+    actorUserId?: string,
+    paymentDetails?: { gateway: PaymentGateway; gatewayTransactionId: string; rawWebhookPayload?: Prisma.InputJsonValue },
+  ) {
     // Module 26 (SRS §5.37/FR-37.7) - extends (never duplicates) the
     // Financial Truth Invariant: an order whose store requires verification
     // cannot be confirmed until that verification's status is "verified",
@@ -236,10 +260,12 @@ export class OrdersService {
         data: {
           storeId,
           orderId,
-          gateway: "manual",
+          gateway: paymentDetails?.gateway ?? "manual",
+          gatewayTransactionId: paymentDetails?.gatewayTransactionId ?? null,
           amount: before.totalAmount,
           currency: before.currency,
           status: "succeeded",
+          rawWebhookPayload: paymentDetails?.rawWebhookPayload,
         },
       });
       const updated = await tx.order.update({ where: { id: orderId }, data: { status: "confirmed" } });

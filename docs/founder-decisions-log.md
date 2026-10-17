@@ -3263,3 +3263,114 @@ just left at its default) - still rejected.
 founder instruction plus a direct founder question, answered by
 re-reading the actual code rather than restating what was already
 believed to be true.
+
+### D131. Stripe sandbox adapter + webhook (B2, D117 item 2)
+**Status:** LOCKED.
+**Decision:** per the founder's design approval on top of my own
+proposal:
+- **Restricted keys only.** A connecting Stripe key must start `rk_`;
+  `sk_...` is rejected at connect time with a clear message
+  (`stripe-restricted-key.util.ts`). Both the restricted key and the
+  per-store webhook signing secret are encrypted through the same
+  envelope-encryption vault (D117/D126) as every other gateway's
+  credentials - a new `webhookSecretEncrypted` column, sharing the
+  row's one data key. `docs/stripe-seller-setup.md` (new) is the exact
+  seller-facing setup guide the founder asked be written now, for the
+  future connect UI: where to create the restricted key, the exact 4
+  permissions to grant (Checkout Sessions/PaymentIntents write,
+  Charges/Events read - nothing else), which single webhook event to
+  subscribe to, and the webhook URL pattern.
+- **Connect-ready, Connect not built.** `StripeCredentialSource` (new
+  interface + DI token) resolves `{apiKey, connectedAccountId?}` -
+  today's only implementation (`RestrictedKeyCredentialSource`) just
+  returns the store's own key with no connected account.
+  `StripeGatewayAdapter` calls this resolver and threads
+  `connectedAccountId` through as Stripe's `stripeAccount` request
+  option when present (always absent today) - a future
+  `StripeConnectCredentialSource` swaps in via one DI registration
+  change in `payment-gateway.module.ts`, zero changes to the adapter
+  itself. Stripe Connect (Standard accounts, OAuth, direct charges,
+  `application_fee=0`) is explicitly not built - it needs a platform
+  Stripe account and a legal entity in a Stripe-supported country, a
+  founder decision before any live Stripe.
+- **Official Stripe SDK**, unlike the other four adapters' hand-rolled
+  `fetch()` - webhook signature verification is security-critical and
+  `stripe.webhooks.constructEvent()` is the canonical, audited
+  implementation, same reasoning that put `@aws-sdk/client-kms` behind
+  `KmsProvider` instead of hand-signing AWS requests (D117/D126).
+- **Schema**: `stripe` added to `PaymentGatewayProvider` (the live
+  per-store registry enum - NOT the separate, older `PaymentGateway`
+  enum `Payment.gateway` already uses, which already had a dormant
+  `stripe` value from an earlier design pass); new
+  `ProcessedWebhookEvent` model, `@@unique([provider, eventId])` -
+  permanent, Postgres-backed dedupe for "idempotent webhook handling
+  (dedupe on event ID)" (D117's own wording). Deliberately not the
+  existing `IdempotencyService` - that's Redis-backed with a short,
+  client-key-scoped TTL, built for retryable client mutations, not for
+  deduping a third party's own event ID across what can be weeks of
+  retries (Paddle's own documented retry window is 60 attempts over 60
+  days).
+- **Webhook endpoint** (`POST /payment-gateway/webhooks/stripe/:storeId`,
+  public/unauthenticated by necessity - same shape as
+  `external-api/template-install.controller.ts`, not either
+  payment-gateway controller's guard stack) deliberately bypasses
+  `PaymentGatewayService.verifyAndConfirm()`/`chargeViaGateway()` and
+  its `isGatewayLive()` gate. That gate exists to stop an unproven
+  adapter from confirming a REAL buyer-facing checkout (D95/Risk #50) -
+  exactly why Stripe isn't offered as a checkout option while
+  "verifying". A signature-verified webhook event is a different thing:
+  Stripe itself already asserts the session was paid, proven by
+  `constructEvent()` succeeding - gating this path would make it
+  impossible to ever gather the sandbox evidence needed to promote
+  Stripe to "live" in the first place. Before confirming, the handler
+  independently checks the session's reported amount/currency against
+  the order's own total (never trusting a caller-supplied amount) and
+  refuses (logs, does not confirm, still acknowledges 2xx to Stripe) on
+  any mismatch.
+- **`OrdersService.markAsPaid()` gateway-label fix**: a new, additive,
+  optional `paymentDetails` parameter (`{gateway, gatewayTransactionId,
+  rawWebhookPayload?}`), omitted by every pre-existing caller (the
+  seller's own manual mark-as-paid action, and
+  `PaymentGatewayService`'s three verify-and-confirm call sites for
+  Raast/Easypaisa/JazzCash/Bank - left untouched, out of this task's
+  scope since none of them are live yet) - only the new Stripe webhook
+  handler supplies it. Without this fix, a webhook-confirmed payment
+  would be mislabeled `gateway: "manual"` and silently excluded from
+  the daily reconciliation job (FR-6.6, which explicitly skips `manual`
+  rows for having no external settlement report to check them against).
+- **Stripe stays sandbox-only, excluded from Stage 0** (founder's
+  explicit instruction) - its gateway-registry status is "verifying",
+  same as the other four, not "live".
+**Verified:** full unit suite 69/69 suites, 411/411 tests (new:
+`stripe-restricted-key.util.spec.ts`, `stripe-amount.util.spec.ts`,
+`restricted-key-credential-source.spec.ts`,
+`stripe-gateway.adapter.spec.ts`, `webhook-event-dedupe.service.spec.ts`,
+`stripe-webhook.controller.spec.ts`, plus `gateway-registry.spec.ts`'s
+locked tri-state table updated for Stripe's promotion from "soon" to
+"verifying"). `apps/api` typecheck/lint clean. e2e, run with
+`set -o pipefail` throughout (D130): a new `stripe-webhook.e2e-spec.ts`
+- the only one of the five gateway adapters' e2e suites needing no fake
+adapter override at all, since the webhook path never calls
+`StripeGatewayAdapter` - exercises the real official Stripe SDK's
+signature construction/verification for real (pure local HMAC, no
+network call) against a real app/Postgres/Redis: restricted-key
+rejection, missing-webhook-secret rejection, forged-signature
+rejection, a genuine checkout.session.completed confirming the order
+with the real gateway/transaction-id attribution (not "manual"),
+redelivered-event dedupe (markAsPaid never runs twice), and
+amount-mismatch refusal - all passing. Re-run together with
+`module62-payment-gateway-connect`, `module67-gateway-health`,
+`platform-gateway.e2e`, `module76-prepaid-partial-advance`,
+`module95-payment-model`, and `module25-admin-completion` for a full
+combined regression check. New `stripe-mock-test` CI job (mirrors
+`kms-localstack-test`) runs `scripts/verify-stripe-mock.ts` - a real
+Checkout Session create/retrieve round trip plus a real
+`generateTestHeaderString()`/`constructEvent()` signature round trip
+against Stripe's own open-source `stripe-mock` fake API server, not a
+mocked SDK client - to be independently confirmed green in real CI
+before this is reported as merged.
+**Reasoning:** matches the founder's approved design point by point;
+the restricted-key/Connect-ready/sandbox-only framing all trace
+directly to minimizing blast radius on a credential this platform does
+not yet have the legal/business footing (a Stripe platform account,
+Connect) to hold more broadly than per-store sandbox testing.
