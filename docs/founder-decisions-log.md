@@ -3491,9 +3491,142 @@ combined 7-file batch (`stripe-webhook`, `module62-payment-gateway-connect`,
 `module76-prepaid-partial-advance`, `module95-payment-model`,
 `module25-admin-completion`) - 70/70 tests, exit 0, confirming the
 TRUNCATE fix actually resolves the state-leakage mechanism rather than
-just plausibly addressing it. A fresh real CI run on the PR, with both
-fixes included, is the final gate before reporting B2 merged.
+just plausibly addressing it. The fresh real CI run on top of all four
+fixes (commit `aa7de91`) came back fully green - independently confirmed
+via the GitHub API, not the webhook summary alone: all 29 check runs
+`completed`/`success` (or `skipped` on a duplicate-trigger second
+workflow run), `mergeable_state: "clean"`, zero open review threads.
+PR #13 merged (commit `273ef5b`, regular merge per the same "preserve
+full history" precedent the founder set for PR #12) immediately after.
 **Reasoning:** the same discipline D128 already proved out for B1 - a
 defect that only a real, independently-checked CI run (not a local
 re-skim) surfaces, caught and fixed before the founder is told "merged
 with CI green" rather than after.
+
+### D133. module79 flake's real mechanism: otplib's zero-tolerance TOTP window, not cross-test state
+**Status:** LOCKED.
+**Decision:** D132 item 3 flagged `module79-ambassador-repricing.e2e-
+spec.ts`'s CI-only failure (`expect(commission).toHaveLength(1)` got
+`[]`) as a pre-existing flake for future triage. Founder instruction:
+open a ticket and fix the actual mechanism, not just document it.
+Ticket opened (issue #14); investigated and fixed on
+`claude/goto5x-platform-design-1so2xg`.
+
+The real mechanism is NOT cross-test/cross-file state leakage, despite
+that being the obvious first suspect for a "passes alone, fails
+combined" CI-only failure (and despite a near-identical TRUNCATE-list
+bug having JUST been found this same week, D132 item 2). Each of that
+family of theories was checked with real evidence, in priority order,
+and ruled out before looking elsewhere:
+1. **TRUNCATE-list gap** - checked `test/e2e/setup.ts`'s
+   `resetDatabase()` against `schema.prisma`'s real `@@map` names AND
+   the live Postgres FK graph, not just the text list: a query against a
+   freshly-migrated database computes the actual TRUNCATE-CASCADE
+   transitive closure from the explicit table list using `pg_constraint`
+   directly. Two REAL gaps exist (`email_templates`,
+   `payment_gateway_health_alerts` - both FK-less, so CASCADE can never
+   reach them) but both are touched only by `module65-renewal-
+   reminders`/`module67-gateway-health`, which Jest's own SHA1-hash-
+   based `--shard` assignment (confirmed directly from the installed
+   `@jest/test-sequencer` source - sharding happens BEFORE any cache-
+   based sort, keyed only by a path hash, so shard membership is stable
+   regardless of local run history) places in shard 2/4, never shard
+   1/4 where module79 lives. `wallet_balances` (the hinted candidate)
+   is NOT a gap - it cascades correctly via its FK to `sellers`, which
+   IS in the list. Logged the two real gaps for a future pass; neither
+   is module79's cause.
+2. **Module-level/static JS singleton state** - grepped the entire
+   `apps/api/src` tree for top-level mutable `let`/Map/Set/object state
+   and mutable `static` class fields; found none (the only matches are
+   read-only constants built once from static data, e.g.
+   `DISPOSABLE_DOMAINS`, `CORE_COLUMNS`). `SettingsService`/
+   `RateLimitService`/`RedisService`/`PrismaAdminService`/
+   `PrismaRuntimeService` are all plain NestJS DI singletons backed only
+   by Postgres+Redis, both fully reset every single test via
+   `resetDatabase()`/`resetRedis()`.
+3. **Redis key collision** - structurally impossible given
+   `--maxWorkers=1`: confirmed from `jest-runner`'s own architecture
+   that test FILES run strictly sequentially in one worker, never
+   overlapping, and every rate-limit/idempotency key this flow touches
+   is opt-in (`Idempotency-Key` header, never sent by this flow) or
+   flushed by `resetRedis()` immediately before every single test.
+4. **Shard/worker composition** - re-derived shard 1/4's real
+   membership (`--listTests --shard=1/4`), then ran that exact file set
+   combined against a real local Postgres/Redis more than once (the 9
+   files immediately preceding and including module79, then the full
+   27-file shard). module79 passed clean every time - the combined-run-
+   adjacency theory never reproduced the failure at all, in either the
+   file subset or the full shard.
+
+**The real mechanism:** `StepUpMfaService.verify()` (and, identically,
+`AdminAuthService`'s/`AuthService`'s own login-time MFA checks) call
+`otplib`'s `authenticator.check(code, secret)` with otplib's bare
+default options - `window: 0`, confirmed directly from the installed
+`@otplib/core` source (`totpCheckWithWindow()` only ever checks the
+exact current 30-second step when `window` is 0; nothing repo-side
+overrides this anywhere). That means ANY gap at all - network latency,
+the two Redis rate-limit round-trips plus the Prisma lookup already
+inside `verify()` itself, ordinary event-loop/GC pressure - between
+"the caller computed this code" and "this line checks it" that happens
+to straddle a 30-second step boundary gets the code rejected outright,
+even though it was genuinely valid when generated.
+`AdminWalletController.verifyOne()` runs `StepUpMfaGuard` BEFORE
+`WalletService.verifyTopUp()`/`ProgramCommissionService.
+accrueReferralCommissionIfApplicable()`, and module79's own
+`payOneCycle()` test helper never asserts the verify response's HTTP
+status - so an occasional 401 here doesn't fail loudly at the verify
+call, it silently skips the referral-commission ledger write three
+steps upstream of where the test actually notices, surfacing as
+`expect(commission).toHaveLength(1)` / received `[]`. This is a genuine
+latent bug in the step-up/admin-MFA code itself (it would occasionally
+reject a legitimate admin in production too, given enough network
+latency), not test-only - it just happens to be far more likely to
+manifest once ~8+ other e2e files have already run sequentially in the
+same CI shard process (more accumulated event-loop/GC/connection load
+-> slower individual requests -> higher chance of straddling a step
+boundary) than in a fast, uncontended isolated run - exactly "passes
+alone, fails combined," without needing any specific adjacent file's
+data at all.
+**Fix:** `authenticator.options = { window: 1 }` (otplib's own
+documented options-merge setter, confirmed from its source not to touch
+`digits`/`step`/`algorithm`/encoding) set independently at all three
+real call sites (`step-up-mfa.service.ts`, `auth.service.ts`,
+`admin-auth.service.ts`) rather than relying on Node's module-singleton
+behavior to propagate it from just one - 7 lines per file, each a
+comment plus the one-line option merge, no logic restructured, nothing
+else touched.
+**Verified:** reproduced the EXACT failure in complete isolation, no
+other spec file involved at all, before touching any code: a scratch
+e2e spec drove the real app through module79's own flow, generated a
+real step-up code, deliberately slept until 300ms past the next
+30-second TOTP boundary, then sent it - server returned a genuine `401
+{"message":"Invalid MFA code."}` and the resulting ledger query came
+back `[]`, the identical symptom. Re-ran the identical scratch scenario
+after the fix: `201` verified, ledger has exactly 1 row at Rs 499.
+Deleted the scratch file immediately after (never part of the real
+suite, never committed). Then: `apps/api` typecheck clean; full unit
+suite 69/69 suites, 411/411 tests;
+`module79-ambassador-repricing.e2e-spec.ts` alone, 5/5; the MFA-
+relevant e2e batch (`trust-safety`, `module25-admin-completion`,
+`module26-order-verification` - which specifically tests wrong-code
+rejection still correctly fails under `window:1` - and `module79`
+again) all green; the original 9-file combined shard-1-prefix batch
+re-run post-fix with `set -o pipefail`, same clean module79 pass as
+every attempt (the combined-run theory was never how this was actually
+proven - the deterministic scratch repro was).
+`auth.e2e-spec.ts`/`admin-auth.e2e-spec.ts`/`admin-auth-refresh.e2e-
+spec.ts`/`input-validation-sweep.e2e-spec.ts` show pre-existing CSRF/
+refresh-rotation failures (403 vs an expected 200/204/401, "Request
+origin not allowed") in this sandbox - confirmed via `git stash` to be
+present identically on the UNMODIFIED code, unrelated to this fix and
+out of scope (same class as the domains/backups off-box-connectivity
+disclosures already in the README).
+**Reasoning:** the task's own priority order (TRUNCATE gap -> module
+state -> Redis collision -> shard composition -> only-then timing) is
+the right order to check in, but the honest result here is that none of
+the first four panned out under real scrutiny, and the fifth did -
+confirmed by actually reproducing the concrete mechanism rather than
+stopping at "ruled out the obvious ones, ship a plausible guess."
+Matches this codebase's standing rule (D132, D128, D125...): verify the
+real mechanism before writing it down as fixed, and write down what was
+actually found, including the dead ends.
