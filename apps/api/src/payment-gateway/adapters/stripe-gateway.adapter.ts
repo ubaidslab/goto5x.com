@@ -42,14 +42,20 @@ export class StripeGatewayAdapter implements SellerPaymentGatewayAdapter {
   ) {}
 
   private buildClient(apiKey: string): Stripe {
-    const host = this.config.get<string>("STRIPE_API_HOST");
+    const hostAndPort = this.config.get<string>("STRIPE_API_HOST");
     const protocol: "http" | "https" = this.config.get<string>("STRIPE_API_PROTOCOL") === "https" ? "https" : "http";
+    // Stripe's own StripeConfig takes `host` and `port` as separate fields
+    // (confirmed against the installed SDK's lib.d.ts) - a combined
+    // "host:port" string in `host` alone silently fails to connect, so
+    // STRIPE_API_HOST (one override var, same shape as AWS_KMS_ENDPOINT)
+    // is split here rather than introducing a second env var.
+    const [host, port] = hostAndPort ? hostAndPort.split(":") : [undefined, undefined];
     return new Stripe(apiKey, {
       apiVersion: "2026-09-30.endive",
       // Only ever set in CI, to point this SDK at a stripe-mock fake API
       // server instead of real Stripe - same precedent as AwsKmsProvider's
       // AWS_KMS_ENDPOINT override. Unset in every real environment.
-      ...(host ? { host, protocol } : {}),
+      ...(host ? { host, ...(port ? { port } : {}), protocol } : {}),
       timeout: 10_000,
     });
   }

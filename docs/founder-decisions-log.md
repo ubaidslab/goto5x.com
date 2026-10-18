@@ -3381,29 +3381,52 @@ Connect) to hold more broadly than per-store sandbox testing.
 session's own standing rule (confirmed real CI, not just local, before
 reporting merged) caught two real defects once the actual PR CI ran -
 both now fixed on the same branch before merge:
-1. **`stripe-mock-test` job failed to even start, and took two tries to
-   fix correctly.** Docker's own `--health-cmd` hit `stripe-mock` with no
-   `Authorization` header; `stripe-mock` 401s on every unauthenticated
-   request regardless of whether the key is real (confirmed directly
-   from the container's own stdout via `get_job_logs`: repeated
+1. **`stripe-mock-test` job failed to even start, and took four real
+   iterations - three wrong before a fully Docker-verified fix.** Docker's
+   own `--health-cmd` hit `stripe-mock` with no `Authorization` header;
+   `stripe-mock` 401s on every unauthenticated request (confirmed
+   directly from the container's own stdout via `get_job_logs`: repeated
    `GET /v1/charges` -> `status=401`, then `Failed to initialize
    container` - the healthcheck never passed, so the job's steps never
-   ran at all). First fix attempt added HTTP Basic Auth via
-   `curl -sf -u sk_test_dummy_key_for_healthcheck: ...` - itself wrong,
-   confirmed by a second real-CI run on that exact fix commit: the
-   container's stdout now showed no request reaching the server at all
-   (not even a 401), meaning the health-cmd was failing before the
-   network call. Fetched `stripe-mock`'s own published `Dockerfile`
-   rather than guess a second time: the image is `alpine:latest` plus
-   only `apk add ca-certificates` - no `curl` anywhere in it. `wget`
-   (Alpine's busybox applet, not separately installed) is the only HTTP
-   client actually present, which is what the ORIGINAL pre-fix healthcheck
-   was really reaching the server with all along, 401 and all. Corrected
-   to `wget -qO- http://sk_test_dummy_key_for_healthcheck:@localhost:12111/v1/charges`
-   - credentials embedded in the URL's userinfo, which busybox wget has
-   base64-encoded into a real `Authorization: Basic` header since a 2011
-   upstream fix, long predating any current Alpine release - no CLI flag
-   whose support in this exact busybox build would otherwise be a guess.
+   ran). Three guesses, each disproven by the next real CI run on that
+   exact commit:
+   - Attempt 1: `curl -sf -u sk_test_dummy_key_for_healthcheck: ...` -
+     wrong because the image has no `curl` at all. Confirmed by fetching
+     `stripe-mock`'s own published `Dockerfile` rather than guess again:
+     `alpine:latest` plus only `apk add ca-certificates`. The CI run on
+     this commit showed zero requests ever reaching the container (not
+     even a 401) - the health-cmd failed before any network call.
+   - Attempt 2: `wget` (the one HTTP client actually in the image, via
+     Alpine's busybox) with credentials embedded in the URL's userinfo -
+     wrong because THIS busybox build doesn't implement that optional
+     feature; the next CI run showed the exact same 401s as the original
+     unfixed command, meaning no `Authorization` header was ever sent.
+   - At this point a Docker daemon turned out to be available in this
+     session's own sandbox (absent earlier in B1/this task) - stopped
+     guessing a third time against real CI and pulled `stripe-mock`
+     locally instead. Empirically disproved this session's own earlier
+     assumption that `stripe-mock` "doesn't validate the key's
+     authenticity, only that one's present": it 401s a syntactically
+     wrong-shaped key too - a key's body (after the `sk_`/`rk_`+
+     `test_`/`live_` prefix) must be alphanumeric; `sk_test_dummy_key_
+     for_healthcheck`'s underscores alone caused every one of its own
+     401s, independent of the header/auth-mechanism questions above.
+   - Final fix, verified against the real image through Docker's own
+     healthcheck engine before pushing (not just a manual request):
+     `wget -qO- --header='Authorization: Bearer sk_test_
+     healthcheckkeyvalidshape' http://localhost:12111/v1/charges` -
+     `--header` is busybox wget's one auth-relevant flag actually present
+     (confirmed from its own `--help`), and the key is alphanumeric-only
+     after its prefix. Also directly verified (via the real
+     `actions/runner` source, fetched rather than assumed) that
+     `services.<name>.options` is joined into one string and handed
+     straight to the `docker` binary with no shell involved - so the
+     nested single-quote-inside-double-quote in the health-cmd needed to
+     survive a Windows-`CommandLineToArgvW`-style parse, not a POSIX
+     shell's; reproduced that exact parse locally with `eval` and
+     confirmed via `docker inspect` that it stores the intended
+     `CMD-SHELL` string, then let Docker's real healthcheck engine
+     report `healthy` end to end before this was written down as fixed.
 2. **Cross-test-run state leakage via a table missing from
    `resetDatabase()`'s TRUNCATE list** - the more serious of the two.
    `processed_webhook_events` (new this task, D131) was never added to
@@ -3433,9 +3456,37 @@ both now fixed on the same branch before merge:
    flake in the shard, not something B2 caused or needs to fix - flagged
    here for future triage rather than silently ignored, but not blocking
    this merge.
-**Verified:** both fixes committed on top of D131's commit, re-run
-locally with `set -o pipefail`: the combined 7-file batch
-(`stripe-webhook`, `module62-payment-gateway-connect`,
+4. **A real bug in `StripeGatewayAdapter.buildClient()` itself, found
+   only because fixing item 1 required actually exercising the Stripe
+   SDK against a live `stripe-mock`.** `STRIPE_API_HOST=localhost:12111`
+   was passed straight through as the SDK's `host` config field - wrong;
+   the installed SDK's own `lib.d.ts` defines `host` and `port` as two
+   separate `StripeConfig` fields, and a combined `"host:port"` string in
+   `host` alone fails to connect at all (confirmed directly: the Stripe
+   Node SDK raised a generic connection error against a real local
+   `stripe-mock` container until `host`/`port` were split). Fixed in both
+   `buildClient()` and `scripts/verify-stripe-mock.ts` (which had the
+   identical bug, plus its own copy of the underscored-key mistake item 1
+   found - `rk_test_stripe_mock_accepts_any_key`, whose own comment
+   claimed stripe-mock "accepts any key", disproven by the same
+   empirical finding in item 1). `buildClient()`'s bug is CI-only in
+   today's blast radius - `STRIPE_API_HOST` is unset in every real
+   environment, so production Stripe calls never pass `host`/`port` at
+   all and are unaffected - but left uncaught it would have broken this
+   exact CI job's entire purpose (proving the real wire format round-
+   trips) the moment item 1's healthcheck fix let the job's steps run for
+   the first time.
+**Verified:** all four fixes committed on top of D131's commit. Item 4's
+`host`/`port` and key-shape corrections were run for real against a
+locally-pulled `stripe-mock` container (not just reasoned about): the
+actual `verify-stripe-mock.ts` file, unmodified beyond the fix itself,
+create -> retrieve -> signature round trip, OK end to end. `apps/api`
+typecheck clean; `stripe-gateway.adapter.spec.ts`,
+`stripe-webhook.controller.spec.ts`, and `gateway-registry.spec.ts`
+(the three suites touching this diff) - 20/20 passed, confirming the
+`host`/`port` split didn't disturb anything the mocked-SDK unit tests
+cover. Separately, items 1-2 re-run locally with `set -o pipefail`: the
+combined 7-file batch (`stripe-webhook`, `module62-payment-gateway-connect`,
 `module67-gateway-health`, `platform-gateway.e2e`,
 `module76-prepaid-partial-advance`, `module95-payment-model`,
 `module25-admin-completion`) - 70/70 tests, exit 0, confirming the

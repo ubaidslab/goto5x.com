@@ -18,12 +18,26 @@ import Stripe from "stripe";
  */
 
 async function main() {
-  const host = process.env.STRIPE_API_HOST;
-  if (!host) throw new Error("STRIPE_API_HOST must be set - this script only runs against stripe-mock, never real Stripe.");
+  const hostAndPort = process.env.STRIPE_API_HOST;
+  if (!hostAndPort) throw new Error("STRIPE_API_HOST must be set - this script only runs against stripe-mock, never real Stripe.");
+  // Stripe's StripeConfig takes `host`/`port` as separate fields, not a
+  // combined "host:port" string (confirmed against the SDK's own lib.d.ts
+  // - passing the combined form to `host` alone fails to connect at all).
+  const [host, port] = hostAndPort.split(":");
 
-  const stripe = new Stripe("rk_test_stripe_mock_accepts_any_key", {
+  // stripe-mock DOES validate the key's shape despite not checking its
+  // authenticity: it requires the exact sk_/rk_ + test_/live_ prefix and
+  // rejects a key whose body contains underscores (confirmed empirically
+  // against a live stripe-mock container - a key like the older
+  // "..._accepts_any_key" 401s) - alphanumeric body only, no minimum
+  // length (also confirmed empirically). Kept deliberately short and
+  // low-entropy, not just alphanumeric - GitHub's own secret-scanning
+  // push protection flags a longer alphanumeric sk_test_/rk_test_-shaped
+  // string as a real Stripe key regardless of whether it actually is one.
+  const stripe = new Stripe("rk_test_ci", {
     apiVersion: "2026-09-30.endive",
     host,
+    ...(port ? { port } : {}),
     protocol: "http",
   });
 

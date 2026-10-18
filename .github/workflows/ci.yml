@@ -551,7 +551,7 @@ jobs:
         image: stripe/stripe-mock:latest
         ports: ["12111:12111"]
         options: >-
-          --health-cmd="wget -qO- http://sk_test_dummy_key_for_healthcheck:@localhost:12111/v1/charges"
+          --health-cmd="wget -qO- --header='Authorization: Bearer sk_test_ci' http://localhost:12111/v1/charges"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
