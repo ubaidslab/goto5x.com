@@ -4,6 +4,28 @@ import { PrismaAdminService } from "../prisma/prisma-admin.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
 import { SettingsService } from "../settings-registry/settings.service";
 
+// D133 - otplib's own default is `window: 0`: authenticator.check() accepts
+// ONLY the exact current 30-second TOTP step, with zero tolerance for the
+// real, unavoidable gap between "the caller computed this code" and "this
+// process validates it" (network latency, event-loop/DB/Redis time inside
+// verify() itself, or ordinary clock drift). Proved to actually matter, not
+// just theoretically: a code generated a moment before a 30s step boundary
+// and checked a moment after it is REJECTED outright - reproduced directly
+// against this exact otplib install (module79-ambassador-repricing.e2e-
+// spec.ts's CI flake, D133's full writeup: the resulting 401 on this
+// guard's step-up check silently short-circuits AdminWalletController.
+// verify() before it ever reaches the referral-commission ledger write,
+// which is what actually surfaced as the flake). `authenticator.options`
+// merges into the existing options object (see @otplib/core's `set
+// options()`), so this only loosens the step tolerance - digits/step/
+// algorithm/secret format are untouched. AuthService/AdminAuthService set
+// the identical line next to their own `authenticator.check()` calls
+// (otplib hands back one shared singleton either way, so this alone would
+// likely cover them too in this app's actual module graph - but each site
+// sets it independently rather than leaning on that, so none of the three
+// depends on a particular module-load order to be safe).
+authenticator.options = { window: 1 };
+
 /**
  * D82 - extracted out of SellerLifecycleService.verifyStepUpMfa() (the
  * founder-walkthrough fix that first required this, Phase 2 item 16) so

@@ -4,6 +4,13 @@ import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { authenticator } from "otplib";
 import { PrismaRuntimeService } from "../prisma/prisma-runtime.service";
+// D133 - see step-up-mfa.service.ts's own comment on this exact line: an
+// unlatched `authenticator.check()` (otplib's default `window: 0`) rejects
+// a genuinely-valid code the instant the real clock crosses a 30-second
+// TOTP step between generating it and checking it here. Set independently
+// at this call site too rather than relying on another file's otplib
+// singleton mutation having already run first.
+authenticator.options = { window: 1 };
 import { JwtAccessPayload } from "../common/types";
 import { AuditLogService } from "../admin/audit-log.service";
 import { RateLimitService } from "../common/rate-limit/rate-limit.service";
