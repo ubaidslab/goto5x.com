@@ -3263,3 +3263,237 @@ just left at its default) - still rejected.
 founder instruction plus a direct founder question, answered by
 re-reading the actual code rather than restating what was already
 believed to be true.
+
+### D131. Stripe sandbox adapter + webhook (B2, D117 item 2)
+**Status:** LOCKED.
+**Decision:** per the founder's design approval on top of my own
+proposal:
+- **Restricted keys only.** A connecting Stripe key must start `rk_`;
+  `sk_...` is rejected at connect time with a clear message
+  (`stripe-restricted-key.util.ts`). Both the restricted key and the
+  per-store webhook signing secret are encrypted through the same
+  envelope-encryption vault (D117/D126) as every other gateway's
+  credentials - a new `webhookSecretEncrypted` column, sharing the
+  row's one data key. `docs/stripe-seller-setup.md` (new) is the exact
+  seller-facing setup guide the founder asked be written now, for the
+  future connect UI: where to create the restricted key, the exact 4
+  permissions to grant (Checkout Sessions/PaymentIntents write,
+  Charges/Events read - nothing else), which single webhook event to
+  subscribe to, and the webhook URL pattern.
+- **Connect-ready, Connect not built.** `StripeCredentialSource` (new
+  interface + DI token) resolves `{apiKey, connectedAccountId?}` -
+  today's only implementation (`RestrictedKeyCredentialSource`) just
+  returns the store's own key with no connected account.
+  `StripeGatewayAdapter` calls this resolver and threads
+  `connectedAccountId` through as Stripe's `stripeAccount` request
+  option when present (always absent today) - a future
+  `StripeConnectCredentialSource` swaps in via one DI registration
+  change in `payment-gateway.module.ts`, zero changes to the adapter
+  itself. Stripe Connect (Standard accounts, OAuth, direct charges,
+  `application_fee=0`) is explicitly not built - it needs a platform
+  Stripe account and a legal entity in a Stripe-supported country, a
+  founder decision before any live Stripe.
+- **Official Stripe SDK**, unlike the other four adapters' hand-rolled
+  `fetch()` - webhook signature verification is security-critical and
+  `stripe.webhooks.constructEvent()` is the canonical, audited
+  implementation, same reasoning that put `@aws-sdk/client-kms` behind
+  `KmsProvider` instead of hand-signing AWS requests (D117/D126).
+- **Schema**: `stripe` added to `PaymentGatewayProvider` (the live
+  per-store registry enum - NOT the separate, older `PaymentGateway`
+  enum `Payment.gateway` already uses, which already had a dormant
+  `stripe` value from an earlier design pass); new
+  `ProcessedWebhookEvent` model, `@@unique([provider, eventId])` -
+  permanent, Postgres-backed dedupe for "idempotent webhook handling
+  (dedupe on event ID)" (D117's own wording). Deliberately not the
+  existing `IdempotencyService` - that's Redis-backed with a short,
+  client-key-scoped TTL, built for retryable client mutations, not for
+  deduping a third party's own event ID across what can be weeks of
+  retries (Paddle's own documented retry window is 60 attempts over 60
+  days).
+- **Webhook endpoint** (`POST /payment-gateway/webhooks/stripe/:storeId`,
+  public/unauthenticated by necessity - same shape as
+  `external-api/template-install.controller.ts`, not either
+  payment-gateway controller's guard stack) deliberately bypasses
+  `PaymentGatewayService.verifyAndConfirm()`/`chargeViaGateway()` and
+  its `isGatewayLive()` gate. That gate exists to stop an unproven
+  adapter from confirming a REAL buyer-facing checkout (D95/Risk #50) -
+  exactly why Stripe isn't offered as a checkout option while
+  "verifying". A signature-verified webhook event is a different thing:
+  Stripe itself already asserts the session was paid, proven by
+  `constructEvent()` succeeding - gating this path would make it
+  impossible to ever gather the sandbox evidence needed to promote
+  Stripe to "live" in the first place. Before confirming, the handler
+  independently checks the session's reported amount/currency against
+  the order's own total (never trusting a caller-supplied amount) and
+  refuses (logs, does not confirm, still acknowledges 2xx to Stripe) on
+  any mismatch.
+- **`OrdersService.markAsPaid()` gateway-label fix**: a new, additive,
+  optional `paymentDetails` parameter (`{gateway, gatewayTransactionId,
+  rawWebhookPayload?}`), omitted by every pre-existing caller (the
+  seller's own manual mark-as-paid action, and
+  `PaymentGatewayService`'s three verify-and-confirm call sites for
+  Raast/Easypaisa/JazzCash/Bank - left untouched, out of this task's
+  scope since none of them are live yet) - only the new Stripe webhook
+  handler supplies it. Without this fix, a webhook-confirmed payment
+  would be mislabeled `gateway: "manual"` and silently excluded from
+  the daily reconciliation job (FR-6.6, which explicitly skips `manual`
+  rows for having no external settlement report to check them against).
+- **Stripe stays sandbox-only, excluded from Stage 0** (founder's
+  explicit instruction) - its gateway-registry status is "verifying",
+  same as the other four, not "live".
+**Verified:** full unit suite 69/69 suites, 411/411 tests (new:
+`stripe-restricted-key.util.spec.ts`, `stripe-amount.util.spec.ts`,
+`restricted-key-credential-source.spec.ts`,
+`stripe-gateway.adapter.spec.ts`, `webhook-event-dedupe.service.spec.ts`,
+`stripe-webhook.controller.spec.ts`, plus `gateway-registry.spec.ts`'s
+locked tri-state table updated for Stripe's promotion from "soon" to
+"verifying"). `apps/api` typecheck/lint clean. e2e, run with
+`set -o pipefail` throughout (D130): a new `stripe-webhook.e2e-spec.ts`
+- the only one of the five gateway adapters' e2e suites needing no fake
+adapter override at all, since the webhook path never calls
+`StripeGatewayAdapter` - exercises the real official Stripe SDK's
+signature construction/verification for real (pure local HMAC, no
+network call) against a real app/Postgres/Redis: restricted-key
+rejection, missing-webhook-secret rejection, forged-signature
+rejection, a genuine checkout.session.completed confirming the order
+with the real gateway/transaction-id attribution (not "manual"),
+redelivered-event dedupe (markAsPaid never runs twice), and
+amount-mismatch refusal - all passing. Re-run together with
+`module62-payment-gateway-connect`, `module67-gateway-health`,
+`platform-gateway.e2e`, `module76-prepaid-partial-advance`,
+`module95-payment-model`, and `module25-admin-completion` for a full
+combined regression check. New `stripe-mock-test` CI job (mirrors
+`kms-localstack-test`) runs `scripts/verify-stripe-mock.ts` - a real
+Checkout Session create/retrieve round trip plus a real
+`generateTestHeaderString()`/`constructEvent()` signature round trip
+against Stripe's own open-source `stripe-mock` fake API server, not a
+mocked SDK client - to be independently confirmed green in real CI
+before this is reported as merged.
+**Reasoning:** matches the founder's approved design point by point;
+the restricted-key/Connect-ready/sandbox-only framing all trace
+directly to minimizing blast radius on a credential this platform does
+not yet have the legal/business footing (a Stripe platform account,
+Connect) to hold more broadly than per-store sandbox testing.
+
+### D132. Two real CI bugs found verifying B2, plus one ruled-out flake
+**Status:** LOCKED.
+**Decision:** D131 reported as "verified" against local runs only; this
+session's own standing rule (confirmed real CI, not just local, before
+reporting merged) caught two real defects once the actual PR CI ran -
+both now fixed on the same branch before merge:
+1. **`stripe-mock-test` job failed to even start, and took four real
+   iterations - three wrong before a fully Docker-verified fix.** Docker's
+   own `--health-cmd` hit `stripe-mock` with no `Authorization` header;
+   `stripe-mock` 401s on every unauthenticated request (confirmed
+   directly from the container's own stdout via `get_job_logs`: repeated
+   `GET /v1/charges` -> `status=401`, then `Failed to initialize
+   container` - the healthcheck never passed, so the job's steps never
+   ran). Three guesses, each disproven by the next real CI run on that
+   exact commit:
+   - Attempt 1: `curl -sf -u sk_test_dummy_key_for_healthcheck: ...` -
+     wrong because the image has no `curl` at all. Confirmed by fetching
+     `stripe-mock`'s own published `Dockerfile` rather than guess again:
+     `alpine:latest` plus only `apk add ca-certificates`. The CI run on
+     this commit showed zero requests ever reaching the container (not
+     even a 401) - the health-cmd failed before any network call.
+   - Attempt 2: `wget` (the one HTTP client actually in the image, via
+     Alpine's busybox) with credentials embedded in the URL's userinfo -
+     wrong because THIS busybox build doesn't implement that optional
+     feature; the next CI run showed the exact same 401s as the original
+     unfixed command, meaning no `Authorization` header was ever sent.
+   - At this point a Docker daemon turned out to be available in this
+     session's own sandbox (absent earlier in B1/this task) - stopped
+     guessing a third time against real CI and pulled `stripe-mock`
+     locally instead. Empirically disproved this session's own earlier
+     assumption that `stripe-mock` "doesn't validate the key's
+     authenticity, only that one's present": it 401s a syntactically
+     wrong-shaped key too - a key's body (after the `sk_`/`rk_`+
+     `test_`/`live_` prefix) must be alphanumeric; `sk_test_dummy_key_
+     for_healthcheck`'s underscores alone caused every one of its own
+     401s, independent of the header/auth-mechanism questions above.
+   - Final fix, verified against the real image through Docker's own
+     healthcheck engine before pushing (not just a manual request):
+     `wget -qO- --header='Authorization: Bearer sk_test_
+     healthcheckkeyvalidshape' http://localhost:12111/v1/charges` -
+     `--header` is busybox wget's one auth-relevant flag actually present
+     (confirmed from its own `--help`), and the key is alphanumeric-only
+     after its prefix. Also directly verified (via the real
+     `actions/runner` source, fetched rather than assumed) that
+     `services.<name>.options` is joined into one string and handed
+     straight to the `docker` binary with no shell involved - so the
+     nested single-quote-inside-double-quote in the health-cmd needed to
+     survive a Windows-`CommandLineToArgvW`-style parse, not a POSIX
+     shell's; reproduced that exact parse locally with `eval` and
+     confirmed via `docker inspect` that it stores the intended
+     `CMD-SHELL` string, then let Docker's real healthcheck engine
+     report `healthy` end to end before this was written down as fixed.
+2. **Cross-test-run state leakage via a table missing from
+   `resetDatabase()`'s TRUNCATE list** - the more serious of the two.
+   `processed_webhook_events` (new this task, D131) was never added to
+   `test/e2e/setup.ts`'s TRUNCATE statement. An isolated run of the new
+   webhook spec inserted rows under hardcoded event IDs
+   (`evt_confirm_1`/`evt_dedupe_1`); because the table was never
+   truncated, those rows survived into a later combined-batch run that
+   reused the same literal IDs, and `WebhookEventDedupeService.claim()`
+   correctly saw them as already-claimed and silently skipped
+   processing - manifesting only in the combined run (order stays
+   pending, zero `Payment` rows), not in isolation, which is what made
+   this a genuine "only in CI" class of bug rather than something a
+   single local run would have caught. Fixed by adding the table to the
+   TRUNCATE list. Noted but deliberately left alone as pre-existing and
+   out of this task's scope: `store_payment_gateway_connections` is also
+   missing from that same list - not currently causing failures since
+   every e2e spec uses a fresh `storeId`, but worth a future pass.
+3. **Investigated, ruled out as unrelated**: the same CI run also showed
+   `module79-ambassador-repricing.e2e-spec.ts` failing
+   (`expect(commission).toHaveLength(1)` got `[]`) - a test about
+   Ambassador Program referral commission that imports nothing from this
+   task's diff (`PlanFeeDebitService`/`SettingsService` only). Per this
+   session's PR-babysitting rule (rule out a failure that isn't the PR's
+   before claiming it is), ran that spec file alone against a fresh
+   Postgres/Redis: 5/5 passed clean. Combined with zero import overlap
+   with the B2 diff, this is a pre-existing order/environment-sensitive
+   flake in the shard, not something B2 caused or needs to fix - flagged
+   here for future triage rather than silently ignored, but not blocking
+   this merge.
+4. **A real bug in `StripeGatewayAdapter.buildClient()` itself, found
+   only because fixing item 1 required actually exercising the Stripe
+   SDK against a live `stripe-mock`.** `STRIPE_API_HOST=localhost:12111`
+   was passed straight through as the SDK's `host` config field - wrong;
+   the installed SDK's own `lib.d.ts` defines `host` and `port` as two
+   separate `StripeConfig` fields, and a combined `"host:port"` string in
+   `host` alone fails to connect at all (confirmed directly: the Stripe
+   Node SDK raised a generic connection error against a real local
+   `stripe-mock` container until `host`/`port` were split). Fixed in both
+   `buildClient()` and `scripts/verify-stripe-mock.ts` (which had the
+   identical bug, plus its own copy of the underscored-key mistake item 1
+   found - `rk_test_stripe_mock_accepts_any_key`, whose own comment
+   claimed stripe-mock "accepts any key", disproven by the same
+   empirical finding in item 1). `buildClient()`'s bug is CI-only in
+   today's blast radius - `STRIPE_API_HOST` is unset in every real
+   environment, so production Stripe calls never pass `host`/`port` at
+   all and are unaffected - but left uncaught it would have broken this
+   exact CI job's entire purpose (proving the real wire format round-
+   trips) the moment item 1's healthcheck fix let the job's steps run for
+   the first time.
+**Verified:** all four fixes committed on top of D131's commit. Item 4's
+`host`/`port` and key-shape corrections were run for real against a
+locally-pulled `stripe-mock` container (not just reasoned about): the
+actual `verify-stripe-mock.ts` file, unmodified beyond the fix itself,
+create -> retrieve -> signature round trip, OK end to end. `apps/api`
+typecheck clean; `stripe-gateway.adapter.spec.ts`,
+`stripe-webhook.controller.spec.ts`, and `gateway-registry.spec.ts`
+(the three suites touching this diff) - 20/20 passed, confirming the
+`host`/`port` split didn't disturb anything the mocked-SDK unit tests
+cover. Separately, items 1-2 re-run locally with `set -o pipefail`: the
+combined 7-file batch (`stripe-webhook`, `module62-payment-gateway-connect`,
+`module67-gateway-health`, `platform-gateway.e2e`,
+`module76-prepaid-partial-advance`, `module95-payment-model`,
+`module25-admin-completion`) - 70/70 tests, exit 0, confirming the
+TRUNCATE fix actually resolves the state-leakage mechanism rather than
+just plausibly addressing it. A fresh real CI run on the PR, with both
+fixes included, is the final gate before reporting B2 merged.
+**Reasoning:** the same discipline D128 already proved out for B1 - a
+defect that only a real, independently-checked CI run (not a local
+re-skim) surfaces, caught and fixed before the founder is told "merged
+with CI green" rather than after.

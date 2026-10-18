@@ -979,6 +979,7 @@ enum PaymentGatewayProvider {
   easypaisa
   jazzcash
   bank
+  stripe
 }
 
 model StorePaymentGatewayConnection {
@@ -994,6 +995,15 @@ model StorePaymentGatewayConnection {
   // for a row stored before this migration landed, until the backfill
   // script (scripts/rewrap-gateway-credentials.ts) re-wraps it.
   dataKeyWrapped     String?                @map("data_key_wrapped")
+  // D117/B2 (founder decision) - Stripe-only: the per-store webhook
+  // signing secret (from the seller's own Stripe Dashboard webhook
+  // endpoint, docs/stripe-seller-setup.md), encrypted under the SAME
+  // dataKeyWrapped above - a third field sharing this row's one data
+  // key, same pattern as apiKeyEncrypted/apiSecretEncrypted. Never part
+  // of GatewayVerifyContext (verifyPayment() never needs it) - only the
+  // Stripe webhook controller reads it, by storeId, straight off this
+  // row.
+  webhookSecretEncrypted String?             @map("webhook_secret_encrypted")
   isActive           Boolean                @default(true) @map("is_active")
   // FR-6.36 - stable, seller-visible checkout ordering; Raast defaults to
   // the lowest (first) value, set by the service layer at connect time,
@@ -1021,6 +1031,31 @@ model StorePaymentGatewayConnection {
   // updates the existing row rather than creating a duplicate.
   @@unique([storeId, provider], name: "uniq_store_gateway_provider")
   @@map("store_payment_gateway_connections")
+}
+
+// D117/B2 (founder decision) - "idempotent webhook handling (dedupe on
+// event ID)". Deliberately NOT the existing IdempotencyService (Redis,
+// short client-supplied-key TTL, built for retryable client mutations -
+// see common/idempotency/idempotency.service.ts's own doc comment): a
+// third-party webhook's event ID needs permanent, provider-assigned-key
+// dedupe (a provider can retry a delivery for days/weeks - Paddle's own
+// documented retry window is 60 attempts over 60 days, SRS §7.4), not a
+// short request-replay window. One row per event ever successfully
+// claimed; `@@unique([provider, eventId])` IS the dedupe mechanism - a
+// second delivery of the same event hits a unique-constraint violation,
+// which the claiming service treats as "already processed," never a
+// real error. Provider-agnostic on purpose (a plain string, not an
+// enum) - the same table is meant to serve Paddle's webhook dedupe
+// later without its own migration.
+model ProcessedWebhookEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  provider   String
+  eventId    String   @map("event_id")
+  eventType  String   @map("event_type")
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz
+
+  @@unique([provider, eventId], name: "uniq_provider_event")
+  @@map("processed_webhook_events")
 }
 
 // Founder-directed scope addition - "Platform Merchant Connection": the

@@ -72,7 +72,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       seller_signup_waitlist,
       impersonation_sessions, content_page_revisions, content_pages,
       platform_brand_asset_revisions, platform_brand_assets, platform_messages,
-      database_backup_runs
+      database_backup_runs,
+      processed_webhook_events
     RESTART IDENTITY CASCADE
   `);
 }

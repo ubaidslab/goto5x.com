@@ -92,6 +92,16 @@ const REVIEWED_PRISMA_ADMIN_CALL_SITES = [
   "src/orders/orders.service.ts",
   "src/payment-gateway/gateway-health.service.ts",
   "src/payment-gateway/payment-gateway.service.ts",
+  // B2 - public, unauthenticated (Stripe has no session to present) -
+  // the exact same "buyer-facing, no seller session" reason
+  // payment-gateway.service.ts above is already on this list; looks up
+  // the connection/order/store by storeId/orderId, never scoped by a
+  // seller's own session.
+  "src/payment-gateway/webhooks/stripe-webhook.controller.ts",
+  // B2 - ProcessedWebhookEvent has no storeId/tenant column at all (a
+  // webhook event ID is a fact about the provider's delivery, not a
+  // seller's own data) - no RLS policy could apply to it regardless.
+  "src/payment-gateway/webhooks/webhook-event-dedupe.service.ts",
   "src/plans/multi-store-downgrade.service.ts",
   "src/platform-gateway/platform-gateway-reconciliation.service.ts",
   "src/platform-gateway/platform-gateway.service.ts",

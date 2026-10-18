@@ -9,10 +9,12 @@ import { BankTransferGatewayAdapter } from "./adapters/bank-transfer-gateway.ada
 import { EasypaisaGatewayAdapter } from "./adapters/easypaisa-gateway.adapter";
 import { JazzCashGatewayAdapter } from "./adapters/jazzcash-gateway.adapter";
 import { RaastGatewayAdapter } from "./adapters/raast-gateway.adapter";
+import { StripeGatewayAdapter } from "./adapters/stripe-gateway.adapter";
 import { GatewayCredentialVaultService } from "./gateway-credential-vault.service";
 import { GatewayVerifyResult, SellerPaymentGatewayAdapter } from "./seller-payment-gateway-adapter.interface";
 import { GatewayHealthService } from "./gateway-health.service";
 import { isGatewayLive } from "./gateway-registry";
+import { assertStripeRestrictedKey } from "./stripe/stripe-restricted-key.util";
 
 /**
  * FR-6.36 - Raast is offered first (lowest priorityOrder), Easypaisa/
@@ -25,12 +27,14 @@ const PROVIDER_PRIORITY: Record<PaymentGatewayProvider, number> = {
   easypaisa: 1,
   jazzcash: 2,
   bank: 3,
+  stripe: 4,
 };
 
 /**
- * Never returns `apiKeyEncrypted`/`apiSecretEncrypted` - same explicit
- * SAFE_SELECT-allowlist discipline as SellerVerificationEmailsService,
- * rather than a decorator a future field addition could silently bypass.
+ * Never returns `apiKeyEncrypted`/`apiSecretEncrypted`/
+ * `webhookSecretEncrypted` - same explicit SAFE_SELECT-allowlist
+ * discipline as SellerVerificationEmailsService, rather than a decorator
+ * a future field addition could silently bypass.
  */
 const SAFE_SELECT = {
   id: true,
@@ -67,12 +71,14 @@ export class PaymentGatewayService {
     easypaisaAdapter: EasypaisaGatewayAdapter,
     jazzcashAdapter: JazzCashGatewayAdapter,
     bankAdapter: BankTransferGatewayAdapter,
+    stripeAdapter: StripeGatewayAdapter,
   ) {
     this.adapters = new Map([
       [raastAdapter.provider, raastAdapter as SellerPaymentGatewayAdapter],
       [easypaisaAdapter.provider, easypaisaAdapter as SellerPaymentGatewayAdapter],
       [jazzcashAdapter.provider, jazzcashAdapter as SellerPaymentGatewayAdapter],
       [bankAdapter.provider, bankAdapter as SellerPaymentGatewayAdapter],
+      [stripeAdapter.provider, stripeAdapter as SellerPaymentGatewayAdapter],
     ]);
   }
 
@@ -93,8 +99,21 @@ export class PaymentGatewayService {
   async connect(
     sellerId: string,
     storeId: string,
-    dto: { provider: PaymentGatewayProvider; merchantId?: string; apiKey: string; apiSecret?: string },
+    dto: { provider: PaymentGatewayProvider; merchantId?: string; apiKey: string; apiSecret?: string; webhookSecret?: string },
   ) {
+    // B2 (founder decision) - Stripe-specific connect-time rules live
+    // here rather than as conditional DTO decorators, since they're the
+    // only provider with either of them: a restricted key, not a secret
+    // key, and a webhook signing secret (docs/stripe-seller-setup.md) is
+    // mandatory - without it the webhook endpoint can never verify this
+    // store's events, so there is no point accepting the connection.
+    if (dto.provider === "stripe") {
+      assertStripeRestrictedKey(dto.apiKey);
+      if (!dto.webhookSecret) {
+        throw new BadRequestException("A Stripe webhook signing secret is required - see the seller setup guide for where to find it.");
+      }
+    }
+
     return this.tenantPrisma.run(sellerId, async (tx) => {
       const store = await tx.store.findUnique({ where: { id: storeId } });
       if (!store) throw new NotFoundException("Store not found.");
@@ -102,6 +121,7 @@ export class PaymentGatewayService {
       const { plaintextKey, wrappedDataKey } = await this.vault.issueDataKey();
       const apiKeyEncrypted = this.vault.encryptWithDataKey(dto.apiKey, plaintextKey);
       const apiSecretEncrypted = dto.apiSecret ? this.vault.encryptWithDataKey(dto.apiSecret, plaintextKey) : null;
+      const webhookSecretEncrypted = dto.webhookSecret ? this.vault.encryptWithDataKey(dto.webhookSecret, plaintextKey) : null;
 
       return tx.storePaymentGatewayConnection.upsert({
         where: { uniq_store_gateway_provider: { storeId, provider: dto.provider } },
@@ -111,6 +131,7 @@ export class PaymentGatewayService {
           merchantId: dto.merchantId ?? null,
           apiKeyEncrypted,
           apiSecretEncrypted,
+          webhookSecretEncrypted,
           dataKeyWrapped: wrappedDataKey,
           priorityOrder: PROVIDER_PRIORITY[dto.provider],
         },
@@ -118,6 +139,7 @@ export class PaymentGatewayService {
           merchantId: dto.merchantId ?? null,
           apiKeyEncrypted,
           apiSecretEncrypted,
+          webhookSecretEncrypted,
           dataKeyWrapped: wrappedDataKey,
           isActive: true,
         },

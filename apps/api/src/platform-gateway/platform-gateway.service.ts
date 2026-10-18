@@ -20,6 +20,15 @@ const PROVIDER_PRIORITY: Record<PaymentGatewayProvider, number> = {
   easypaisa: 1,
   jazzcash: 2,
   bank: 3,
+  // B2 - unreachable in practice: ConnectPlatformGatewayDto's own
+  // @IsEnum allowlist deliberately does NOT include "stripe" (the
+  // platform's own merchant connection stays Raast/Easypaisa/JazzCash/
+  // bank only - Paddle, not Stripe, is the platform's chosen billing
+  // processor, D117). This entry exists only because
+  // PaymentGatewayProvider is one shared Prisma enum, so adding "stripe"
+  // for the seller-facing registry (PaymentGatewayService) forces every
+  // Record<PaymentGatewayProvider, _> to cover it, this one included.
+  stripe: 4,
 };
 
 /** Never returns credential ciphertext - same allowlist discipline as PaymentGatewayService's SAFE_SELECT. */
