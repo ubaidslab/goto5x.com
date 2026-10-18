@@ -3491,8 +3491,13 @@ combined 7-file batch (`stripe-webhook`, `module62-payment-gateway-connect`,
 `module76-prepaid-partial-advance`, `module95-payment-model`,
 `module25-admin-completion`) - 70/70 tests, exit 0, confirming the
 TRUNCATE fix actually resolves the state-leakage mechanism rather than
-just plausibly addressing it. A fresh real CI run on the PR, with both
-fixes included, is the final gate before reporting B2 merged.
+just plausibly addressing it. The fresh real CI run on top of all four
+fixes (commit `aa7de91`) came back fully green - independently confirmed
+via the GitHub API, not the webhook summary alone: all 29 check runs
+`completed`/`success` (or `skipped` on a duplicate-trigger second
+workflow run), `mergeable_state: "clean"`, zero open review threads.
+PR #13 merged (commit `273ef5b`, regular merge per the same "preserve
+full history" precedent the founder set for PR #12) immediately after.
 **Reasoning:** the same discipline D128 already proved out for B1 - a
 defect that only a real, independently-checked CI run (not a local
 re-skim) surfaces, caught and fixed before the founder is told "merged
