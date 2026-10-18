@@ -3381,16 +3381,29 @@ Connect) to hold more broadly than per-store sandbox testing.
 session's own standing rule (confirmed real CI, not just local, before
 reporting merged) caught two real defects once the actual PR CI ran -
 both now fixed on the same branch before merge:
-1. **`stripe-mock-test` job failed to even start.** Docker's own
-   `--health-cmd` curled `stripe-mock` with no `Authorization` header;
-   `stripe-mock` 401s on every unauthenticated request regardless of
-   whether the key is real (confirmed directly from the container's own
-   stdout via `get_job_logs`: repeated `GET /v1/charges` ->
-   `status=401`, then `Failed to initialize container` - the healthcheck
-   never passed, so the job's steps never ran at all). Fixed by adding
-   HTTP Basic Auth with a dummy key to the healthcheck command
-   (`-u sk_test_dummy_key_for_healthcheck:` - `stripe-mock` doesn't
-   validate the key's authenticity, only that one is present).
+1. **`stripe-mock-test` job failed to even start, and took two tries to
+   fix correctly.** Docker's own `--health-cmd` hit `stripe-mock` with no
+   `Authorization` header; `stripe-mock` 401s on every unauthenticated
+   request regardless of whether the key is real (confirmed directly
+   from the container's own stdout via `get_job_logs`: repeated
+   `GET /v1/charges` -> `status=401`, then `Failed to initialize
+   container` - the healthcheck never passed, so the job's steps never
+   ran at all). First fix attempt added HTTP Basic Auth via
+   `curl -sf -u sk_test_dummy_key_for_healthcheck: ...` - itself wrong,
+   confirmed by a second real-CI run on that exact fix commit: the
+   container's stdout now showed no request reaching the server at all
+   (not even a 401), meaning the health-cmd was failing before the
+   network call. Fetched `stripe-mock`'s own published `Dockerfile`
+   rather than guess a second time: the image is `alpine:latest` plus
+   only `apk add ca-certificates` - no `curl` anywhere in it. `wget`
+   (Alpine's busybox applet, not separately installed) is the only HTTP
+   client actually present, which is what the ORIGINAL pre-fix healthcheck
+   was really reaching the server with all along, 401 and all. Corrected
+   to `wget -qO- http://sk_test_dummy_key_for_healthcheck:@localhost:12111/v1/charges`
+   - credentials embedded in the URL's userinfo, which busybox wget has
+   base64-encoded into a real `Authorization: Basic` header since a 2011
+   upstream fix, long predating any current Alpine release - no CLI flag
+   whose support in this exact busybox build would otherwise be a guess.
 2. **Cross-test-run state leakage via a table missing from
    `resetDatabase()`'s TRUNCATE list** - the more serious of the two.
    `processed_webhook_events` (new this task, D131) was never added to
