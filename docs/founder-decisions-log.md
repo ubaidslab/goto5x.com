@@ -3374,3 +3374,62 @@ the restricted-key/Connect-ready/sandbox-only framing all trace
 directly to minimizing blast radius on a credential this platform does
 not yet have the legal/business footing (a Stripe platform account,
 Connect) to hold more broadly than per-store sandbox testing.
+
+### D132. Two real CI bugs found verifying B2, plus one ruled-out flake
+**Status:** LOCKED.
+**Decision:** D131 reported as "verified" against local runs only; this
+session's own standing rule (confirmed real CI, not just local, before
+reporting merged) caught two real defects once the actual PR CI ran -
+both now fixed on the same branch before merge:
+1. **`stripe-mock-test` job failed to even start.** Docker's own
+   `--health-cmd` curled `stripe-mock` with no `Authorization` header;
+   `stripe-mock` 401s on every unauthenticated request regardless of
+   whether the key is real (confirmed directly from the container's own
+   stdout via `get_job_logs`: repeated `GET /v1/charges` ->
+   `status=401`, then `Failed to initialize container` - the healthcheck
+   never passed, so the job's steps never ran at all). Fixed by adding
+   HTTP Basic Auth with a dummy key to the healthcheck command
+   (`-u sk_test_dummy_key_for_healthcheck:` - `stripe-mock` doesn't
+   validate the key's authenticity, only that one is present).
+2. **Cross-test-run state leakage via a table missing from
+   `resetDatabase()`'s TRUNCATE list** - the more serious of the two.
+   `processed_webhook_events` (new this task, D131) was never added to
+   `test/e2e/setup.ts`'s TRUNCATE statement. An isolated run of the new
+   webhook spec inserted rows under hardcoded event IDs
+   (`evt_confirm_1`/`evt_dedupe_1`); because the table was never
+   truncated, those rows survived into a later combined-batch run that
+   reused the same literal IDs, and `WebhookEventDedupeService.claim()`
+   correctly saw them as already-claimed and silently skipped
+   processing - manifesting only in the combined run (order stays
+   pending, zero `Payment` rows), not in isolation, which is what made
+   this a genuine "only in CI" class of bug rather than something a
+   single local run would have caught. Fixed by adding the table to the
+   TRUNCATE list. Noted but deliberately left alone as pre-existing and
+   out of this task's scope: `store_payment_gateway_connections` is also
+   missing from that same list - not currently causing failures since
+   every e2e spec uses a fresh `storeId`, but worth a future pass.
+3. **Investigated, ruled out as unrelated**: the same CI run also showed
+   `module79-ambassador-repricing.e2e-spec.ts` failing
+   (`expect(commission).toHaveLength(1)` got `[]`) - a test about
+   Ambassador Program referral commission that imports nothing from this
+   task's diff (`PlanFeeDebitService`/`SettingsService` only). Per this
+   session's PR-babysitting rule (rule out a failure that isn't the PR's
+   before claiming it is), ran that spec file alone against a fresh
+   Postgres/Redis: 5/5 passed clean. Combined with zero import overlap
+   with the B2 diff, this is a pre-existing order/environment-sensitive
+   flake in the shard, not something B2 caused or needs to fix - flagged
+   here for future triage rather than silently ignored, but not blocking
+   this merge.
+**Verified:** both fixes committed on top of D131's commit, re-run
+locally with `set -o pipefail`: the combined 7-file batch
+(`stripe-webhook`, `module62-payment-gateway-connect`,
+`module67-gateway-health`, `platform-gateway.e2e`,
+`module76-prepaid-partial-advance`, `module95-payment-model`,
+`module25-admin-completion`) - 70/70 tests, exit 0, confirming the
+TRUNCATE fix actually resolves the state-leakage mechanism rather than
+just plausibly addressing it. A fresh real CI run on the PR, with both
+fixes included, is the final gate before reporting B2 merged.
+**Reasoning:** the same discipline D128 already proved out for B1 - a
+defect that only a real, independently-checked CI run (not a local
+re-skim) surfaces, caught and fixed before the founder is told "merged
+with CI green" rather than after.

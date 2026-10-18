@@ -551,7 +551,7 @@ jobs:
         image: stripe/stripe-mock:latest
         ports: ["12111:12111"]
         options: >-
-          --health-cmd="wget -qO- http://localhost:12111/v1/charges || curl -sf http://localhost:12111/v1/charges"
+          --health-cmd="curl -sf -u sk_test_dummy_key_for_healthcheck: http://localhost:12111/v1/charges"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
