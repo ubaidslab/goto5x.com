@@ -453,11 +453,35 @@ except where law requires); a renewal reminder 7-14 days before
 renewal; the cancel flow offers "keep my store on Free" plus a pause
 option plus a one-question exit survey (reuses the existing
 starter_free downgrade path — distinct from D41's separate, still-open
-lapsed-seller question); an upgrade applies immediately with proration,
-a downgrade applies at period end; the billing cycle is switchable at
-renewal; Founding Members keep their price lock (D17) through all of
-this.
+lapsed-seller question); **upgrade and downgrade both apply at period
+end, no mid-cycle proration charge (revised 2026-10-19, B3/Paddle design
+review — supersedes this entry's original "upgrade applies immediately
+with proration" text below, which never matched the shipped
+`requestPlanChange()`/`applyDueCycleChanges()` code; building a payment
+rail to match stated-but-never-built behavior would have been new scope
+disguised as a bug fix. Immediate upgrade is explicitly post-MVP, not
+abandoned.)**; the billing cycle is switchable at renewal; Founding
+Members keep their price lock (D17) through all of this.
 **Reasoning:** not recorded beyond the mechanics themselves.
+**Refund mechanism (2026-10-19, B3/Paddle decision):** D11's "14-day
+money-back on every cycle" is the policy that governs - not FR-6.49/
+Module 72's 50%, first-cycle-only, admin-triggered wallet-credit path,
+which was built against a never-fully-matching reading of this same
+entry and is now explicitly retired for Paddle-paid plans (kept only
+for whatever legacy wallet-paid subscriptions still exist on that rail,
+if any). For a Paddle charge: 100% refund within 14 days of ANY paid
+charge (first purchase or a renewal, not just the first cycle), issued
+through Paddle to the original payment method, entitlement ends
+immediately (not at period end) the moment the refund is confirmed.
+Seller-initiated from the billing page. Auto-approved when within the
+14-day window AND it's that account's first money-back refund in a
+trailing 12 months; otherwise routed to admin review (the refund-
+hopping guard - repeated refund requests don't self-service past this
+point). Paddle's own adjustment-approval step (sandbox: auto-approved
+every ~10min; live: auto-approved under $400/verified account, else
+Paddle's own manual review) sits underneath this and is a separate gate
+Paddle controls, not something this platform's own auto-approve/admin-
+review split can bypass.
 
 ### D12. Cumulative plan ladder
 **Status:** LOCKED.
@@ -3630,3 +3654,280 @@ stopping at "ruled out the obvious ones, ship a plausible guess."
 Matches this codebase's standing rule (D132, D128, D125...): verify the
 real mechanism before writing it down as fixed, and write down what was
 actually found, including the dead ends.
+
+### D134. B3/Paddle decisions, Founding Members counter, CI secrets, and urgent repo-exposure triage
+**Status:** LOCKED.
+**Decision:** the founder's 4 answers to the B3 design note (D11's own
+text updated above for items 2 refund/deferred-proration; recorded here
+for items 3-4 plus the triage that preceded this program):
+- **Founding Members (D17):** the first 100 PAYING sellers, counted
+  across ALL billing rails combined (manual/wallet and Paddle both
+  count toward the same 100 - not a Paddle-only cohort). Needs one
+  atomic counter (a single-row `SELECT ... FOR UPDATE`-guarded increment
+  or an equivalent DB-level unique-ordinal assignment, matching this
+  codebase's own established race-prevention pattern from the campaign-
+  quota/supplier-wallet fixes - D132/the security audit's #9/#17) so two
+  simultaneous first-ever payments can never both become #100.
+- **CI secrets:** yes - Paddle SANDBOX credentials (API key, webhook
+  secret) as GitHub Actions **environment** secrets (not repository-
+  level), scoped so they're never available to a workflow triggered
+  from a fork PR. Founder creates the sandbox account and adds them;
+  live Paddle keys never touch CI, same posture as every other gateway
+  in this codebase.
+**Urgent triage performed before this program's Phase 1 started** (the
+founder's "repo was public, assume attackers have read everything"
+instruction): independently re-ran gitleaks v8.21.2 (the same pinned
+version CI uses) against the FULL git history (126 commits, not just
+the working tree) - zero leaks, re-confirming `docs/security-audit-
+report.md` §3 #16/§7 Phase 5's own finding after everything this
+session has since added (KMS, Stripe, Paddle prep). Independently
+confirmed only `.env.example`-pattern files were ever committed, never
+a real `.env`, across all history. Checked current repo visibility via
+an unauthenticated GitHub API call (not the dashboard) - **confirmed
+still public at the time of this check**, reported to the founder to
+act on directly (not a change this session can make). One correction to
+the audit report itself: its "GitHub Actions referenced by tag, not
+pinned SHA" finding (dated 2026-10-09) is stale - every action
+reference in `ci.yml` is already pinned to a full 40-character commit
+SHA, confirmed by direct grep, zero exceptions. Nothing in the audit
+report's disclosed backlog was secret-dependent or newly catastrophic
+on its own; one item (`CheckoutService.checkout()` has no server-side
+idempotency guard, §6 item 2) is explicitly flagged by the report
+itself as relevant to this exact program's Phase 1 (a new webhook
+handler is new surface area that shouldn't repeat checkout's existing
+check-then-act shape) and is folded into Phase 1's scope rather than
+treated as a separate emergency patch.
+**Reasoning:** matches this session's standing discipline of verifying
+exposure claims directly rather than trusting either the audit
+document or the dashboard, and of folding a security report's own
+explicit cross-reference into the next relevant phase rather than
+re-triaging it as new.
+
+### D136. No Return delivery-advance model (external D134) - buyer pre-pays delivery charge only, as the default
+**Status:** LOCKED.
+**Numbering note, read this before searching for "D134"/"D135"
+elsewhere:** this entry starts a block of 16 decisions (D136-D151) from
+a set of running notes the founder pasted from a *separate* advisor
+conversation, whose own numbering also reached "D134"-"D149" -
+coincidentally colliding with this file's own, unrelated D134 (Paddle
+refund/Founding-Members/CI-secrets, above) and D135 (Paddle billing
+implementation), which mean completely different things. **D135 is
+recorded by the parallel MVP Program Phase 1 PR (Paddle billing), a
+separate branch/PR from the one that adds this entry - whichever of the
+two PRs merges to `main` second is the one that needs to reconcile this
+shared file and confirm D135 ends up positioned between D134 and D136.**
+Each entry below cites its external number once in its own title; this
+file's own sequence continues normally past D151.
+**Decision:** for the "No Return" feature, the BUYER pre-pays the
+delivery charge only (not a percentage of the order total) as the new
+default advance mode; the existing "% of total" advance model
+(`payments.advance_model_percent`, currently defaulting 20%) stays
+available as a seller-chosen option, not removed. Landing copy
+("delivery charge paid in advance") was already accurate to the new
+default; the code is not, yet - `advance_model_percent` defaulting to a
+% with no "delivery-charge-only" mode is the gap Phase 2 closes.
+**Reasoning:** the founder's own decision, from the 2026-10-19 MVP
+offer review; not elaborated beyond the mechanics themselves in the
+source notes.
+
+### D137. 0% platform fee forever, hard-locked (external D135)
+**Status:** LOCKED.
+**Decision:** `billing.commission_rate_percent` and every plan's own
+commission value get hard-locked to 0 - the admin UI/API path that
+currently allows raising it (up to 2%) is removed entirely, not just
+defaulted to 0. Marketing copy restores the explicit "0% commission"
+claim (dropped in v0.36 per the same research that surfaced this gap).
+**Reasoning:** not elaborated beyond the mechanics in the source notes;
+this is the platform's core differentiation claim against competitors'
+take-rate models, so leaving a code path that could silently raise it
+above 0% was treated as a direct contradiction of the marketing promise,
+not a configuration nicety.
+
+### D138. Branding removal by tier - RISE only (external D136)
+**Status:** LOCKED.
+**Decision:** RISE removes the UZEYN loading mark AND the checkout/
+invoice header branding (a small "Powered by UZEYN" footer line stays
+even on RISE); GO/RUN are unaffected, keeping full branding exactly as
+FR-74.4/74.5 already specify. This narrows, for RISE only, what
+FR-74.4/74.5's "permanent on every tier" currently means in code.
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D139. Data export on every tier, including Free (external D137)
+**Status:** LOCKED.
+**Decision:** the current FLY-only gate (where no live tier can
+actually export, since FLY is dormant) is replaced by: every tier can
+export; small exports return an instant CSV download; large exports run
+as an async job and notify by email with a login-required, 24-hour-
+expiring link (never a raw email attachment); re-authentication/2FA is
+required before any export; rate-limited to 1 export/hour; every export
+audit-logged.
+**Reasoning:** not elaborated beyond the mechanics in the source notes;
+the security controls (re-auth, expiring link, rate limit, audit log)
+match this codebase's existing discipline for other sensitive bulk-data
+actions rather than inventing a new, looser pattern for exports
+specifically.
+
+### D140. UZEYN is the final brand (external D138)
+**Status:** LOCKED.
+**Decision:** see `CLAUDE.md`'s "Design Direction" section (v1.4, same
+date) for the full binding rewrite - bottle green/paper/brass palette,
+Schibsted Grotesk, the blackletter "uyz" mark, branding no longer dummy/
+placeholder, the old monochrome rule and "nothing may hard-code the
+platform name" rule both retired. Recorded here as the decision-log
+anchor for that CLAUDE.md change; the actual repo-wide re-skin to these
+tokens is Phase 3 work, not yet executed.
+**Reasoning:** not elaborated beyond the mechanics in the source notes;
+superseding v1.3's monochrome pass (itself a reversal of an even
+earlier cream/green pass) is now the second reversal of a platform-wide
+color/brand direction on record in this repo - a direct signal that any
+single CLAUDE.md design entry should be read as "current," not
+"permanent," regardless of how firmly a past entry states its own
+finality.
+
+### D141. Seller geography - Pakistan-only signup, worldwide buyers (external D139)
+**Status:** LOCKED.
+**Decision:** seller signup stays Pakistan-only for now (worldwide
+later), but a Pakistan-based seller may sell to buyers worldwide -
+landing copy must say this precisely, not imply the platform itself is
+Pakistan-only for buyers too. A seller connects whichever payment
+gateway actually fits their storefront's target country (e.g. a UAE-
+targeted store connects a UAE-capable gateway) - the connect UI should
+surface each gateway's own country/business eligibility requirements so
+a seller can tell which one fits before trying to connect it (open
+item, not yet built).
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D142. Product caps, revised (external D140)
+**Status:** LOCKED.
+**Decision:** Free 10, GO 30 (down from the as-built 100 the gap report
+found), RUN 100, RISE 500, FLY unlimited (FLY stays dormant regardless
+of its own cap value). Storage scales per tier - replaces the current
+flat 500MB-for-every-tier value.
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D143. First-cycle discount, scope fix (external D141)
+**Status:** LOCKED.
+**Decision:** the 50%-off-first-payment mechanic
+(`billing.first_cycle_discount_percent`) is scoped to the first MONTHLY
+payment of GO and RUN only, for new sellers only - not every tier's
+first payment regardless of cycle, which is what the code currently
+does. RISE/FLY and non-monthly first cycles get no first-cycle discount
+under the corrected scope.
+**Reasoning:** not elaborated beyond the mechanics in the source notes;
+the as-built behavior (discounting every tier's first payment
+regardless of cycle) was a genuine, unintended gap between what the
+founder had approved and what shipped, not a deliberate design this
+decision is reversing.
+
+### D144. MVP gateway lineup - PayFast added, Stripe stays dormant (external D142)
+**Status:** LOCKED.
+**Decision:** Stripe is explicitly OUT of the MVP gateway lineup - its
+built code (B2, already merged) stays exactly as shipped: dormant/
+sandbox-only, excluded from Stage 0 - no contradiction with D131/B2's
+own decision record, which already scoped it that way. PayFast is added
+to the MVP gateway list as a new seller-facing buyer-checkout adapter to
+build (Phase 2 scope, same `SellerPaymentGatewayAdapter` pattern as the
+existing five). Landing page's gateway list needs updating to match
+once PayFast is live.
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D145. Moderation model - live-by-default, flagged items reviewed (external D143)
+**Status:** LOCKED.
+**Decision:** the new-seller probation mechanic that currently HIDES
+every new product under review is replaced by: products go live
+immediately by default; only products matched by a keyword/category
+flag go to review, carrying a visible "under review" badge rather than
+being hidden. Add a "Report this store" button (buyer-facing abuse-
+reporting path). Seller responsibility and the platform's ban rights
+belong in the Terms of Service/Seller Agreement - not the Privacy
+Policy, which is where this content does not currently live correctly.
+Lawyer review of these documents is still pending/open, unaffected by
+this decision's own scope.
+**Reasoning:** not elaborated beyond the mechanics in the source notes;
+hiding every new product by default trades real seller activation
+friction for a moderation benefit that a narrower keyword/category flag
+captures with much less of that cost.
+
+### D146. Support infrastructure (external D144)
+**Status:** LOCKED.
+**Decision:** founder-managed `support@<domain>` email (not a personal
+Gmail address) is the real support channel; an in-app Help form auto-
+attaches the submitting seller's store ID; a 24-hour auto-reply
+acknowledges every submission; 15-20 help articles need writing;
+`security@<domain>` plus a real `/.well-known/security.txt` are built
+separately from the general support channel.
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D147. Blanket acceptance of remaining advisor recommendations + two open items (external D145)
+**Status:** LOCKED (the blanket acceptance); the two open items below
+are OPEN, not LOCKED.
+**Decision:** the founder accepted every other advisor recommendation
+from the 2026-10-19 review not individually itemized in D136-D146/D148-
+D151. Two items remain explicitly open: verify PayFast's actual
+international-card acceptance before building against an assumption;
+**the repo was independently confirmed still public as of 15:19 PKT on
+2026-10-19 by the founder's own parallel check** - this is the SAME
+finding this session's own D134 (above, this file's numbering)
+independently caught via an unauthenticated GitHub API call earlier the
+same day, not a new, separate exposure - re-verify current status
+rather than assume either check is now stale (re-verified again at the
+time this split was written - still public).
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D148. Persona-based testing (external D146)
+**Status:** LOCKED.
+**Decision:** before/alongside launch, AI agents test complete first-
+week seller and buyer journeys end-to-end in a real running instance,
+acting as genuine sellers/buyers rather than exercising isolated
+endpoints; findings get fixed from that testing. The founder
+additionally tests with a small number of real sellers after MVP
+launch, independent of this automated pass.
+**Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+### D149. Buyer-trust checkout design, delegated (external D147)
+**Status:** LOCKED (the delegation itself); the resulting design is
+OPEN until Phase 2/3 actually produces one.
+**Decision:** the founder explicitly delegates designing the checkout/
+advance-payment flow for buyer trust to the advisor/developer - an open
+design task feeding into Phase 2's checkout-related work and Phase 3's
+UI pass, not a fixed spec to implement verbatim.
+**Reasoning:** not elaborated beyond the delegation itself in the
+source notes.
+
+### D150. UZEYN's own subscription billing rail, Pakistan phase - PayFast, not Paddle (external D148)
+**Status:** LOCKED.
+**Decision:** for collecting the platform's OWN plan-fee revenue from
+Pakistani sellers, **PayFast is the live rail, not Paddle** - Paddle is
+deferred to "going global" later. This does not discard B3's Paddle
+work (D134/this file's D135, the Paddle billing implementation - see
+D136's numbering note on why D135 may not appear above yet) - it
+explicitly "stays dormant/sandbox", exactly the posture B3 was already
+built to (sandbox-only, excluded from Stage 0, per the founder's own
+original B3 kickoff message this same session) - no rework needed on
+B3 itself. PayFast integration for this purpose is new, not-yet-started
+scope with open questions to verify before building: wallet/bank
+support, whether real recurring billing/tokenization exists or whether
+renewal is actually a manual monthly pay-link-plus-reminder flow
+(verify before assuming either), merchant onboarding requirements
+(NTN/business registration), a PKR pricing table (replacing USD for
+this rail specifically), and tax/invoicing responsibility - PayFast is
+NOT a merchant of record the way Paddle is, so FBR/provincial sales-tax-
+on-services liability sits with the platform itself on this rail,
+needing real accountant input before building anything that assumes
+otherwise.
+**Reasoning:** not elaborated beyond the mechanics in the source notes;
+keeping B3's Paddle work alive but dormant rather than discarding it
+preserves the option to use it once "going global" is a real near-term
+plan, at zero ongoing cost while it stays unused.
+
+### D151. Storefront template redesign (external D149)
+**Status:** LOCKED.
+**Decision:** every storefront template becomes premium, mobile-first,
+and image-led, matching a specific reference direction (large imagery,
+rounded cards, category pills, a bottom tab bar, product-gallery
+thumbnails, New/Discount badges, a size selector, a quantity stepper,
+strike-through pricing, a full-width dark "Add to Bag" action) - fully
+editable afterward through D-Studio, not a fixed, uneditable template.
+Phase 3 scope; does not change CLAUDE.md's storefront-stays-separate-
+system principle (see the D140 CLAUDE.md update's own note on this).
+**Reasoning:** not elaborated beyond the mechanics in the source notes.

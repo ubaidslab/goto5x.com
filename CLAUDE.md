@@ -33,73 +33,75 @@ diffing against these project-authored versions before replacing them.
 
 ## Design Direction (binding for all UI work)
 
-- **Fully monochrome — FINAL, no accent hue anywhere (v1.3).** This
-  supersedes every earlier color decision recorded in this file and in
-  the Founder batch A2/A3 history (a cream/green brand palette + Alegreya
-  SC on every heading) — that pass shipped and was later fully reversed
-  by this one, not merely re-pointed at a different hue. Near-white
-  surfaces, true near-black ink, a grayscale scale between, and **zero**
-  accent color: the interactive role an accent hue used to play (primary
-  CTA fill, active nav, focus rings, links) is now filled by solid
-  near-black in light mode / near-white in dark mode — apple.com
-  discipline taken one step further, horizonx.so motion unchanged.
-  Semantic/status colors (order/verification/moderation state) are
-  explicitly untouched — see "Status colors stay functional, not brand"
-  below.
-- **Tokens are the single source of truth**
+- **UZEYN is the final brand — no longer dummy/placeholder, no longer
+  monochrome (v1.4, founder decision D140, 2026-10-19).** This supersedes
+  the entire v1.3 monochrome pass below (which itself superseded the
+  earlier cream/green + Alegreya SC pass before it) — that is now TWO
+  reversals on record for this file, so treat any color/brand direction
+  here as live until the next dated entry says otherwise, not as
+  permanent on the strength of how firmly a past entry was worded.
+  Palette: **bottle green `#0B2B24`** (ink/primary — the role
+  `--color-ink`/`--color-accent` used to split between near-black and
+  "no hue" now both resolve to this), **paper `#EEF0E6`** (the near-white
+  surface/canvas role — a warm ledger-paper tint, not pure white), and
+  **brass `#D9AE45`** (the one accent — used deliberately and sparingly:
+  primary CTA fill, active-nav, focus rings, the brand mark's
+  misregistration outline — not spread across every icon/border the way
+  a default Tailwind accent would be). Semantic/status colors stay
+  exactly as untouched as they were under the old rule — see "Status
+  colors stay functional, not brand" below, unaffected by either color
+  pass.
+- **Tokens are the single source of truth** — same mechanism as before
   (`apps/web/app/globals.css`'s `@theme` block, mirrored in
   `apps/api/src/design-tokens/design-tokens.constants.ts` for the admin
-  lockable color-token panel — Module 92/A6, no rebuild needed, just new
-  default values entered through it). Every neutral
-  (`--color-canvas`/`--color-surface`/`--color-border`/`--color-ink`…)
-  is a true R=G=B grayscale value, no warm/cream or green tint anywhere.
-  `--color-accent` deliberately equals `--color-ink`'s value now (there's
-  no hue left to be confused with body text, so the two are told apart by
-  shape/underline/weight at each call site instead — a filled button, a
-  filled active-nav pill, an explicit `underline` on every inline text
-  link). **Individual pages are not restyled beyond this token-level
-  change plus the specific non-color-cue fixes this pass made** (see
-  git history for the exact list — bucket-filter tiles, settings-registry
-  row selection, ~14 links that relied on accent color alone).
-- **Typography: no serif in dense UI, ever.** The A3 batch's blanket
-  `h1,h2,h3,h4 { font-family: var(--font-display) }` rule (Alegreya SC
-  everywhere, including the seller dashboard and admin terminal) is
-  reversed. Dashboard/admin/forms/tables/small text are Inter-only,
-  hierarchy built from weight/size, never a serif face — shared
-  primitives (`PageHeader`, `DialogTitle`, `EmptyState`,
-  `UpgradeLockedCard`, `Gauge`'s value text) were edited directly rather
-  than relying on the removed blanket rule. The serif voice survives
-  ONLY on the marketing site's own hero/display headlines and shared
-  marketing components (`SectionTitle`, `PricingCard`, `FeatureCard`,
-  `FAQAccordion`, etc.) — each of those already opts in explicitly via
-  its own `font-display` className, independent of the rule that was
-  removed, so they were unaffected by removing it. The "UZEYN" wordmark
-  in `Sidebar.tsx`/`AdminSidebar.tsx`/the store-creation page keeps its
-  serif treatment — a brand-mark exception, not a heading.
+  lockable color-token panel), now carrying bottle-green/paper/brass
+  values instead of the grayscale ones. **This repo-wide re-skin is
+  Phase 3 (UI/UX design-system pass) work, not yet executed** — this
+  entry records the locked target direction tokens must move to, not a
+  claim that every page has already been repainted. Until that phase
+  lands, don't assume a given screen already reflects this; check the
+  actual token values in `globals.css` for what's live today.
+- **Typography: one family, Schibsted Grotesk, self-hosted (OFL) —
+  everywhere, dense UI and marketing headlines alike.** This replaces
+  the old Inter-for-dense-UI / serif-for-marketing-headlines split
+  entirely, not just the font name within the same split — the whole
+  point of the old split (no serif in dense UI) is now moot since
+  nothing in the new system is a serif face at all. The one deliberate
+  exception, carried over structurally from the old rule: the brand
+  **mark** itself (not body text, not a heading) — the blackletter
+  "uyz" monogram (UnifrakturCook Bold, OFL, outlines unioned, brass
+  misregistration outline) used as the literal logo/wordmark graphic in
+  `Sidebar.tsx`/`AdminSidebar.tsx`/the store-creation page and anywhere
+  else the mark itself appears — stays blackletter because it's a
+  graphic mark, not a font choice for reading text.
 - **Seller-facing dashboard color personalization is untouched.** Module
   10/FR-28.4's opt-in emerald/amber/rose accent presets (a seller's own
   workspace choice, not the platform's brand identity) still work exactly
-  as before — only the platform DEFAULT (before a seller picks one)
-  became monochrome, per explicit founder instruction to keep this
-  shipped, tested feature rather than remove it for no functional reason.
+  as before — only the platform DEFAULT (before a seller picks one) is
+  now bottle green/brass instead of monochrome, per the same "keep this
+  shipped, tested feature" reasoning the old rule already recorded.
 - **Status colors stay functional, not brand.** Order/verification/
   moderation status colors (`--color-success`/`-warning`/`-danger`/
   `-info`) were never part of any brand-color pass, this one included —
   same "status pills stay distinct, never folded into brand palette"
   rule locked since Phase 1.
-- **Buyer-facing storefronts (D-Studio) are out of scope for brand-color
-  passes.** A seller's own storefront theme (`lib/theme-presets.ts`,
-  `app/storefront/`) is a separate, seller-chosen system per the
-  original Phase 1 three-system separation - re-confirmed explicitly in
-  scope for the v1.3 monochrome pass as untouched.
-- **Branding is dummy until launch.** The platform will be renamed
-  before public launch. Keep a typographic placeholder wordmark
-  (`Sidebar.tsx`'s `Wordmark()` component is the existing example — see
-  its own comment) — no logo design work. **Nothing in new UI copy may
-  hard-code the current platform name** where the brand-asset/
-  content-page system (SRS FR-12.1/FR-12.3, built Module 17) should
-  supply it instead — that system is the actual mechanism for a future
-  rebrand to be a data change, not a code change.
+- **Buyer-facing storefronts (D-Studio) stay a separate, seller-chosen
+  system**, same Phase 1 three-system separation as before — a seller's
+  own storefront theme (`lib/theme-presets.ts`, `app/storefront/`) is
+  not forced onto the platform's own brand palette. Separately (D149,
+  not a brand-color question): storefront *templates* themselves are
+  being redesigned premium/mobile-first/image-led — that's a template-
+  quality pass, not this file's brand-color scope, and doesn't override
+  a seller's own theme choice once applied.
+- **Branding is final — the opposite of the old rule, not a continuation
+  of it.** The platform will NOT be renamed before launch; UZEYN is it.
+  `Sidebar.tsx`'s placeholder `Wordmark()` component and the old
+  "nothing in new UI copy may hard-code the current platform name" rule
+  are both retired — new UI copy may say "UZEYN" directly. The brand-
+  asset/content-page system (SRS FR-12.1/FR-12.3, Module 17) stays in
+  place as genuinely useful admin-editable-content infrastructure, just
+  no longer load-bearing for "a future rebrand must be a data change" —
+  there is no future rebrand being planned for anymore.
 - **Plan tier names always carry their subtitle.** GO/RUN/RISE/FLY are
   creative names, not self-explanatory ones — every surface that shows
   one of these four individual-tier names (nav, billing/plan pages,

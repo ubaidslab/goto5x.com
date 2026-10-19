@@ -10,18 +10,66 @@ specs rather than restating them. Milestones: `docs/build-plan.md`'s
 
 - **Plans:** Free, GO ($24), RUN ($49), RISE ($119) — USD, tax-
   exclusive, 4 billing cycles each (D10/D75d). FLY exists in the
-  database but is dormant (not purchasable, not shown).
+  database but is dormant (not purchasable, not shown). Product caps
+  revised 2026-10-19 (D142): Free 10, GO 30, RUN 100, RISE 500, FLY
+  unlimited (dormant regardless) — see `docs/plan-matrix-mvp.md` for
+  the as-built-vs-target gap. Storage now scales per tier (D142,
+  figures not yet set) instead of one flat value.
 - **One store per customer** (D74) — multi-store is archived, not
   deleted.
-- **Seller payment gateways, built in this order:** Stripe → Simpaisa →
-  Airwallex → Razorpay (D73r), each gated by a registry `enabled` flag
-  that only flips on after real sandbox-verification evidence exists
+- **Seller payment gateways:** Simpaisa, Airwallex, Razorpay, and
+  PayFast (D144 adds PayFast to and removes Stripe from the live MVP
+  lineup — D73r's original Stripe-first build order is superseded, not
+  the gateway code itself, which stays merged and dormant, see below),
+  each gated by a registry `enabled` flag that only flips on after real
+  sandbox-verification evidence exists
   (`docs/gateway-verification/<name>.md`). Plus the always-available
   COD / advance / manual-mark-as-paid payment *models* (not gateways),
-  which is Pakistan's actual day-one payment path.
-- **Paddle billing**, sandboxed, behind a `billing.enabled` flag; the
-  platform also runs correctly with billing off (Free-only private
+  which is Pakistan's actual day-one payment path — "advance" now
+  defaults to delivery-charge-only rather than a percentage of the
+  order total (D136), with the percentage model staying available as a
+  seller-chosen option.
+- **UZEYN's own plan-fee billing (the platform's own revenue, not a
+  seller's buyer-checkout gateway): PayFast is the live rail for the
+  Pakistan phase (D150), not Paddle.** Paddle billing (B3) is built
+  (its own PR, merging independently of this one), and stays sandboxed
+  behind a `billing.enabled` flag once it lands,
+  deliberately dormant for this phase rather than discarded — it's the
+  rail for "going global" later. PayFast-for-platform-billing is new,
+  not-yet-started Phase 2 scope with real open questions (recurring/
+  tokenization vs. a manual pay-link-plus-reminder flow, merchant
+  onboarding, a PKR price table, and the platform's own tax/invoicing
+  liability since PayFast is not a merchant of record) — see D150 for
+  the full list before building against an assumption. The platform
+  also runs correctly with billing off entirely (Free-only private
   beta, D81).
+- **Platform commission hard-locked at 0%** (D137) — not just defaulted
+  to 0, the admin control that could raise it (up to 2%) is removed
+  from the build entirely. Marketing copy states "0% platform fee"
+  without qualification.
+- **Data export available on every tier, including Free** (D139) —
+  supersedes the FLY-only gate below; small exports are an instant CSV
+  download, large exports run async and notify by email with a login-
+  required, 24-hour-expiring link (never an attachment), gated behind
+  re-authentication, rate-limited to 1/hour, every export audit-logged.
+- **Branding: RISE removes the loading mark and the checkout/invoice
+  header branding** (a small "Powered by UZEYN" footer line stays even
+  on RISE) (D138); GO/RUN keep full branding exactly as FR-74.4/74.5
+  already specify.
+- **Moderation: live-by-default, not hide-by-default** (D145) — a new
+  product goes live immediately unless matched by a keyword/category
+  flag, which routes it to review with a visible badge instead of
+  hiding it. Adds a buyer-facing "Report this store" button.
+- **Seller geography: Pakistan-only signup, but PK sellers can sell to
+  buyers worldwide** (D141) — landing copy and the gateway-connect UI
+  must say this precisely, including surfacing each gateway's own
+  country/business eligibility so a seller can tell which one fits
+  their storefront's target country.
+- **Support infrastructure** (D146): a real `support@<domain>` address
+  (not a personal inbox), an in-app Help form that auto-attaches the
+  submitting seller's store ID, a 24-hour auto-reply, 15-20 help
+  articles, and `security@<domain>` + `/.well-known/security.txt` built
+  separately from general support.
 - **Post-payment buyer acknowledgment** (§5.76) — next item in the
   existing Phase A backlog, folded into M2.
 - **Store-domain separation** (D25) and the free-tier abuse controls
@@ -34,9 +82,23 @@ specs rather than restating them. Milestones: `docs/build-plan.md`'s
   guide, launch-readiness checklist (D71).
 - **Founding Members and Launch Assurance**, run manually by an admin
   (D80) — the public-facing offers exist, the automation doesn't yet.
+- **Storefront templates redesigned premium/mobile-first/image-led**
+  (D151) — fully editable through D-Studio afterward, not a fixed
+  template; Phase 3 scope, not yet built.
 
 ## Dormant (built, off by default, restorable — never deleted)
 
+- **Stripe** (B2, merged) — sandbox-only, excluded from Stage 0 by its
+  own original build decision; D144 (2026-10-19) confirms this stays
+  the posture for the MVP's live gateway lineup, not a temporary gap.
+  No contradiction between B2's decision record and D144 — both agree.
+- **Paddle billing** (B3, built — its own PR, not yet merged as of this
+  doc) — sandbox-only, excluded from Stage 0 by its own original build
+  decision; D150 (2026-10-19) confirms PayFast, not Paddle, is the live
+  rail for the Pakistan-phase MVP. Same "stays dormant, not discarded"
+  posture as Stripe, for the same reason (built for a later phase -
+  Paddle for "going global," Stripe pending a future founder decision to
+  re-activate it).
 - **Multi-store** (D74) — git-tagged `archive/multi-store-2026-10-09`,
   server-side 1-store limit enforced regardless of what a plan would
   otherwise allow.
@@ -110,3 +172,54 @@ prices and cycles, tax-exclusive pricing, the SECP-safe program design,
 store-domain separation's requirements, the removed $1/$499 proposals,
 the Students-plan guardrails, the open questions not listed above — is
 unchanged and still governs.
+
+## What changed from the 2026-10-19 MVP offer review (D136-D151)
+
+All LOCKED per the founder's explicit confirmation. Full text in
+`docs/founder-decisions-log.md`; `docs/advisor-log.md` carries the
+original, less formal source notes this review came from.
+
+- **D142 supersedes this doc's and `docs/plan-matrix-mvp.md`'s own
+  earlier product-cap figures** — Free 10/GO 100/RUN 100/RISE 100
+  becomes Free 10/GO 30/RUN 100/RISE 500. GO's cap moves DOWN (100→30),
+  not up — not yet built as of this doc.
+- **D137 supersedes any assumption that 0% commission was already
+  locked** — `billing.commission_rate_percent` could be raised by an
+  admin up to 2% as of the 2026-10-19 gap finding; D137 removes that
+  control entirely rather than just leaving it defaulted to 0.
+- **D136 supersedes the advance-payment model's default** — "No
+  Return" now defaults to buyer-pays-delivery-charge-only, not a
+  percentage of the order total (the percentage model stays available
+  as an option).
+- **D143 corrects, rather than changes, the first-cycle-discount
+  scope** — the shipped `billing.first_cycle_discount_percent` applies
+  to every tier's first payment regardless of cycle; this was never
+  the approved design, and D143 is the correction (GO/RUN monthly-only,
+  new sellers only).
+- **D139 supersedes the FLY-only data-export gate** stated below under
+  "Dormant"-adjacent context in the 2026-10-09 gap report — export
+  moves to every tier, with the security controls listed above.
+- **D138 narrows FR-74.4/74.5's "permanent on every tier" branding
+  rule** for RISE specifically (loading mark + checkout/invoice header
+  branding become removable there; GO/RUN unaffected).
+- **D140 reverses CLAUDE.md's v1.3 monochrome/dummy-branding rule
+  entirely** — see `CLAUDE.md`'s own v1.4 entry; not yet built as a
+  repo-wide re-skin (Phase 3 scope).
+- **D141 adds an explicit seller-geography scope statement** this doc
+  never previously stated outright (Pakistan-only signup, worldwide
+  buyers).
+- **D144 changes the live MVP gateway lineup** — Stripe moves from
+  "building toward live" (D73r) to confirmed-dormant; PayFast is added.
+- **D145 changes the moderation default** from hide-new-products-under-
+  review to live-by-default-with-flagged-exceptions.
+- **D146 adds support infrastructure** to MVP scope that this doc
+  never previously specified.
+- **D150 changes which rail carries the platform's own plan-fee
+  revenue** for the Pakistan-phase MVP — PayFast, not Paddle (B3 stays
+  built and will stay dormant once merged, not discarded).
+- **D151 adds a storefront-template redesign** to Phase 3 scope that
+  this doc never previously specified.
+- **D147/D149 are process decisions** (persona-based pre-launch testing;
+  delegating the buyer-trust checkout design to the advisor/developer)
+  rather than product-scope changes — noted here for completeness, not
+  because they alter what ships.
