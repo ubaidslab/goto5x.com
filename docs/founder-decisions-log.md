@@ -3931,3 +3931,111 @@ editable afterward through D-Studio, not a fixed, uneditable template.
 Phase 3 scope; does not change CLAUDE.md's storefront-stays-separate-
 system principle (see the D140 CLAUDE.md update's own note on this).
 **Reasoning:** not elaborated beyond the mechanics in the source notes.
+
+---
+
+## 2026-10-19 — Developer prompt: close Phase 1, then Phases 2-5 to "deploy-ready"
+
+Source: `docs/prompts/2026-10-19-phases-1-5.md`, the founder's full phased
+build-out prompt (written with the advisor) - this is the "decisions
+a-o detailed prompt" referenced but never received earlier the same
+day; the pasted running notes already folded into D136-D151 above were
+the informal precursor to this, not a substitute for it. This prompt
+explicitly supersedes any earlier phase plan where the two conflict. Only
+its own §1.3 ("Decisions to record") are new decisions - the rest of the
+prompt is phase/task sequencing, already covered by `docs/mvp-scope.md`'s
+own phase tracking, and is not re-logged here as separate D-numbers.
+
+**Numbering note for `docs/prompts/2026-10-19-phases-1-5.md`:** that
+prompt cites several *existing* decisions by the advisor's private,
+external numbering (that document's own D134-D149), per its own §0
+instruction: "the repo numbering wins ... map by content, not by
+number." Mapped here for any reader cross-referencing the prompt text
+against this file:
+
+| Prompt's own citation | What it means | Actual repo number |
+|---|---|---|
+| "0% platform fee forever (repo D135-equivalent)" | the prompt's own parenthetical is itself off - it is not D135 | **D137** |
+| "No Return advance = delivery charge (D134)" | external D134 | **D136** |
+| "Moderation (D143)" | external D143 | **D145** |
+| "Data export on every tier (D137)" | external D137 - **not** this file's own D137 (0% fee), the single most confusable pair in this whole table | **D139** |
+| "Support (D144)" | external D144 | **D146** |
+| "Brand = UZEYN, final (D138)" | external D138 | **D140** |
+| "PayFast as UZEYN's own subscription billing (D148)" | external D148 | **D150** |
+| "PayFast as a seller gateway (D142)" / "Stripe stays dormant (D142)" | external D142 | **D144** |
+| "AI persona testing (D146)" | external D146 | **D148** |
+| "Buyer trust ... delegated to the advisor (D147)" | external D147 | **D149** |
+| "D78 rule" (marketing matches shipped code) | already this file's own number | **D78** (no mapping needed) |
+
+The six genuinely new decisions below (from that prompt's own §1.3) take
+the next free numbers, D152-D157.
+
+### D152. Storefront Themes v2 + D-Studio v2 are MVP scope, launch-blocking (§1.3.a)
+**Status:** LOCKED.
+**Decision:** a full-store premium theme redesign plus a new D-Studio
+editor (draft/publish with version history, page-template editing
+beyond the homepage, a redesigned product page, styled checkout) is
+MVP scope and launch-blocking - not a post-MVP enhancement. Full
+technical spec: `docs/features/storefront-themes-v2.md` (§4 of the
+source prompt).
+**Reasoning:** not elaborated beyond the decision itself in the source
+prompt.
+
+### D153. Four premium themes at launch, one per category (§1.3.b)
+**Status:** LOCKED.
+**Decision:** Fashion, Beauty, Tech, Home & General - each a full-store
+theme (header through checkout-look, not homepage-only). Working names
+only; final display names are a data change the founder makes later,
+never a code change. They replace the current four built-ins
+(Editorial, Studio, Market, Atelier); "Start from blank" stays
+available. A migration must map every existing store's `themeId` to
+the nearest new theme while keeping all of that store's content intact
+- no store silently loses products, images, text, menus or domains in
+the process (per §1.2's customer-first rule).
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D154. Every theme on every plan, including Free; gating stays on sections/Custom CSS (§1.3.c)
+**Status:** LOCKED.
+**Decision:** theme choice itself is never plan-gated - Free gets the
+same four premium themes as RISE. The existing section-count gating
+(Free 4 / GO 8 / RUN 14 / RISE 20 of the 22-section D-Studio catalog)
+and Custom CSS (RISE-only) remain the only gates on theme-related
+capability, enforced server-side exactly as today.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D155. Paid "Premium Motion" templates are post-launch (§1.3.d)
+**Status:** LOCKED (defer).
+**Decision:** the purchase/entitlement backend for paid premium-motion
+templates stays built and dormant - not removed, not reactivated. Every
+buyer-facing entry point into it stays hidden until a separate, future
+founder decision reactivates it.
+**Reasoning:** not elaborated beyond the decision itself.
+
+### D156. `/customizer` retired; D-Studio is the only editor (§1.3.e)
+**Status:** LOCKED.
+**Decision:** the old `/customizer` route is retired. Its data (logo,
+fonts, colors, sections) migrates into D-Studio's settings model first;
+only then does the old route start redirecting to D-Studio. No two
+editors run in parallel at any point during this migration - a store is
+never mid-cutover with half its settings readable by one editor and
+half by the other.
+**Reasoning:** not elaborated beyond the decision itself - the explicit
+point is "no two editors in parallel," i.e. a clean cutover, not an
+indefinite dual-path.
+
+### D157. Buyer-trust checkout design: D149's delegation now has a concrete, binding spec (§1.3.f)
+**Status:** LOCKED.
+**Decision:** D149 (2026-10-19, above) delegated the buyer-trust
+checkout/advance-payment flow design to the advisor/developer, with the
+actual design left open at the time ("OPEN until Phase 2/3 actually
+produces one"). This prompt's §4.6 is that design, now concrete and
+binding: implement checkout and order-status exactly as §4.6
+specifies - a locked, always-visible set of trust content (order
+summary, the advance breakdown with its one-line "why" explainer,
+seller contact and verified-badge-if-verified, refund/cancellation
+terms shown before payment, a "Report this store" link, the connected
+gateway's name shown), stylable by the seller only within those limits.
+**Reasoning:** not elaborated beyond the decision itself - recorded as
+its own entry rather than editing D149's text, per this file's standing
+discipline of letting a later entry record a fulfillment/supersession
+explicitly instead of rewriting the earlier one.
