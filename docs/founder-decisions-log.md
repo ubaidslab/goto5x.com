@@ -453,11 +453,35 @@ except where law requires); a renewal reminder 7-14 days before
 renewal; the cancel flow offers "keep my store on Free" plus a pause
 option plus a one-question exit survey (reuses the existing
 starter_free downgrade path — distinct from D41's separate, still-open
-lapsed-seller question); an upgrade applies immediately with proration,
-a downgrade applies at period end; the billing cycle is switchable at
-renewal; Founding Members keep their price lock (D17) through all of
-this.
+lapsed-seller question); **upgrade and downgrade both apply at period
+end, no mid-cycle proration charge (revised 2026-10-19, B3/Paddle design
+review — supersedes this entry's original "upgrade applies immediately
+with proration" text below, which never matched the shipped
+`requestPlanChange()`/`applyDueCycleChanges()` code; building a payment
+rail to match stated-but-never-built behavior would have been new scope
+disguised as a bug fix. Immediate upgrade is explicitly post-MVP, not
+abandoned.)**; the billing cycle is switchable at renewal; Founding
+Members keep their price lock (D17) through all of this.
 **Reasoning:** not recorded beyond the mechanics themselves.
+**Refund mechanism (2026-10-19, B3/Paddle decision):** D11's "14-day
+money-back on every cycle" is the policy that governs - not FR-6.49/
+Module 72's 50%, first-cycle-only, admin-triggered wallet-credit path,
+which was built against a never-fully-matching reading of this same
+entry and is now explicitly retired for Paddle-paid plans (kept only
+for whatever legacy wallet-paid subscriptions still exist on that rail,
+if any). For a Paddle charge: 100% refund within 14 days of ANY paid
+charge (first purchase or a renewal, not just the first cycle), issued
+through Paddle to the original payment method, entitlement ends
+immediately (not at period end) the moment the refund is confirmed.
+Seller-initiated from the billing page. Auto-approved when within the
+14-day window AND it's that account's first money-back refund in a
+trailing 12 months; otherwise routed to admin review (the refund-
+hopping guard - repeated refund requests don't self-service past this
+point). Paddle's own adjustment-approval step (sandbox: auto-approved
+every ~10min; live: auto-approved under $400/verified account, else
+Paddle's own manual review) sits underneath this and is a separate gate
+Paddle controls, not something this platform's own auto-approve/admin-
+review split can bypass.
 
 ### D12. Cumulative plan ladder
 **Status:** LOCKED.
@@ -3630,3 +3654,51 @@ stopping at "ruled out the obvious ones, ship a plausible guess."
 Matches this codebase's standing rule (D132, D128, D125...): verify the
 real mechanism before writing it down as fixed, and write down what was
 actually found, including the dead ends.
+
+### D134. B3/Paddle decisions, Founding Members counter, CI secrets, and urgent repo-exposure triage
+**Status:** LOCKED.
+**Decision:** the founder's 4 answers to the B3 design note (D11's own
+text updated above for items 2 refund/deferred-proration; recorded here
+for items 3-4 plus the triage that preceded this program):
+- **Founding Members (D17):** the first 100 PAYING sellers, counted
+  across ALL billing rails combined (manual/wallet and Paddle both
+  count toward the same 100 - not a Paddle-only cohort). Needs one
+  atomic counter (a single-row `SELECT ... FOR UPDATE`-guarded increment
+  or an equivalent DB-level unique-ordinal assignment, matching this
+  codebase's own established race-prevention pattern from the campaign-
+  quota/supplier-wallet fixes - D132/the security audit's #9/#17) so two
+  simultaneous first-ever payments can never both become #100.
+- **CI secrets:** yes - Paddle SANDBOX credentials (API key, webhook
+  secret) as GitHub Actions **environment** secrets (not repository-
+  level), scoped so they're never available to a workflow triggered
+  from a fork PR. Founder creates the sandbox account and adds them;
+  live Paddle keys never touch CI, same posture as every other gateway
+  in this codebase.
+**Urgent triage performed before this program's Phase 1 started** (the
+founder's "repo was public, assume attackers have read everything"
+instruction): independently re-ran gitleaks v8.21.2 (the same pinned
+version CI uses) against the FULL git history (126 commits, not just
+the working tree) - zero leaks, re-confirming `docs/security-audit-
+report.md` §3 #16/§7 Phase 5's own finding after everything this
+session has since added (KMS, Stripe, Paddle prep). Independently
+confirmed only `.env.example`-pattern files were ever committed, never
+a real `.env`, across all history. Checked current repo visibility via
+an unauthenticated GitHub API call (not the dashboard) - **confirmed
+still public at the time of this check**, reported to the founder to
+act on directly (not a change this session can make). One correction to
+the audit report itself: its "GitHub Actions referenced by tag, not
+pinned SHA" finding (dated 2026-10-09) is stale - every action
+reference in `ci.yml` is already pinned to a full 40-character commit
+SHA, confirmed by direct grep, zero exceptions. Nothing in the audit
+report's disclosed backlog was secret-dependent or newly catastrophic
+on its own; one item (`CheckoutService.checkout()` has no server-side
+idempotency guard, §6 item 2) is explicitly flagged by the report
+itself as relevant to this exact program's Phase 1 (a new webhook
+handler is new surface area that shouldn't repeat checkout's existing
+check-then-act shape) and is folded into Phase 1's scope rather than
+treated as a separate emergency patch.
+**Reasoning:** matches this session's standing discipline of verifying
+exposure claims directly rather than trusting either the audit
+document or the dashboard, and of folding a security report's own
+explicit cross-reference into the next relevant phase rather than
+re-triaging it as new.
