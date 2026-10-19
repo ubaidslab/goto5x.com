@@ -3702,3 +3702,156 @@ exposure claims directly rather than trusting either the audit
 document or the dashboard, and of folding a security report's own
 explicit cross-reference into the next relevant phase rather than
 re-triaging it as new.
+
+### D136. MVP offer decisions from the founder's parallel advisor track (external D134-D149) - folded into the active MVP program's Phase 2/3 scope
+**Status:** LOCKED (per the founder's explicit confirmation this
+session to fold these into Phases 2-3 now, rather than hold them as
+background context per their own source document's "not yet sent to
+developer" framing).
+**Numbering note, read this before searching for "D134"/"D135"
+elsewhere:** the founder pasted a set of running notes from a *separate*
+advisor conversation, whose own numbering also reached "D134"-"D149" -
+coincidentally colliding with this file's own D134 (Paddle refund/
+Founding-Members/CI-secrets, above) and D135 (Paddle billing
+implementation, above), which mean completely different things. This
+entry is this file's own D136, transcribing that *external* document's
+D134-D149 (cited inline below as "external D134" etc.) - the two
+numbering sequences are independent; this file's own sequence continues
+normally from D136 onward.
+**Decision (external D134 - No Return delivery-advance model):** for
+the "No Return" feature, the BUYER pre-pays the delivery charge only
+(not a percentage of the order total) as the new default advance mode;
+the existing "% of total" advance model (`payments.advance_model_percent`,
+currently defaulting 20%) stays available as a seller-chosen option, not
+removed. Landing copy ("delivery charge paid in advance") was already
+accurate to the new default; the code is not, yet - `advance_model_percent`
+defaulting to a % with no "delivery-charge-only" mode is the gap Phase 2
+closes.
+**Decision (external D135 - 0% platform fee forever, hard-locked):**
+`billing.commission_rate_percent` and every plan's own commission value
+get hard-locked to 0 - the admin UI/API path that currently allows
+raising it (up to 2%) is removed entirely, not just defaulted to 0.
+Marketing copy restores the explicit "0% commission" claim (dropped in
+v0.36 per the same research that surfaced this gap).
+**Decision (external D136 - branding removal by tier):** RISE removes
+the UZEYN loading mark AND the checkout/invoice header branding (a
+small "Powered by UZEYN" footer line stays even on RISE); GO/RUN are
+unaffected, keeping full branding exactly as FR-74.4/74.5 already
+specify. This narrows, for RISE only, what FR-74.4/74.5's "permanent on
+every tier" currently means in code.
+**Decision (external D137 - data export on every tier, including
+Free):** the current FLY-only gate (where no live tier can actually
+export, since FLY is dormant) is replaced by: every tier can export;
+small exports return an instant CSV download; large exports run as an
+async job and notify by email with a login-required, 24-hour-expiring
+link (never a raw email attachment); re-authentication/2FA is required
+before any export; rate-limited to 1 export/hour; every export
+audit-logged.
+**Decision (external D138 - UZEYN is the final brand):** see `CLAUDE.md`
+"Design Direction" (v1.4, same date) for the full binding rewrite -
+bottle green/paper/brass palette, Schibsted Grotesk, the blackletter
+"uyz" mark, branding no longer dummy/placeholder, the old monochrome
+rule and "nothing may hard-code the platform name" rule both retired.
+Recorded here as the decision-log anchor for that CLAUDE.md change; the
+actual repo-wide re-skin to these tokens is Phase 3 work, not yet
+executed.
+**Decision (external D139 - seller geography):** seller signup stays
+Pakistan-only for now (worldwide later), but a Pakistan-based seller may
+sell to buyers worldwide - landing copy must say this precisely, not
+imply the platform itself is Pakistan-only for buyers too. A seller
+connects whichever payment gateway actually fits their storefront's
+target country (e.g. a UAE-targeted store connects a UAE-capable
+gateway) - the connect UI should surface each gateway's own
+country/business eligibility requirements so a seller can tell which
+one fits before trying to connect it (open item, not yet built).
+**Decision (external D140 - product caps, revised):** Free 10, GO 30
+(down from the as-built 100 the gap report found), RUN 100, RISE 500,
+FLY unlimited (FLY stays dormant regardless of its own cap value).
+Storage scales per tier - replaces the current flat 500MB-for-every-tier
+value.
+**Decision (external D141 - first-cycle discount, scope fix):** the
+50%-off-first-payment mechanic (`billing.first_cycle_discount_percent`)
+is scoped to the first MONTHLY payment of GO and RUN only, for new
+sellers only - not every tier's first payment regardless of cycle, which
+is what the code currently does. RISE/FLY and non-monthly first cycles
+get no first-cycle discount under the corrected scope.
+**Decision (external D142 - MVP gateway lineup):** Stripe is explicitly
+OUT of the MVP gateway lineup - its built code (B2, already merged)
+stays exactly as shipped: dormant/sandbox-only, excluded from Stage 0 -
+no contradiction with D131/B2's own decision record, which already
+scoped it that way. PayFast is added to the MVP gateway list as a new
+seller-facing buyer-checkout adapter to build (Phase 2 scope, same
+`SellerPaymentGatewayAdapter` pattern as the existing five). Landing
+page's gateway list needs updating to match once PayFast is live.
+**Decision (external D143 - moderation model):** the new-seller
+probation mechanic that currently HIDES every new product under review
+is replaced by: products go live immediately by default; only products
+matched by a keyword/category flag go to review, carrying a visible
+"under review" badge rather than being hidden. Add a "Report this
+store" button (buyer-facing abuse-reporting path). Seller responsibility
+and the platform's ban rights belong in the Terms of Service/Seller
+Agreement - not the Privacy Policy, which is where this content does
+not currently live correctly. Lawyer review of these documents is still
+pending/open, unaffected by this decision's own scope.
+**Decision (external D144 - support infrastructure):** founder-managed
+`support@<domain>` email (not a personal Gmail address) is the real
+support channel; an in-app Help form auto-attaches the submitting
+seller's store ID; a 24-hour auto-reply acknowledges every submission;
+15-20 help articles need writing; `security@<domain>` plus a real
+`/.well-known/security.txt` are built separately from the general
+support channel.
+**Decision (external D145 - blanket acceptance + open items):** the
+founder accepted every other advisor recommendation from the 2026-10-19
+review not individually itemized above. Two items remain explicitly
+open: verify PayFast's actual international-card acceptance before
+building against an assumption; **the repo was independently confirmed
+still public as of 15:19 PKT on 2026-10-19 by the founder's own parallel
+check** - this is the SAME finding this session's own D134 (above)
+independently caught via an unauthenticated GitHub API call earlier the
+same day, not a new, separate exposure - re-verify current status
+rather than assume either check is now stale.
+**Decision (external D146 - persona-based testing):** before/alongside
+launch, AI agents test complete first-week seller and buyer journeys
+end-to-end in a real running instance, acting as genuine sellers/buyers
+rather than exercising isolated endpoints; findings get fixed from that
+testing. The founder additionally tests with a small number of real
+sellers after MVP launch, independent of this automated pass.
+**Decision (external D147 - buyer-trust checkout design, delegated):**
+the founder explicitly delegates designing the checkout/advance-payment
+flow for buyer trust to the advisor/developer - an open design task
+feeding into Phase 2's checkout-related work and Phase 3's UI pass,
+not a fixed spec to implement verbatim.
+**Decision (external D148 - UZEYN's own subscription billing rail,
+Pakistan phase):** for collecting the platform's OWN plan-fee revenue
+from Pakistani sellers, **PayFast is the live rail, not Paddle** -
+Paddle is deferred to "going global" later. This does not discard B3's
+Paddle work (D135, above) - it explicitly "stays dormant/sandbox",
+exactly the posture B3 was already built to (sandbox-only, excluded
+from Stage 0, per the founder's own original B3 kickoff message this
+same session) - no rework needed on B3 itself. PayFast integration for
+this purpose is new, not-yet-started scope with open questions to
+verify before building: wallet/bank support, whether real recurring
+billing/tokenization exists or whether renewal is actually a manual
+monthly pay-link-plus-reminder flow (verify before assuming either),
+merchant onboarding requirements (NTN/business registration), a PKR
+pricing table (replacing USD for this rail specifically), and tax/
+invoicing responsibility - PayFast is NOT a merchant of record the way
+Paddle is, so FBR/provincial sales-tax-on-services liability sits with
+the platform itself on this rail, needing real accountant input before
+building anything that assumes otherwise.
+**Decision (external D149 - storefront template redesign):** every
+storefront template becomes premium, mobile-first, and image-led,
+matching a specific reference direction (large imagery, rounded cards,
+category pills, a bottom tab bar, product-gallery thumbnails, New/
+Discount badges, a size selector, a quantity stepper, strike-through
+pricing, a full-width dark "Add to Bag" action) - fully editable
+afterward through D-Studio, not a fixed, uneditable template. Phase 3
+scope; does not change CLAUDE.md's storefront-stays-separate-system
+principle (see the D138 CLAUDE.md update's own note on this).
+**Reasoning:** the founder's own instruction this session was to fold
+all of this into the active MVP Completion Program's Phase 2 (feature-
+completeness audit) and Phase 3 (UI/UX pass) scope now, rather than
+hold it as the source document's own "not yet sent to developer"
+framing would otherwise suggest - recorded here in full, with the
+numbering collision resolved explicitly, so neither this session nor a
+future one mistakes which "D134"/"D135" a reference means.
