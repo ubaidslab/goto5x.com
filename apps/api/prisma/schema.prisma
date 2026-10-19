@@ -470,6 +470,7 @@ model Seller {
   walletBalance               WalletBalance?
   walletReconciliationDrifts  WalletReconciliationDrift[]
   subscriptionAbuseFlags      SubscriptionAbuseFlag[]
+  paddleRefundRequests        PaddleRefundRequest[]
 
   @@map("sellers")
 }
@@ -1789,6 +1790,54 @@ model PlanCycleProviderPrice {
   @@map("plan_cycle_provider_prices")
 }
 
+// D135/B3 (Paddle) - the global, cross-rail "first 100 paying sellers"
+// counter (D17/D134: counted across manual+Paddle together, not a
+// Paddle-only cohort). A single row (id fixed at 1) advanced only
+// through one atomic `UPDATE ... WHERE count < 100 RETURNING count`
+// (FoundingMembersService) - the same race this codebase already closes
+// elsewhere via `SELECT ... FOR UPDATE` (campaign-quota/supplier-wallet
+// debit, security-audit-report.md #9/#17), just with one fewer round
+// trip since there's no second write to serialize against here.
+model FoundingMemberCounter {
+  id    Int @id @default(1)
+  count Int @default(0)
+
+  @@map("founding_member_counter")
+}
+
+enum PaddleRefundRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+// D135/B3/D134 - D11's 100%/14-day/every-charge refund policy's own
+// request record for a Paddle-sourced charge. Deliberately NOT
+// SubscriptionRefundService/FR-6.49's model (50%, first-cycle-only,
+// wallet-credit, manual rail) - D134 explicitly retires that path for
+// Paddle payments rather than bending it to a shape it was never built
+// for. `status: pending` means routed to admin review (the refund-
+// hopping guard); `approved` either auto- or admin-approved, both
+// recorded identically here, distinguished only by `autoApproved`.
+model PaddleRefundRequest {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  sellerId            String                    @map("seller_id") @db.Uuid
+  paddleTransactionId String                    @map("paddle_transaction_id")
+  amount              Decimal                   @db.Decimal(12, 2)
+  currency            String
+  status              PaddleRefundRequestStatus @default(pending)
+  autoApproved        Boolean                   @default(false) @map("auto_approved")
+  requestedAt         DateTime                  @default(now()) @map("requested_at") @db.Timestamptz
+  decidedAt           DateTime?                 @map("decided_at") @db.Timestamptz
+  decidedByAdminId    String?                   @map("decided_by_admin_id") @db.Uuid
+  paddleAdjustmentId  String?                   @map("paddle_adjustment_id")
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId])
+  @@map("paddle_refund_requests")
+}
+
 // Module 14 (FR-7.1/7.5) - a seller's real plan assignment. Every seller
 // gets one at signup (First Month, individual group, v0.33 - a real paid
 // tier, not a Free Plan). This is the piece that
@@ -1858,6 +1907,30 @@ model Subscription {
   renewalReminderDay3SentAt      DateTime? @map("renewal_reminder_day3_sent_at") @db.Timestamptz
   renewalReminderDay1SentAt      DateTime? @map("renewal_reminder_day1_sent_at") @db.Timestamptz
   renewalReminderExpiryDaySentAt DateTime? @map("renewal_reminder_expiry_day_sent_at") @db.Timestamptz
+
+  // D135/B3 (Paddle) - the remote subscription this row is billed through
+  // once a seller pays via Paddle; null for every manual/wallet-rail
+  // subscription (the large majority today). Unique so the webhook
+  // handler looks up a row only by Paddle's own id, never a client-
+  // suppliable one.
+  paddleSubscriptionId String? @unique @map("paddle_subscription_id")
+  // The Paddle Customer this seller maps to - set once, on the first
+  // Paddle-confirmed charge, reused for every later Paddle call.
+  paddleCustomerId     String? @map("paddle_customer_id")
+  // D135/B3 - the most recent Paddle charge confirmed for this
+  // subscription (first purchase or a renewal, overwritten every time,
+  // never a ledger) - exactly what the 14-day refund-eligibility check
+  // needs ("ANY paid charge," always the latest one a seller could still
+  // be asking about from the billing page), with no separate transaction-
+  // history table for a figure nothing else in this codebase needs.
+  lastPaddleTransactionId String?   @map("last_paddle_transaction_id")
+  lastPaddleChargedAt     DateTime? @map("last_paddle_charged_at") @db.Timestamptz
+  // D17/D134 - set exactly once, the moment a payment (either rail)
+  // claims one of the first 100 PAYING-seller ordinals; false/null
+  // forever once ordinal 100 is claimed. foundingMemberOrdinal is kept
+  // for support/audit visibility - never recomputed, never reassigned.
+  isFoundingMember      Boolean @default(false) @map("is_founding_member")
+  foundingMemberOrdinal Int?    @map("founding_member_ordinal")
 
   seller          Seller?   @relation(fields: [sellerId], references: [id])
   supplier        Supplier? @relation(fields: [supplierId], references: [id])

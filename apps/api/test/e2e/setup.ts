@@ -73,9 +73,18 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       impersonation_sessions, content_page_revisions, content_pages,
       platform_brand_asset_revisions, platform_brand_assets, platform_messages,
       database_backup_runs,
-      processed_webhook_events
+      processed_webhook_events,
+      founding_member_counter, paddle_refund_requests
     RESTART IDENTITY CASCADE
   `);
+  // founding_member_counter is a one-row singleton (id=1) with no FK to any
+  // other table here, so TRUNCATE CASCADE from sellers/subscriptions never
+  // reaches it on its own - explicitly truncating it above and reseeding
+  // its row here (mirroring the migration's own seed insert) keeps every
+  // e2e spec's Founding Member assertions independent of run order/what
+  // other spec files already claimed in the same test run, the same
+  // isolation concern resetRedis()'s own comment documents for Redis.
+  await prisma.foundingMemberCounter.create({ data: { id: 1, count: 0 } });
 }
 
 /**

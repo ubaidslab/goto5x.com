@@ -210,6 +210,44 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   STRIPE_API_PROTOCOL?: string;
+
+  // D135/B3 (Paddle) - the platform's OWN Paddle account credentials, one
+  // pair for the whole platform (unlike Stripe/Raast/etc, which are
+  // per-store seller-connected). Platform-wide, so an env var is the
+  // right shape here, not the per-row GatewayCredentialVaultService B1/B2
+  // built for seller-connected gateway credentials - there is no per-row
+  // "connection" to attach a data key to. Sandbox and live are fully
+  // separate credentials by Paddle's own design (separate dashboards,
+  // separate keys) - never the same value with an environment flag.
+  @IsOptional()
+  @IsString()
+  PADDLE_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  PADDLE_WEBHOOK_SECRET?: string;
+
+  // "sandbox" | "production" - PaddleEnvironmentGuard refuses to resolve
+  // a client at all for "production" unless PADDLE_LIVE_APPROVED is also
+  // explicitly set (founder's explicit "live keys never go to CI, never
+  // go live until I approve" instruction, D134).
+  @IsOptional()
+  @IsIn(["sandbox", "production"])
+  PADDLE_ENVIRONMENT?: string;
+
+  // The public, safe-to-publish client-side token for Paddle.js on the
+  // frontend (Paddle's own documented design - this is not a secret, it
+  // has no server-side authority). Served to the frontend as-is.
+  @IsOptional()
+  @IsString()
+  PADDLE_CLIENT_TOKEN?: string;
+
+  // Founder-gate, not a Paddle concept - must be explicitly "true" before
+  // PaddleEnvironmentGuard will accept PADDLE_ENVIRONMENT=production.
+  // Absent/false in every environment until the founder says otherwise.
+  @IsOptional()
+  @IsString()
+  PADDLE_LIVE_APPROVED?: string;
 }
 
 /**

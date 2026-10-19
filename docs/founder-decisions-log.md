@@ -453,11 +453,35 @@ except where law requires); a renewal reminder 7-14 days before
 renewal; the cancel flow offers "keep my store on Free" plus a pause
 option plus a one-question exit survey (reuses the existing
 starter_free downgrade path — distinct from D41's separate, still-open
-lapsed-seller question); an upgrade applies immediately with proration,
-a downgrade applies at period end; the billing cycle is switchable at
-renewal; Founding Members keep their price lock (D17) through all of
-this.
+lapsed-seller question); **upgrade and downgrade both apply at period
+end, no mid-cycle proration charge (revised 2026-10-19, B3/Paddle design
+review — supersedes this entry's original "upgrade applies immediately
+with proration" text below, which never matched the shipped
+`requestPlanChange()`/`applyDueCycleChanges()` code; building a payment
+rail to match stated-but-never-built behavior would have been new scope
+disguised as a bug fix. Immediate upgrade is explicitly post-MVP, not
+abandoned.)**; the billing cycle is switchable at renewal; Founding
+Members keep their price lock (D17) through all of this.
 **Reasoning:** not recorded beyond the mechanics themselves.
+**Refund mechanism (2026-10-19, B3/Paddle decision):** D11's "14-day
+money-back on every cycle" is the policy that governs - not FR-6.49/
+Module 72's 50%, first-cycle-only, admin-triggered wallet-credit path,
+which was built against a never-fully-matching reading of this same
+entry and is now explicitly retired for Paddle-paid plans (kept only
+for whatever legacy wallet-paid subscriptions still exist on that rail,
+if any). For a Paddle charge: 100% refund within 14 days of ANY paid
+charge (first purchase or a renewal, not just the first cycle), issued
+through Paddle to the original payment method, entitlement ends
+immediately (not at period end) the moment the refund is confirmed.
+Seller-initiated from the billing page. Auto-approved when within the
+14-day window AND it's that account's first money-back refund in a
+trailing 12 months; otherwise routed to admin review (the refund-
+hopping guard - repeated refund requests don't self-service past this
+point). Paddle's own adjustment-approval step (sandbox: auto-approved
+every ~10min; live: auto-approved under $400/verified account, else
+Paddle's own manual review) sits underneath this and is a separate gate
+Paddle controls, not something this platform's own auto-approve/admin-
+review split can bypass.
 
 ### D12. Cumulative plan ladder
 **Status:** LOCKED.
@@ -3630,3 +3654,415 @@ stopping at "ruled out the obvious ones, ship a plausible guess."
 Matches this codebase's standing rule (D132, D128, D125...): verify the
 real mechanism before writing it down as fixed, and write down what was
 actually found, including the dead ends.
+
+### D134. B3/Paddle decisions, Founding Members counter, CI secrets, and urgent repo-exposure triage
+**Status:** LOCKED.
+**Decision:** the founder's 4 answers to the B3 design note (D11's own
+text updated above for items 2 refund/deferred-proration; recorded here
+for items 3-4 plus the triage that preceded this program):
+- **Founding Members (D17):** the first 100 PAYING sellers, counted
+  across ALL billing rails combined (manual/wallet and Paddle both
+  count toward the same 100 - not a Paddle-only cohort). Needs one
+  atomic counter (a single-row `SELECT ... FOR UPDATE`-guarded increment
+  or an equivalent DB-level unique-ordinal assignment, matching this
+  codebase's own established race-prevention pattern from the campaign-
+  quota/supplier-wallet fixes - D132/the security audit's #9/#17) so two
+  simultaneous first-ever payments can never both become #100.
+- **CI secrets:** yes - Paddle SANDBOX credentials (API key, webhook
+  secret) as GitHub Actions **environment** secrets (not repository-
+  level), scoped so they're never available to a workflow triggered
+  from a fork PR. Founder creates the sandbox account and adds them;
+  live Paddle keys never touch CI, same posture as every other gateway
+  in this codebase.
+**Urgent triage performed before this program's Phase 1 started** (the
+founder's "repo was public, assume attackers have read everything"
+instruction): independently re-ran gitleaks v8.21.2 (the same pinned
+version CI uses) against the FULL git history (126 commits, not just
+the working tree) - zero leaks, re-confirming `docs/security-audit-
+report.md` §3 #16/§7 Phase 5's own finding after everything this
+session has since added (KMS, Stripe, Paddle prep). Independently
+confirmed only `.env.example`-pattern files were ever committed, never
+a real `.env`, across all history. Checked current repo visibility via
+an unauthenticated GitHub API call (not the dashboard) - **confirmed
+still public at the time of this check**, reported to the founder to
+act on directly (not a change this session can make). One correction to
+the audit report itself: its "GitHub Actions referenced by tag, not
+pinned SHA" finding (dated 2026-10-09) is stale - every action
+reference in `ci.yml` is already pinned to a full 40-character commit
+SHA, confirmed by direct grep, zero exceptions. Nothing in the audit
+report's disclosed backlog was secret-dependent or newly catastrophic
+on its own; one item (`CheckoutService.checkout()` has no server-side
+idempotency guard, §6 item 2) is explicitly flagged by the report
+itself as relevant to this exact program's Phase 1 (a new webhook
+handler is new surface area that shouldn't repeat checkout's existing
+check-then-act shape) and is folded into Phase 1's scope rather than
+treated as a separate emergency patch.
+**Reasoning:** matches this session's standing discipline of verifying
+exposure claims directly rather than trusting either the audit
+document or the dashboard, and of folding a security report's own
+explicit cross-reference into the next relevant phase rather than
+re-triaging it as new.
+
+### D135. Paddle sandbox billing built (B3, MVP Program Phase 1, D11/D134's decisions)
+**Status:** LOCKED.
+**Decision:** D134's 4 decisions, built in full:
+- **Schema:** `Subscription` gains `paddleSubscriptionId` (unique),
+  `paddleCustomerId`, `isFoundingMember`, `foundingMemberOrdinal`,
+  `lastPaddleTransactionId`, `lastPaddleChargedAt` (the last two are a
+  sticky-field pair, not a transaction ledger - same pattern
+  `firstCycleRefundedAt` already uses - tracking only "the most recent
+  chargeable transaction" for the 14-day refund-eligibility check). New
+  `FoundingMemberCounter` (one row, `id=1`, atomic
+  `UPDATE ... WHERE count<100 RETURNING count`) and
+  `PaddleRefundRequest` (`pending`/`approved`/`rejected`). The already-
+  existing, previously-unused `PlanCycleProviderPrice` table (a dormant
+  `stripePriceId` sibling included) is the plan/cycle -> Paddle-price-ID
+  mapping - reused as-is, not duplicated.
+- **Lifecycle** (`PaddleSubscriptionLifecycleService`): `confirmCharge()`
+  (driven by `transaction.completed`, the unambiguous "Paddle was just
+  paid" signal - never `subscription.updated`, which fires for reasons
+  unrelated to a successful charge) advances `currentPeriodEnd` exactly
+  like `WalletService.verifyTopUp()`'s own plan-fee branch does for the
+  manual rail - from now on a genuinely first payment, stacked onto the
+  existing `currentPeriodEnd` on a renewal - and claims a Founding
+  Member ordinal only on that first payment. `applySixMonthBonusDays()`
+  pushes Paddle's own `next_billed_at` to match our
+  already-correct-either-way `currentPeriodEnd`
+  (`prorationBillingMode: "do_not_bill"` - a pure date move, never a
+  charge); per D10's own rule, a failure here just drops the bonus for
+  that cycle, logged, never retried, never surfaced to the seller.
+  `markCanceled()` handles `subscription.canceled`.
+- **Founding Members (D17/D134):** `FoundingMembersService.
+  claimOrdinalIfEligible(tx?)` - the single atomic counter, shared
+  across BOTH rails. Wired into `PaddleSubscriptionLifecycleService.
+  confirmCharge()` AND, additively, into `WalletService.verifyTopUp()`'s
+  existing first-payment (`!isRenewal`) branch, both passing their own
+  enclosing `$transaction`'s `tx` through - a genuinely first payment on
+  either rail can claim the next ordinal, and the claim rolls back
+  together with the rest of that payment's write if anything after it
+  fails (caught and fixed during review - the first draft called this
+  with no `tx` at all, which would have let an ordinal be silently
+  burned on a rollback with no subscription ever actually marked for
+  it).
+- **Refunds (D11 revised/D134):** `requestRefund()` - 100% within 14
+  days of ANY paid charge (`billing.subscription_refund_window_days`,
+  default 14), auto-approved only if this is the account's first
+  approved refund in a trailing 12 months, otherwise `pending` for admin
+  review (`AdminPaddleRefundController`, `StepUpMfaGuard` +
+  `IdempotencyInterceptor`, same pairing `AdminWalletController`'s own
+  money-moving routes use). Either path ends in `executeApprovedRefund()`:
+  calls Paddle's real adjustment API (`action: "refund", type: "full"`;
+  never FR-6.49's wallet-ledger-credit mechanism, which D134 explicitly
+  retires for Paddle payments and keeps only for legacy wallet-paid
+  subscriptions), then unconditionally forces `currentPeriodEnd` to now
+  and calls `WalletGraceLadderService.pauseActiveStoresForNonPayment()`
+  directly and synchronously - "entitlement ends immediately" per D134,
+  not "once the regular overdue-sweep next ticks," and not contingent on
+  the Paddle API call itself succeeding (a failure there is logged for
+  manual follow-up; the entitlement still ends, since the money-movement
+  and the access-control decision are deliberately independent here).
+- **Webhooks** (`POST /billing/webhooks/paddle`, public/unauthenticated
+  by necessity, platform-wide - one endpoint, not per-store, since this
+  is the platform's OWN billing): `Webhooks.unmarshal()` (official SDK,
+  never hand-rolled HMAC) verifies and parses in one call;
+  `WebhookEventDedupeService` (B2's, reused as-is - `ProcessedWebhookEvent`
+  has no storeId/tenant column, nothing about it is Stripe-specific)
+  dedupes by event ID. `subscription.past_due` is a deliberate no-op -
+  `SubscriptionStatus` has only `active`/`cancelled` (confirmed directly
+  from schema.prisma, not assumed - this session's own fork directive
+  had wrongly assumed a `past_due` value existed); our own
+  `currentPeriodEnd`-vs-now overdue detection already covers it, the
+  same mechanism the manual rail already relies on, so nothing new is
+  needed.
+- **Seller self-service** (`GET sellers/me/subscription/paddle/checkout-
+  price`, `POST .../request-refund`): backend-only this pass, same
+  "backend-only this pass" precedent B2/D117 set - no Paddle.js checkout
+  button exists yet; `checkout-price` is the data a future one calls
+  (the pre-created Price ID for a seller's chosen plan+cycle, plus the
+  public Paddle.js client token).
+- **Catalog setup** (`scripts/setup-paddle-prices.ts`): idempotent,
+  creates 3 Products (GO/RUN/RISE - D10's locked table; FLY stays
+  dormant) x 4 Prices each (monthly/3mo/6mo/12mo) against whichever
+  Paddle account `PADDLE_API_KEY`/`PADDLE_ENVIRONMENT` point at, matched/
+  upserted via `customData`/the mapping table so re-running it is a
+  no-op once done - run once by the founder against the real sandbox
+  account once it exists, and again whenever live is approved (D134).
+- **CI secrets (D134 item 4):** new `paddle-sandbox-test` job
+  (`.github/workflows/ci.yml`), same cheap no-DB tier as
+  `stripe-mock-test`/`kms-localstack-test`. Unlike Stripe, Paddle
+  publishes no local fake-API-server equivalent of `stripe-mock` (and a
+  Paddle subscription can only ever be created via Paddle's own hosted/
+  overlay checkout - confirmed directly from the SDK's own
+  `SubscriptionsResource`, which has no `create` method at all) - so
+  this job's `scripts/verify-paddle-sandbox.ts` talks to Paddle's REAL
+  sandbox REST API instead of a mock: create -> retrieve -> list -> archive
+  a throwaway Product/Price, plus a local webhook-signature round trip.
+  `environment: paddle-sandbox` is what makes `PADDLE_API_KEY`/
+  `PADDLE_WEBHOOK_SECRET` environment-scoped rather than repository-level
+  secrets (D134's explicit "never available to a workflow triggered from
+  a fork PR" requirement - a repository secret doesn't give that
+  isolation on its own). `PADDLE_ENVIRONMENT=sandbox` is hardcoded
+  directly in the workflow file, never a secret, and the script itself
+  independently refuses anything else - two separate enforcements of
+  "live keys never go to CI," not reliance on either one alone. The
+  verification step only runs `if: secrets.PADDLE_API_KEY != ''`, so this
+  job is green both before and after the founder creates the sandbox
+  account - never red for a secret that doesn't exist yet, never silently
+  skipping once it does.
+**Two real bugs found and fixed during review, before anything was
+committed:**
+1. The Founding Member claim inside `confirmCharge()`/`verifyTopUp()`
+   was first written calling `foundingMembers.claimOrdinalIfEligible()`
+   with no argument - defaulting to its own `PrismaAdminService`
+   connection, not the enclosing `$transaction`'s `tx`. Harmless for the
+   counter itself (the `UPDATE...WHERE count<100` is atomic regardless
+   of which connection runs it) but a real escape-the-transaction bug
+   for consistency: if anything after that call inside the same
+   transaction failed and rolled back, the counter would already be
+   incremented permanently while the subscription row never actually
+   got marked `isFoundingMember` - an ordinal silently burned for no
+   seller. Fixed by giving `claimOrdinalIfEligible()` an optional
+   `tx?: Prisma.TransactionClient | PrismaAdminService` parameter
+   (the exact union `returns.service.ts`'s own `db` parameter already
+   uses), passed through from both call sites.
+2. `PaddleWebhookController` was first written with an injected
+   `PrismaAdminService` it never actually used anywhere in the file
+   (caught re-reading the file, not by any tool) - removed the
+   constructor param and the import, and removed the file from
+   `admin-bypass-allowlist.spec.ts`'s tripwire list it had just been
+   added to, since the tripwire's own job is tracking real call sites,
+   not files that merely mention the class name.
+**One test-infrastructure gap found and fixed:** `FoundingMemberCounter`
+is a one-row singleton with no FK to any table `test/e2e/setup.ts`'s
+`resetDatabase()` already truncates, so `TRUNCATE ... CASCADE` never
+reached it on its own - left as-is, it would have accumulated state
+across every e2e spec file in a whole test run (not just this one),
+making any ordinal assertion order-dependent. Added it to the explicit
+truncate list plus a reseed of its `(1, 0)` row in the same function
+(mirroring the migration's own seed insert), so every spec gets a
+correctly-zeroed counter regardless of run order - the same isolation
+property `resetRedis()`'s own comment already documents for Redis.
+**Verified:** full unit suite 72/72 suites, 444/444 tests (new:
+`founding-members.service.spec.ts`, `paddle-subscription-lifecycle.
+service.spec.ts` - mocking the Paddle SDK client, covering
+`confirmCharge()`'s none/first-payment/renewal/counter-full branches,
+`applySixMonthBonusDays()`'s swallow-on-failure rule, the refund-
+hopping guard, and admin approve/reject - and `paddle-webhook.
+controller.spec.ts`, including the null-`PADDLE_CLIENT`
+scratch-client-still-verifies-for-real branch). `apps/api` typecheck/
+lint clean (`scripts/verify-paddle-sandbox.ts`'s 8 "unused eslint-
+disable directive" warnings are a pre-existing `scripts/` lint-config
+quirk, confirmed identical on both already-shipped
+`verify-stripe-mock.ts`/`verify-kms-localstack.ts`, not a regression).
+E2e, `set -o pipefail` throughout: new `paddle-webhook.e2e-spec.ts`
+(16/16) - fixtures hand-built directly against the installed SDK's own
+compiled notification-entity constructors (not guessed), which is how
+this caught, before running anything, that `TransactionNotification`/
+`SubscriptionNotification`/`AdjustmentNotification` all unconditionally
+`.map()` their own `items`/`payments` arrays and would throw inside the
+SDK's own parser on a fixture missing them - and that `unmarshal()`'s
+real signature check (`WebhooksValidator.MAX_VALID_TIME_DIFFERENCE`)
+rejects anything older than 5 seconds, covered by its own test rather
+than discovered as flakiness later. Covers: signature rejection (no
+header/forged secret/stale timestamp), first-charge confirmation
+(Founding Member ordinal #1, two sellers claiming consecutive not
+duplicate ordinals), renewal (stacks onto existing `currentPeriodEnd`,
+no second claim), redelivery dedupe, missing-`customData.sellerId`
+skip, cancellation, `checkout-price`'s 404/400/200 paths, and
+`request-refund` end to end including the refund-hopping guard - all
+against a real app/Postgres/Redis, `PADDLE_API_KEY` deliberately unset
+throughout (the real state of every environment before the founder
+sets up Paddle; only the actual Paddle API calls are unreachable here,
+which `paddle-sandbox-test` exists to cover once the secrets exist).
+Re-run together with `module73-subscription-only-renewal` (the exact
+`WalletService.verifyTopUp()` code path this touched),
+`module72-subscription-refund` (confirms FR-6.49's own pre-existing
+wallet-refund path is undisturbed), `stripe-webhook` (confirms the
+shared `resetDatabase()` change and the dual-provided
+`WebhookEventDedupeService` instance don't collide), `plans-pricing`,
+and `module102-plan-downgrade-confirmation` (both exercise
+`requestPlanChange()`, which this program's own e2e fixtures rely on to
+reach a real billing interval before a webhook ever fires) - all green,
+zero regressions. New `paddle-sandbox-test` CI job to be independently
+confirmed green in real CI before this is reported as merged (it will
+show the "skip notice," not a real sandbox round trip, until the
+founder completes the two items below).
+**Reasoning:** matches the founder's approved 4 decisions point by
+point and D131/B2's own precedent for this class of change (official
+SDK for anything signature-related, sandbox-only, backend-only pending
+a real frontend checkout button, a CI job proving the real wire format
+rather than trusting mocks alone); the two bugs and the test-
+infrastructure gap were each found by re-reading and reasoning through
+the code directly before running anything, not by a tool or a failing
+test surfacing them first.
+**Still needs the founder's own action - nothing else is outstanding
+for this phase:**
+1. Create the Paddle sandbox account.
+2. Create a GitHub Actions **environment** named `paddle-sandbox` on
+   this repo (Settings -> Environments -> New environment - this is a
+   separate step from adding the secrets below; an environment that
+   doesn't exist yet gets auto-created with no rules the first time the
+   workflow references it, but the founder should still set it up
+   deliberately, with no "required reviewers"/branch restriction beyond
+   what's already wanted, since those rules are a repo-admin-only
+   setting this session cannot configure via the API either way - same
+   class of action as D134 item 1's branch-protection step).
+3. Add `PADDLE_API_KEY` and `PADDLE_WEBHOOK_SECRET` to that
+   environment's secrets (not repository-level) from the sandbox
+   account's dashboard. `PADDLE_CLIENT_TOKEN`/running `setup-paddle-
+   prices.ts` against the real sandbox are needed before a real
+   frontend checkout button can go live, but are not blocking for this
+   phase's own CI job.
+
+### D136. MVP offer decisions from the founder's parallel advisor track (external D134-D149) - folded into the active MVP program's Phase 2/3 scope
+**Status:** LOCKED (per the founder's explicit confirmation this
+session to fold these into Phases 2-3 now, rather than hold them as
+background context per their own source document's "not yet sent to
+developer" framing).
+**Numbering note, read this before searching for "D134"/"D135"
+elsewhere:** the founder pasted a set of running notes from a *separate*
+advisor conversation, whose own numbering also reached "D134"-"D149" -
+coincidentally colliding with this file's own D134 (Paddle refund/
+Founding-Members/CI-secrets, above) and D135 (Paddle billing
+implementation, above), which mean completely different things. This
+entry is this file's own D136, transcribing that *external* document's
+D134-D149 (cited inline below as "external D134" etc.) - the two
+numbering sequences are independent; this file's own sequence continues
+normally from D136 onward.
+**Decision (external D134 - No Return delivery-advance model):** for
+the "No Return" feature, the BUYER pre-pays the delivery charge only
+(not a percentage of the order total) as the new default advance mode;
+the existing "% of total" advance model (`payments.advance_model_percent`,
+currently defaulting 20%) stays available as a seller-chosen option, not
+removed. Landing copy ("delivery charge paid in advance") was already
+accurate to the new default; the code is not, yet - `advance_model_percent`
+defaulting to a % with no "delivery-charge-only" mode is the gap Phase 2
+closes.
+**Decision (external D135 - 0% platform fee forever, hard-locked):**
+`billing.commission_rate_percent` and every plan's own commission value
+get hard-locked to 0 - the admin UI/API path that currently allows
+raising it (up to 2%) is removed entirely, not just defaulted to 0.
+Marketing copy restores the explicit "0% commission" claim (dropped in
+v0.36 per the same research that surfaced this gap).
+**Decision (external D136 - branding removal by tier):** RISE removes
+the UZEYN loading mark AND the checkout/invoice header branding (a
+small "Powered by UZEYN" footer line stays even on RISE); GO/RUN are
+unaffected, keeping full branding exactly as FR-74.4/74.5 already
+specify. This narrows, for RISE only, what FR-74.4/74.5's "permanent on
+every tier" currently means in code.
+**Decision (external D137 - data export on every tier, including
+Free):** the current FLY-only gate (where no live tier can actually
+export, since FLY is dormant) is replaced by: every tier can export;
+small exports return an instant CSV download; large exports run as an
+async job and notify by email with a login-required, 24-hour-expiring
+link (never a raw email attachment); re-authentication/2FA is required
+before any export; rate-limited to 1 export/hour; every export
+audit-logged.
+**Decision (external D138 - UZEYN is the final brand):** see `CLAUDE.md`
+"Design Direction" (v1.4, same date) for the full binding rewrite -
+bottle green/paper/brass palette, Schibsted Grotesk, the blackletter
+"uyz" mark, branding no longer dummy/placeholder, the old monochrome
+rule and "nothing may hard-code the platform name" rule both retired.
+Recorded here as the decision-log anchor for that CLAUDE.md change; the
+actual repo-wide re-skin to these tokens is Phase 3 work, not yet
+executed.
+**Decision (external D139 - seller geography):** seller signup stays
+Pakistan-only for now (worldwide later), but a Pakistan-based seller may
+sell to buyers worldwide - landing copy must say this precisely, not
+imply the platform itself is Pakistan-only for buyers too. A seller
+connects whichever payment gateway actually fits their storefront's
+target country (e.g. a UAE-targeted store connects a UAE-capable
+gateway) - the connect UI should surface each gateway's own
+country/business eligibility requirements so a seller can tell which
+one fits before trying to connect it (open item, not yet built).
+**Decision (external D140 - product caps, revised):** Free 10, GO 30
+(down from the as-built 100 the gap report found), RUN 100, RISE 500,
+FLY unlimited (FLY stays dormant regardless of its own cap value).
+Storage scales per tier - replaces the current flat 500MB-for-every-tier
+value.
+**Decision (external D141 - first-cycle discount, scope fix):** the
+50%-off-first-payment mechanic (`billing.first_cycle_discount_percent`)
+is scoped to the first MONTHLY payment of GO and RUN only, for new
+sellers only - not every tier's first payment regardless of cycle, which
+is what the code currently does. RISE/FLY and non-monthly first cycles
+get no first-cycle discount under the corrected scope.
+**Decision (external D142 - MVP gateway lineup):** Stripe is explicitly
+OUT of the MVP gateway lineup - its built code (B2, already merged)
+stays exactly as shipped: dormant/sandbox-only, excluded from Stage 0 -
+no contradiction with D131/B2's own decision record, which already
+scoped it that way. PayFast is added to the MVP gateway list as a new
+seller-facing buyer-checkout adapter to build (Phase 2 scope, same
+`SellerPaymentGatewayAdapter` pattern as the existing five). Landing
+page's gateway list needs updating to match once PayFast is live.
+**Decision (external D143 - moderation model):** the new-seller
+probation mechanic that currently HIDES every new product under review
+is replaced by: products go live immediately by default; only products
+matched by a keyword/category flag go to review, carrying a visible
+"under review" badge rather than being hidden. Add a "Report this
+store" button (buyer-facing abuse-reporting path). Seller responsibility
+and the platform's ban rights belong in the Terms of Service/Seller
+Agreement - not the Privacy Policy, which is where this content does
+not currently live correctly. Lawyer review of these documents is still
+pending/open, unaffected by this decision's own scope.
+**Decision (external D144 - support infrastructure):** founder-managed
+`support@<domain>` email (not a personal Gmail address) is the real
+support channel; an in-app Help form auto-attaches the submitting
+seller's store ID; a 24-hour auto-reply acknowledges every submission;
+15-20 help articles need writing; `security@<domain>` plus a real
+`/.well-known/security.txt` are built separately from the general
+support channel.
+**Decision (external D145 - blanket acceptance + open items):** the
+founder accepted every other advisor recommendation from the 2026-10-19
+review not individually itemized above. Two items remain explicitly
+open: verify PayFast's actual international-card acceptance before
+building against an assumption; **the repo was independently confirmed
+still public as of 15:19 PKT on 2026-10-19 by the founder's own parallel
+check** - this is the SAME finding this session's own D134 (above)
+independently caught via an unauthenticated GitHub API call earlier the
+same day, not a new, separate exposure - re-verify current status
+rather than assume either check is now stale.
+**Decision (external D146 - persona-based testing):** before/alongside
+launch, AI agents test complete first-week seller and buyer journeys
+end-to-end in a real running instance, acting as genuine sellers/buyers
+rather than exercising isolated endpoints; findings get fixed from that
+testing. The founder additionally tests with a small number of real
+sellers after MVP launch, independent of this automated pass.
+**Decision (external D147 - buyer-trust checkout design, delegated):**
+the founder explicitly delegates designing the checkout/advance-payment
+flow for buyer trust to the advisor/developer - an open design task
+feeding into Phase 2's checkout-related work and Phase 3's UI pass,
+not a fixed spec to implement verbatim.
+**Decision (external D148 - UZEYN's own subscription billing rail,
+Pakistan phase):** for collecting the platform's OWN plan-fee revenue
+from Pakistani sellers, **PayFast is the live rail, not Paddle** -
+Paddle is deferred to "going global" later. This does not discard B3's
+Paddle work (D135, above) - it explicitly "stays dormant/sandbox",
+exactly the posture B3 was already built to (sandbox-only, excluded
+from Stage 0, per the founder's own original B3 kickoff message this
+same session) - no rework needed on B3 itself. PayFast integration for
+this purpose is new, not-yet-started scope with open questions to
+verify before building: wallet/bank support, whether real recurring
+billing/tokenization exists or whether renewal is actually a manual
+monthly pay-link-plus-reminder flow (verify before assuming either),
+merchant onboarding requirements (NTN/business registration), a PKR
+pricing table (replacing USD for this rail specifically), and tax/
+invoicing responsibility - PayFast is NOT a merchant of record the way
+Paddle is, so FBR/provincial sales-tax-on-services liability sits with
+the platform itself on this rail, needing real accountant input before
+building anything that assumes otherwise.
+**Decision (external D149 - storefront template redesign):** every
+storefront template becomes premium, mobile-first, and image-led,
+matching a specific reference direction (large imagery, rounded cards,
+category pills, a bottom tab bar, product-gallery thumbnails, New/
+Discount badges, a size selector, a quantity stepper, strike-through
+pricing, a full-width dark "Add to Bag" action) - fully editable
+afterward through D-Studio, not a fixed, uneditable template. Phase 3
+scope; does not change CLAUDE.md's storefront-stays-separate-system
+principle (see the D138 CLAUDE.md update's own note on this).
+**Reasoning:** the founder's own instruction this session was to fold
+all of this into the active MVP Completion Program's Phase 2 (feature-
+completeness audit) and Phase 3 (UI/UX pass) scope now, rather than
+hold it as the source document's own "not yet sent to developer"
+framing would otherwise suggest - recorded here in full, with the
+numbering collision resolved explicitly, so neither this session nor a
+future one mistakes which "D134"/"D135" a reference means.
