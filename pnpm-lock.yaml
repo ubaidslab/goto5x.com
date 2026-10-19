@@ -41,6 +41,9 @@ importers:
       '@nestjs/throttler':
         specifier: ^6.2.1
         version: 6.5.0(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)(reflect-metadata@0.2.2)
+      '@paddle/paddle-node-sdk':
+        specifier: 3.10.0
+        version: 3.10.0
       '@prisma/client':
         specifier: ^5.22.0
         version: 5.22.0(prisma@5.22.0)
@@ -1443,6 +1446,10 @@ packages:
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
+
+  '@paddle/paddle-node-sdk@3.10.0':
+    resolution: {integrity: sha512-njqp+L6e/2aR99EYh/Ulyu6B9sIyVERTFclGOznKmLZcy11pAwHoHyIgq1BUH1ybQH+YmJQmrrUQC/Rfg8JAAw==}
+    engines: {node: '>=20'}
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
@@ -7582,6 +7589,8 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.152.0': {}
+
+  '@paddle/paddle-node-sdk@3.10.0': {}
 
   '@paralleldrive/cuid2@2.3.1':
     dependencies:

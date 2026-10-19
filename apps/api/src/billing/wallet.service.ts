@@ -11,6 +11,7 @@ import { computeCyclePrice, resolveActivePlanPrice } from "../plans/plan-pricing
 import { ManualBankTransferTopUpAdapter } from "./top-up-adapter.interface";
 import { SubscriptionAbuseService } from "../trust-safety/subscription-abuse.service";
 import { PlatformGatewayService } from "../platform-gateway/platform-gateway.service";
+import { FoundingMembersService } from "./paddle/founding-members.service";
 
 /**
  * Every debit type subtracts from balance, every credit type adds, and
@@ -116,6 +117,7 @@ export class WalletService {
     private readonly settings: SettingsService,
     private readonly subscriptionAbuse: SubscriptionAbuseService,
     private readonly platformGateway: PlatformGatewayService,
+    private readonly foundingMembers: FoundingMembersService,
   ) {}
 
   /**
@@ -509,6 +511,23 @@ export class WalletService {
             renewalReminderExpiryDaySentAt: null,
           },
         });
+
+        // D17/D134 - "the first 100 PAYING sellers counted across ALL
+        // rails": this manual/wallet rail's own genuinely-first-ever
+        // verified plan-fee payment can claim a Founding Member ordinal
+        // exactly like PaddleSubscriptionLifecycleService.confirmCharge()
+        // does for the Paddle rail - same `tx` so the claim rolls back
+        // together with the rest of this verification if anything below
+        // fails.
+        if (!isRenewal) {
+          const ordinal = await this.foundingMembers.claimOrdinalIfEligible(tx);
+          if (ordinal !== null) {
+            await tx.subscription.update({
+              where: { sellerId: request.ownerId },
+              data: { isFoundingMember: true, foundingMemberOrdinal: ordinal },
+            });
+          }
+        }
       }
     });
 

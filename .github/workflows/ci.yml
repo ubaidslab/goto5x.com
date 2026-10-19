@@ -569,6 +569,59 @@ jobs:
           STRIPE_API_HOST: localhost:12111
         run: pnpm --filter @uzeyn/api exec ts-node scripts/verify-stripe-mock.ts
 
+  paddle-sandbox-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # D135/B3 (Paddle, founder decision D134) - unlike stripe-mock-test
+    # above, Paddle publishes no local fake-API-server equivalent of
+    # stripe-mock (and a Paddle subscription can only ever be created via
+    # Paddle's own hosted/overlay checkout, never a direct backend API
+    # call - confirmed from the SDK's own SubscriptionsResource), so this
+    # job talks to Paddle's REAL sandbox REST API instead of a mock -
+    # scripts/verify-paddle-sandbox.ts's own comment has the full
+    # reasoning. `environment: paddle-sandbox` is what makes the two
+    # secrets below environment-scoped rather than repository-level
+    # (D134's explicit requirement: "never available to a workflow
+    # triggered from a fork PR" - a repository secret doesn't give that
+    # isolation on its own, an environment one does). PADDLE_ENVIRONMENT
+    # is hardcoded to "sandbox" directly in this file, never a secret -
+    # it isn't sensitive, and keeping it out of the founder's two actual
+    # secrets means there's no way to accidentally wire a "production"
+    # value in from the secrets store; verify-paddle-sandbox.ts also
+    # independently refuses anything else at the code level (D134: "live
+    # keys never go to CI").
+    #
+    # TOLERANT OF MISSING SECRETS BY DESIGN: the founder hasn't created
+    # the Paddle sandbox account yet (D134 - "I'll create the sandbox
+    # account and add them"), so PADDLE_API_KEY/PADDLE_WEBHOOK_SECRET
+    # don't exist as this environment's secrets yet. The verification
+    # step below only runs when PADDLE_API_KEY is non-empty; otherwise
+    # it's skipped (not failed) with a clear log line, so this job stays
+    # green before AND after the founder adds the secrets, without ever
+    # silently pretending to have verified something it didn't.
+    environment: paddle-sandbox
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4, resolved 2026-10-10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Real Product/Price create -> retrieve -> list -> archive round trip + webhook signature verification against Paddle's real sandbox API
+        if: ${{ secrets.PADDLE_API_KEY != '' }}
+        env:
+          PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
+          PADDLE_ENVIRONMENT: sandbox
+        run: pnpm --filter @uzeyn/api exec ts-node scripts/verify-paddle-sandbox.ts
+
+      - name: Skip notice - Paddle sandbox credentials not configured yet
+        if: ${{ secrets.PADDLE_API_KEY == '' }}
+        run: |
+          echo "::notice::PADDLE_API_KEY is not set on the paddle-sandbox GitHub Actions environment yet - skipping the real sandbox round trip. This is expected until the founder creates the Paddle sandbox account and adds it (D134). The Paddle webhook/lifecycle logic is still fully covered by apps/api/src/billing/paddle/*.spec.ts (mocked SDK client) and test/e2e/paddle-webhook.e2e-spec.ts (real signature verification, no API key needed) on every run regardless."
+
   e2e-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full_run == 'true'

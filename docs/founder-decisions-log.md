@@ -3702,3 +3702,214 @@ exposure claims directly rather than trusting either the audit
 document or the dashboard, and of folding a security report's own
 explicit cross-reference into the next relevant phase rather than
 re-triaging it as new.
+
+### D135. Paddle sandbox billing built (B3, MVP Program Phase 1, D11/D134's decisions)
+**Status:** LOCKED.
+**Decision:** D134's 4 decisions, built in full:
+- **Schema:** `Subscription` gains `paddleSubscriptionId` (unique),
+  `paddleCustomerId`, `isFoundingMember`, `foundingMemberOrdinal`,
+  `lastPaddleTransactionId`, `lastPaddleChargedAt` (the last two are a
+  sticky-field pair, not a transaction ledger - same pattern
+  `firstCycleRefundedAt` already uses - tracking only "the most recent
+  chargeable transaction" for the 14-day refund-eligibility check). New
+  `FoundingMemberCounter` (one row, `id=1`, atomic
+  `UPDATE ... WHERE count<100 RETURNING count`) and
+  `PaddleRefundRequest` (`pending`/`approved`/`rejected`). The already-
+  existing, previously-unused `PlanCycleProviderPrice` table (a dormant
+  `stripePriceId` sibling included) is the plan/cycle -> Paddle-price-ID
+  mapping - reused as-is, not duplicated.
+- **Lifecycle** (`PaddleSubscriptionLifecycleService`): `confirmCharge()`
+  (driven by `transaction.completed`, the unambiguous "Paddle was just
+  paid" signal - never `subscription.updated`, which fires for reasons
+  unrelated to a successful charge) advances `currentPeriodEnd` exactly
+  like `WalletService.verifyTopUp()`'s own plan-fee branch does for the
+  manual rail - from now on a genuinely first payment, stacked onto the
+  existing `currentPeriodEnd` on a renewal - and claims a Founding
+  Member ordinal only on that first payment. `applySixMonthBonusDays()`
+  pushes Paddle's own `next_billed_at` to match our
+  already-correct-either-way `currentPeriodEnd`
+  (`prorationBillingMode: "do_not_bill"` - a pure date move, never a
+  charge); per D10's own rule, a failure here just drops the bonus for
+  that cycle, logged, never retried, never surfaced to the seller.
+  `markCanceled()` handles `subscription.canceled`.
+- **Founding Members (D17/D134):** `FoundingMembersService.
+  claimOrdinalIfEligible(tx?)` - the single atomic counter, shared
+  across BOTH rails. Wired into `PaddleSubscriptionLifecycleService.
+  confirmCharge()` AND, additively, into `WalletService.verifyTopUp()`'s
+  existing first-payment (`!isRenewal`) branch, both passing their own
+  enclosing `$transaction`'s `tx` through - a genuinely first payment on
+  either rail can claim the next ordinal, and the claim rolls back
+  together with the rest of that payment's write if anything after it
+  fails (caught and fixed during review - the first draft called this
+  with no `tx` at all, which would have let an ordinal be silently
+  burned on a rollback with no subscription ever actually marked for
+  it).
+- **Refunds (D11 revised/D134):** `requestRefund()` - 100% within 14
+  days of ANY paid charge (`billing.subscription_refund_window_days`,
+  default 14), auto-approved only if this is the account's first
+  approved refund in a trailing 12 months, otherwise `pending` for admin
+  review (`AdminPaddleRefundController`, `StepUpMfaGuard` +
+  `IdempotencyInterceptor`, same pairing `AdminWalletController`'s own
+  money-moving routes use). Either path ends in `executeApprovedRefund()`:
+  calls Paddle's real adjustment API (`action: "refund", type: "full"`;
+  never FR-6.49's wallet-ledger-credit mechanism, which D134 explicitly
+  retires for Paddle payments and keeps only for legacy wallet-paid
+  subscriptions), then unconditionally forces `currentPeriodEnd` to now
+  and calls `WalletGraceLadderService.pauseActiveStoresForNonPayment()`
+  directly and synchronously - "entitlement ends immediately" per D134,
+  not "once the regular overdue-sweep next ticks," and not contingent on
+  the Paddle API call itself succeeding (a failure there is logged for
+  manual follow-up; the entitlement still ends, since the money-movement
+  and the access-control decision are deliberately independent here).
+- **Webhooks** (`POST /billing/webhooks/paddle`, public/unauthenticated
+  by necessity, platform-wide - one endpoint, not per-store, since this
+  is the platform's OWN billing): `Webhooks.unmarshal()` (official SDK,
+  never hand-rolled HMAC) verifies and parses in one call;
+  `WebhookEventDedupeService` (B2's, reused as-is - `ProcessedWebhookEvent`
+  has no storeId/tenant column, nothing about it is Stripe-specific)
+  dedupes by event ID. `subscription.past_due` is a deliberate no-op -
+  `SubscriptionStatus` has only `active`/`cancelled` (confirmed directly
+  from schema.prisma, not assumed - this session's own fork directive
+  had wrongly assumed a `past_due` value existed); our own
+  `currentPeriodEnd`-vs-now overdue detection already covers it, the
+  same mechanism the manual rail already relies on, so nothing new is
+  needed.
+- **Seller self-service** (`GET sellers/me/subscription/paddle/checkout-
+  price`, `POST .../request-refund`): backend-only this pass, same
+  "backend-only this pass" precedent B2/D117 set - no Paddle.js checkout
+  button exists yet; `checkout-price` is the data a future one calls
+  (the pre-created Price ID for a seller's chosen plan+cycle, plus the
+  public Paddle.js client token).
+- **Catalog setup** (`scripts/setup-paddle-prices.ts`): idempotent,
+  creates 3 Products (GO/RUN/RISE - D10's locked table; FLY stays
+  dormant) x 4 Prices each (monthly/3mo/6mo/12mo) against whichever
+  Paddle account `PADDLE_API_KEY`/`PADDLE_ENVIRONMENT` point at, matched/
+  upserted via `customData`/the mapping table so re-running it is a
+  no-op once done - run once by the founder against the real sandbox
+  account once it exists, and again whenever live is approved (D134).
+- **CI secrets (D134 item 4):** new `paddle-sandbox-test` job
+  (`.github/workflows/ci.yml`), same cheap no-DB tier as
+  `stripe-mock-test`/`kms-localstack-test`. Unlike Stripe, Paddle
+  publishes no local fake-API-server equivalent of `stripe-mock` (and a
+  Paddle subscription can only ever be created via Paddle's own hosted/
+  overlay checkout - confirmed directly from the SDK's own
+  `SubscriptionsResource`, which has no `create` method at all) - so
+  this job's `scripts/verify-paddle-sandbox.ts` talks to Paddle's REAL
+  sandbox REST API instead of a mock: create -> retrieve -> list -> archive
+  a throwaway Product/Price, plus a local webhook-signature round trip.
+  `environment: paddle-sandbox` is what makes `PADDLE_API_KEY`/
+  `PADDLE_WEBHOOK_SECRET` environment-scoped rather than repository-level
+  secrets (D134's explicit "never available to a workflow triggered from
+  a fork PR" requirement - a repository secret doesn't give that
+  isolation on its own). `PADDLE_ENVIRONMENT=sandbox` is hardcoded
+  directly in the workflow file, never a secret, and the script itself
+  independently refuses anything else - two separate enforcements of
+  "live keys never go to CI," not reliance on either one alone. The
+  verification step only runs `if: secrets.PADDLE_API_KEY != ''`, so this
+  job is green both before and after the founder creates the sandbox
+  account - never red for a secret that doesn't exist yet, never silently
+  skipping once it does.
+**Two real bugs found and fixed during review, before anything was
+committed:**
+1. The Founding Member claim inside `confirmCharge()`/`verifyTopUp()`
+   was first written calling `foundingMembers.claimOrdinalIfEligible()`
+   with no argument - defaulting to its own `PrismaAdminService`
+   connection, not the enclosing `$transaction`'s `tx`. Harmless for the
+   counter itself (the `UPDATE...WHERE count<100` is atomic regardless
+   of which connection runs it) but a real escape-the-transaction bug
+   for consistency: if anything after that call inside the same
+   transaction failed and rolled back, the counter would already be
+   incremented permanently while the subscription row never actually
+   got marked `isFoundingMember` - an ordinal silently burned for no
+   seller. Fixed by giving `claimOrdinalIfEligible()` an optional
+   `tx?: Prisma.TransactionClient | PrismaAdminService` parameter
+   (the exact union `returns.service.ts`'s own `db` parameter already
+   uses), passed through from both call sites.
+2. `PaddleWebhookController` was first written with an injected
+   `PrismaAdminService` it never actually used anywhere in the file
+   (caught re-reading the file, not by any tool) - removed the
+   constructor param and the import, and removed the file from
+   `admin-bypass-allowlist.spec.ts`'s tripwire list it had just been
+   added to, since the tripwire's own job is tracking real call sites,
+   not files that merely mention the class name.
+**One test-infrastructure gap found and fixed:** `FoundingMemberCounter`
+is a one-row singleton with no FK to any table `test/e2e/setup.ts`'s
+`resetDatabase()` already truncates, so `TRUNCATE ... CASCADE` never
+reached it on its own - left as-is, it would have accumulated state
+across every e2e spec file in a whole test run (not just this one),
+making any ordinal assertion order-dependent. Added it to the explicit
+truncate list plus a reseed of its `(1, 0)` row in the same function
+(mirroring the migration's own seed insert), so every spec gets a
+correctly-zeroed counter regardless of run order - the same isolation
+property `resetRedis()`'s own comment already documents for Redis.
+**Verified:** full unit suite 72/72 suites, 444/444 tests (new:
+`founding-members.service.spec.ts`, `paddle-subscription-lifecycle.
+service.spec.ts` - mocking the Paddle SDK client, covering
+`confirmCharge()`'s none/first-payment/renewal/counter-full branches,
+`applySixMonthBonusDays()`'s swallow-on-failure rule, the refund-
+hopping guard, and admin approve/reject - and `paddle-webhook.
+controller.spec.ts`, including the null-`PADDLE_CLIENT`
+scratch-client-still-verifies-for-real branch). `apps/api` typecheck/
+lint clean (`scripts/verify-paddle-sandbox.ts`'s 8 "unused eslint-
+disable directive" warnings are a pre-existing `scripts/` lint-config
+quirk, confirmed identical on both already-shipped
+`verify-stripe-mock.ts`/`verify-kms-localstack.ts`, not a regression).
+E2e, `set -o pipefail` throughout: new `paddle-webhook.e2e-spec.ts`
+(16/16) - fixtures hand-built directly against the installed SDK's own
+compiled notification-entity constructors (not guessed), which is how
+this caught, before running anything, that `TransactionNotification`/
+`SubscriptionNotification`/`AdjustmentNotification` all unconditionally
+`.map()` their own `items`/`payments` arrays and would throw inside the
+SDK's own parser on a fixture missing them - and that `unmarshal()`'s
+real signature check (`WebhooksValidator.MAX_VALID_TIME_DIFFERENCE`)
+rejects anything older than 5 seconds, covered by its own test rather
+than discovered as flakiness later. Covers: signature rejection (no
+header/forged secret/stale timestamp), first-charge confirmation
+(Founding Member ordinal #1, two sellers claiming consecutive not
+duplicate ordinals), renewal (stacks onto existing `currentPeriodEnd`,
+no second claim), redelivery dedupe, missing-`customData.sellerId`
+skip, cancellation, `checkout-price`'s 404/400/200 paths, and
+`request-refund` end to end including the refund-hopping guard - all
+against a real app/Postgres/Redis, `PADDLE_API_KEY` deliberately unset
+throughout (the real state of every environment before the founder
+sets up Paddle; only the actual Paddle API calls are unreachable here,
+which `paddle-sandbox-test` exists to cover once the secrets exist).
+Re-run together with `module73-subscription-only-renewal` (the exact
+`WalletService.verifyTopUp()` code path this touched),
+`module72-subscription-refund` (confirms FR-6.49's own pre-existing
+wallet-refund path is undisturbed), `stripe-webhook` (confirms the
+shared `resetDatabase()` change and the dual-provided
+`WebhookEventDedupeService` instance don't collide), `plans-pricing`,
+and `module102-plan-downgrade-confirmation` (both exercise
+`requestPlanChange()`, which this program's own e2e fixtures rely on to
+reach a real billing interval before a webhook ever fires) - all green,
+zero regressions. New `paddle-sandbox-test` CI job to be independently
+confirmed green in real CI before this is reported as merged (it will
+show the "skip notice," not a real sandbox round trip, until the
+founder completes the two items below).
+**Reasoning:** matches the founder's approved 4 decisions point by
+point and D131/B2's own precedent for this class of change (official
+SDK for anything signature-related, sandbox-only, backend-only pending
+a real frontend checkout button, a CI job proving the real wire format
+rather than trusting mocks alone); the two bugs and the test-
+infrastructure gap were each found by re-reading and reasoning through
+the code directly before running anything, not by a tool or a failing
+test surfacing them first.
+**Still needs the founder's own action - nothing else is outstanding
+for this phase:**
+1. Create the Paddle sandbox account.
+2. Create a GitHub Actions **environment** named `paddle-sandbox` on
+   this repo (Settings -> Environments -> New environment - this is a
+   separate step from adding the secrets below; an environment that
+   doesn't exist yet gets auto-created with no rules the first time the
+   workflow references it, but the founder should still set it up
+   deliberately, with no "required reviewers"/branch restriction beyond
+   what's already wanted, since those rules are a repo-admin-only
+   setting this session cannot configure via the API either way - same
+   class of action as D134 item 1's branch-protection step).
+3. Add `PADDLE_API_KEY` and `PADDLE_WEBHOOK_SECRET` to that
+   environment's secrets (not repository-level) from the sandbox
+   account's dashboard. `PADDLE_CLIENT_TOKEN`/running `setup-paddle-
+   prices.ts` against the real sandbox are needed before a real
+   frontend checkout button can go live, but are not blocking for this
+   phase's own CI job.

@@ -34,6 +34,15 @@ import {
   StorePublishController,
   SupplierWalletController,
 } from "./wallet.controller";
+import { WebhookEventDedupeService } from "../payment-gateway/webhooks/webhook-event-dedupe.service";
+import { BlockStaffSessionsGuard } from "../common/guards/block-staff-sessions.guard";
+import { ImpersonationWriteGuard } from "../common/guards/impersonation-write.guard";
+import { paddleClientProvider } from "./paddle/paddle-client.provider";
+import { FoundingMembersService } from "./paddle/founding-members.service";
+import { PaddleSubscriptionLifecycleService } from "./paddle/paddle-subscription-lifecycle.service";
+import { PaddleWebhookController } from "./paddle/paddle-webhook.controller";
+import { PaddleBillingController } from "./paddle/paddle-billing.controller";
+import { AdminPaddleRefundController } from "./paddle/admin-paddle-refund.controller";
 
 /**
  * Module 20 (SRS §5.6e) - FR-6.28: InvoiceGenerationScheduler/
@@ -77,6 +86,17 @@ import {
     EmailTemplatesController,
     SubscriptionInvoiceController,
     AdminSubscriptionCancellationController,
+    // D135/B3 (Paddle) - added directly here rather than a separate
+    // PaddleBillingModule: the lifecycle service needs
+    // WalletGraceLadderService (immediate access-end on refund), which
+    // already lives in this module's own providers, not its exports-only
+    // surface - a separate module importing this one back would recreate
+    // the exact forwardRef cycle this file's own top comment already
+    // documents for InvoicesModule. Paddle billing is billing; it joins
+    // the existing flat module rather than adding a second one.
+    PaddleWebhookController,
+    PaddleBillingController,
+    AdminPaddleRefundController,
   ],
   providers: [
     LedgerService,
@@ -101,6 +121,25 @@ import {
     // StepUpMfaService, so this needed no new module imports; guards the
     // admin wallet-adjust route (wallet.controller.ts).
     StepUpMfaGuard,
+    // D135/B3 (Paddle) - PaddleBillingController/AdminPaddleRefundController
+    // need these two guards too; TrustSafetyModule (already imported)
+    // exports SellerAgreementGuard itself, but these two are plain
+    // common/guards classes no module here re-exports, so (same reasoning
+    // as StepUpMfaGuard just above) they're listed explicitly.
+    BlockStaffSessionsGuard,
+    ImpersonationWriteGuard,
+    paddleClientProvider,
+    FoundingMembersService,
+    PaddleSubscriptionLifecycleService,
+    // D117/B2's WebhookEventDedupeService, reused as-is for Paddle events
+    // (see webhook-event-dedupe.service.ts's own comment: no storeId/
+    // tenant column, so nothing here is Paddle- or Stripe-specific).
+    // PaymentGatewayModule already provides/constructs its own instance
+    // for the Stripe webhook path; re-providing it here rather than
+    // importing that module avoids reopening the InvoicesModule-style
+    // cycle, for a class that is stateless beyond the globally-scoped
+    // Prisma admin client both instances already share.
+    WebhookEventDedupeService,
   ],
   exports: [LedgerService, InvoicesService, WalletService, SupplierWalletService, WalletGraceLadderService, PlanFeeDebitService, WalletReconciliationService, RetentionService, RenewalRemindersService, SubscriptionInvoiceService, SubscriptionRefundService],
 })
