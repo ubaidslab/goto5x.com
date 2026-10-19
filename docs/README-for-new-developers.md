@@ -45,13 +45,26 @@ rather than trusting it.
   from PR behavior, not a direct read of the protection rule — treat the
   actual configuration as the founder's own source of truth.
 - CI jobs today (`.github/workflows/ci.yml` on `main`): `changes` (a
-  path-filter gate — a docs-only push like this one skips the expensive
-  jobs below), `typecheck`, `lint`, `docker-build` (verifies non-root
-  container users), `unit-tests`, `db-role-grants`, `backup-restore-drill`,
-  `kms-localstack-test`, `stripe-mock-test`, `e2e-tests` (sharded) +
-  `e2e-tests-summary`, `dependency-audit`, `web-build`. (A
-  `paddle-sandbox-test` job exists on the Phase 1/Paddle branch and isn't
-  on `main` as of this doc — see that PR.)
+  path-filter gate), `typecheck`, `lint`, `docker-build` (verifies
+  non-root container users), `unit-tests`, `db-role-grants`,
+  `backup-restore-drill`, `kms-localstack-test`, `stripe-mock-test`,
+  `e2e-tests` (sharded) + `e2e-tests-summary`, `dependency-audit`,
+  `web-build`. (A `paddle-sandbox-test` job exists on the Phase 1/Paddle
+  branch and isn't on `main` as of this doc — see that PR.)
+- **The docs-only skip only fires on a plain `push` to an already-existing
+  branch** (confirmed by directly observing this PR's own two CI runs, not
+  by reading the YAML alone): a `pull_request` event always runs
+  everything (`code=true` unconditionally — see the `changes` job's own
+  "Not a push event - running everything" branch), and so does a brand
+  new branch's first push, or anything outside the checkout's fetch-depth
+  (same unconditional fallback). In practice this means **a PR's own CI
+  run is always the full suite, regardless of how small or docs-only the
+  diff is** — the skip only saves minutes on a subsequent push of more
+  commits onto a branch that already has an open PR... but even then,
+  GitHub re-runs the workflow for both the `push` and the already-open
+  `pull_request`, so the `pull_request`-triggered run still won't skip.
+  Don't assume a docs change will produce a fast, mostly-skipped CI run on
+  its PR — budget for the full run.
 - Shell steps in CI use `set -o pipefail` (D130) — a piped command's exit
   code must reflect the real command's result, not just the last stage of
   the pipe.
