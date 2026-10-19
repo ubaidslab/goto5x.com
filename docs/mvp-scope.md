@@ -1,10 +1,17 @@
 # MVP Scope
 
 **Status:** adopted 2026-10-09 (founder's MVP Execution Prompt, D63–D81
-in `docs/founder-decisions-log.md`). This file is the single place a
+in `docs/founder-decisions-log.md`), updated 2026-10-19 by the 2026-10-19
+MVP offer review (D136-D151) and by `docs/prompts/2026-10-19-phases-1-5.md`
+(D152-D157) — the latter is the active phase plan and supersedes the
+original five-phase MVP Completion Program plan wherever the two
+conflict; see `docs/README-for-new-developers.md`'s "Where the project
+is right now" for the current phase. This file is the single place a
 reader goes to answer "is X in the MVP?" — cross-references the fuller
 specs rather than restating them. Milestones: `docs/build-plan.md`'s
-2026-10-09 section. Per-gate detail: `docs/plan-matrix-mvp.md`.
+2026-10-09 section. Per-gate detail: `docs/plan-matrix-mvp.md`. Full
+Storefront Themes v2 + D-Studio v2 spec (launch-blocking, D152):
+`docs/features/storefront-themes-v2.md`.
 
 ## Ships in the MVP
 
@@ -13,8 +20,10 @@ specs rather than restating them. Milestones: `docs/build-plan.md`'s
   database but is dormant (not purchasable, not shown). Product caps
   revised 2026-10-19 (D142): Free 10, GO 30, RUN 100, RISE 500, FLY
   unlimited (dormant regardless) — see `docs/plan-matrix-mvp.md` for
-  the as-built-vs-target gap. Storage now scales per tier (D142,
-  figures not yet set) instead of one flat value.
+  the as-built-vs-target gap. Storage now scales per tier (D142) instead
+  of one flat value — proposed figures per the 2026-10-19 phases prompt
+  (Phase 2A item 3): Free 500MB, GO 2GB, RUN 5GB, RISE 15GB, admin-
+  editable in the Settings Registry; not yet built as of this doc.
 - **One store per customer** (D74) — multi-store is archived, not
   deleted.
 - **Seller payment gateways:** Simpaisa, Airwallex, Razorpay, and
@@ -32,17 +41,19 @@ specs rather than restating them. Milestones: `docs/build-plan.md`'s
 - **UZEYN's own plan-fee billing (the platform's own revenue, not a
   seller's buyer-checkout gateway): PayFast is the live rail for the
   Pakistan phase (D150), not Paddle.** Paddle billing (B3) is built
-  (its own PR, merging independently of this one), and stays sandboxed
-  behind a `billing.enabled` flag once it lands,
-  deliberately dormant for this phase rather than discarded — it's the
-  rail for "going global" later. PayFast-for-platform-billing is new,
-  not-yet-started Phase 2 scope with real open questions (recurring/
-  tokenization vs. a manual pay-link-plus-reminder flow, merchant
-  onboarding, a PKR price table, and the platform's own tax/invoicing
-  liability since PayFast is not a merchant of record) — see D150 for
-  the full list before building against an assumption. The platform
-  also runs correctly with billing off entirely (Free-only private
-  beta, D81).
+  (its own PR, merging independently of this one) and, per Phase 1's
+  2026-10-19 closure instruction, is being reduced to permanently
+  dormant behind a `billing.paddle.enabled` flag (default `false`,
+  admin-only) — no further Paddle build work planned; it's kept, not
+  discarded, as the rail for "going global" later. PayFast-for-
+  platform-billing is new, not-yet-started Phase 2B scope (phases
+  prompt item 11) with real open questions (recurring/tokenization vs.
+  a manual pay-link-plus-reminder flow, merchant onboarding, a PKR
+  price table - placeholder only until the founder sets real figures -
+  and the platform's own tax/invoicing liability since PayFast is not
+  a merchant of record) — see D150 for the full list before building
+  against an assumption. The platform also runs correctly with billing
+  off entirely (Free-only private beta, D81).
 - **Platform commission hard-locked at 0%** (D137) — not just defaulted
   to 0, the admin control that could raise it (up to 2%) is removed
   from the build entirely. Marketing copy states "0% platform fee"
@@ -82,9 +93,16 @@ specs rather than restating them. Milestones: `docs/build-plan.md`'s
   guide, launch-readiness checklist (D71).
 - **Founding Members and Launch Assurance**, run manually by an admin
   (D80) — the public-facing offers exist, the automation doesn't yet.
-- **Storefront templates redesigned premium/mobile-first/image-led**
-  (D151) — fully editable through D-Studio afterward, not a fixed
-  template; Phase 3 scope, not yet built.
+- **Storefront Themes v2 + D-Studio v2** (D151's template redesign,
+  substantially expanded and made launch-blocking by D152-D157) — four
+  full-store premium themes (Fashion/Beauty/Tech/Home & General,
+  working names) replacing the current four built-ins; a redesigned
+  D-Studio editor with draft/publish and version history; a redesigned
+  product page; a styled, trust-locked checkout (fulfills D149/D157).
+  Full spec: `docs/features/storefront-themes-v2.md`. Phase 3 scope,
+  not yet built; available on every plan including Free (D154), never
+  plan-gated itself (only section count and Custom CSS stay gated, as
+  today).
 
 ## Dormant (built, off by default, restorable — never deleted)
 
@@ -93,12 +111,14 @@ specs rather than restating them. Milestones: `docs/build-plan.md`'s
   the posture for the MVP's live gateway lineup, not a temporary gap.
   No contradiction between B2's decision record and D144 — both agree.
 - **Paddle billing** (B3, built — its own PR, not yet merged as of this
-  doc) — sandbox-only, excluded from Stage 0 by its own original build
-  decision; D150 (2026-10-19) confirms PayFast, not Paddle, is the live
-  rail for the Pakistan-phase MVP. Same "stays dormant, not discarded"
-  posture as Stripe, for the same reason (built for a later phase -
-  Paddle for "going global," Stripe pending a future founder decision to
-  re-activate it).
+  doc) — being closed to permanently dormant behind `billing.paddle.
+  enabled` (default `false`, admin-only) per the 2026-10-19 phases
+  prompt's Phase 1 instruction: "finish PR #16 with only what's already
+  done and working... no further Paddle scope." D150 (2026-10-19)
+  confirms PayFast, not Paddle, is the live rail for the Pakistan-phase
+  MVP. Same "stays dormant, not discarded" posture as Stripe, for the
+  same reason (built for a later phase - Paddle for "going global,"
+  Stripe pending a future founder decision to re-activate it).
 - **Multi-store** (D74) — git-tagged `archive/multi-store-2026-10-09`,
   server-side 1-store limit enforced regardless of what a plan would
   otherwise allow.
@@ -223,3 +243,47 @@ original, less formal source notes this review came from.
   delegating the buyer-trust checkout design to the advisor/developer)
   rather than product-scope changes — noted here for completeness, not
   because they alter what ships.
+
+## What changed from `docs/prompts/2026-10-19-phases-1-5.md` (D152-D157)
+
+This is the founder's detailed "decisions a-o" prompt, received after
+the above 2026-10-19 review and superseding the original five-phase MVP
+Completion Program plan wherever the two conflict. Full text committed
+verbatim at that path; decisions recorded as D152-D157.
+
+- **Phase 1 (Paddle, B3) is being closed to a reduced scope** — "only
+  what's already done and working, dormant behind
+  `billing.paddle.enabled=false`... no further Paddle scope." This
+  doesn't change anything already stated above (Paddle was always
+  going to stay dormant per D150) — it makes the *mechanism* concrete
+  (a specific flag, three specific required tests) and explicitly
+  closes off any further Paddle build work, which the earlier 2026-10-19
+  entries hadn't explicitly ruled out.
+- **D152 makes Storefront Themes v2 + D-Studio v2 launch-blocking MVP
+  scope** — previously D151 described a narrower "redesign the
+  templates" item; D152-D157 expand this into a full theme system (new
+  D-Studio editor with draft/publish/versions, a redesigned product
+  page, a styled and trust-locked checkout) and make it a launch
+  blocker, not an enhancement. Full spec:
+  `docs/features/storefront-themes-v2.md`.
+- **D153 replaces the 4 built-in themes**, not just restyles them —
+  Editorial/Studio/Market/Atelier are retired in favor of 4 new
+  category themes (Fashion/Beauty/Tech/Home & General, working names),
+  with a required content-preserving migration.
+- **D154 confirms theme choice is never plan-gated** — a question this
+  doc hadn't previously addressed explicitly; only section count and
+  Custom CSS stay gated, exactly as today.
+- **D155 keeps the paid "Premium Motion" template entitlement dormant**
+  — unaffected by D152's build, explicitly post-launch, hide its
+  buyer-facing entry point.
+- **D156 retires `/customizer` outright** — a real cutover (data
+  migrated into D-Studio, then the route redirects), not a parallel
+  system kept running alongside D-Studio.
+- **D157 makes D149's delegated buyer-trust design concrete** — D149
+  (above) left the actual design open; D157 is that design, binding,
+  in `docs/features/storefront-themes-v2.md` §6.
+- **The 2A/2B item numbering in the new prompt cites several existing
+  decisions by their *external* advisor-log number, not this file's
+  own** — see `docs/founder-decisions-log.md`'s own mapping table at the
+  top of its 2026-10-19 phases-prompt section before trusting a D-number
+  written directly in the prompt text.

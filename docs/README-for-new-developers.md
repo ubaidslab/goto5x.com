@@ -20,6 +20,8 @@ rather than trusting it.
 |---|---|
 | `docs/founder-decisions-log.md` | **Source of truth.** Decisions + reasoning, dated, supersession tracked explicitly. |
 | `docs/advisor-log.md` | Historical context only — a founder/advisor conversation transcript. Explicitly **not** authoritative; says so in its own header. |
+| `docs/prompts/2026-10-19-phases-1-5.md` | The founder's full phased build-out prompt (Phase 1 close-out through Phase 5 deploy-ready) — committed verbatim. **Supersedes any earlier phase plan where they conflict.** Its own §1.3 decisions are logged as D152-D157; the rest is task sequencing, tracked in this doc's "Where the project is right now" section below, not re-logged as separate D-numbers. |
+| `docs/features/storefront-themes-v2.md` | The target spec for Storefront Themes v2 + D-Studio v2 (MVP scope, launch-blocking per D152) — a standalone copy of the prompt's §4. Not yet built; `docs/features/storefront-and-themes.md` describes what's actually live today. |
 | `docs/SRS.md` | Technical spec: FR numbers, Risk Register, Open Questions, Acceptance Checklists (§14). The "what to build," not the "why." |
 | `docs/pricing-and-programs.md` | Canonical numbers for pricing/billing/referral-program mechanics. |
 | `docs/mvp-scope.md` | Current MVP ships/dormant/post-MVP summary — read this for "is X in scope." |
@@ -107,23 +109,32 @@ built, and covers everything this quick version skips.
 
 ## Where the project is right now
 
-The founder's **MVP Completion Program** is the active plan: five phases,
-each ending in a report and a pause for independent founder review before
-the next starts. Current state:
+The founder's active plan is **`docs/prompts/2026-10-19-phases-1-5.md`**
+— a detailed, five-phase build-out prompt that supersedes the original
+MVP Completion Program's phase plan wherever the two conflict. Same
+discipline as before: each phase ends in a written report (what shipped
+/ what didn't / deviations / test evidence / open questions) and a pause
+for founder review before the next phase starts — except Phase 3 design
+work, which may run in parallel with Phase 2B on its own branches.
 
-1. **Phase 1 (Paddle billing, B3)** — in progress, dormant behind a flag,
-   its own PR, reported separately from this doc.
-2. **Phase 2 (feature-completeness audit)** — not started; explicitly held
-   until the founder reviews Phase 1's report.
-3. **Phase 3 (premium UI/UX design-system pass)** — not started.
-4. **Phase 4 (security hardening vs. skilled/AI-assisted attackers)** —
+1. **Phase 1 (Paddle billing, B3)** — being closed to a reduced,
+   permanently-dormant scope: everything gated behind
+   `billing.paddle.enabled` (default `false`, admin-only), no further
+   Paddle build work. PayFast (not Paddle) is now the live rail for the
+   Pakistan-phase MVP (D150). Its own PR, reported separately from this
+   doc.
+2. **Phase 2A (money/promises)** and **2B (PayFast)** — ten+two
+   decision-implementation items, one PR each; not started.
+3. **Phase 3 (Storefront Themes v2 + D-Studio v2)** — launch-blocking,
+   full spec in `docs/features/storefront-themes-v2.md` (D152); not
+   started. May start in parallel with 2B once that phase begins.
+4. **Phase 4 (AI persona testing + attacker-mindset security pass)** —
    not started.
 5. **Phase 5 (deploy-ready)** — not started.
 
-This PR ("Step 0") is docs-only groundwork run in parallel with Phase 1:
-reconciling the 2026-10-19 advisor-conversation decisions into the
-decision log, and bringing `mvp-scope.md`/`plan-matrix-mvp.md` up to date
-with what those decisions change.
+This PR ("Step 0 for the phases-1-5 prompt") is docs-only groundwork,
+committing that prompt verbatim, its new decisions (D152-D157), the
+theme spec, and these links — run independently of Phase 1's own PR.
 
 **The repo's GitHub visibility was independently re-checked while writing
 this doc (unauthenticated API read, not the dashboard) and is still
@@ -144,9 +155,10 @@ just the index.
 | D40.2 | UZEYN Partners referral bonus — 12-month cap or recurring forever? | 12-month cap | |
 | D40.3 | UZEYN Partners minimum payout amount | ≈Rs 5,000-equivalent | |
 | D20 (new, D141) | Gateway-connect UI should show each gateway's own country/business eligibility before a seller tries to connect it | Not built yet | Surfaced by D141 (2026-10-19), not a pre-existing item |
-| — (new, plan-matrix-mvp.md) | Exact per-tier storage caps | None proposed yet | D142 (2026-10-19) locks "storage scales per tier," not the actual numbers — needs a founder figure before it can be built |
-| D147 | Does PayFast actually accept international cards? | Unverified | Verify before building anything that assumes it does |
-| D149 | Buyer-trust checkout/advance-payment flow design | None — explicitly delegated | Founder delegated the design itself to advisor/developer judgment, feeding Phase 2/3 |
+| — (plan-matrix-mvp.md) | Exact per-tier storage caps | **Now has figures:** Free 500MB / GO 2GB / RUN 5GB / RISE 15GB, per the 2026-10-19 phases prompt (Phase 2A item 3) | Explicitly "proposed defaults in the Settings Registry, editable by admin" — not yet built, but no longer an open number to invent |
+| D147 | Does PayFast actually accept international cards? | Unverified | Phase 2B item 11's own required verification step before building against the assumption |
+| — (new) | Does PayFast support real recurring billing/tokenization, or is renewal a manual pay-link flow? | Verify first; if unsupported, the phases prompt's own fallback is a manual pay-link emailed/shown 7/3/1 days before due, 7-day grace, then downgrade to Free (D66) | Phase 2B item 11 — don't build automatic recurring billing against an unconfirmed assumption |
+| — (new) | UZEYN's own plan PKR price table | "TBD by founder" placeholder only — never shown publicly until set | Phase 2B item 11; needs the founder's actual numbers (see §7 of the phases prompt) |
 | D23 | Discount floor (50% of list price after cycle discount + 1 promo) | Current default stands | Flagged for reconfirmation, not reopened |
 | D5 / D73r | Gateway rollout order | Stripe/Simpaisa/Razorpay first, others on demand | Flagged for reconfirmation in D40.8; largely overtaken by D144 (PayFast added, Stripe dormant) without an explicit "D40.8 resolved" note — see this PR's report for the cross-reference gap |
 | D7 / D40.10 | Paddle tax display by buyer location vs. always tax-exclusive | Always tax-exclusive | Paddle itself is now deferred (D150), so this is lower-priority than when written |
@@ -165,3 +177,17 @@ editing the old entry's substance.
 CA questions (D38) and lawyer questions (D39) are founder-owned follow-ups
 with outside professionals, not engineering-blocking decisions — listed in
 full in the decisions log, not repeated here.
+
+**D149 (buyer-trust checkout design) is no longer open** — it was listed
+here before the founder's 2026-10-19 phases prompt arrived with a
+concrete, binding spec (§4.6 there; `docs/features/storefront-themes-v2.md`
+§6; decision-log entry D157). Mentioned here only so this table doesn't
+look inconsistent with an earlier read of it.
+
+**Founder-owed inputs, not decisions** — small, explicitly non-blocking
+per the phases prompt's own §7 ("ask once, don't block on it"): the
+fashion-theme reference image and `img/mark.svg`; the final display
+names for the 4 new premium themes (working names — Fashion/Beauty/
+Tech/Home & General — stand in until then); the support/security email
+domain (use a placeholder config until set); the PKR price table for
+UZEYN's own plans (placeholder, never shown publicly until real).
