@@ -34,7 +34,7 @@ diffing against these project-authored versions before replacing them.
 ## Design Direction (binding for all UI work)
 
 - **UZEYN is the final brand — no longer dummy/placeholder, no longer
-  monochrome (v1.4, founder decision D138, 2026-10-19).** This supersedes
+  monochrome (v1.4, founder decision D140, 2026-10-19).** This supersedes
   the entire v1.3 monochrome pass below (which itself superseded the
   earlier cream/green + Alegreya SC pass before it) — that is now TWO
   reversals on record for this file, so treat any color/brand direction
